@@ -1,0 +1,156 @@
+<?php
+
+namespace Tests\Feature\Sales;
+
+use App\Models\Tenant\AccountMapping;
+use App\Models\Tenant\ChartOfAccount;
+use App\Models\Tenant\CustomerDeposit;
+use App\Models\Tenant\CustomerDepositAllocation;
+use App\Models\Tenant\JournalEntryLine;
+use App\Models\Tenant\SalesInvoice;
+
+class AccountsReceivableLedgerTest extends SalesTestCase
+{
+    public function test_ar_ledger_tracks_invoice_receipt_deposit_allocation_and_return(): void
+    {
+        $ctx = $this->setUpTenant();
+        $cash = $this->seedMappings();
+        $invoice = $this->postedInvoice($ctx, 200);
+        $this->postReceipt($ctx, $cash, $invoice, 50);
+        $this->allocateDeposit($ctx, $cash, $invoice, 25);
+        $this->postReturn($ctx, $invoice, 25);
+
+        $this->getJson('/api/sales/ar/customers/'.$invoice['customer_id'].'/ledger', $ctx['headers'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.movements.0.document_type', 'sales_invoice')
+            ->assertJsonPath('data.movements.0.debit', 200)
+            ->assertJsonPath('data.movements.3.balance', 100);
+
+        $this->getJson('/api/sales/ar/customer-summary', $ctx['headers'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.0.balance', 100);
+
+        $this->getJson('/api/sales/ar/open-invoices', $ctx['headers'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.0.balance_due', 100);
+    }
+
+    public function test_void_documents_are_excluded_and_tenants_are_isolated(): void
+    {
+        $ctx = $this->setUpTenant();
+        $this->seedMappings();
+        $invoice = $this->postedInvoice($ctx, 100);
+        SalesInvoice::query()->find($invoice['id'])->update(['status' => 'void', 'voided_at' => now()]);
+
+        $this->getJson('/api/sales/ar/customer-summary', $ctx['headers'])
+            ->assertStatus(200)
+            ->assertJsonCount(0, 'data');
+
+        $ctxB = $this->setUpTenant();
+        $this->getJson('/api/sales/ar/customer-summary', $ctxB['headers'])
+            ->assertStatus(200)
+            ->assertJsonCount(0, 'data');
+    }
+
+    public function test_subsidiary_reconciles_to_gl_and_detects_mismatch(): void
+    {
+        $ctx = $this->setUpTenant();
+        $cash = $this->seedMappings();
+        $invoice = $this->postedInvoice($ctx, 200);
+        $this->postReceipt($ctx, $cash, $invoice, 50);
+
+        $this->getJson('/api/sales/ar/reconciliation', $ctx['headers'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.is_reconciled', true)
+            ->assertJsonPath('data.subsidiary_balance', 150)
+            ->assertJsonPath('data.gl_ar_balance', 150);
+
+        JournalEntryLine::query()->where('description', 'Accounts Receivable')->latest('id')->first()->update(['credit' => 40]);
+
+        $this->getJson('/api/sales/ar/reconciliation', $ctx['headers'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.is_reconciled', false);
+    }
+
+    private function postedInvoice(array $ctx, float $amount): array
+    {
+        $invoice = $this->postJson('/api/sales/invoices', [
+            'customer_id' => $this->createCustomer(),
+            'invoice_date' => '2026-05-20',
+            'due_date' => '2026-06-20',
+            'lines' => [['description' => 'Service', 'quantity' => 1, 'unit_price' => $amount]],
+        ], $ctx['headers'])->assertStatus(201)->json('data');
+        $this->patchJson('/api/sales/invoices/'.$invoice['id'].'/post', [], $ctx['headers'])->assertStatus(200);
+
+        return SalesInvoice::query()->with('lines')->find($invoice['id'])->toArray();
+    }
+
+    private function postReceipt(array $ctx, int $cash, array $invoice, float $amount): void
+    {
+        $receipt = $this->postJson('/api/sales/receipts', [
+            'receipt_date' => '2026-05-20',
+            'customer_id' => $invoice['customer_id'],
+            'sales_invoice_id' => $invoice['id'],
+            'cash_bank_account_id' => $cash,
+            'amount' => $amount,
+        ], $ctx['headers'])->assertStatus(201)->json('data');
+        $this->patchJson('/api/sales/receipts/'.$receipt['id'].'/post', [], $ctx['headers'])->assertStatus(200);
+    }
+
+    private function allocateDeposit(array $ctx, int $cash, array $invoice, float $amount): void
+    {
+        $deposit = CustomerDeposit::query()->create([
+            'deposit_number' => 'CD-AR-1',
+            'deposit_date' => '2026-05-20',
+            'customer_id' => $invoice['customer_id'],
+            'cash_bank_account_id' => $cash,
+            'amount' => $amount,
+            'remaining_amount' => $amount,
+            'allocated_amount' => 0,
+            'status' => 'posted',
+            'posted_at' => now(),
+        ]);
+
+        $this->postJson('/api/sales/customer-deposits/'.$deposit->id.'/allocate-to-invoice/'.$invoice['id'], [
+            'amount' => $amount,
+        ], $ctx['headers'])->assertStatus(200);
+
+        $this->assertSame(1, CustomerDepositAllocation::query()->count());
+    }
+
+    private function postReturn(array $ctx, array $invoice, float $amount): void
+    {
+        $return = $this->postJson('/api/sales/returns', [
+            'return_date' => '2026-05-20',
+            'customer_id' => $invoice['customer_id'],
+            'sales_invoice_id' => $invoice['id'],
+            'lines' => [[
+                'sales_invoice_line_id' => $invoice['lines'][0]['id'],
+                'description' => 'Return',
+                'quantity' => 0.125,
+                'unit_price' => 200,
+                'line_total' => $amount,
+            ]],
+        ], $ctx['headers'])->assertStatus(201)->json('data');
+        $this->patchJson('/api/sales/returns/'.$return['id'].'/post', [], $ctx['headers'])->assertStatus(200);
+    }
+
+    private function seedMappings(): int
+    {
+        $cash = $this->account('1000', 'Cash', 'asset', 'debit', true);
+        $ar = $this->account('1100', 'AR', 'asset', 'debit');
+        $revenue = $this->account('4100', 'Revenue', 'revenue', 'credit');
+        $deposit = $this->account('2200', 'Customer Deposit', 'liability', 'credit');
+        $salesReturn = $this->account('4200', 'Sales Return', 'revenue', 'debit');
+        foreach (['sales.accounts_receivable' => $ar, 'sales.revenue' => $revenue, 'sales.customer_deposit' => $deposit, 'sales.return' => $salesReturn] as $key => $id) {
+            AccountMapping::query()->create(['mapping_key' => $key, 'module' => 'sales', 'account_id' => $id, 'is_required' => true, 'is_active' => true]);
+        }
+
+        return $cash;
+    }
+
+    private function account(string $code, string $name, string $type, string $normal, bool $cash = false): int
+    {
+        return (int) ChartOfAccount::query()->create(['account_code' => $code, 'account_name' => $name, 'account_type' => $type, 'normal_balance' => $normal, 'is_cash_bank' => $cash, 'is_active' => true])->id;
+    }
+}

@@ -1,0 +1,252 @@
+<?php
+
+namespace App\Services\Sales;
+
+use App\Models\Tenant\CustomerDepositAllocation;
+use App\Models\Tenant\SalesInvoice;
+use App\Models\Tenant\SalesReceipt;
+use App\Models\Tenant\SalesReturn;
+use Illuminate\Support\Collection;
+
+class ARSubsidiaryLedgerService
+{
+    public function ledgerByCustomer(int $customerId, array $filters = []): array
+    {
+        $filters['customer_id'] = $customerId;
+
+        return [
+            'customer_id' => $customerId,
+            'movements' => $this->calculateRunningBalance($this->movements($filters)),
+        ];
+    }
+
+    public function ledgerByInvoice(int $invoiceId): array
+    {
+        return [
+            'invoice_id' => $invoiceId,
+            'movements' => $this->calculateRunningBalance($this->movements(['invoice_id' => $invoiceId])),
+        ];
+    }
+
+    public function customerSummary(array $filters = []): array
+    {
+        return collect($this->movements($filters))
+            ->groupBy('customer_id')
+            ->map(function (Collection $rows): array {
+                $last = $rows->last();
+
+                return [
+                    'customer_id' => $last['customer_id'],
+                    'customer_name' => $last['customer_name'],
+                    'debit' => round((float) $rows->sum('debit'), 2),
+                    'credit' => round((float) $rows->sum('credit'), 2),
+                    'balance' => round((float) $rows->sum('debit') - (float) $rows->sum('credit'), 2),
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    public function openInvoices(array $filters = []): array
+    {
+        return $this->invoiceBaseQuery($filters)
+            ->where('balance_due', '>', 0)
+            ->orderBy('due_date')
+            ->orderBy('invoice_date')
+            ->get()
+            ->map(fn (SalesInvoice $invoice): array => [
+                'invoice_id' => $invoice->id,
+                'invoice_number' => $invoice->invoice_number,
+                'invoice_date' => optional($invoice->invoice_date)->toDateString(),
+                'due_date' => optional($invoice->due_date)->toDateString(),
+                'customer_id' => $invoice->customer_id,
+                'customer_name' => $invoice->customer?->name,
+                'grand_total' => (float) $invoice->grand_total,
+                'paid_amount' => (float) $invoice->paid_amount,
+                'returned_amount' => (float) $invoice->returned_amount,
+                'balance_due' => (float) $invoice->balance_due,
+                'status' => $invoice->status,
+            ])
+            ->all();
+    }
+
+    public function movements(array $filters = []): array
+    {
+        $movements = collect()
+            ->merge($this->invoiceMovements($filters))
+            ->merge($this->receiptMovements($filters))
+            ->merge($this->depositAllocationMovements($filters))
+            ->merge($this->returnMovements($filters));
+
+        return $movements
+            ->sortBy(fn (array $row): string => $row['date'].'-'.$this->movementSortOrder($row['document_type']).'-'.str_pad((string) $row['document_id'], 12, '0', STR_PAD_LEFT))
+            ->values()
+            ->all();
+    }
+
+    public function calculateRunningBalance(array $movements): array
+    {
+        $balance = 0.0;
+
+        return array_map(function (array $movement) use (&$balance): array {
+            $balance = round($balance + (float) $movement['debit'] - (float) $movement['credit'], 2);
+            $movement['balance'] = $balance;
+
+            return $movement;
+        }, $movements);
+    }
+
+    private function invoiceMovements(array $filters): array
+    {
+        return $this->invoiceBaseQuery($filters)
+            ->get()
+            ->map(fn (SalesInvoice $invoice): array => $this->movement(
+                optional($invoice->invoice_date)->toDateString(),
+                $invoice->customer_id,
+                $invoice->customer?->name,
+                'sales_invoice',
+                $invoice->id,
+                $invoice->invoice_number,
+                'Sales invoice '.$invoice->invoice_number,
+                (float) $invoice->grand_total,
+                0.0,
+                'sales_invoice',
+                $invoice->id,
+            ))
+            ->all();
+    }
+
+    private function receiptMovements(array $filters): array
+    {
+        return SalesReceipt::query()
+            ->with('customer')
+            ->where('status', 'posted')
+            ->whereNotNull('posted_at')
+            ->when($filters['customer_id'] ?? null, fn ($query, $customerId) => $query->where('customer_id', $customerId))
+            ->when($filters['invoice_id'] ?? null, fn ($query, $invoiceId) => $query->where('sales_invoice_id', $invoiceId))
+            ->when($filters['start_date'] ?? null, fn ($query, $date) => $query->where('receipt_date', '>=', $date))
+            ->when($this->endDate($filters), fn ($query, $date) => $query->where('receipt_date', '<=', $date))
+            ->get()
+            ->map(fn (SalesReceipt $receipt): array => $this->movement(
+                optional($receipt->receipt_date)->toDateString(),
+                $receipt->customer_id,
+                $receipt->customer?->name,
+                'sales_receipt',
+                $receipt->id,
+                $receipt->receipt_number,
+                'Sales receipt '.$receipt->receipt_number,
+                0.0,
+                (float) $receipt->amount,
+                'sales_receipt',
+                $receipt->id,
+            ))
+            ->all();
+    }
+
+    private function depositAllocationMovements(array $filters): array
+    {
+        return CustomerDepositAllocation::query()
+            ->with('salesInvoice.customer')
+            ->where('status', 'posted')
+            ->whereNull('voided_at')
+            ->whereHas('salesInvoice', fn ($query) => $query->whereNotIn('status', ['void'])->whereNotNull('posted_at'))
+            ->when($filters['customer_id'] ?? null, fn ($query, $customerId) => $query->whereHas('salesInvoice', fn ($invoice) => $invoice->where('customer_id', $customerId)))
+            ->when($filters['invoice_id'] ?? null, fn ($query, $invoiceId) => $query->where('sales_invoice_id', $invoiceId))
+            ->when($filters['start_date'] ?? null, fn ($query, $date) => $query->where('allocation_date', '>=', $date))
+            ->when($this->endDate($filters), fn ($query, $date) => $query->where('allocation_date', '<=', $date))
+            ->get()
+            ->map(function (CustomerDepositAllocation $allocation): array {
+                $invoice = $allocation->salesInvoice;
+
+                return $this->movement(
+                    optional($allocation->allocation_date)->toDateString(),
+                    $invoice?->customer_id,
+                    $invoice?->customer?->name,
+                    'customer_deposit_allocation',
+                    $allocation->id,
+                    $invoice?->invoice_number,
+                    'Customer deposit allocation '.$invoice?->invoice_number,
+                    0.0,
+                    (float) $allocation->allocated_amount,
+                    'customer_deposit_allocation',
+                    $allocation->id,
+                );
+            })
+            ->all();
+    }
+
+    private function returnMovements(array $filters): array
+    {
+        return SalesReturn::query()
+            ->with('customer')
+            ->where('status', 'posted')
+            ->whereNotNull('posted_at')
+            ->when($filters['customer_id'] ?? null, fn ($query, $customerId) => $query->where('customer_id', $customerId))
+            ->when($filters['invoice_id'] ?? null, fn ($query, $invoiceId) => $query->where('sales_invoice_id', $invoiceId))
+            ->when($filters['start_date'] ?? null, fn ($query, $date) => $query->where('return_date', '>=', $date))
+            ->when($this->endDate($filters), fn ($query, $date) => $query->where('return_date', '<=', $date))
+            ->get()
+            ->map(fn (SalesReturn $return): array => $this->movement(
+                optional($return->return_date)->toDateString(),
+                $return->customer_id,
+                $return->customer?->name,
+                'sales_return',
+                $return->id,
+                $return->return_number,
+                'Sales return '.$return->return_number,
+                0.0,
+                (float) $return->grand_total,
+                'sales_return',
+                $return->id,
+            ))
+            ->all();
+    }
+
+    private function invoiceBaseQuery(array $filters)
+    {
+        return SalesInvoice::query()
+            ->with('customer')
+            ->whereNotIn('status', ['draft', 'approved', 'void'])
+            ->whereNotNull('posted_at')
+            ->when($filters['customer_id'] ?? null, fn ($query, $customerId) => $query->where('customer_id', $customerId))
+            ->when($filters['invoice_id'] ?? null, fn ($query, $invoiceId) => $query->where('id', $invoiceId))
+            ->when($filters['status'] ?? null, fn ($query, $status) => $query->where('status', $status))
+            ->when($filters['salesperson_id'] ?? null, fn ($query, $salespersonId) => $query->where('salesperson_id', $salespersonId))
+            ->when($filters['start_date'] ?? null, fn ($query, $date) => $query->where('invoice_date', '>=', $date))
+            ->when($this->endDate($filters), fn ($query, $date) => $query->where('invoice_date', '<=', $date));
+    }
+
+    private function movement(?string $date, ?int $customerId, ?string $customerName, string $documentType, int $documentId, ?string $documentNumber, string $description, float $debit, float $credit, string $sourceType, int $sourceId): array
+    {
+        return [
+            'date' => $date,
+            'customer_id' => $customerId,
+            'customer_name' => $customerName,
+            'document_type' => $documentType,
+            'document_id' => $documentId,
+            'document_number' => $documentNumber,
+            'description' => $description,
+            'debit' => round($debit, 2),
+            'credit' => round($credit, 2),
+            'balance' => 0.0,
+            'source_type' => $sourceType,
+            'source_id' => $sourceId,
+        ];
+    }
+
+    private function endDate(array $filters): ?string
+    {
+        return $filters['end_date'] ?? $filters['as_of_date'] ?? null;
+    }
+
+    private function movementSortOrder(string $type): int
+    {
+        return match ($type) {
+            'sales_invoice' => 10,
+            'sales_receipt' => 20,
+            'customer_deposit_allocation' => 30,
+            'sales_return' => 40,
+            default => 99,
+        };
+    }
+}
