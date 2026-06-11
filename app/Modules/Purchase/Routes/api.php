@@ -62,6 +62,7 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('purchase')->group
 
     Route::get('/vendor-deposits', [VendorDepositController::class, 'index'])->middleware('permission:purchase.deposits.view');
     Route::post('/vendor-deposits', [VendorDepositController::class, 'store'])->middleware('permission:purchase.deposits.create');
+    Route::get('/vendor-deposits/available', [VendorDepositController::class, 'available'])->middleware('permission:purchase.deposits.view|purchase.payments.view');
     Route::get('/vendor-deposits/{id}', [VendorDepositController::class, 'show'])->middleware('permission:purchase.deposits.view');
     Route::patch('/vendor-deposits/{id}/post', [VendorDepositController::class, 'post'])->middleware('permission:purchase.deposits.post');
     Route::patch('/vendor-deposits/{id}/void', [VendorDepositController::class, 'void'])->middleware('permission:purchase.deposits.void');
@@ -70,6 +71,7 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('purchase')->group
 
     Route::get('/payments', [VendorPaymentController::class, 'index'])->middleware('permission:purchase.payments.view');
     Route::post('/payments', [VendorPaymentController::class, 'store'])->middleware('permission:purchase.payments.create');
+    Route::get('/payments/vendor-context', [VendorPaymentController::class, 'vendorContext'])->middleware('permission:purchase.payments.view');
     Route::get('/payments/{id}', [VendorPaymentController::class, 'show'])->middleware('permission:purchase.payments.view');
     Route::patch('/payments/{id}/post', [VendorPaymentController::class, 'post'])->middleware('permission:purchase.payments.post');
     Route::patch('/payments/{id}/void', [VendorPaymentController::class, 'void'])->middleware('permission:purchase.payments.void');

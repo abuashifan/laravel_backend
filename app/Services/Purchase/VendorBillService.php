@@ -10,6 +10,7 @@ use App\Models\Tenant\JournalEntry;
 use App\Models\Tenant\PurchaseOrder;
 use App\Models\Tenant\PurchaseOrderLine;
 use App\Models\Tenant\VendorBill;
+use App\Models\Tenant\VendorBillLine;
 use App\Models\Tenant\VendorDeposit;
 use App\Models\Tenant\VendorDepositAllocation;
 use App\Models\Tenant\VendorPayment;
@@ -38,6 +39,7 @@ class VendorBillService
         private readonly TransactionDateGuardService $dateGuardService,
         private readonly VendorDepositService $depositService,
         private readonly InventoryPurchaseIntegrationService $inventoryIntegration,
+        private readonly PurchaseAccountResolverService $accountResolver,
         private readonly TransactionVoidEffectService $voidEffectService,
         private readonly ?AuditLogService $auditLogService = null,
     ) {
@@ -53,7 +55,7 @@ class VendorBillService
 
     public function find(int $id): VendorBill
     {
-        return VendorBill::query()->with('lines.product', 'vendor', 'paymentTerm', 'purchaseOrder', 'goodsReceipt')->findOrFail($id);
+        return $this->withAvailableDepositSummary(VendorBill::query()->with('lines.product', 'vendor', 'paymentTerm', 'purchaseOrder', 'goodsReceipt')->findOrFail($id));
     }
 
     public function create(array $data): VendorBill
@@ -68,6 +70,7 @@ class VendorBillService
                 'purchase_order_line_id' => $line['purchase_order_line_id'] ?? null,
                 'goods_receipt_line_id' => $line['goods_receipt_line_id'] ?? null,
             ]);
+            $lines = $this->withDraftPurchaseExpenseSnapshots($lines);
             $totals = $this->calculationService->calculateDocument($lines, $data);
             $headerTotals = $totals; unset($headerTotals['lines']);
             $appliedDeposit = min((float) ($data['applied_vendor_deposit_amount'] ?? 0), (float) $headerTotals['grand_total']);
@@ -84,7 +87,7 @@ class VendorBillService
             $bill->lines()->createMany($totals['lines']);
             $bill = $bill->refresh()->load('lines', 'vendor', 'paymentTerm');
             $this->auditPurchase($this->auditLogService, 'vendor_bill.created', $bill, 'bill_number');
-            return $bill;
+            return $this->withAvailableDepositSummary($bill);
         });
     }
 
@@ -102,6 +105,7 @@ class VendorBillService
                 'purchase_order_line_id' => $line['purchase_order_line_id'] ?? null,
                 'goods_receipt_line_id' => $line['goods_receipt_line_id'] ?? null,
             ]);
+            $lines = $this->withDraftPurchaseExpenseSnapshots($lines);
             $totals = $this->calculationService->calculateDocument($lines, array_merge($bill->toArray(), $data));
             $headerTotals = $totals; unset($headerTotals['lines']);
             $appliedDeposit = min((float) ($data['applied_vendor_deposit_amount'] ?? $bill->applied_vendor_deposit_amount), (float) $headerTotals['grand_total']);
@@ -115,7 +119,7 @@ class VendorBillService
             $bill->lines()->createMany($totals['lines']);
             $bill = $bill->refresh()->load('lines', 'vendor', 'paymentTerm');
             $this->auditPurchase($this->auditLogService, 'vendor_bill.updated', $bill, 'bill_number');
-            return $bill;
+            return $this->withAvailableDepositSummary($bill);
         });
     }
 
@@ -182,11 +186,12 @@ class VendorBillService
         $this->guardDate((string) $bill->bill_date);
 
         return DB::connection('tenant')->transaction(function () use ($bill, $appliedVendorDepositAmount) {
-            $bill->load('lines');
+            $bill->load('lines.product', 'vendor');
             $this->validateSourceRemainingQuantities($bill);
-            if ($appliedVendorDepositAmount !== null) $bill->applied_vendor_deposit_amount = min($appliedVendorDepositAmount, (float) $bill->grand_total);
+            $requestedDepositAmount = min((float) ($appliedVendorDepositAmount ?? $bill->applied_vendor_deposit_amount), (float) $bill->grand_total);
             $journal = $this->createBillJournal($bill);
             $bill->journal_entry_id = $journal->id;
+            $bill->applied_vendor_deposit_amount = 0;
             $bill->paid_amount = 0;
             $bill->balance_due = (float) $bill->grand_total;
             $bill->status = 'posted';
@@ -197,11 +202,12 @@ class VendorBillService
 
             $this->inventoryIntegration->createPurchaseInFromVendorBill($bill);
 
-            if ((float) $bill->applied_vendor_deposit_amount > 0) {
+            if ($requestedDepositAmount > 0) {
+                $bill->applied_vendor_deposit_amount = $requestedDepositAmount;
                 $this->applyAvailableVendorDeposit($bill);
             }
 
-            $bill = $bill->refresh()->load('lines', 'vendor');
+            $bill = $this->withAvailableDepositSummary($bill->refresh()->load('lines', 'vendor'));
             $this->auditPurchase($this->auditLogService, 'vendor_bill.posted', $bill, 'bill_number');
             return $bill;
         });
@@ -269,15 +275,11 @@ class VendorBillService
     private function createBillJournal(VendorBill $bill): JournalEntry
     {
         $journal = $this->createJournal($bill, 'Vendor bill '.$bill->bill_number);
-        $expenseAccount = $this->requiredMapping('purchase.expense');
-        $ap = $this->requiredMapping('purchase.accounts_payable');
-        $lines = [
-            ['account_id' => $expenseAccount, 'description' => 'Purchase Expense', 'debit' => $bill->subtotal_after_discount, 'credit' => 0, 'line_order' => 1],
-        ];
+        $lines = $this->billDebitJournalLines($bill);
         if ((float) $bill->tax_total > 0) {
-            $lines[] = ['account_id' => $this->requiredMapping('purchase.tax_input'), 'description' => 'Input Tax', 'debit' => $bill->tax_total, 'credit' => 0, 'line_order' => 2];
+            $lines[] = ['account_id' => $this->requiredMapping('purchase.tax_input'), 'description' => 'Input Tax', 'debit' => $bill->tax_total, 'credit' => 0, 'line_order' => count($lines) + 1];
         }
-        $lines[] = ['account_id' => $ap, 'description' => 'Accounts Payable', 'debit' => 0, 'credit' => $bill->grand_total, 'line_order' => 3];
+        $lines[] = ['account_id' => $this->accountResolver->resolveBillPayableAccountId($bill), 'description' => 'Accounts Payable', 'debit' => 0, 'credit' => $bill->grand_total, 'line_order' => count($lines) + 1];
         $journal->lines()->createMany($lines);
         return $journal->refresh();
     }
@@ -324,6 +326,83 @@ class VendorBillService
         $mapping = AccountMapping::query()->where('mapping_key', $key)->where('is_active', true)->first();
         if (! $mapping?->account_id) throw ApiException::make('ACCOUNT_MAPPING_MISSING', 'Required account mapping is missing: '.$key, 422);
         return (int) $mapping->account_id;
+    }
+
+    private function withDraftPurchaseExpenseSnapshots(array $lines): array
+    {
+        return array_map(function (array $line): array {
+            if (! $this->lineReceivesStock($line)) {
+                $line['expense_account_id'] = $this->accountResolver->tryPurchaseExpenseAccountIdForLine($line);
+            }
+
+            return $line;
+        }, $lines);
+    }
+
+    private function billDebitJournalLines(VendorBill $bill): array
+    {
+        $bill->loadMissing('lines.product');
+        $sourceTotal = max(0.0, (float) $bill->lines->sum('subtotal_after_discount'));
+        $targetTotal = (float) $bill->subtotal_after_discount;
+        $grouped = [];
+        $descriptions = [];
+
+        foreach ($bill->lines as $line) {
+            $amount = (float) $line->subtotal_after_discount;
+            if ($amount <= 0) {
+                continue;
+            }
+
+            if ($this->lineReceivesStock($line)) {
+                if ($bill->goods_receipt_id || $line->goods_receipt_line_id) {
+                    $accountId = $this->accountResolver->getInventoryInterimAccountId();
+                    $description = 'Inventory Interim';
+                } else {
+                    $accountId = $this->accountResolver->getInventoryAccountIdForLine($line);
+                    $description = 'Inventory';
+                }
+            } else {
+                $accountId = $this->accountResolver->getPurchaseExpenseAccountIdForLine($line);
+                $description = 'Purchase Expense';
+                if ((int) $line->expense_account_id !== $accountId) {
+                    $line->expense_account_id = $accountId;
+                    $line->save();
+                }
+            }
+
+            $grouped[$accountId] = ($grouped[$accountId] ?? 0.0) + $amount;
+            $descriptions[$accountId] ??= $description;
+        }
+
+        $lines = [];
+        $running = 0.0;
+        $accountIds = array_keys($grouped);
+        foreach ($accountIds as $index => $accountId) {
+            $amount = $sourceTotal > 0 ? round($grouped[$accountId] * ($targetTotal / $sourceTotal), 2) : 0.0;
+            if ($index === array_key_last($accountIds)) {
+                $amount = round($targetTotal - $running, 2);
+            }
+            $running += $amount;
+            if ($amount <= 0) {
+                continue;
+            }
+            $lines[] = [
+                'account_id' => (int) $accountId,
+                'description' => $descriptions[$accountId] ?? 'Purchase',
+                'debit' => $amount,
+                'credit' => 0,
+                'line_order' => count($lines) + 1,
+            ];
+        }
+
+        return $lines;
+    }
+
+    private function lineReceivesStock(array|VendorBillLine $line): bool
+    {
+        $warehouseId = is_array($line) ? ($line['warehouse_id'] ?? null) : $line->warehouse_id;
+
+        return ! empty($warehouseId) && $this->accountResolver->lineIsStockItem($line);
     }
 
     private function guardDate(string $date, string $action = 'post'): void
@@ -468,5 +547,18 @@ class VendorBillService
         if (in_array($status, ['cancelled', 'void', 'closed'], true)) {
             throw ApiException::make('SOURCE_NOT_CONVERTIBLE', ucfirst($source).' is not available for conversion.', 422);
         }
+    }
+
+    private function withAvailableDepositSummary(VendorBill $bill): VendorBill
+    {
+        if (! $bill->vendor_id) {
+            return $bill;
+        }
+
+        $bill->setAttribute('available_deposit_summary', $this->depositService->availableForVendor((int) $bill->vendor_id, [
+            'purchase_order_id' => $bill->purchase_order_id,
+        ]));
+
+        return $bill;
     }
 }

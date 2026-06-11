@@ -35,6 +35,49 @@ class AccountsReceivableLedgerTest extends SalesTestCase
             ->assertJsonPath('data.0.balance_due', 100);
     }
 
+    public function test_unapplied_deposit_is_exposure_only_until_allocated(): void
+    {
+        $ctx = $this->setUpTenant();
+        $cash = $this->seedMappings();
+        $invoice = $this->postedInvoice($ctx, 100);
+        $deposit = CustomerDeposit::query()->create([
+            'deposit_number' => 'CD-UNAPPLIED-1',
+            'deposit_date' => '2026-05-20',
+            'customer_id' => $invoice['customer_id'],
+            'cash_bank_account_id' => $cash,
+            'amount' => 30,
+            'remaining_amount' => 30,
+            'allocated_amount' => 0,
+            'status' => 'posted',
+            'posted_at' => now(),
+        ]);
+
+        $this->getJson('/api/sales/ar/customer-summary', $ctx['headers'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.0.official_ar_balance', 100)
+            ->assertJsonPath('data.0.unapplied_deposit_total', 30)
+            ->assertJsonPath('data.0.net_customer_exposure', 70);
+
+        $this->getJson('/api/sales/ar/aging', $ctx['headers'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.total', 100);
+
+        $this->postJson('/api/sales/customer-deposits/'.$deposit->id.'/allocate-to-invoice/'.$invoice['id'], [
+            'allocated_amount' => 30,
+            'allocation_date' => '2026-05-20',
+        ], $ctx['headers'])->assertStatus(200);
+
+        $this->getJson('/api/sales/ar/customer-summary', $ctx['headers'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.0.official_ar_balance', 70)
+            ->assertJsonPath('data.0.unapplied_deposit_total', 0)
+            ->assertJsonPath('data.0.net_customer_exposure', 70);
+
+        $this->getJson('/api/sales/ar/aging', $ctx['headers'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.total', 70);
+    }
+
     public function test_void_documents_are_excluded_and_tenants_are_isolated(): void
     {
         $ctx = $this->setUpTenant();

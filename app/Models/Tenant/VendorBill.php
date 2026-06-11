@@ -20,6 +20,7 @@ class VendorBill extends Model
         'is_taxable' => 'boolean',
         'tax_included' => 'boolean',
         'metadata' => 'array',
+        'ap_account_id' => 'integer',
         'approved_at' => 'datetime',
         'posted_at' => 'datetime',
         'voided_at' => 'datetime',
@@ -31,4 +32,5 @@ class VendorBill extends Model
     public function goodsReceipt(): BelongsTo { return $this->belongsTo(GoodsReceipt::class, 'goods_receipt_id'); }
     public function paymentTerm(): BelongsTo { return $this->belongsTo(PaymentTerm::class, 'payment_term_id'); }
     public function journalEntry(): BelongsTo { return $this->belongsTo(JournalEntry::class, 'journal_entry_id'); }
+    public function apAccount(): BelongsTo { return $this->belongsTo(ChartOfAccount::class, 'ap_account_id'); }
 }

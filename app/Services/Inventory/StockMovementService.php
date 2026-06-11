@@ -235,6 +235,7 @@ class StockMovementService
         foreach ($movement->lines as $ln) {
             $linesPayload[] = [
                 'product_id' => (int) $ln->product_id,
+                'inventory_account_id' => $ln->inventory_account_id,
                 'warehouse_id' => (int) $ln->warehouse_id,
                 'unit_id' => $ln->unit_id,
                 'quantity' => (float) $ln->quantity,

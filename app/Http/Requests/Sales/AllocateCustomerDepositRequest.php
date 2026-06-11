@@ -7,5 +7,19 @@ use Illuminate\Foundation\Http\FormRequest;
 class AllocateCustomerDepositRequest extends FormRequest
 {
     public function authorize(): bool { return true; }
-    public function rules(): array { return ['amount' => ['required', 'numeric', 'gt:0']]; }
+    public function rules(): array
+    {
+        return [
+            'allocated_amount' => ['nullable', 'required_without:amount', 'numeric', 'gt:0'],
+            'amount' => ['nullable', 'required_without:allocated_amount', 'numeric', 'gt:0'],
+            'allocation_date' => ['nullable', 'date'],
+            'source_context' => ['nullable', 'in:sales_invoice,sales_receipt'],
+            'notes' => ['nullable', 'string'],
+        ];
+    }
+
+    public function allocatedAmount(): float
+    {
+        return (float) ($this->validated('allocated_amount') ?? $this->validated('amount'));
+    }
 }

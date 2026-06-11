@@ -34,31 +34,43 @@ class StockMovementJournalService
 
     public function createPurchaseInJournal(StockMovement $movement): ?JournalEntry
     {
-        $inventory = $this->mappingService->getInventoryAccount();
-        $interim = $this->mappingService->getInventoryInterimAccount();
-        if (! $interim) {
-            // Interim mapping is optional; skip journal when not configured.
+        if ($movement->source_type === 'vendor_bill') {
             return null;
         }
 
-        return $this->createSimpleJournal($movement, [
-            ['account_id' => $inventory, 'description' => 'Inventory', 'debit' => (float) $movement->total_value, 'credit' => 0, 'line_order' => 1],
-            ['account_id' => $interim, 'description' => 'Inventory Interim', 'debit' => 0, 'credit' => (float) $movement->total_value, 'line_order' => 2],
-        ], 'Inventory receipt journal');
+        $interim = $this->mappingService->getInventoryInterimAccount();
+        if (! $interim) {
+            $message = $this->mappingService->missingMappingMessage('purchase.inventory_interim');
+            throw ApiException::make('ACCOUNT_MAPPING_MISSING', $message, 422, ['account_mapping' => [$message]]);
+        }
+
+        $lines = $this->inventoryDebitLines($movement);
+        $lines[] = [
+            'account_id' => $interim,
+            'description' => 'Inventory Interim',
+            'debit' => 0,
+            'credit' => (float) $movement->total_value,
+            'line_order' => count($lines) + 1,
+        ];
+
+        return $this->createSimpleJournal($movement, $lines, 'Inventory receipt journal');
     }
 
     public function createPurchaseReturnOutJournal(StockMovement $movement): ?JournalEntry
     {
-        $inventory = $this->mappingService->getInventoryAccount();
         $return = $this->mappingService->getPurchaseReturnAccount();
         if (! $return) {
             return null;
         }
 
-        return $this->createSimpleJournal($movement, [
+        $lines = [
             ['account_id' => $return, 'description' => 'Purchase Return', 'debit' => (float) $movement->total_value, 'credit' => 0, 'line_order' => 1],
-            ['account_id' => $inventory, 'description' => 'Inventory', 'debit' => 0, 'credit' => (float) $movement->total_value, 'line_order' => 2],
-        ], 'Inventory purchase return journal');
+        ];
+        foreach ($this->inventoryCreditLines($movement, 2) as $line) {
+            $lines[] = $line;
+        }
+
+        return $this->createSimpleJournal($movement, $lines, 'Inventory purchase return journal');
     }
 
     public function createCogsJournalForSalesOut(StockMovement $movement): ?JournalEntry
@@ -153,5 +165,43 @@ class StockMovementJournalService
             $journal->lines()->createMany($lines);
             return $journal->refresh();
         });
+    }
+
+    private function inventoryDebitLines(StockMovement $movement, int $startOrder = 1): array
+    {
+        $movement->loadMissing('lines');
+
+        return $movement->lines
+            ->groupBy(fn ($line): int => (int) ($line->inventory_account_id ?: $this->mappingService->getInventoryAccount()))
+            ->values()
+            ->map(function ($lines, int $index) use ($startOrder): array {
+                return [
+                    'account_id' => (int) ($lines->first()->inventory_account_id ?: $this->mappingService->getInventoryAccount()),
+                    'description' => 'Inventory',
+                    'debit' => round((float) $lines->sum('total_cost'), 2),
+                    'credit' => 0,
+                    'line_order' => $startOrder + $index,
+                ];
+            })
+            ->all();
+    }
+
+    private function inventoryCreditLines(StockMovement $movement, int $startOrder = 1): array
+    {
+        $movement->loadMissing('lines');
+
+        return $movement->lines
+            ->groupBy(fn ($line): int => (int) ($line->inventory_account_id ?: $this->mappingService->getInventoryAccount()))
+            ->values()
+            ->map(function ($lines, int $index) use ($startOrder): array {
+                return [
+                    'account_id' => (int) ($lines->first()->inventory_account_id ?: $this->mappingService->getInventoryAccount()),
+                    'description' => 'Inventory',
+                    'debit' => 0,
+                    'credit' => round((float) $lines->sum('total_cost'), 2),
+                    'line_order' => $startOrder + $index,
+                ];
+            })
+            ->all();
     }
 }

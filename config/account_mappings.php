@@ -88,8 +88,8 @@ return [
             'module' => 'purchase',
             'label' => 'Inventory Interim',
             'required' => false,
-            'account_types' => ['asset'],
-            'description' => 'Optional interim account for received goods before inventory valuation in Phase 12.',
+            'account_types' => ['liability'],
+            'description' => 'Required GRNI/interim liability account for stock receipts before vendor billing.',
         ],
         'purchase.tax_input' => [
             'module' => 'purchase',

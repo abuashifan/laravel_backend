@@ -84,6 +84,7 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('sales')->group(fu
 
     Route::get('/customer-deposits', [CustomerDepositController::class, 'index'])->middleware('permission:sales.deposits.view');
     Route::post('/customer-deposits', [CustomerDepositController::class, 'store'])->middleware('permission:sales.deposits.create');
+    Route::get('/customer-deposits/available', [CustomerDepositController::class, 'available'])->middleware('permission:sales.deposits.view|sales.receipts.view');
     Route::get('/customer-deposits/{id}', [CustomerDepositController::class, 'show'])->middleware('permission:sales.deposits.view');
     Route::patch('/customer-deposits/{id}/post', [CustomerDepositController::class, 'post'])->middleware('permission:sales.deposits.post');
     Route::patch('/customer-deposits/{id}/void', [CustomerDepositController::class, 'void'])->middleware('permission:sales.deposits.void');
@@ -92,6 +93,7 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('sales')->group(fu
 
     Route::get('/receipts', [SalesReceiptController::class, 'index'])->middleware('permission:sales.receipts.view');
     Route::post('/receipts', [SalesReceiptController::class, 'store'])->middleware('permission:sales.receipts.create');
+    Route::get('/receipts/customer-context', [SalesReceiptController::class, 'customerContext'])->middleware('permission:sales.receipts.view');
     Route::get('/receipts/{id}', [SalesReceiptController::class, 'show'])->middleware('permission:sales.receipts.view');
     Route::patch('/receipts/{id}/post', [SalesReceiptController::class, 'post'])->middleware('permission:sales.receipts.post');
     Route::patch('/receipts/{id}/void', [SalesReceiptController::class, 'void'])->middleware('permission:sales.receipts.void');

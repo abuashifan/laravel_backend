@@ -138,30 +138,32 @@ abstract class PurchaseTestCase extends TestCase
         ])->id;
     }
 
-    protected function seedPurchaseMappings(): array
+    protected function seedPurchaseMappings(bool $payable = true, bool $legacyPayable = false, bool $expense = true, bool $interim = false): array
     {
         $ap = $this->createAccount('liability', 'AP-'.uniqid());
-        $expense = $this->createAccount('expense', 'EXP-'.uniqid());
+        $expenseAccount = $expense ? $this->createAccount('expense', 'EXP-'.uniqid()) : null;
         $tax = $this->createAccount('asset', 'TAX-'.uniqid());
         $deposit = $this->createAccount('asset', 'VD-'.uniqid());
         $return = $this->createAccount('expense', 'PRET-'.uniqid());
         $cash = $this->createAccount('asset', 'CASH-'.uniqid(), true);
+        $interimAccount = $interim ? $this->createAccount('liability', 'GRNI-'.uniqid()) : null;
 
         foreach ([
-            'purchase.accounts_payable' => $ap,
-            'purchase.expense' => $expense,
             'purchase.tax_input' => $tax,
             'purchase.vendor_deposit' => $deposit,
             'purchase.return' => $return,
             'purchase.default_cash_bank' => $cash,
-        ] as $key => $id) {
+        ] + ($payable ? ['purchase.accounts_payable' => $ap] : [])
+            + ($legacyPayable ? ['purchase.payable' => $ap] : [])
+            + ($expenseAccount !== null ? ['purchase.expense' => $expenseAccount] : [])
+            + ($interimAccount !== null ? ['purchase.inventory_interim' => $interimAccount] : []) as $key => $id) {
             \App\Models\Tenant\AccountMapping::query()->updateOrCreate(
                 ['mapping_key' => $key],
                 ['module' => 'purchase', 'account_id' => $id, 'is_required' => true, 'is_active' => true]
             );
         }
 
-        return compact('ap', 'expense', 'tax', 'deposit', 'return', 'cash');
+        return ['ap' => $ap, 'expense' => $expenseAccount, 'tax' => $tax, 'deposit' => $deposit, 'return' => $return, 'cash' => $cash, 'interim' => $interimAccount];
     }
 
     protected function vendorBillPayload(array $overrides = []): array

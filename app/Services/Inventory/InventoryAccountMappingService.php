@@ -4,6 +4,7 @@ namespace App\Services\Inventory;
 
 use App\Exceptions\ApiException;
 use App\Models\Tenant\AccountMapping;
+use App\Services\Purchase\PurchaseAccountResolverService;
 use App\Support\AccountMapping\AccountMappingKey;
 
 class InventoryAccountMappingService
@@ -70,6 +71,10 @@ class InventoryAccountMappingService
 
     public function missingMappingMessage(string $key): string
     {
+        if ($key === AccountMappingKey::PURCHASE_INVENTORY_INTERIM) {
+            return PurchaseAccountResolverService::INVENTORY_INTERIM_MAPPING_MESSAGE;
+        }
+
         $label = match ($key) {
             AccountMappingKey::INVENTORY_ASSET => 'Inventory Asset',
             AccountMappingKey::INVENTORY_COGS => 'Inventory COGS',

@@ -5,6 +5,7 @@ namespace App\Services\Purchase;
 use App\Exceptions\ApiException;
 use App\Models\Tenant\AccountMapping;
 use App\Models\Tenant\JournalEntryLine;
+use App\Models\Tenant\VendorBill;
 
 class APReconciliationService
 {
@@ -28,10 +29,10 @@ class APReconciliationService
 
     public function getGLAPBalance(array $filters = []): float
     {
-        $accountId = $this->apAccountId();
+        $accountIds = $this->apAccountIds();
 
         $query = JournalEntryLine::query()
-            ->where('account_id', $accountId)
+            ->whereIn('account_id', $accountIds)
             ->whereHas('journalEntry', function ($journal) use ($filters) {
                 $journal->where('status', 'posted')
                     ->where('is_obsolete', false)
@@ -50,17 +51,29 @@ class APReconciliationService
         return round((float) collect($movements)->sum('credit') - (float) collect($movements)->sum('debit'), 2);
     }
 
-    private function apAccountId(): int
+    private function apAccountIds(): array
     {
-        $mapping = AccountMapping::query()
-            ->where('mapping_key', 'purchase.accounts_payable')
-            ->where('is_active', true)
-            ->first();
+        $snapshotIds = VendorBill::query()
+            ->whereNotNull('ap_account_id')
+            ->whereNotIn('status', ['draft', 'approved', 'void'])
+            ->whereNotNull('posted_at')
+            ->pluck('ap_account_id')
+            ->map(fn ($id): int => (int) $id)
+            ->all();
 
-        if (! $mapping?->account_id) {
+        $mappingIds = AccountMapping::query()
+            ->whereIn('mapping_key', ['purchase.accounts_payable', 'purchase.payable'])
+            ->where('is_active', true)
+            ->whereNotNull('account_id')
+            ->pluck('account_id')
+            ->map(fn ($id): int => (int) $id)
+            ->all();
+
+        $ids = array_values(array_unique(array_merge($snapshotIds, $mappingIds)));
+        if ($ids === []) {
             throw ApiException::make('ACCOUNT_MAPPING_MISSING', 'Required account mapping is missing: purchase.accounts_payable', 422);
         }
 
-        return (int) $mapping->account_id;
+        return $ids;
     }
 }

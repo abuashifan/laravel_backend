@@ -8,6 +8,7 @@ use App\Models\Tenant\ChartOfAccount;
 use App\Models\Tenant\CustomerDeposit;
 use App\Models\Tenant\CustomerDepositAllocation;
 use App\Models\Tenant\JournalEntry;
+use App\Models\Tenant\JournalEntryLine;
 use App\Models\Tenant\SalesInvoice;
 
 class CustomerDepositTest extends SalesTestCase
@@ -60,6 +61,51 @@ class CustomerDepositTest extends SalesTestCase
 
         $this->assertSame(1, CustomerDepositAllocation::query()->count());
         $this->assertSame(50.0, (float) SalesInvoice::query()->find($invoice['id'])->paid_amount);
+    }
+
+    public function test_available_endpoint_and_receipt_context_allocation_metadata(): void
+    {
+        $ctx = $this->setUpTenant();
+        $cash = $this->seedMappings();
+        $invoice = $this->postedInvoice($ctx);
+        $deposit = $this->postJson('/api/sales/customer-deposits', $this->depositPayload($cash, [
+            'customer_id' => $invoice['customer_id'],
+            'amount' => 60,
+        ]), $ctx['headers'])->assertStatus(201)->json('data');
+        $this->patchJson('/api/sales/customer-deposits/'.$deposit['id'].'/post', [], $ctx['headers'])->assertStatus(200);
+
+        $this->getJson('/api/sales/customer-deposits/available?customer_id='.$invoice['customer_id'].'&sales_invoice_id='.$invoice['id'], $ctx['headers'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.unapplied_total', 60)
+            ->assertJsonPath('data.deposits.0.match_strength', 'customer_only');
+
+        $this->postJson('/api/sales/customer-deposits/'.$deposit['id'].'/allocate-to-invoice/'.$invoice['id'], [
+            'allocated_amount' => 40,
+            'allocation_date' => '2026-05-20',
+            'source_context' => 'sales_receipt',
+            'notes' => 'Applied during receipt entry',
+        ], $ctx['headers'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.metadata.source_context', 'sales_receipt');
+
+        $allocation = CustomerDepositAllocation::query()->firstOrFail();
+        $this->assertSame(20.0, (float) CustomerDeposit::query()->findOrFail($deposit['id'])->remaining_amount);
+        $this->assertSame(60.0, (float) SalesInvoice::query()->findOrFail($invoice['id'])->balance_due);
+        $this->assertSame(40.0, (float) JournalEntryLine::query()->where('journal_entry_id', $allocation->journal_entry_id)->where('description', 'Customer Deposit')->value('debit'));
+        $this->assertSame(40.0, (float) JournalEntryLine::query()->where('journal_entry_id', $allocation->journal_entry_id)->where('description', 'Accounts Receivable')->value('credit'));
+    }
+
+    public function test_cannot_allocate_deposit_to_different_customer_invoice(): void
+    {
+        $ctx = $this->setUpTenant();
+        $cash = $this->seedMappings();
+        $invoice = $this->postedInvoice($ctx);
+        $deposit = $this->postJson('/api/sales/customer-deposits', $this->depositPayload($cash, ['amount' => 50]), $ctx['headers'])->assertStatus(201)->json('data');
+        $this->patchJson('/api/sales/customer-deposits/'.$deposit['id'].'/post', [], $ctx['headers'])->assertStatus(200);
+
+        $this->postJson('/api/sales/customer-deposits/'.$deposit['id'].'/allocate-to-invoice/'.$invoice['id'], [
+            'allocated_amount' => 10,
+        ], $ctx['headers'])->assertStatus(422);
     }
 
     public function test_refund_deposit_creates_journal(): void

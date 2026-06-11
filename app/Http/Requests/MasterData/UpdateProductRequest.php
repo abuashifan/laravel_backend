@@ -24,9 +24,9 @@ class UpdateProductRequest extends FormRequest
             'is_active' => ['nullable', 'boolean'],
             'description' => ['nullable', 'string'],
             'sales_account_id' => ['nullable', 'integer', Rule::exists('tenant.chart_of_accounts', 'id')->where('account_type', 'revenue')->where('is_active', true)],
-            'purchase_account_id' => ['nullable', 'integer'],
-            'inventory_account_id' => ['nullable', 'integer'],
-            'cogs_account_id' => ['nullable', 'integer'],
+            'purchase_account_id' => ['nullable', 'integer', Rule::exists('tenant.chart_of_accounts', 'id')->where('account_type', 'expense')->where('is_active', true)],
+            'inventory_account_id' => ['nullable', 'integer', Rule::exists('tenant.chart_of_accounts', 'id')->where('account_type', 'asset')->where('is_active', true)],
+            'cogs_account_id' => ['nullable', 'integer', Rule::exists('tenant.chart_of_accounts', 'id')->where('account_type', 'expense')->where('is_active', true)],
         ];
     }
 

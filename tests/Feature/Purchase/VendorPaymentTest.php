@@ -45,4 +45,45 @@ class VendorPaymentTest extends PurchaseTestCase
 
         $this->patchJson('/api/purchase/payments/'.$payment['id'].'/post', [], $ctx['headers'])->assertStatus(422);
     }
+
+    public function test_payment_vendor_context_and_apply_deposit_before_payment(): void
+    {
+        $ctx = $this->setUpTenant();
+        $accounts = $this->seedPurchaseMappings();
+        $vendorId = $this->createVendor();
+        $bill = $this->postJson('/api/purchase/bills', $this->vendorBillPayload(['vendor_id' => $vendorId, 'is_taxable' => false]), $ctx['headers'])->assertStatus(201)->json('data');
+        $this->patchJson('/api/purchase/bills/'.$bill['id'].'/post', [], $ctx['headers'])->assertStatus(200);
+        $deposit = $this->postJson('/api/purchase/vendor-deposits', [
+            'vendor_id' => $vendorId,
+            'deposit_date' => '2026-05-20',
+            'cash_bank_account_id' => $accounts['cash'],
+            'amount' => 25,
+        ], $ctx['headers'])->assertStatus(201)->json('data');
+        $this->patchJson('/api/purchase/vendor-deposits/'.$deposit['id'].'/post', [], $ctx['headers'])->assertStatus(200);
+
+        $this->getJson('/api/purchase/payments/vendor-context?vendor_id='.$vendorId, $ctx['headers'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.gross_ap_outstanding', 222)
+            ->assertJsonPath('data.unapplied_deposit_total', 25)
+            ->assertJsonPath('data.net_vendor_exposure', 197)
+            ->assertJsonPath('data.available_deposits.0.match_strength', 'vendor_only');
+
+        $this->postJson('/api/purchase/vendor-deposits/'.$deposit['id'].'/allocate-to-bill/'.$bill['id'], [
+            'allocated_amount' => 25,
+            'allocation_date' => '2026-05-20',
+            'source_context' => 'vendor_payment',
+        ], $ctx['headers'])->assertStatus(200);
+
+        $payment = $this->postJson('/api/purchase/payments', [
+            'payment_date' => '2026-05-20',
+            'vendor_id' => $vendorId,
+            'vendor_bill_id' => $bill['id'],
+            'cash_bank_account_id' => $accounts['cash'],
+            'amount' => 197,
+        ], $ctx['headers'])->assertStatus(201)->json('data');
+        $this->patchJson('/api/purchase/payments/'.$payment['id'].'/post', [], $ctx['headers'])->assertStatus(200);
+
+        $this->assertSame(197.0, (float) DB::connection('tenant')->table('vendor_payments')->where('id', $payment['id'])->value('amount'));
+        $this->assertSame('paid', DB::connection('tenant')->table('vendor_bills')->where('id', $bill['id'])->value('status'));
+    }
 }

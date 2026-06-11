@@ -9,10 +9,14 @@ use App\Models\Tenant\PurchaseOrderLine;
 use App\Models\Tenant\PurchaseReturn;
 use App\Models\Tenant\StockMovement;
 use App\Models\Tenant\VendorBill;
+use App\Services\Purchase\PurchaseAccountResolverService;
 
 class InventoryPurchaseIntegrationService
 {
-    public function __construct(private readonly StockMovementService $stockMovementService) {}
+    public function __construct(
+        private readonly StockMovementService $stockMovementService,
+        private readonly PurchaseAccountResolverService $accountResolver,
+    ) {}
 
     public function createPurchaseInFromGoodsReceipt(GoodsReceipt $goodsReceipt): ?StockMovement
     {
@@ -38,6 +42,7 @@ class InventoryPurchaseIntegrationService
 
             $lines[] = [
                 'product_id' => (int) $ln->product_id,
+                'inventory_account_id' => $this->accountResolver->getInventoryAccountIdForLine(['product_id' => $ln->product_id]),
                 'warehouse_id' => (int) $ln->warehouse_id,
                 'unit_id' => (int) $ln->unit_id,
                 'quantity' => (float) $ln->quantity,
@@ -83,6 +88,7 @@ class InventoryPurchaseIntegrationService
             if (! (bool) $product->is_stock_item) continue;
             $lines[] = [
                 'product_id' => (int) $ln->product_id,
+                'inventory_account_id' => $this->accountResolver->getInventoryAccountIdForLine($ln),
                 'warehouse_id' => (int) $ln->warehouse_id,
                 'unit_id' => (int) $ln->unit_id,
                 'quantity' => (float) $ln->quantity,
@@ -126,6 +132,7 @@ class InventoryPurchaseIntegrationService
             if (! (bool) $product->is_stock_item) continue;
             $lines[] = [
                 'product_id' => (int) $ln->product_id,
+                'inventory_account_id' => $this->accountResolver->getInventoryAccountIdForLine(['product_id' => $ln->product_id]),
                 'warehouse_id' => (int) $ln->warehouse_id,
                 'unit_id' => (int) $ln->unit_id,
                 'quantity' => (float) $ln->quantity,

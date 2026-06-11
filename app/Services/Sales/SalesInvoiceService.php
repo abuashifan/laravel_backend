@@ -41,6 +41,7 @@ class SalesInvoiceService
         private readonly InventorySalesIntegrationService $inventoryIntegration,
         private readonly TransactionVoidEffectService $voidEffectService,
         private readonly SalesAccountResolverService $accountResolver,
+        private readonly CustomerDepositService $depositService,
         private readonly ?AuditLogService $auditLogService = null,
     ) {
     }
@@ -57,7 +58,7 @@ class SalesInvoiceService
 
     public function find(int $id): SalesInvoice
     {
-        return SalesInvoice::query()->with('lines.product', 'customer', 'paymentTerm', 'salesOrder', 'deliveryOrder', 'proformaInvoice')->findOrFail($id);
+        return $this->withAvailableDepositSummary(SalesInvoice::query()->with('lines.product', 'customer', 'paymentTerm', 'salesOrder', 'deliveryOrder', 'proformaInvoice')->findOrFail($id));
     }
 
     public function create(array $data): SalesInvoice
@@ -96,7 +97,7 @@ class SalesInvoiceService
             $invoice = $invoice->refresh()->load('lines', 'customer', 'paymentTerm');
             $this->auditSales($this->auditLogService, 'sales_invoice.created', 'sales', $invoice, 'invoice_number');
 
-            return $invoice;
+            return $this->withAvailableDepositSummary($invoice);
         });
     }
 
@@ -135,7 +136,7 @@ class SalesInvoiceService
             $invoice->lines()->delete();
             $invoice->lines()->createMany($totals['lines']);
 
-            return $invoice->refresh()->load('lines', 'customer', 'paymentTerm');
+            return $this->withAvailableDepositSummary($invoice->refresh()->load('lines', 'customer', 'paymentTerm'));
         });
     }
 
@@ -277,7 +278,7 @@ class SalesInvoiceService
             $this->inventoryIntegration->createSalesOutFromSalesInvoice($invoice);
             $this->auditSales($this->auditLogService, 'sales_invoice.posted', 'sales', $invoice, 'invoice_number');
 
-            return $invoice->refresh()->load('lines', 'customer');
+            return $this->withAvailableDepositSummary($invoice->refresh()->load('lines', 'customer'));
         });
     }
 
@@ -725,5 +726,18 @@ class SalesInvoiceService
         if (in_array($status, ['cancelled', 'void', 'closed'], true)) {
             throw ApiException::make('SOURCE_NOT_CONVERTIBLE', ucfirst($source).' is not available for conversion.', 422);
         }
+    }
+
+    private function withAvailableDepositSummary(SalesInvoice $invoice): SalesInvoice
+    {
+        if (! $invoice->customer_id) {
+            return $invoice;
+        }
+
+        $invoice->setAttribute('available_deposit_summary', $this->depositService->availableForCustomer((int) $invoice->customer_id, [
+            'sales_order_id' => $invoice->sales_order_id,
+        ]));
+
+        return $invoice;
     }
 }

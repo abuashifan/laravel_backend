@@ -17,6 +17,12 @@ class SalesReceiptController extends Controller
     public function __construct(private readonly SalesReceiptService $service) {}
     public function index(Request $request): JsonResponse { return $this->listResponse($this->service->list($request->query()), $request, 'Sales receipts retrieved successfully'); }
     public function store(StoreSalesReceiptRequest $request): JsonResponse { return $this->successResponse($this->service->create($request->validated()), 'Sales receipt created successfully', 201); }
+    public function customerContext(Request $request): JsonResponse
+    {
+        $data = $request->validate(['customer_id' => ['required', 'integer']]);
+
+        return $this->successResponse($this->service->customerContext((int) $data['customer_id']), 'Sales receipt customer context retrieved successfully');
+    }
     public function show(int $id): JsonResponse { return $this->successResponse($this->service->find($id), 'Sales receipt retrieved successfully'); }
     public function post(int $id): JsonResponse { return $this->successResponse($this->service->post(SalesReceipt::query()->findOrFail($id)), 'Sales receipt posted successfully'); }
     public function void(SalesActionRequest $request, int $id): JsonResponse { return $this->successResponse($this->service->void(SalesReceipt::query()->findOrFail($id), $request->validated('reason')), 'Sales receipt voided successfully'); }

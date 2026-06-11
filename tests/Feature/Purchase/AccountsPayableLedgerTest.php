@@ -76,4 +76,93 @@ class AccountsPayableLedgerTest extends PurchaseTestCase
             ->assertJsonPath('data.0.vendor_id', $vendorId)
             ->assertJsonPath('data.0.balance', 222);
     }
+
+    public function test_unapplied_vendor_deposit_is_exposure_only_until_allocated(): void
+    {
+        $ctx = $this->setUpTenant();
+        $accounts = $this->seedPurchaseMappings();
+        $vendorId = $this->createVendor();
+        $bill = $this->postJson('/api/purchase/bills', $this->vendorBillPayload(['vendor_id' => $vendorId, 'is_taxable' => false]), $ctx['headers'])->assertStatus(201)->json('data');
+        $this->patchJson('/api/purchase/bills/'.$bill['id'].'/post', [], $ctx['headers'])->assertStatus(200);
+        $deposit = $this->postJson('/api/purchase/vendor-deposits', [
+            'vendor_id' => $vendorId,
+            'deposit_date' => '2026-05-20',
+            'cash_bank_account_id' => $accounts['cash'],
+            'amount' => 30,
+        ], $ctx['headers'])->assertStatus(201)->json('data');
+        $this->patchJson('/api/purchase/vendor-deposits/'.$deposit['id'].'/post', [], $ctx['headers'])->assertStatus(200);
+
+        $this->getJson('/api/purchase/ap/vendor-summary', $ctx['headers'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.0.official_ap_balance', 222)
+            ->assertJsonPath('data.0.unapplied_deposit_total', 30)
+            ->assertJsonPath('data.0.net_vendor_exposure', 192);
+
+        $this->getJson('/api/purchase/ap/aging', $ctx['headers'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.total', 222);
+
+        $this->postJson('/api/purchase/vendor-deposits/'.$deposit['id'].'/allocate-to-bill/'.$bill['id'], [
+            'allocated_amount' => 30,
+            'allocation_date' => '2026-05-20',
+        ], $ctx['headers'])->assertStatus(200);
+
+        $this->getJson('/api/purchase/ap/vendor-summary', $ctx['headers'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.0.official_ap_balance', 192)
+            ->assertJsonPath('data.0.unapplied_deposit_total', 0)
+            ->assertJsonPath('data.0.net_vendor_exposure', 192);
+
+        $this->getJson('/api/purchase/ap/aging', $ctx['headers'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.total', 192);
+    }
+
+    public function test_reconciliation_uses_vendor_bill_payable_snapshots_across_multiple_ap_accounts(): void
+    {
+        $ctx = $this->setUpTenant();
+        $accounts = $this->seedPurchaseMappings(payable: false);
+        $apA = $this->createAccount('liability', 'APA-'.uniqid());
+        $apB = $this->createAccount('liability', 'APB-'.uniqid());
+        $vendorA = $this->createVendor(['name' => 'Vendor AP A', 'payable_account_id' => $apA]);
+        $vendorB = $this->createVendor(['name' => 'Vendor AP B', 'payable_account_id' => $apB]);
+
+        $billA = $this->postJson('/api/purchase/bills', $this->vendorBillPayload([
+            'vendor_id' => $vendorA,
+            'is_taxable' => false,
+            'lines' => [['description' => 'Service A', 'quantity' => 1, 'unit_price' => 100, 'tax_rate' => 0]],
+        ]), $ctx['headers'])->assertStatus(201)->json('data');
+        $this->patchJson('/api/purchase/bills/'.$billA['id'].'/post', [], $ctx['headers'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.ap_account_id', $apA);
+
+        $billB = $this->postJson('/api/purchase/bills', $this->vendorBillPayload([
+            'vendor_id' => $vendorB,
+            'is_taxable' => false,
+            'lines' => [['description' => 'Service B', 'quantity' => 1, 'unit_price' => 200, 'tax_rate' => 0]],
+        ]), $ctx['headers'])->assertStatus(201)->json('data');
+        $this->patchJson('/api/purchase/bills/'.$billB['id'].'/post', [], $ctx['headers'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.ap_account_id', $apB);
+
+        $payment = $this->postJson('/api/purchase/payments', [
+            'vendor_id' => $vendorA,
+            'vendor_bill_id' => $billA['id'],
+            'payment_date' => '2026-05-20',
+            'cash_bank_account_id' => $accounts['cash'],
+            'amount' => 40,
+        ], $ctx['headers'])->assertStatus(201)->json('data');
+        $this->patchJson('/api/purchase/payments/'.$payment['id'].'/post', [], $ctx['headers'])->assertStatus(200);
+
+        $this->getJson('/api/purchase/ap/reconciliation', $ctx['headers'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.is_reconciled', true)
+            ->assertJsonPath('data.subsidiary_balance', 260)
+            ->assertJsonPath('data.gl_ap_balance', 260);
+
+        $this->getJson('/api/purchase/ap/open-bills', $ctx['headers'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.0.ap_account_id', $apA)
+            ->assertJsonPath('data.1.ap_account_id', $apB);
+    }
 }

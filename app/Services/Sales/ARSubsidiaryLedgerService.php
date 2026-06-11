@@ -3,6 +3,7 @@
 namespace App\Services\Sales;
 
 use App\Models\Tenant\CustomerDepositAllocation;
+use App\Models\Tenant\CustomerDeposit;
 use App\Models\Tenant\SalesInvoice;
 use App\Models\Tenant\SalesReceipt;
 use App\Models\Tenant\SalesReturn;
@@ -30,10 +31,15 @@ class ARSubsidiaryLedgerService
 
     public function customerSummary(array $filters = []): array
     {
-        return collect($this->movements($filters))
+        $rows = collect($this->movements($filters));
+        $unappliedByCustomer = $this->unappliedDepositTotals($rows->pluck('customer_id')->filter()->unique()->map(fn ($id) => (int) $id)->values()->all());
+
+        return $rows
             ->groupBy('customer_id')
-            ->map(function (Collection $rows): array {
+            ->map(function (Collection $rows) use ($unappliedByCustomer): array {
                 $last = $rows->last();
+                $officialBalance = round((float) $rows->sum('debit') - (float) $rows->sum('credit'), 2);
+                $unappliedDeposit = round((float) ($unappliedByCustomer[(int) $last['customer_id']] ?? 0), 2);
                 $accounts = $rows
                     ->filter(fn (array $row): bool => ! empty($row['ar_account_id']))
                     ->map(fn (array $row): array => [
@@ -50,7 +56,11 @@ class ARSubsidiaryLedgerService
                     'customer_name' => $last['customer_name'],
                     'debit' => round((float) $rows->sum('debit'), 2),
                     'credit' => round((float) $rows->sum('credit'), 2),
-                    'balance' => round((float) $rows->sum('debit') - (float) $rows->sum('credit'), 2),
+                    'balance' => $officialBalance,
+                    'gross_ar_outstanding' => $officialBalance,
+                    'official_ar_balance' => $officialBalance,
+                    'unapplied_deposit_total' => $unappliedDeposit,
+                    'net_customer_exposure' => round($officialBalance - $unappliedDeposit, 2),
                     'ar_accounts' => $accounts,
                 ];
             })
@@ -287,5 +297,26 @@ class ARSubsidiaryLedgerService
             'sales_return' => 40,
             default => 99,
         };
+    }
+
+    /**
+     * @param array<int,int> $customerIds
+     * @return array<int,float>
+     */
+    private function unappliedDepositTotals(array $customerIds): array
+    {
+        if ($customerIds === []) {
+            return [];
+        }
+
+        return CustomerDeposit::query()
+            ->whereIn('customer_id', $customerIds)
+            ->whereIn('status', ['posted', 'partially_allocated'])
+            ->where('remaining_amount', '>', 0)
+            ->selectRaw('customer_id, sum(remaining_amount) as total')
+            ->groupBy('customer_id')
+            ->pluck('total', 'customer_id')
+            ->map(fn ($amount) => round((float) $amount, 2))
+            ->all();
     }
 }

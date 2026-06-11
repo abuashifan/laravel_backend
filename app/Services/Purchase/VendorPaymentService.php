@@ -25,7 +25,10 @@ class VendorPaymentService
         private readonly TenantContext $tenantContext,
         private readonly DocumentNumberService $documentNumberService,
         private readonly TransactionDateGuardService $dateGuardService,
+        private readonly PurchaseAccountResolverService $accountResolver,
         private readonly TransactionVoidEffectService $voidEffectService,
+        private readonly VendorDepositService $depositService,
+        private readonly APSubsidiaryLedgerService $ledgerService,
         private readonly ?AuditLogService $auditLogService = null,
     ) {
     }
@@ -71,7 +74,7 @@ class VendorPaymentService
         if ((float) $payment->amount > (float) $bill->balance_due) throw ApiException::make('OVERPAYMENT_NOT_ALLOWED', 'Overpayment is blocked for MVP.', 422);
 
         return DB::connection('tenant')->transaction(function () use ($payment, $bill) {
-            $journal = $this->journal($payment);
+            $journal = $this->journal($payment, $bill);
             $payment->status = 'posted';
             $payment->journal_entry_id = $journal->id;
             $payment->posted_by = auth()->id();
@@ -119,7 +122,25 @@ class VendorPaymentService
         return $bill->refresh();
     }
 
-    private function journal(VendorPayment $payment): JournalEntry
+    public function vendorContext(int $vendorId): array
+    {
+        $openBills = $this->ledgerService->openBills(['vendor_id' => $vendorId]);
+        $available = $this->depositService->availableForVendor($vendorId);
+        $officialApBalance = round((float) collect($openBills)->sum('balance_due'), 2);
+        $unappliedDeposit = (float) $available['unapplied_total'];
+
+        return [
+            'vendor_id' => $vendorId,
+            'gross_ap_outstanding' => $officialApBalance,
+            'official_ap_balance' => $officialApBalance,
+            'unapplied_deposit_total' => $unappliedDeposit,
+            'net_vendor_exposure' => round($officialApBalance - $unappliedDeposit, 2),
+            'open_bills' => $openBills,
+            'available_deposits' => $available['deposits'],
+        ];
+    }
+
+    private function journal(VendorPayment $payment, VendorBill $bill): JournalEntry
     {
         $company = $this->tenantContext->company();
         if (! $company) throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
@@ -140,7 +161,7 @@ class VendorPaymentService
             'posted_at' => now(),
         ]);
         $journal->lines()->createMany([
-            ['account_id' => $this->mapping('purchase.accounts_payable'), 'description' => 'Accounts Payable', 'debit' => $payment->amount, 'credit' => 0, 'line_order' => 1],
+            ['account_id' => $this->accountResolver->resolveBillPayableAccountId($bill), 'description' => 'Accounts Payable', 'debit' => $payment->amount, 'credit' => 0, 'line_order' => 1],
             ['account_id' => $payment->cash_bank_account_id, 'description' => 'Cash/Bank', 'debit' => 0, 'credit' => $payment->amount, 'line_order' => 2],
         ]);
         return $journal->refresh();

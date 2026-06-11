@@ -20,7 +20,7 @@ class SalesReceiptService
 {
     use HandlesSalesDocuments;
 
-    public function __construct(private readonly TenantContext $tenantContext, private readonly DocumentNumberService $documentNumberService, private readonly TransactionDateGuardService $dateGuardService, private readonly TransactionVoidEffectService $voidEffectService, private readonly SalesAccountResolverService $accountResolver, private readonly ?AuditLogService $auditLogService = null) {}
+    public function __construct(private readonly TenantContext $tenantContext, private readonly DocumentNumberService $documentNumberService, private readonly TransactionDateGuardService $dateGuardService, private readonly TransactionVoidEffectService $voidEffectService, private readonly SalesAccountResolverService $accountResolver, private readonly CustomerDepositService $depositService, private readonly ARSubsidiaryLedgerService $ledgerService, private readonly ?AuditLogService $auditLogService = null) {}
     public function list(array $filters = []): Collection { $q = SalesReceipt::query()->with('customer', 'salesInvoice'); if (! empty($filters['status'])) $q->where('status', (string) $filters['status']); return $q->orderByDesc('receipt_date')->orderByDesc('id')->get(); }
     public function find(int $id): SalesReceipt { return SalesReceipt::query()->with('lines', 'customer', 'salesInvoice')->findOrFail($id); }
 
@@ -78,6 +78,24 @@ class SalesReceiptService
         $invoice->balance_due = max(0, (float) $invoice->balance_due - (float) $receipt->amount);
         $invoice->status = $invoice->balance_due <= 0 ? 'paid' : 'partially_paid';
         $invoice->save();
+    }
+
+    public function customerContext(int $customerId): array
+    {
+        $openInvoices = $this->ledgerService->openInvoices(['customer_id' => $customerId]);
+        $available = $this->depositService->availableForCustomer($customerId);
+        $officialArBalance = round((float) collect($openInvoices)->sum('balance_due'), 2);
+        $unappliedDeposit = (float) $available['unapplied_total'];
+
+        return [
+            'customer_id' => $customerId,
+            'gross_ar_outstanding' => $officialArBalance,
+            'official_ar_balance' => $officialArBalance,
+            'unapplied_deposit_total' => $unappliedDeposit,
+            'net_customer_exposure' => round($officialArBalance - $unappliedDeposit, 2),
+            'open_invoices' => $openInvoices,
+            'available_deposits' => $available['deposits'],
+        ];
     }
 
     public function updateInvoicePaymentStatus(SalesInvoice $invoice): SalesInvoice { $invoice->status = (float) $invoice->balance_due <= 0 ? 'paid' : ((float) $invoice->paid_amount > 0 ? 'partially_paid' : $invoice->status); $invoice->save(); return $invoice->refresh(); }

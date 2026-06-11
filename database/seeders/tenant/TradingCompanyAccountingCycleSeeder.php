@@ -1526,7 +1526,7 @@ class TradingCompanyAccountingCycleSeeder extends Seeder
             'purchase.accounts_payable' => ['purchase', '2100', true],
             'purchase.expense' => ['purchase', '5100', true],
             'purchase.default_purchase' => ['purchase', '1130', false],
-            'purchase.inventory_interim' => ['purchase', '1130', false],
+            'purchase.inventory_interim' => ['purchase', '2150', false],
             'purchase.tax_input' => ['purchase', '2140', false],
             'purchase.discount' => ['purchase', '5110', false],
             'purchase.return' => ['purchase', '5110', false],

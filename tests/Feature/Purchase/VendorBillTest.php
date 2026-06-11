@@ -6,10 +6,21 @@ use App\Models\Tenant\GoodsReceiptLine;
 use App\Models\Tenant\PurchaseOrder;
 use App\Models\Tenant\PurchaseOrderLine;
 use App\Models\Tenant\StockMovement;
+use App\Services\Tenant\TenantConnectionManager;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 
 class VendorBillTest extends PurchaseTestCase
 {
+    public function test_create_bill_draft_without_payable_mapping(): void
+    {
+        $ctx = $this->setUpTenant();
+
+        $this->postJson('/api/purchase/bills', $this->vendorBillPayload(['is_taxable' => false]), $ctx['headers'])
+            ->assertStatus(201)
+            ->assertJsonPath('data.status', 'draft');
+    }
+
     public function test_create_bill_directly_and_post_creates_ap_journal(): void
     {
         $ctx = $this->setUpTenant();
@@ -33,6 +44,78 @@ class VendorBillTest extends PurchaseTestCase
             ->assertStatus(200)
             ->assertJsonPath('data.status', 'void');
         $this->assertSame('void', DB::connection('tenant')->table('journal_entries')->where('source_type', 'vendor_bill')->value('status'));
+    }
+
+    public function test_post_bill_fails_with_actionable_message_when_payable_account_is_missing(): void
+    {
+        $ctx = $this->setUpTenant();
+        $this->seedPurchaseMappings(payable: false, legacyPayable: false);
+        $bill = $this->postJson('/api/purchase/bills', $this->vendorBillPayload(['is_taxable' => false]), $ctx['headers'])->assertStatus(201)->json('data');
+
+        $this->patchJson('/api/purchase/bills/'.$bill['id'].'/post', [], $ctx['headers'])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'ACCOUNT_MAPPING_MISSING')
+            ->assertJsonPath('message', 'Akun Hutang Usaha belum diatur. Buka Pengaturan > Pemetaan Akun > Purchase > Hutang Usaha atau atur Akun Hutang khusus di master data vendor.');
+    }
+
+    public function test_post_bill_uses_vendor_payable_account_snapshot(): void
+    {
+        $ctx = $this->setUpTenant();
+        $vendorAp = $this->createAccount('liability', 'APV-'.uniqid());
+        $this->seedPurchaseMappings(payable: false, legacyPayable: false);
+        $vendorId = $this->createVendor(['payable_account_id' => $vendorAp]);
+        $bill = $this->postJson('/api/purchase/bills', $this->vendorBillPayload(['vendor_id' => $vendorId, 'is_taxable' => false]), $ctx['headers'])->assertStatus(201)->json('data');
+
+        $this->patchJson('/api/purchase/bills/'.$bill['id'].'/post', [], $ctx['headers'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.ap_account_id', $vendorAp);
+
+        $this->assertSame($vendorAp, (int) DB::connection('tenant')->table('vendor_bills')->where('id', $bill['id'])->value('ap_account_id'));
+        $this->assertSame($vendorAp, (int) DB::connection('tenant')
+            ->table('journal_entry_lines')
+            ->join('journal_entries', 'journal_entry_lines.journal_entry_id', '=', 'journal_entries.id')
+            ->where('journal_entries.source_type', 'vendor_bill')
+            ->where('journal_entries.source_id', $bill['id'])
+            ->where('journal_entry_lines.credit', '>', 0)
+            ->value('journal_entry_lines.account_id'));
+    }
+
+    public function test_post_bill_uses_default_and_legacy_payable_mapping_fallbacks(): void
+    {
+        $ctx = $this->setUpTenant();
+        $defaultIds = $this->seedPurchaseMappings();
+        $defaultBill = $this->postJson('/api/purchase/bills', $this->vendorBillPayload(['is_taxable' => false]), $ctx['headers'])->assertStatus(201)->json('data');
+        $this->patchJson('/api/purchase/bills/'.$defaultBill['id'].'/post', [], $ctx['headers'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.ap_account_id', $defaultIds['ap']);
+
+        $ctx = $this->setUpTenant();
+        $legacyIds = $this->seedPurchaseMappings(payable: false, legacyPayable: true);
+        $legacyBill = $this->postJson('/api/purchase/bills', $this->vendorBillPayload(['is_taxable' => false]), $ctx['headers'])->assertStatus(201)->json('data');
+        $this->patchJson('/api/purchase/bills/'.$legacyBill['id'].'/post', [], $ctx['headers'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.ap_account_id', $legacyIds['ap']);
+    }
+
+    public function test_backfill_vendor_bill_account_snapshots_supports_dry_run_and_execute(): void
+    {
+        $ctx = $this->setUpTenant();
+        $ids = $this->seedPurchaseMappings();
+        $bill = $this->postJson('/api/purchase/bills', $this->vendorBillPayload(['is_taxable' => false]), $ctx['headers'])->assertStatus(201)->json('data');
+        $this->patchJson('/api/purchase/bills/'.$bill['id'].'/post', [], $ctx['headers'])->assertStatus(200);
+
+        DB::connection('tenant')->table('vendor_bills')->where('id', $bill['id'])->update(['ap_account_id' => null]);
+        DB::connection('tenant')->table('vendor_bill_lines')->where('vendor_bill_id', $bill['id'])->update(['expense_account_id' => null]);
+
+        Artisan::call('tenant:backfill-vendor-bill-account-snapshots', ['--company-id' => $ctx['company']->id]);
+        app(TenantConnectionManager::class)->connect($ctx['tenant_path']);
+        $this->assertNull(DB::connection('tenant')->table('vendor_bills')->where('id', $bill['id'])->value('ap_account_id'));
+        $this->assertNull(DB::connection('tenant')->table('vendor_bill_lines')->where('vendor_bill_id', $bill['id'])->value('expense_account_id'));
+
+        Artisan::call('tenant:backfill-vendor-bill-account-snapshots', ['--company-id' => $ctx['company']->id, '--execute' => true]);
+        app(TenantConnectionManager::class)->connect($ctx['tenant_path']);
+        $this->assertSame($ids['ap'], (int) DB::connection('tenant')->table('vendor_bills')->where('id', $bill['id'])->value('ap_account_id'));
+        $this->assertSame($ids['expense'], (int) DB::connection('tenant')->table('vendor_bill_lines')->where('vendor_bill_id', $bill['id'])->value('expense_account_id'));
     }
 
     public function test_create_bill_from_purchase_order_copies_discount(): void

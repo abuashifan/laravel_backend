@@ -15,6 +15,7 @@ class StockMovementLine extends Model
     protected $guarded = [];
     protected $casts = [
         'metadata' => 'array',
+        'inventory_account_id' => 'integer',
         'quantity' => 'decimal:4',
         'quantity_before' => 'decimal:4',
         'quantity_after' => 'decimal:4',
@@ -28,6 +29,7 @@ class StockMovementLine extends Model
 
     public function stockMovement(): BelongsTo { return $this->belongsTo(StockMovement::class, 'stock_movement_id'); }
     public function product(): BelongsTo { return $this->belongsTo(Product::class, 'product_id'); }
+    public function inventoryAccount(): BelongsTo { return $this->belongsTo(ChartOfAccount::class, 'inventory_account_id'); }
     public function warehouse(): BelongsTo { return $this->belongsTo(Warehouse::class, 'warehouse_id'); }
     public function unit(): BelongsTo { return $this->belongsTo(Unit::class, 'unit_id'); }
     public function department(): BelongsTo { return $this->belongsTo(Department::class, 'department_id'); }

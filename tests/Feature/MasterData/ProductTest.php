@@ -141,4 +141,55 @@ class ProductTest extends MasterDataTestCase
             'sales_account_id' => $inactiveRevenue->id,
         ], $ctx['headers'])->assertStatus(422);
     }
+
+    public function test_purchase_inventory_and_cogs_accounts_must_match_account_types(): void
+    {
+        $ctx = $this->setUpTenant();
+        $expense = ChartOfAccount::query()->create([
+            'account_code' => '5100',
+            'account_name' => 'Expense',
+            'account_type' => 'expense',
+            'normal_balance' => 'debit',
+            'is_active' => true,
+        ]);
+        $asset = ChartOfAccount::query()->create([
+            'account_code' => '1130',
+            'account_name' => 'Inventory',
+            'account_type' => 'asset',
+            'normal_balance' => 'debit',
+            'is_active' => true,
+        ]);
+        $liability = ChartOfAccount::query()->create([
+            'account_code' => '2100',
+            'account_name' => 'Payable',
+            'account_type' => 'liability',
+            'normal_balance' => 'credit',
+            'is_active' => true,
+        ]);
+
+        $product = $this->postJson('/api/master-data/products', [
+            'product_name' => 'Accounting Product',
+            'product_type' => 'goods',
+            'purchase_account_id' => $expense->id,
+            'inventory_account_id' => $asset->id,
+            'cogs_account_id' => $expense->id,
+        ], $ctx['headers'])
+            ->assertStatus(201)
+            ->assertJsonPath('data.purchase_account_id', $expense->id)
+            ->assertJsonPath('data.inventory_account_id', $asset->id)
+            ->assertJsonPath('data.cogs_account_id', $expense->id)
+            ->json('data');
+
+        $this->patchJson('/api/master-data/products/'.$product['id'], [
+            'purchase_account_id' => $asset->id,
+        ], $ctx['headers'])->assertStatus(422);
+
+        $this->patchJson('/api/master-data/products/'.$product['id'], [
+            'inventory_account_id' => $liability->id,
+        ], $ctx['headers'])->assertStatus(422);
+
+        $this->patchJson('/api/master-data/products/'.$product['id'], [
+            'cogs_account_id' => $asset->id,
+        ], $ctx['headers'])->assertStatus(422);
+    }
 }

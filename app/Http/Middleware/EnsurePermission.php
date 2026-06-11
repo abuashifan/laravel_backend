@@ -22,7 +22,10 @@ class EnsurePermission
 
     public function handle(Request $request, Closure $next, string $permission): mixed
     {
-        if ($this->permissionService->cannot($permission)) {
+        $permissions = array_values(array_filter(explode('|', $permission)));
+        $allowed = collect($permissions)->contains(fn (string $item): bool => $this->permissionService->can($item));
+
+        if (! $allowed) {
             try {
                 $module = str_contains($permission, '.') ? explode('.', $permission, 2)[0] : null;
 
@@ -33,6 +36,7 @@ class EnsurePermission
                     'message' => 'User does not have permission '.$permission.'.',
                     'metadata' => [
                         'permission' => $permission,
+                        'permissions' => $permissions,
                     ],
                 ], tenant: true);
             } catch (Throwable $e) {
