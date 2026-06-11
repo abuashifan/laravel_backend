@@ -50,10 +50,10 @@ return [
         ],
         'sales.customer_deposit' => [
             'module' => 'sales',
-            'label' => 'Customer Deposit',
-            'required' => false,
+            'label' => 'Uang Muka Pelanggan',
+            'required' => true,
             'account_types' => ['liability'],
-            'description' => 'Default liability account for customer deposits/down payments.',
+            'description' => 'Akun kontrol untuk uang muka pelanggan / customer deposit.',
         ],
         'sales.default_cash_bank' => [
             'module' => 'sales',
@@ -114,10 +114,10 @@ return [
         ],
         'purchase.vendor_deposit' => [
             'module' => 'purchase',
-            'label' => 'Vendor Deposit',
-            'required' => false,
+            'label' => 'Uang Muka Pemasok',
+            'required' => true,
             'account_types' => ['asset'],
-            'description' => 'Default asset account for vendor deposits/down payments.',
+            'description' => 'Akun kontrol untuk uang muka pemasok / vendor deposit.',
         ],
         'purchase.default_cash_bank' => [
             'module' => 'purchase',

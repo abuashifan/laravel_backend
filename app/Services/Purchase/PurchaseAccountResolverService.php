@@ -12,7 +12,7 @@ use App\Models\Tenant\VendorBillLine;
 
 class PurchaseAccountResolverService
 {
-    public const PAYABLE_MAPPING_MESSAGE = 'Akun Hutang Usaha belum diatur. Buka Pengaturan > Pemetaan Akun > Purchase > Hutang Usaha atau atur Akun Hutang khusus di master data vendor.';
+    public const PAYABLE_MAPPING_MESSAGE = 'Akun Hutang Usaha belum diatur. Buka Pengaturan > Pemetaan Akun > Purchase > Hutang Usaha.';
     public const PURCHASE_EXPENSE_MAPPING_MESSAGE = 'Akun Pembelian/Beban belum diatur. Buka Pengaturan > Pemetaan Akun > Purchase > Beban Pembelian atau atur Akun Pembelian di master data produk.';
     public const INVENTORY_MAPPING_MESSAGE = 'Akun Persediaan belum diatur. Buka Pengaturan > Pemetaan Akun > Inventory > Persediaan atau atur Akun Persediaan di master data produk.';
     public const INVENTORY_INTERIM_MAPPING_MESSAGE = 'Akun Inventory Interim/GRNI belum diatur. Buka Pengaturan > Pemetaan Akun > Purchase > Inventory Interim sebelum menerima barang persediaan.';
@@ -40,10 +40,6 @@ class PurchaseAccountResolverService
 
     public function getPayableAccountId(Contact $vendor): int
     {
-        if ($vendor->payable_account_id && $this->activeAccountExists((int) $vendor->payable_account_id, ['liability'])) {
-            return (int) $vendor->payable_account_id;
-        }
-
         foreach (['purchase.accounts_payable', 'purchase.payable'] as $mappingKey) {
             $accountId = $this->mappingAccountId($mappingKey, ['liability']);
             if ($accountId !== null) {

@@ -31,7 +31,8 @@ class SalesReceiptService
         return DB::connection('tenant')->transaction(function () use ($company, $data) {
             $receipt = SalesReceipt::query()->create(array_merge($data, ['receipt_number' => $this->documentNumberService->generate($company, DocumentType::SALES_RECEIPT, (string) $data['receipt_date']), 'status' => 'draft', 'created_by' => auth()->id()]));
             $receipt->lines()->createMany($data['lines'] ?? [['sales_invoice_id' => $data['sales_invoice_id'] ?? null, 'billing_invoice_id' => $data['billing_invoice_id'] ?? null, 'amount' => $data['amount'], 'description' => $data['notes'] ?? null]]);
-            return $receipt->refresh()->load('lines', 'customer', 'salesInvoice');
+            $receipt = $receipt->refresh()->load('lines', 'customer', 'salesInvoice');
+            return $this->shouldAutoPostOnCreateAccountingWorkflow() ? $this->post($receipt) : $receipt;
         });
     }
 

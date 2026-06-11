@@ -121,8 +121,8 @@ class AccountsReceivableLedgerTest extends SalesTestCase
         $cash = $this->seedMappings();
         $arA = $this->account('1110', 'AR Customer A', 'asset', 'debit');
         $arB = $this->account('1120', 'AR Customer B', 'asset', 'debit');
-        $customerA = $this->createCustomer(['name' => 'Customer AR A', 'receivable_account_id' => $arA]);
-        $customerB = $this->createCustomer(['name' => 'Customer AR B', 'receivable_account_id' => $arB]);
+        $customerA = $this->createCustomer(['name' => 'Customer AR A']);
+        $customerB = $this->createCustomer(['name' => 'Customer AR B']);
 
         $invoiceA = $this->postJson('/api/sales/invoices', [
             'customer_id' => $customerA,
@@ -130,6 +130,7 @@ class AccountsReceivableLedgerTest extends SalesTestCase
             'due_date' => '2026-06-20',
             'lines' => [['description' => 'Service A', 'quantity' => 1, 'unit_price' => 100]],
         ], $ctx['headers'])->assertStatus(201)->json('data');
+        SalesInvoice::query()->whereKey($invoiceA['id'])->update(['ar_account_id' => $arA]);
         $this->patchJson('/api/sales/invoices/'.$invoiceA['id'].'/post', [], $ctx['headers'])
             ->assertStatus(200)
             ->assertJsonPath('data.ar_account_id', $arA);
@@ -140,6 +141,7 @@ class AccountsReceivableLedgerTest extends SalesTestCase
             'due_date' => '2026-06-20',
             'lines' => [['description' => 'Service B', 'quantity' => 1, 'unit_price' => 200]],
         ], $ctx['headers'])->assertStatus(201)->json('data');
+        SalesInvoice::query()->whereKey($invoiceB['id'])->update(['ar_account_id' => $arB]);
         $this->patchJson('/api/sales/invoices/'.$invoiceB['id'].'/post', [], $ctx['headers'])
             ->assertStatus(200)
             ->assertJsonPath('data.ar_account_id', $arB);

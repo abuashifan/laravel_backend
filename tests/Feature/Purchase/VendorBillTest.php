@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Purchase;
 
+use App\Models\CompanyAccountingSetting;
 use App\Models\Tenant\GoodsReceiptLine;
 use App\Models\Tenant\PurchaseOrder;
 use App\Models\Tenant\PurchaseOrderLine;
@@ -19,6 +20,26 @@ class VendorBillTest extends PurchaseTestCase
         $this->postJson('/api/purchase/bills', $this->vendorBillPayload(['is_taxable' => false]), $ctx['headers'])
             ->assertStatus(201)
             ->assertJsonPath('data.status', 'draft');
+    }
+
+    public function test_simple_auto_post_without_approval_posts_bill_on_create(): void
+    {
+        $ctx = $this->setUpTenant();
+        $this->seedPurchaseMappings();
+        CompanyAccountingSetting::query()->where('company_id', $ctx['company']->id)->update([
+            'transaction_workflow_mode' => 'simple_auto_post',
+            'auto_post_transactions' => true,
+            'approval_enabled' => false,
+        ]);
+
+        $bill = $this->postJson('/api/purchase/bills', $this->vendorBillPayload(), $ctx['headers'])
+            ->assertStatus(201)
+            ->assertJsonPath('data.status', 'posted')
+            ->assertJsonPath('data.grand_total', 222)
+            ->json('data');
+
+        $this->assertSame(1, DB::connection('tenant')->table('journal_entries')->where('source_type', 'vendor_bill')->where('source_id', $bill['id'])->count());
+        $this->assertNotNull(DB::connection('tenant')->table('vendor_bills')->where('id', $bill['id'])->value('posted_at'));
     }
 
     public function test_create_bill_directly_and_post_creates_ap_journal(): void
@@ -55,23 +76,60 @@ class VendorBillTest extends PurchaseTestCase
         $this->patchJson('/api/purchase/bills/'.$bill['id'].'/post', [], $ctx['headers'])
             ->assertStatus(422)
             ->assertJsonPath('code', 'ACCOUNT_MAPPING_MISSING')
-            ->assertJsonPath('message', 'Akun Hutang Usaha belum diatur. Buka Pengaturan > Pemetaan Akun > Purchase > Hutang Usaha atau atur Akun Hutang khusus di master data vendor.');
+            ->assertJsonPath('message', 'Akun Hutang Usaha belum diatur. Buka Pengaturan > Pemetaan Akun > Purchase > Hutang Usaha.');
     }
 
-    public function test_post_bill_uses_vendor_payable_account_snapshot(): void
+    public function test_post_bill_uses_transaction_payable_account_snapshot(): void
+    {
+        $ctx = $this->setUpTenant();
+        $selectedAp = $this->createAccount('liability', 'APT-'.uniqid());
+        $this->seedPurchaseMappings(payable: false, legacyPayable: false);
+
+        $bill = $this->postJson('/api/purchase/bills', $this->vendorBillPayload([
+            'ap_account_id' => $selectedAp,
+            'is_taxable' => false,
+        ]), $ctx['headers'])
+            ->assertStatus(201)
+            ->assertJsonPath('data.ap_account_id', $selectedAp)
+            ->json('data');
+
+        $this->patchJson('/api/purchase/bills/'.$bill['id'].'/post', [], $ctx['headers'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.ap_account_id', $selectedAp);
+
+        $this->assertSame($selectedAp, (int) DB::connection('tenant')
+            ->table('journal_entry_lines')
+            ->join('journal_entries', 'journal_entry_lines.journal_entry_id', '=', 'journal_entries.id')
+            ->where('journal_entries.source_type', 'vendor_bill')
+            ->where('journal_entries.source_id', $bill['id'])
+            ->where('journal_entry_lines.credit', '>', 0)
+            ->value('journal_entry_lines.account_id'));
+    }
+
+    public function test_create_bill_rejects_non_liability_payable_account(): void
+    {
+        $ctx = $this->setUpTenant();
+        $assetAccount = $this->createAccount('asset', 'NOTAP-'.uniqid());
+
+        $this->postJson('/api/purchase/bills', $this->vendorBillPayload([
+            'ap_account_id' => $assetAccount,
+        ]), $ctx['headers'])->assertStatus(422);
+    }
+
+    public function test_post_bill_ignores_deprecated_vendor_payable_account(): void
     {
         $ctx = $this->setUpTenant();
         $vendorAp = $this->createAccount('liability', 'APV-'.uniqid());
-        $this->seedPurchaseMappings(payable: false, legacyPayable: false);
+        $defaultIds = $this->seedPurchaseMappings();
         $vendorId = $this->createVendor(['payable_account_id' => $vendorAp]);
         $bill = $this->postJson('/api/purchase/bills', $this->vendorBillPayload(['vendor_id' => $vendorId, 'is_taxable' => false]), $ctx['headers'])->assertStatus(201)->json('data');
 
         $this->patchJson('/api/purchase/bills/'.$bill['id'].'/post', [], $ctx['headers'])
             ->assertStatus(200)
-            ->assertJsonPath('data.ap_account_id', $vendorAp);
+            ->assertJsonPath('data.ap_account_id', $defaultIds['ap']);
 
-        $this->assertSame($vendorAp, (int) DB::connection('tenant')->table('vendor_bills')->where('id', $bill['id'])->value('ap_account_id'));
-        $this->assertSame($vendorAp, (int) DB::connection('tenant')
+        $this->assertSame($defaultIds['ap'], (int) DB::connection('tenant')->table('vendor_bills')->where('id', $bill['id'])->value('ap_account_id'));
+        $this->assertSame($defaultIds['ap'], (int) DB::connection('tenant')
             ->table('journal_entry_lines')
             ->join('journal_entries', 'journal_entry_lines.journal_entry_id', '=', 'journal_entries.id')
             ->where('journal_entries.source_type', 'vendor_bill')

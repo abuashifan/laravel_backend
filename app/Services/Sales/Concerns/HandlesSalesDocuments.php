@@ -6,6 +6,7 @@ use App\Exceptions\ApiException;
 use App\Models\Tenant\Contact;
 use App\Models\Tenant\Product;
 use App\Services\Audit\AuditLogService;
+use App\Services\Settings\CompanySettingService;
 use Illuminate\Database\Eloquent\Model;
 
 trait HandlesSalesDocuments
@@ -60,6 +61,20 @@ trait HandlesSalesDocuments
             fn (string $key): bool => ! in_array($key, $excluded, true),
             ARRAY_FILTER_USE_KEY
         );
+    }
+
+    private function shouldAutoPostOnCreateAccountingWorkflow(): bool
+    {
+        $company = $this->tenantContext->company();
+        if (! $company) {
+            return false;
+        }
+
+        $workflow = app(CompanySettingService::class)->getOrCreateAccountingSetting($company);
+
+        return ! (bool) $workflow->approval_enabled
+            && $workflow->transaction_workflow_mode === 'simple_auto_post'
+            && (bool) $workflow->auto_post_transactions;
     }
 
     private function auditSales(?AuditLogService $auditLogService, string $event, string $module, Model $record, string $numberField, array $meta = []): void

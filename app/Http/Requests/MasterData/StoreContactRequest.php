@@ -3,7 +3,6 @@
 namespace App\Http\Requests\MasterData;
 
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
 
 class StoreContactRequest extends FormRequest
 {
@@ -19,16 +18,6 @@ class StoreContactRequest extends FormRequest
             'name' => ['required', 'string', 'max:255'],
             'contact_type' => ['nullable', 'in:customer,supplier,employee,other'],
             'payment_term_id' => ['nullable', 'integer', 'exists:tenant.payment_terms,id'],
-            'receivable_account_id' => [
-                'nullable',
-                'integer',
-                Rule::exists('tenant.chart_of_accounts', 'id')->where('account_type', 'asset')->where('is_active', true),
-            ],
-            'payable_account_id' => [
-                'nullable',
-                'integer',
-                Rule::exists('tenant.chart_of_accounts', 'id')->where('account_type', 'liability')->where('is_active', true),
-            ],
             'is_customer' => ['nullable', 'boolean'],
             'is_supplier' => ['nullable', 'boolean'],
             'is_employee' => ['nullable', 'boolean'],

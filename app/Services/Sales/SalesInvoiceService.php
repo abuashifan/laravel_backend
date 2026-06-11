@@ -97,6 +97,10 @@ class SalesInvoiceService
             $invoice = $invoice->refresh()->load('lines', 'customer', 'paymentTerm');
             $this->auditSales($this->auditLogService, 'sales_invoice.created', 'sales', $invoice, 'invoice_number');
 
+            if ($this->shouldAutoPostOnCreateAccountingWorkflow()) {
+                return $this->post($invoice);
+            }
+
             return $this->withAvailableDepositSummary($invoice);
         });
     }

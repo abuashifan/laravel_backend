@@ -46,7 +46,8 @@ class SalesReturnService
         return DB::connection('tenant')->transaction(function () use ($company, $data, $lines, $totals) {
             $return = SalesReturn::query()->create(array_merge($this->guardedForHeader($data), $totals, ['return_number' => $this->documentNumberService->generate($company, DocumentType::SALES_RETURN, (string) $data['return_date']), 'status' => 'draft', 'created_by' => auth()->id()]));
             $return->lines()->createMany($lines);
-            return $return->refresh()->load('lines', 'customer', 'salesInvoice');
+            $return = $return->refresh()->load('lines', 'customer', 'salesInvoice');
+            return $this->shouldAutoPostOnCreateAccountingWorkflow() ? $this->post($return) : $return;
         });
     }
 

@@ -58,6 +58,7 @@ class AccountMappingServiceTest extends TestCase
 
         $this->assertContains(AccountMappingKey::SALES_ACCOUNTS_RECEIVABLE, $keys);
         $this->assertContains(AccountMappingKey::SALES_REVENUE, $keys);
+        $this->assertContains(AccountMappingKey::SALES_CUSTOMER_DEPOSIT, $keys);
     }
 
     public function test_validate_required_keys_passes_when_required_keys_provided(): void
@@ -67,6 +68,7 @@ class AccountMappingServiceTest extends TestCase
         $res = $service->validateRequiredKeys([
             AccountMappingKey::SALES_ACCOUNTS_RECEIVABLE,
             AccountMappingKey::SALES_REVENUE,
+            AccountMappingKey::SALES_CUSTOMER_DEPOSIT,
         ], 'sales');
 
         $this->assertTrue($res['valid']);

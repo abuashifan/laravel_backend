@@ -87,6 +87,10 @@ class VendorBillService
             $bill->lines()->createMany($totals['lines']);
             $bill = $bill->refresh()->load('lines', 'vendor', 'paymentTerm');
             $this->auditPurchase($this->auditLogService, 'vendor_bill.created', $bill, 'bill_number');
+            if ($this->shouldAutoPostOnCreateAccountingWorkflow()) {
+                return $this->post($bill);
+            }
+
             return $this->withAvailableDepositSummary($bill);
         });
     }

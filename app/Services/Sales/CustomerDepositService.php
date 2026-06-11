@@ -35,14 +35,14 @@ class CustomerDepositService
 
     public function list(array $filters = []): Collection
     {
-        $query = CustomerDeposit::query()->with('customer', 'salesOrder');
+        $query = CustomerDeposit::query()->with('customer', 'salesOrder', 'cashBankAccount');
         if (! empty($filters['status'])) $query->where('status', (string) $filters['status']);
         return $query->orderByDesc('deposit_date')->orderByDesc('id')->get();
     }
 
     public function find(int $id): CustomerDeposit
     {
-        return CustomerDeposit::query()->with('customer', 'salesOrder')->findOrFail($id);
+        return CustomerDeposit::query()->with('customer', 'salesOrder', 'cashBankAccount')->findOrFail($id);
     }
 
     public function availableForCustomer(int $customerId, array $filters = []): array
@@ -100,13 +100,17 @@ class CustomerDepositService
         if (! $company) throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
         $amount = (float) $data['amount'];
         $this->ensureCustomerExists((int) $data['customer_id']);
-        return CustomerDeposit::query()->create(array_merge($data, [
+        $deposit = CustomerDeposit::query()->create(array_merge($data, [
             'deposit_number' => $this->documentNumberService->generate($company, DocumentType::CUSTOMER_DEPOSIT, (string) $data['deposit_date']),
             'remaining_amount' => $amount,
             'allocated_amount' => 0,
             'status' => 'draft',
             'created_by' => auth()->id(),
         ]))->refresh();
+
+        $deposit = $deposit->load('customer', 'salesOrder', 'cashBankAccount');
+
+        return $this->shouldAutoPostOnCreateAccountingWorkflow() ? $this->post($deposit) : $deposit;
     }
 
     public function createFromSalesOrder(SalesOrder $order, array $depositData): CustomerDeposit
@@ -138,7 +142,7 @@ class CustomerDepositService
             $deposit->posted_at = now();
             $deposit->remaining_amount = $deposit->amount;
             $deposit->save();
-            return $deposit->refresh();
+            return $deposit->refresh()->load('customer', 'salesOrder', 'cashBankAccount');
         });
     }
 
@@ -164,7 +168,7 @@ class CustomerDepositService
             }
             $deposit->status = 'void'; $deposit->voided_by = auth()->id(); $deposit->voided_at = now(); $deposit->void_reason = $reason; $deposit->save();
             $this->auditSales($this->auditLogService, 'customer_deposit.voided', 'sales', $deposit, 'deposit_number', ['reason' => $reason, 'voided_journal_ids' => array_values(array_unique($journalIds)), 'voided_allocation_ids' => $allocations->pluck('id')->all()]);
-            return $deposit->refresh();
+            return $deposit->refresh()->load('customer', 'salesOrder', 'cashBankAccount');
         });
     }
 
@@ -181,7 +185,7 @@ class CustomerDepositService
             $deposit->refund_journal_entry_id = $journal->id;
             $deposit->status = $deposit->remaining_amount <= 0 ? 'refunded' : 'partially_allocated';
             $deposit->refunded_by = auth()->id(); $deposit->refunded_at = now(); $deposit->refund_reason = $reason; $deposit->save();
-            return $deposit->refresh();
+            return $deposit->refresh()->load('customer', 'salesOrder', 'cashBankAccount');
         });
     }
 
@@ -275,7 +279,7 @@ class CustomerDepositService
     public function calculateAvailableForCustomer(int $customerId): float { return (float) CustomerDeposit::query()->where('customer_id', $customerId)->whereIn('status', ['posted', 'partially_allocated'])->sum('remaining_amount'); }
     public function calculateReceivedForSalesOrder(SalesOrder $order): float { return (float) $order->deposits()->where('status', '!=', 'void')->sum('amount'); }
 
-    private function mapping(string $key): int { $mapping = AccountMapping::query()->where('mapping_key', $key)->where('is_active', true)->first(); if (! $mapping?->account_id) throw ApiException::make('ACCOUNT_MAPPING_MISSING', 'Required account mapping is missing: '.$key, 422); return (int) $mapping->account_id; }
+    private function mapping(string $key): int { $mapping = AccountMapping::query()->where('mapping_key', $key)->where('is_active', true)->first(); if (! $mapping?->account_id) throw ApiException::make('ACCOUNT_MAPPING_MISSING', $key === 'sales.customer_deposit' ? 'Mapping akun Uang Muka Pelanggan belum diatur. Silakan atur sales.customer_deposit di Pemetaan Akun.' : 'Required account mapping is missing: '.$key, 422); return (int) $mapping->account_id; }
     private function guardDate(string $date, string $action = 'post'): void { $check = $this->dateGuardService->check($date, $action, 'sales'); if ($check->denied()) { $arr = $check->toArray(); throw ApiException::make((string) $arr['code'], (string) $arr['message'], 422, (array) $arr['reasons'], (array) $arr['meta']); } }
     private function availableDepositRow(CustomerDeposit $deposit, ?int $salesOrderId = null): array
     {

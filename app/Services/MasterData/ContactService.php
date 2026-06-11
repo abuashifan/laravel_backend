@@ -24,6 +24,8 @@ class ContactService
 
     public function create(array $data): Contact
     {
+        $data = $this->withoutDeprecatedAccountingFields($data);
+
         if (! empty($data['contact_code']) && Contact::query()->where('contact_code', (string) $data['contact_code'])->exists()) {
             throw ApiException::make('DUPLICATE_CONTACT_CODE', 'Contact code is already in use.', 422, [
                 'contact_code' => ['Contact Code is already in use.'],
@@ -35,6 +37,8 @@ class ContactService
 
     public function update(Contact $contact, array $data): Contact
     {
+        $data = $this->withoutDeprecatedAccountingFields($data);
+
         if (! empty($data['contact_code']) && $data['contact_code'] !== $contact->contact_code) {
             if (Contact::query()->where('contact_code', (string) $data['contact_code'])->exists()) {
                 throw ApiException::make('DUPLICATE_CONTACT_CODE', 'Contact code is already in use.', 422, [
@@ -63,5 +67,17 @@ class ContactService
         $contact->save();
 
         return $contact->refresh();
+    }
+
+    private function withoutDeprecatedAccountingFields(array $data): array
+    {
+        unset(
+            $data['receivable_account_id'],
+            $data['payable_account_id'],
+            $data['account_receivable_id'],
+            $data['account_payable_id'],
+        );
+
+        return $data;
     }
 }

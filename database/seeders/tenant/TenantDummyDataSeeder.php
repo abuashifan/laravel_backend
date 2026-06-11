@@ -116,7 +116,7 @@ class TenantDummyDataSeeder extends Seeder
             ['2100', 'Hutang Usaha', 'liability', 'credit', false],
             ['2110', 'Hutang Biaya', 'liability', 'credit', false],
             ['2120', 'PPN Keluaran', 'liability', 'credit', false],
-            ['2130', 'Uang Muka Customer', 'liability', 'credit', false],
+            ['2130', 'Uang Muka Pelanggan', 'liability', 'credit', false],
             ['2140', 'PPN Masukan', 'asset', 'debit', false],
             ['2150', 'Inventory Interim / GRNI', 'liability', 'credit', false],
             ['3100', 'Modal Pemilik', 'equity', 'credit', false],
@@ -224,6 +224,7 @@ class TenantDummyDataSeeder extends Seeder
         if ($this->has('account_mappings')) {
             foreach ([
                 'sales.revenue' => ['sales', '4100'],
+                'sales.accounts_receivable' => ['sales', '1120'],
                 'sales.receivable' => ['sales', '1120'],
                 'sales.customer_deposit' => ['sales', '2130'],
                 'purchase.accounts_payable' => ['purchase', '2100'],

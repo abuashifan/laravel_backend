@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Purchase;
 
+use Illuminate\Support\Facades\DB;
+
 class AccountsPayableLedgerTest extends PurchaseTestCase
 {
     public function test_vendor_bill_payment_deposit_and_return_create_ap_movements_and_reconcile(): void
@@ -121,17 +123,18 @@ class AccountsPayableLedgerTest extends PurchaseTestCase
     public function test_reconciliation_uses_vendor_bill_payable_snapshots_across_multiple_ap_accounts(): void
     {
         $ctx = $this->setUpTenant();
-        $accounts = $this->seedPurchaseMappings(payable: false);
+        $accounts = $this->seedPurchaseMappings();
         $apA = $this->createAccount('liability', 'APA-'.uniqid());
         $apB = $this->createAccount('liability', 'APB-'.uniqid());
-        $vendorA = $this->createVendor(['name' => 'Vendor AP A', 'payable_account_id' => $apA]);
-        $vendorB = $this->createVendor(['name' => 'Vendor AP B', 'payable_account_id' => $apB]);
+        $vendorA = $this->createVendor(['name' => 'Vendor AP A']);
+        $vendorB = $this->createVendor(['name' => 'Vendor AP B']);
 
         $billA = $this->postJson('/api/purchase/bills', $this->vendorBillPayload([
             'vendor_id' => $vendorA,
             'is_taxable' => false,
             'lines' => [['description' => 'Service A', 'quantity' => 1, 'unit_price' => 100, 'tax_rate' => 0]],
         ]), $ctx['headers'])->assertStatus(201)->json('data');
+        DB::connection('tenant')->table('vendor_bills')->where('id', $billA['id'])->update(['ap_account_id' => $apA]);
         $this->patchJson('/api/purchase/bills/'.$billA['id'].'/post', [], $ctx['headers'])
             ->assertStatus(200)
             ->assertJsonPath('data.ap_account_id', $apA);
@@ -141,6 +144,7 @@ class AccountsPayableLedgerTest extends PurchaseTestCase
             'is_taxable' => false,
             'lines' => [['description' => 'Service B', 'quantity' => 1, 'unit_price' => 200, 'tax_rate' => 0]],
         ]), $ctx['headers'])->assertStatus(201)->json('data');
+        DB::connection('tenant')->table('vendor_bills')->where('id', $billB['id'])->update(['ap_account_id' => $apB]);
         $this->patchJson('/api/purchase/bills/'.$billB['id'].'/post', [], $ctx['headers'])
             ->assertStatus(200)
             ->assertJsonPath('data.ap_account_id', $apB);

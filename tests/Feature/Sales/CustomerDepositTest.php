@@ -39,13 +39,36 @@ class CustomerDepositTest extends SalesTestCase
     {
         $ctx = $this->setUpTenant();
         $cash = $this->seedMappings();
-        $deposit = $this->postJson('/api/sales/customer-deposits', $this->depositPayload($cash), $ctx['headers'])->assertStatus(201)->json('data');
+        $customerId = $this->createCustomer(['contact_code' => 'CUS-001', 'name' => 'PT Customer Deposit']);
+        $deposit = $this->postJson('/api/sales/customer-deposits', $this->depositPayload($cash, [
+            'customer_id' => $customerId,
+        ]), $ctx['headers'])
+            ->assertStatus(201)
+            ->assertJsonPath('data.customer_number', 'CUS-001')
+            ->assertJsonPath('data.customer_name', 'PT Customer Deposit')
+            ->json('data');
 
         $this->patchJson('/api/sales/customer-deposits/'.$deposit['id'].'/post', [], $ctx['headers'])
             ->assertStatus(200)
-            ->assertJsonPath('data.status', 'posted');
+            ->assertJsonPath('data.status', 'posted')
+            ->assertJsonPath('data.customer_number', 'CUS-001')
+            ->assertJsonPath('data.customer_name', 'PT Customer Deposit');
 
         $this->assertSame(1, JournalEntry::query()->count());
+        $this->assertSame(100.0, (float) JournalEntryLine::query()->where('description', 'Cash/Bank')->value('debit'));
+        $this->assertSame(100.0, (float) JournalEntryLine::query()->where('description', 'Customer Deposit')->value('credit'));
+    }
+
+    public function test_post_deposit_fails_with_clear_message_when_customer_deposit_mapping_missing(): void
+    {
+        $ctx = $this->setUpTenant();
+        $cash = $this->seedMappings(includeDeposit: false);
+        $deposit = $this->postJson('/api/sales/customer-deposits', $this->depositPayload($cash), $ctx['headers'])->assertStatus(201)->json('data');
+
+        $this->patchJson('/api/sales/customer-deposits/'.$deposit['id'].'/post', [], $ctx['headers'])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'ACCOUNT_MAPPING_MISSING')
+            ->assertJsonPath('message', 'Mapping akun Uang Muka Pelanggan belum diatur. Silakan atur sales.customer_deposit di Pemetaan Akun.');
     }
 
     public function test_allocate_deposit_to_invoice_creates_journal_and_updates_invoice(): void
@@ -165,13 +188,17 @@ class CustomerDepositTest extends SalesTestCase
         return SalesInvoice::query()->find($invoice['id'])->toArray();
     }
 
-    private function seedMappings(): int
+    private function seedMappings(bool $includeDeposit = true): int
     {
         $cash = $this->account('1000', 'Cash', 'asset', 'debit', true);
         $ar = $this->account('1100', 'AR', 'asset', 'debit');
         $revenue = $this->account('4100', 'Revenue', 'revenue', 'credit');
         $deposit = $this->account('2200', 'Deposit', 'liability', 'credit');
-        foreach (['sales.accounts_receivable' => $ar, 'sales.revenue' => $revenue, 'sales.customer_deposit' => $deposit] as $key => $id) AccountMapping::query()->create(['mapping_key' => $key, 'module' => 'sales', 'account_id' => $id, 'is_required' => true, 'is_active' => true]);
+        $mappings = ['sales.accounts_receivable' => $ar, 'sales.revenue' => $revenue];
+        if ($includeDeposit) {
+            $mappings['sales.customer_deposit'] = $deposit;
+        }
+        foreach ($mappings as $key => $id) AccountMapping::query()->create(['mapping_key' => $key, 'module' => 'sales', 'account_id' => $id, 'is_required' => true, 'is_active' => true]);
         return $cash;
     }
 

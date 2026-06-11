@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Sales;
 
+use App\Models\Tenant\ChartOfAccount;
 use Closure;
 use Illuminate\Foundation\Http\FormRequest;
 
@@ -28,6 +29,21 @@ class StoreSalesInvoiceRequest extends FormRequest
             'sales_order_id' => ['nullable', 'integer'],
             'delivery_order_id' => ['nullable', 'integer'],
             'proforma_invoice_id' => ['nullable', 'integer'],
+            'ar_account_id' => ['nullable', 'integer', function (string $attribute, mixed $value, Closure $fail): void {
+                if ($value === null || $value === '') {
+                    return;
+                }
+
+                $exists = ChartOfAccount::query()
+                    ->whereKey((int) $value)
+                    ->where('account_type', 'asset')
+                    ->where('is_active', true)
+                    ->exists();
+
+                if (! $exists) {
+                    $fail('The selected receivable account must be an active asset account.');
+                }
+            }],
             'salesperson_id' => ['nullable', 'integer'],
             'currency_code' => ['nullable', 'string', 'size:3'],
             'exchange_rate' => ['nullable', 'numeric', 'gt:0'],

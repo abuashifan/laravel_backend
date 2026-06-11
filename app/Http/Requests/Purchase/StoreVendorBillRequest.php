@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Purchase;
 
+use App\Models\Tenant\ChartOfAccount;
 use Closure;
 use Illuminate\Foundation\Http\FormRequest;
 
@@ -24,6 +25,21 @@ class StoreVendorBillRequest extends FormRequest
             'vendor_address' => ['nullable', 'string'],
             'purchase_order_id' => ['nullable', 'integer'],
             'goods_receipt_id' => ['nullable', 'integer'],
+            'ap_account_id' => ['nullable', 'integer', function (string $attribute, mixed $value, Closure $fail): void {
+                if ($value === null || $value === '') {
+                    return;
+                }
+
+                $exists = ChartOfAccount::query()
+                    ->whereKey((int) $value)
+                    ->where('account_type', 'liability')
+                    ->where('is_active', true)
+                    ->exists();
+
+                if (! $exists) {
+                    $fail('The selected payable account must be an active liability account.');
+                }
+            }],
             'buyer_id' => ['nullable', 'integer'],
             'currency_code' => ['nullable', 'string', 'size:3'],
             'exchange_rate' => ['nullable', 'numeric', 'gt:0'],

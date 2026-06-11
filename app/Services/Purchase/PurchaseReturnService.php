@@ -53,7 +53,8 @@ class PurchaseReturnService
                 'created_by' => auth()->id(),
             ]));
             $return->lines()->createMany($lines);
-            return $return->refresh()->load('lines', 'vendor', 'vendorBill');
+            $return = $return->refresh()->load('lines', 'vendor', 'vendorBill');
+            return $this->shouldAutoPostOnCreateAccountingWorkflow() ? $this->post($return) : $return;
         });
     }
 

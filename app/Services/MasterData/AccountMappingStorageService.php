@@ -16,21 +16,35 @@ class AccountMappingStorageService
     public function syncDefaultMappingsFromConfig(): void
     {
         foreach ($this->definitionService->allRequirements() as $req) {
-            AccountMapping::query()->updateOrCreate(
-                ['mapping_key' => $req->key],
-                [
-                    'module' => $req->module,
-                    'account_id' => null,
-                    'is_required' => $req->required,
-                    'is_active' => true,
-                ]
-            );
+            $mapping = AccountMapping::query()->firstOrNew(['mapping_key' => $req->key]);
+            $mapping->module = $req->module;
+            $mapping->is_required = $req->required;
+            if (! $mapping->exists) {
+                $mapping->account_id = null;
+                $mapping->is_active = true;
+            }
+            $mapping->save();
         }
     }
 
     public function list()
     {
-        return AccountMapping::query()->orderBy('module')->orderBy('mapping_key')->get();
+        return AccountMapping::query()
+            ->with('account')
+            ->orderBy('module')
+            ->orderBy('mapping_key')
+            ->get()
+            ->map(function (AccountMapping $mapping): array {
+                $requirement = $this->definitionService->requirement($mapping->mapping_key);
+
+                return array_merge($mapping->toArray(), [
+                    'label' => $requirement?->label,
+                    'description' => $requirement?->description,
+                    'account_types' => $requirement?->accountTypes ?? [],
+                    'account_code' => $mapping->account?->account_code,
+                    'account_name' => $mapping->account?->account_name,
+                ]);
+            });
     }
 
     public function updateMapping(string $key, ?int $accountId): AccountMapping
@@ -98,4 +112,3 @@ class AccountMappingStorageService
         return array_values(array_diff($requiredKeys, $existing));
     }
 }
-

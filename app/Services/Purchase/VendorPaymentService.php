@@ -61,7 +61,8 @@ class VendorPaymentService
                 'amount' => $data['amount'],
                 'description' => $data['notes'] ?? null,
             ]]);
-            return $payment->refresh()->load('lines', 'vendor', 'vendorBill');
+            $payment = $payment->refresh()->load('lines', 'vendor', 'vendorBill');
+            return $this->shouldAutoPostOnCreateAccountingWorkflow() ? $this->post($payment) : $payment;
         });
     }
 

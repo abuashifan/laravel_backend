@@ -3,6 +3,7 @@
 namespace Tests\Feature\Sales;
 
 use App\Models\Company;
+use App\Models\CompanyAccountingSetting;
 use App\Models\CompanyUser;
 use App\Models\TenantDatabase;
 use App\Models\User;
@@ -35,6 +36,13 @@ abstract class SalesTestCase extends TestCase
             'role' => $role,
             'status' => 'active',
             'joined_at' => now(),
+        ]);
+
+        CompanyAccountingSetting::query()->create([
+            'company_id' => $company->id,
+            'transaction_workflow_mode' => 'draft_then_post',
+            'auto_post_transactions' => false,
+            'approval_enabled' => false,
         ]);
 
         $tenantPath = database_path('tenants/test_sales_'.$company->id.'_'.uniqid().'.sqlite');

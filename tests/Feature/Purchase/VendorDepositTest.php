@@ -10,19 +10,44 @@ class VendorDepositTest extends PurchaseTestCase
     {
         $ctx = $this->setUpTenant();
         $accounts = $this->seedPurchaseMappings();
+        $vendorId = $this->createVendor(['contact_code' => 'VEND-001']);
+
+        $deposit = $this->postJson('/api/purchase/vendor-deposits', [
+            'vendor_id' => $vendorId,
+            'deposit_date' => '2026-05-20',
+            'cash_bank_account_id' => $accounts['cash'],
+            'amount' => 75,
+        ], $ctx['headers'])
+            ->assertStatus(201)
+            ->assertJsonPath('data.vendor_number', 'VEND-001')
+            ->assertJsonPath('data.vendor_name', 'Vendor A')
+            ->json('data');
+
+        $this->patchJson('/api/purchase/vendor-deposits/'.$deposit['id'].'/post', [], $ctx['headers'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.status', 'posted')
+            ->assertJsonPath('data.vendor_number', 'VEND-001')
+            ->assertJsonPath('data.vendor_name', 'Vendor A');
+
+        $this->assertSame(1, DB::connection('tenant')->table('journal_entries')->where('source_type', 'vendor_deposit')->count());
+    }
+
+    public function test_post_deposit_fails_with_clear_message_when_vendor_deposit_mapping_is_missing(): void
+    {
+        $ctx = $this->setUpTenant();
+        $cash = $this->createAccount('asset', 'CASH-'.uniqid(), true);
 
         $deposit = $this->postJson('/api/purchase/vendor-deposits', [
             'vendor_id' => $this->createVendor(),
             'deposit_date' => '2026-05-20',
-            'cash_bank_account_id' => $accounts['cash'],
+            'cash_bank_account_id' => $cash,
             'amount' => 75,
         ], $ctx['headers'])->assertStatus(201)->json('data');
 
         $this->patchJson('/api/purchase/vendor-deposits/'.$deposit['id'].'/post', [], $ctx['headers'])
-            ->assertStatus(200)
-            ->assertJsonPath('data.status', 'posted');
-
-        $this->assertSame(1, DB::connection('tenant')->table('journal_entries')->where('source_type', 'vendor_deposit')->count());
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'ACCOUNT_MAPPING_MISSING')
+            ->assertJsonPath('message', 'Mapping akun Uang Muka Pemasok belum diatur. Silakan atur purchase.vendor_deposit di Pemetaan Akun.');
     }
 
     public function test_cannot_allocate_more_than_remaining(): void

@@ -12,7 +12,7 @@ use App\Models\Tenant\SalesInvoiceLine;
 
 class SalesAccountResolverService
 {
-    public const RECEIVABLE_MAPPING_MESSAGE = 'Akun Piutang Usaha belum diatur. Buka Pengaturan > Pemetaan Akun > Sales > Piutang Usaha atau atur Akun Piutang khusus di master data pelanggan.';
+    public const RECEIVABLE_MAPPING_MESSAGE = 'Akun Piutang Usaha belum diatur. Buka Pengaturan > Pemetaan Akun > Sales > Piutang Usaha.';
     public const REVENUE_MAPPING_MESSAGE = 'Akun Pendapatan Penjualan belum diatur. Buka Pengaturan > Pemetaan Akun > Sales > Pendapatan Penjualan atau atur Akun Penjualan di master data produk.';
 
     /**
@@ -41,10 +41,6 @@ class SalesAccountResolverService
 
     public function getReceivableAccountId(Contact $customer): int
     {
-        if ($customer->receivable_account_id && $this->activeAccountExists((int) $customer->receivable_account_id, 'asset')) {
-            return (int) $customer->receivable_account_id;
-        }
-
         foreach (['sales.accounts_receivable', 'accounts_receivable'] as $mappingKey) {
             $accountId = $this->mappingAccountId($mappingKey, 'asset');
             if ($accountId !== null) {

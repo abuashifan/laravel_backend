@@ -35,7 +35,7 @@ class VendorDepositService
 
     public function list(array $filters = []): Collection
     {
-        $query = VendorDeposit::query()->with('vendor', 'purchaseOrder');
+        $query = VendorDeposit::query()->with('vendor', 'purchaseOrder', 'cashBankAccount');
         if (! empty($filters['status'])) $query->where('status', (string) $filters['status']);
         if (! empty($filters['vendor_id'])) $query->where('vendor_id', (int) $filters['vendor_id']);
         return $query->orderByDesc('deposit_date')->orderByDesc('id')->get();
@@ -43,7 +43,7 @@ class VendorDepositService
 
     public function find(int $id): VendorDeposit
     {
-        return VendorDeposit::query()->with('vendor', 'purchaseOrder')->findOrFail($id);
+        return VendorDeposit::query()->with('vendor', 'purchaseOrder', 'cashBankAccount')->findOrFail($id);
     }
 
     public function availableForVendor(int $vendorId, array $filters = []): array
@@ -105,13 +105,15 @@ class VendorDepositService
         $amount = (float) $data['amount'];
         $this->ensureVendorExists((int) $data['vendor_id']);
 
-        return VendorDeposit::query()->create(array_merge($data, [
+        $deposit = VendorDeposit::query()->create(array_merge($data, [
             'deposit_number' => $this->documentNumberService->generate($company, DocumentType::VENDOR_DEPOSIT, (string) $data['deposit_date']),
             'remaining_amount' => $amount,
             'allocated_amount' => 0,
             'status' => 'draft',
             'created_by' => auth()->id(),
         ]))->refresh();
+
+        return $this->shouldAutoPostOnCreateAccountingWorkflow() ? $this->post($deposit) : $deposit;
     }
 
     public function createFromPurchaseOrder(PurchaseOrder $order, array $depositData): VendorDeposit
@@ -311,7 +313,15 @@ class VendorDepositService
     private function mapping(string $key): int
     {
         $mapping = AccountMapping::query()->where('mapping_key', $key)->where('is_active', true)->first();
-        if (! $mapping?->account_id) throw ApiException::make('ACCOUNT_MAPPING_MISSING', 'Required account mapping is missing: '.$key, 422);
+        if (! $mapping?->account_id) {
+            throw ApiException::make(
+                'ACCOUNT_MAPPING_MISSING',
+                $key === 'purchase.vendor_deposit'
+                    ? 'Mapping akun Uang Muka Pemasok belum diatur. Silakan atur purchase.vendor_deposit di Pemetaan Akun.'
+                    : 'Required account mapping is missing: '.$key,
+                422
+            );
+        }
         return (int) $mapping->account_id;
     }
 

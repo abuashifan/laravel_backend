@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\MasterData;
 
+use App\Models\Tenant\AccountMapping;
+
 class AccountMappingTest extends MasterDataTestCase
 {
     public function test_sync_list_and_update_mapping_and_reject_wrong_account_type(): void
@@ -27,11 +29,22 @@ class AccountMappingTest extends MasterDataTestCase
             ->json('data');
 
         $this->assertNotEmpty($list);
+        $depositMapping = collect($list)->firstWhere('mapping_key', 'sales.customer_deposit');
+        $this->assertSame('Uang Muka Pelanggan', $depositMapping['label'] ?? null);
+        $this->assertTrue((bool) ($depositMapping['is_required'] ?? false));
+        $this->assertSame(['liability'], $depositMapping['account_types'] ?? []);
+        $vendorDepositMapping = collect($list)->firstWhere('mapping_key', 'purchase.vendor_deposit');
+        $this->assertSame('Uang Muka Pemasok', $vendorDepositMapping['label'] ?? null);
+        $this->assertTrue((bool) ($vendorDepositMapping['is_required'] ?? false));
+        $this->assertSame(['asset'], $vendorDepositMapping['account_types'] ?? []);
 
         // valid mapping update
         $this->patchJson('/api/master-data/account-mappings/sales.accounts_receivable', [
             'account_id' => $ar['id'],
         ], $ctx['headers'])->assertStatus(200)->assertJsonPath('data.account_id', $ar['id']);
+
+        $this->getJson('/api/master-data/account-mappings', $ctx['headers'])->assertStatus(200);
+        $this->assertSame($ar['id'], AccountMapping::query()->where('mapping_key', 'sales.accounts_receivable')->value('account_id'));
 
         // invalid mapping update due to wrong account type
         $this->patchJson('/api/master-data/account-mappings/sales.accounts_receivable', [
@@ -39,4 +52,3 @@ class AccountMappingTest extends MasterDataTestCase
         ], $ctx['headers'])->assertStatus(422);
     }
 }
-

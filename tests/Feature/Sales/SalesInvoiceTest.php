@@ -3,6 +3,7 @@
 namespace Tests\Feature\Sales;
 
 use App\Models\FiscalYear;
+use App\Models\CompanyAccountingSetting;
 use App\Models\Tenant\AccountMapping;
 use App\Models\Tenant\ChartOfAccount;
 use App\Models\Tenant\Contact;
@@ -30,6 +31,26 @@ class SalesInvoiceTest extends SalesTestCase
             ->assertStatus(201)
             ->assertJsonPath('data.status', 'draft')
             ->assertJsonPath('data.grand_total', 222);
+    }
+
+    public function test_simple_auto_post_without_approval_posts_invoice_on_create(): void
+    {
+        $ctx = $this->setUpTenant();
+        $this->seedMappings();
+        CompanyAccountingSetting::query()->where('company_id', $ctx['company']->id)->update([
+            'transaction_workflow_mode' => 'simple_auto_post',
+            'auto_post_transactions' => true,
+            'approval_enabled' => false,
+        ]);
+
+        $invoice = $this->postJson('/api/sales/invoices', $this->invoicePayload(), $ctx['headers'])
+            ->assertStatus(201)
+            ->assertJsonPath('data.status', 'posted')
+            ->assertJsonPath('data.grand_total', 222)
+            ->json('data');
+
+        $this->assertSame(1, JournalEntry::query()->where('source_type', 'sales_invoice')->where('source_id', $invoice['id'])->count());
+        $this->assertNotNull(SalesInvoice::query()->findOrFail($invoice['id'])->posted_at);
     }
 
     public function test_create_invoice_from_sales_order(): void
@@ -218,27 +239,58 @@ class SalesInvoiceTest extends SalesTestCase
         $this->patchJson('/api/sales/invoices/'.$invoice['id'].'/post', [], $ctx['headers'])
             ->assertStatus(422)
             ->assertJsonPath('code', 'ACCOUNT_MAPPING_MISSING')
-            ->assertJsonPath('message', 'Akun Piutang Usaha belum diatur. Buka Pengaturan > Pemetaan Akun > Sales > Piutang Usaha atau atur Akun Piutang khusus di master data pelanggan.');
+            ->assertJsonPath('message', 'Akun Piutang Usaha belum diatur. Buka Pengaturan > Pemetaan Akun > Sales > Piutang Usaha.');
     }
 
-    public function test_post_invoice_uses_customer_receivable_account_snapshot(): void
+    public function test_post_invoice_uses_transaction_receivable_account_snapshot(): void
+    {
+        $ctx = $this->setUpTenant();
+        $selectedAr = $this->account('1112', 'Piutang Transaksi', 'asset', 'debit');
+        $this->seedSalesPostingMappings(modernReceivable: false, legacyReceivable: false);
+
+        $invoice = $this->postJson('/api/sales/invoices', $this->invoicePayload([
+            'ar_account_id' => $selectedAr,
+            'is_taxable' => false,
+        ]), $ctx['headers'])
+            ->assertStatus(201)
+            ->assertJsonPath('data.ar_account_id', $selectedAr)
+            ->json('data');
+
+        $this->patchJson('/api/sales/invoices/'.$invoice['id'].'/post', [], $ctx['headers'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.ar_account_id', $selectedAr);
+
+        $this->assertSame($selectedAr, $this->journalLineAccount('sales_invoice', $invoice['id']));
+    }
+
+    public function test_create_invoice_rejects_non_asset_receivable_account(): void
+    {
+        $ctx = $this->setUpTenant();
+        $revenueAccount = $this->account('4112', 'Not AR', 'revenue', 'credit');
+
+        $this->postJson('/api/sales/invoices', $this->invoicePayload([
+            'ar_account_id' => $revenueAccount,
+        ]), $ctx['headers'])->assertStatus(422);
+    }
+
+    public function test_post_invoice_ignores_deprecated_customer_receivable_account(): void
     {
         $ctx = $this->setUpTenant();
         $customerAr = $this->account('1110', 'Piutang Customer Khusus', 'asset', 'debit');
         $nextCustomerAr = $this->account('1111', 'Piutang Customer Baru', 'asset', 'debit');
-        $this->seedSalesPostingMappings(modernReceivable: false, legacyReceivable: false);
+        $defaultIds = $this->seedSalesPostingMappings();
         $customerId = $this->createCustomer(['receivable_account_id' => $customerAr]);
         $invoice = $this->postJson('/api/sales/invoices', $this->invoicePayload(['customer_id' => $customerId]), $ctx['headers'])->assertStatus(201)->json('data');
 
         $this->patchJson('/api/sales/invoices/'.$invoice['id'].'/post', [], $ctx['headers'])
             ->assertStatus(200)
-            ->assertJsonPath('data.ar_account_id', $customerAr);
+            ->assertJsonPath('data.ar_account_id', $defaultIds['ar']);
 
-        $this->assertSame($customerAr, (int) SalesInvoice::query()->findOrFail($invoice['id'])->ar_account_id);
-        $this->assertSame($customerAr, (int) DB::connection('tenant')->table('journal_entry_lines')->where('debit', '>', 0)->value('account_id'));
+        $this->assertSame($defaultIds['ar'], (int) SalesInvoice::query()->findOrFail($invoice['id'])->ar_account_id);
+        $this->assertSame($defaultIds['ar'], (int) DB::connection('tenant')->table('journal_entry_lines')->where('debit', '>', 0)->value('account_id'));
 
         Contact::query()->findOrFail($customerId)->update(['receivable_account_id' => $nextCustomerAr]);
-        $this->assertSame($customerAr, (int) SalesInvoice::query()->findOrFail($invoice['id'])->ar_account_id);
+        $this->assertSame($defaultIds['ar'], (int) SalesInvoice::query()->findOrFail($invoice['id'])->ar_account_id);
     }
 
     public function test_post_invoice_uses_default_and_legacy_receivable_mapping_fallbacks(): void
@@ -313,7 +365,7 @@ class SalesInvoiceTest extends SalesTestCase
         $ctx = $this->setUpTenant();
         $customerAr = $this->account('1115', 'Piutang Customer Clearing', 'asset', 'debit');
         $cash = $this->account('1010', 'Kas', 'asset', 'debit');
-        $this->seedSalesPostingMappings();
+        $defaultIds = $this->seedSalesPostingMappings();
         $customerId = $this->createCustomer(['receivable_account_id' => $customerAr]);
         $invoice = $this->postJson('/api/sales/invoices', $this->invoicePayload(['customer_id' => $customerId]), $ctx['headers'])->assertStatus(201)->json('data');
 
@@ -328,19 +380,19 @@ class SalesInvoiceTest extends SalesTestCase
         ], $ctx['headers'])->assertStatus(201)->json('data');
         $this->patchJson('/api/sales/receipts/'.$receipt['id'].'/post', [], $ctx['headers'])->assertStatus(200);
 
-        $this->assertSame($customerAr, $this->journalLineAccount('sales_receipt', $receipt['id'], credit: true));
+        $this->assertSame($defaultIds['ar'], $this->journalLineAccount('sales_receipt', $receipt['id'], credit: true));
 
         $return = $this->postJson('/api/sales/returns/from-invoice/'.$invoice['id'], [], $ctx['headers'])->assertStatus(201)->json('data');
         $this->patchJson('/api/sales/returns/'.$return['id'].'/post', [], $ctx['headers'])->assertStatus(200);
 
-        $this->assertSame($customerAr, $this->journalLineAccount('sales_return', $return['id'], credit: true, description: 'Accounts Receivable'));
+        $this->assertSame($defaultIds['ar'], $this->journalLineAccount('sales_return', $return['id'], credit: true, description: 'Accounts Receivable'));
 
         $order = $this->createSalesOrder($ctx, ['customer_id' => $customerId]);
         $this->createPostedDeposit($order['id'], $customerId, 25);
         $invoiceWithDeposit = $this->postJson('/api/sales/invoices/from-sales-order/'.$order['id'], [], $ctx['headers'])->assertStatus(201)->json('data');
         $this->patchJson('/api/sales/invoices/'.$invoiceWithDeposit['id'].'/post', [], $ctx['headers'])->assertStatus(200);
 
-        $this->assertSame($customerAr, (int) DB::connection('tenant')
+        $this->assertSame($defaultIds['ar'], (int) DB::connection('tenant')
             ->table('journal_entry_lines')
             ->join('journal_entries', 'journal_entry_lines.journal_entry_id', '=', 'journal_entries.id')
             ->where('journal_entries.source_type', 'sales_invoice')
