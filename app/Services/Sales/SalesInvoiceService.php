@@ -40,6 +40,7 @@ class SalesInvoiceService
         private readonly TransactionDateGuardService $dateGuardService,
         private readonly InventorySalesIntegrationService $inventoryIntegration,
         private readonly TransactionVoidEffectService $voidEffectService,
+        private readonly SalesAccountResolverService $accountResolver,
         private readonly ?AuditLogService $auditLogService = null,
     ) {
     }
@@ -75,6 +76,7 @@ class SalesInvoiceService
                 'delivery_order_line_id' => $line['delivery_order_line_id'] ?? null,
                 'proforma_invoice_line_id' => $line['proforma_invoice_line_id'] ?? null,
             ]);
+            $lines = $this->withDraftRevenueSnapshots($lines);
             $totals = $this->calculationService->calculateDocument($lines, $data);
             $headerTotals = $totals;
             unset($headerTotals['lines']);
@@ -115,7 +117,9 @@ class SalesInvoiceService
                 'sales_order_line_id' => $line['sales_order_line_id'] ?? null,
                 'delivery_order_line_id' => $line['delivery_order_line_id'] ?? null,
                 'proforma_invoice_line_id' => $line['proforma_invoice_line_id'] ?? null,
+                'revenue_account_id' => $line['revenue_account_id'] ?? null,
             ]);
+            $lines = $this->withDraftRevenueSnapshots($lines);
             $totals = $this->calculationService->calculateDocument($lines, array_merge($invoice->toArray(), $data));
             $headerTotals = $totals;
             unset($headerTotals['lines']);
@@ -210,7 +214,7 @@ class SalesInvoiceService
             'source_number' => $proforma->proforma_number,
             'source_revision' => $proforma->revision_no,
             'lines' => $proforma->lines->map(fn ($line) => array_merge($line->only([
-                'product_id', 'product_code', 'description', 'quantity', 'unit_id', 'unit_price',
+                'product_id', 'product_code', 'revenue_account_id', 'description', 'quantity', 'unit_id', 'unit_price',
                 'discount_type', 'discount_value', 'tax_id', 'tax_rate', 'warehouse_id',
                 'department_id', 'project_id', 'sort_order', 'metadata',
             ]), [
@@ -248,7 +252,7 @@ class SalesInvoiceService
         }
 
         return DB::connection('tenant')->transaction(function () use ($invoice, $appliedDownPaymentAmount) {
-            $invoice->load('lines');
+            $invoice->load('lines', 'customer');
             $this->validateSourceRemainingQuantities($invoice);
             if ($appliedDownPaymentAmount !== null) {
                 $invoice->applied_down_payment_amount = min($appliedDownPaymentAmount, (float) $invoice->grand_total);
@@ -363,27 +367,85 @@ class SalesInvoiceService
 
     private function createInvoiceJournal(SalesInvoice $invoice): JournalEntry
     {
-        $ar = $this->requiredMapping('sales.accounts_receivable');
-        $revenue = $this->requiredMapping('sales.revenue');
+        $ar = $this->accountResolver->resolveInvoiceReceivableAccountId($invoice);
+        $revenueLines = $this->invoiceRevenueJournalLines($invoice);
         $tax = (float) $invoice->tax_total > 0 ? $this->requiredMapping('sales.tax_output') : null;
 
         $journal = $this->createJournal($invoice, 'Sales invoice '.$invoice->invoice_number);
         $lines = [
             ['account_id' => $ar, 'description' => 'Accounts Receivable', 'debit' => $invoice->grand_total, 'credit' => 0, 'line_order' => 1],
-            ['account_id' => $revenue, 'description' => 'Sales Revenue', 'debit' => 0, 'credit' => $invoice->subtotal_after_discount, 'line_order' => 2],
         ];
+        foreach ($revenueLines as $line) {
+            $lines[] = $line;
+        }
         if ($tax && (float) $invoice->tax_total > 0) {
-            $lines[] = ['account_id' => $tax, 'description' => 'Output Tax', 'debit' => 0, 'credit' => $invoice->tax_total, 'line_order' => 3];
+            $lines[] = ['account_id' => $tax, 'description' => 'Output Tax', 'debit' => 0, 'credit' => $invoice->tax_total, 'line_order' => count($lines) + 1];
         }
         $journal->lines()->createMany($lines);
 
         return $journal->refresh();
     }
 
+    /**
+     * @param array<int,array<string,mixed>> $lines
+     * @return array<int,array<string,mixed>>
+     */
+    private function withDraftRevenueSnapshots(array $lines): array
+    {
+        return array_map(function (array $line): array {
+            $line['revenue_account_id'] = $this->accountResolver->tryRevenueAccountIdForLine($line);
+
+            return $line;
+        }, $lines);
+    }
+
+    /**
+     * @return array<int,array<string,mixed>>
+     */
+    private function invoiceRevenueJournalLines(SalesInvoice $invoice): array
+    {
+        $grouped = [];
+        foreach ($invoice->lines as $line) {
+            $accountId = $this->accountResolver->getRevenueAccountIdForLine($line);
+            if ((int) $line->revenue_account_id !== $accountId) {
+                $line->revenue_account_id = $accountId;
+                $line->save();
+            }
+            $grouped[$accountId] = ($grouped[$accountId] ?? 0.0) + (float) $line->subtotal_after_discount;
+        }
+
+        $baseTotal = array_sum($grouped);
+        if ($baseTotal > 0) {
+            $targetTotal = (float) $invoice->subtotal_after_discount;
+            $allocated = 0.0;
+            $lastAccountId = array_key_last($grouped);
+            foreach ($grouped as $accountId => $amount) {
+                if ($accountId === $lastAccountId) {
+                    $grouped[$accountId] = round($targetTotal - $allocated, 2);
+                    continue;
+                }
+                $scaled = round($amount * ($targetTotal / $baseTotal), 2);
+                $grouped[$accountId] = $scaled;
+                $allocated += $scaled;
+            }
+        }
+
+        $order = 2;
+        return array_map(function (int $accountId, float $amount) use (&$order): array {
+            return [
+                'account_id' => $accountId,
+                'description' => 'Sales Revenue',
+                'debit' => 0,
+                'credit' => $amount,
+                'line_order' => $order++,
+            ];
+        }, array_keys($grouped), array_values($grouped));
+    }
+
     private function createDepositAllocationJournal(SalesInvoice $invoice, float $amount): JournalEntry
     {
         $deposit = $this->requiredMapping('sales.customer_deposit');
-        $ar = $this->requiredMapping('sales.accounts_receivable');
+        $ar = $this->accountResolver->resolveInvoiceReceivableAccountId($invoice);
         $journal = $this->createJournal($invoice, 'Apply customer deposit '.$invoice->invoice_number);
         $journal->lines()->createMany([
             ['account_id' => $deposit, 'description' => 'Customer Deposit', 'debit' => $amount, 'credit' => 0, 'line_order' => 1],

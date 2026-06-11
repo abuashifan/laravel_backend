@@ -35,6 +35,11 @@ class SalesInvoice extends Model
         return $this->belongsTo(Contact::class, 'customer_id');
     }
 
+    public function arAccount(): BelongsTo
+    {
+        return $this->belongsTo(ChartOfAccount::class, 'ar_account_id');
+    }
+
     public function salesOrder(): BelongsTo
     {
         return $this->belongsTo(SalesOrder::class, 'sales_order_id');

@@ -28,6 +28,7 @@ class CustomerDepositService
         private readonly DocumentNumberService $documentNumberService,
         private readonly TransactionDateGuardService $dateGuardService,
         private readonly TransactionVoidEffectService $voidEffectService,
+        private readonly SalesAccountResolverService $accountResolver,
         private readonly ?AuditLogService $auditLogService = null,
     ) {
     }
@@ -143,7 +144,7 @@ class CustomerDepositService
         return DB::connection('tenant')->transaction(function () use ($deposit, $invoice, $amount) {
             $journal = $this->journal($deposit, 'Apply customer deposit '.$invoice->invoice_number, [
                 ['account_id' => $this->mapping('sales.customer_deposit'), 'description' => 'Customer Deposit', 'debit' => $amount, 'credit' => 0, 'line_order' => 1],
-                ['account_id' => $this->mapping('sales.accounts_receivable'), 'description' => 'Accounts Receivable', 'debit' => 0, 'credit' => $amount, 'line_order' => 2],
+                ['account_id' => $this->accountResolver->resolveInvoiceReceivableAccountId($invoice), 'description' => 'Accounts Receivable', 'debit' => 0, 'credit' => $amount, 'line_order' => 2],
             ], $invoice);
             $allocation = CustomerDepositAllocation::query()->create(['customer_deposit_id' => $deposit->id, 'sales_invoice_id' => $invoice->id, 'allocation_date' => $invoice->invoice_date, 'allocated_amount' => $amount, 'journal_entry_id' => $journal->id, 'status' => 'posted', 'created_by' => auth()->id()]);
             $deposit->allocated_amount = (float) $deposit->allocated_amount + $amount; $deposit->remaining_amount = (float) $deposit->remaining_amount - $amount; $deposit->status = $deposit->remaining_amount <= 0 ? 'fully_allocated' : 'partially_allocated'; $deposit->save();

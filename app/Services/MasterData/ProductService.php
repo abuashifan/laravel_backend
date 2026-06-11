@@ -111,7 +111,11 @@ class ProductService
 
         foreach (['sales_account_id', 'purchase_account_id', 'inventory_account_id', 'cogs_account_id'] as $key) {
             if (array_key_exists($key, $data) && $data[$key] !== null) {
-                if (! ChartOfAccount::query()->whereKey((int) $data[$key])->exists()) {
+                $query = ChartOfAccount::query()->whereKey((int) $data[$key])->where('is_active', true);
+                if ($key === 'sales_account_id') {
+                    $query->where('account_type', 'revenue');
+                }
+                if (! $query->exists()) {
                     throw ApiException::make('ACCOUNT_NOT_FOUND', $key.' not found.', 422);
                 }
             }

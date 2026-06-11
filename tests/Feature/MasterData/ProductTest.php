@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\MasterData;
 
+use App\Models\Tenant\ChartOfAccount;
 use App\Models\Tenant\StockBalance;
 use App\Models\Tenant\Warehouse;
 
@@ -94,5 +95,50 @@ class ProductTest extends MasterDataTestCase
             ->assertJsonPath('data.data.0.stock_quantity', 165)
             ->assertJsonPath('data.data.0.quantity_on_hand', 165)
             ->assertJsonPath('data.data.0.quantity_available', 165);
+    }
+
+    public function test_sales_account_must_be_active_revenue_account(): void
+    {
+        $ctx = $this->setUpTenant();
+        $revenue = ChartOfAccount::query()->create([
+            'account_code' => '4100',
+            'account_name' => 'Sales Revenue',
+            'account_type' => 'revenue',
+            'normal_balance' => 'credit',
+            'is_active' => true,
+        ]);
+        $asset = ChartOfAccount::query()->create([
+            'account_code' => '1100',
+            'account_name' => 'Accounts Receivable',
+            'account_type' => 'asset',
+            'normal_balance' => 'debit',
+            'is_active' => true,
+        ]);
+        $inactiveRevenue = ChartOfAccount::query()->create([
+            'account_code' => '4199',
+            'account_name' => 'Inactive Revenue',
+            'account_type' => 'revenue',
+            'normal_balance' => 'credit',
+            'is_active' => false,
+        ]);
+
+        $product = $this->postJson('/api/master-data/products', [
+            'product_name' => 'Revenue Product',
+            'product_type' => 'service',
+            'sales_account_id' => $revenue->id,
+        ], $ctx['headers'])
+            ->assertStatus(201)
+            ->assertJsonPath('data.sales_account_id', $revenue->id)
+            ->json('data');
+
+        $this->postJson('/api/master-data/products', [
+            'product_name' => 'Bad Product',
+            'product_type' => 'service',
+            'sales_account_id' => $asset->id,
+        ], $ctx['headers'])->assertStatus(422);
+
+        $this->patchJson('/api/master-data/products/'.$product['id'], [
+            'sales_account_id' => $inactiveRevenue->id,
+        ], $ctx['headers'])->assertStatus(422);
     }
 }

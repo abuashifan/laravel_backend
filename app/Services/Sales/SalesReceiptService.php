@@ -3,7 +3,6 @@
 namespace App\Services\Sales;
 
 use App\Exceptions\ApiException;
-use App\Models\Tenant\AccountMapping;
 use App\Models\Tenant\JournalEntry;
 use App\Models\Tenant\SalesInvoice;
 use App\Models\Tenant\SalesReceipt;
@@ -21,7 +20,7 @@ class SalesReceiptService
 {
     use HandlesSalesDocuments;
 
-    public function __construct(private readonly TenantContext $tenantContext, private readonly DocumentNumberService $documentNumberService, private readonly TransactionDateGuardService $dateGuardService, private readonly TransactionVoidEffectService $voidEffectService, private readonly ?AuditLogService $auditLogService = null) {}
+    public function __construct(private readonly TenantContext $tenantContext, private readonly DocumentNumberService $documentNumberService, private readonly TransactionDateGuardService $dateGuardService, private readonly TransactionVoidEffectService $voidEffectService, private readonly SalesAccountResolverService $accountResolver, private readonly ?AuditLogService $auditLogService = null) {}
     public function list(array $filters = []): Collection { $q = SalesReceipt::query()->with('customer', 'salesInvoice'); if (! empty($filters['status'])) $q->where('status', (string) $filters['status']); return $q->orderByDesc('receipt_date')->orderByDesc('id')->get(); }
     public function find(int $id): SalesReceipt { return SalesReceipt::query()->with('lines', 'customer', 'salesInvoice')->findOrFail($id); }
 
@@ -82,7 +81,6 @@ class SalesReceiptService
     }
 
     public function updateInvoicePaymentStatus(SalesInvoice $invoice): SalesInvoice { $invoice->status = (float) $invoice->balance_due <= 0 ? 'paid' : ((float) $invoice->paid_amount > 0 ? 'partially_paid' : $invoice->status); $invoice->save(); return $invoice->refresh(); }
-    private function mapping(string $key): int { $mapping = AccountMapping::query()->where('mapping_key', $key)->where('is_active', true)->first(); if (! $mapping?->account_id) throw ApiException::make('ACCOUNT_MAPPING_MISSING', 'Required account mapping is missing: '.$key, 422); return (int) $mapping->account_id; }
     private function guardDate(string $date, string $action = 'post'): void { $check = $this->dateGuardService->check($date, $action, 'sales'); if ($check->denied()) { $arr = $check->toArray(); throw ApiException::make((string) $arr['code'], (string) $arr['message'], 422, (array) $arr['reasons'], (array) $arr['meta']); } }
-    private function journal(SalesReceipt $receipt, SalesInvoice $invoice): JournalEntry { $company = $this->tenantContext->company(); if (! $company) throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422); $journal = JournalEntry::query()->create(['journal_number' => $this->documentNumberService->generate($company, DocumentType::JOURNAL_ENTRY, (string) $receipt->receipt_date), 'journal_date' => $receipt->receipt_date, 'description' => 'Sales receipt '.$receipt->receipt_number, 'status' => 'posted', 'revision_no' => 1, 'source_type' => 'sales_receipt', 'source_id' => $receipt->id, 'source_number' => $receipt->receipt_number, 'source_revision' => 1, 'source_module' => 'sales', 'is_system_generated' => true, 'created_by' => auth()->id(), 'posted_by' => auth()->id(), 'posted_at' => now()]); $journal->lines()->createMany([['account_id' => $receipt->cash_bank_account_id, 'description' => 'Cash/Bank', 'debit' => $receipt->amount, 'credit' => 0, 'line_order' => 1], ['account_id' => $this->mapping('sales.accounts_receivable'), 'description' => 'Accounts Receivable', 'debit' => 0, 'credit' => $receipt->amount, 'line_order' => 2]]); return $journal->refresh(); }
+    private function journal(SalesReceipt $receipt, SalesInvoice $invoice): JournalEntry { $company = $this->tenantContext->company(); if (! $company) throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422); $ar = $this->accountResolver->resolveInvoiceReceivableAccountId($invoice); $journal = JournalEntry::query()->create(['journal_number' => $this->documentNumberService->generate($company, DocumentType::JOURNAL_ENTRY, (string) $receipt->receipt_date), 'journal_date' => $receipt->receipt_date, 'description' => 'Sales receipt '.$receipt->receipt_number, 'status' => 'posted', 'revision_no' => 1, 'source_type' => 'sales_receipt', 'source_id' => $receipt->id, 'source_number' => $receipt->receipt_number, 'source_revision' => 1, 'source_module' => 'sales', 'is_system_generated' => true, 'created_by' => auth()->id(), 'posted_by' => auth()->id(), 'posted_at' => now()]); $journal->lines()->createMany([['account_id' => $receipt->cash_bank_account_id, 'description' => 'Cash/Bank', 'debit' => $receipt->amount, 'credit' => 0, 'line_order' => 1], ['account_id' => $ar, 'description' => 'Accounts Receivable', 'debit' => 0, 'credit' => $receipt->amount, 'line_order' => 2]]); return $journal->refresh(); }
 }

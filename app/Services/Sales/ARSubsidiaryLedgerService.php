@@ -34,6 +34,16 @@ class ARSubsidiaryLedgerService
             ->groupBy('customer_id')
             ->map(function (Collection $rows): array {
                 $last = $rows->last();
+                $accounts = $rows
+                    ->filter(fn (array $row): bool => ! empty($row['ar_account_id']))
+                    ->map(fn (array $row): array => [
+                        'account_id' => $row['ar_account_id'],
+                        'account_code' => $row['ar_account_code'],
+                        'account_name' => $row['ar_account_name'],
+                    ])
+                    ->unique('account_id')
+                    ->values()
+                    ->all();
 
                 return [
                     'customer_id' => $last['customer_id'],
@@ -41,6 +51,7 @@ class ARSubsidiaryLedgerService
                     'debit' => round((float) $rows->sum('debit'), 2),
                     'credit' => round((float) $rows->sum('credit'), 2),
                     'balance' => round((float) $rows->sum('debit') - (float) $rows->sum('credit'), 2),
+                    'ar_accounts' => $accounts,
                 ];
             })
             ->values()
@@ -50,6 +61,7 @@ class ARSubsidiaryLedgerService
     public function openInvoices(array $filters = []): array
     {
         return $this->invoiceBaseQuery($filters)
+            ->with('arAccount')
             ->where('balance_due', '>', 0)
             ->orderBy('due_date')
             ->orderBy('invoice_date')
@@ -61,6 +73,9 @@ class ARSubsidiaryLedgerService
                 'due_date' => optional($invoice->due_date)->toDateString(),
                 'customer_id' => $invoice->customer_id,
                 'customer_name' => $invoice->customer?->name,
+                'ar_account_id' => $invoice->ar_account_id,
+                'ar_account_code' => $invoice->arAccount?->account_code,
+                'ar_account_name' => $invoice->arAccount?->account_name,
                 'grand_total' => (float) $invoice->grand_total,
                 'paid_amount' => (float) $invoice->paid_amount,
                 'returned_amount' => (float) $invoice->returned_amount,
@@ -99,6 +114,7 @@ class ARSubsidiaryLedgerService
     private function invoiceMovements(array $filters): array
     {
         return $this->invoiceBaseQuery($filters)
+            ->with('arAccount')
             ->get()
             ->map(fn (SalesInvoice $invoice): array => $this->movement(
                 optional($invoice->invoice_date)->toDateString(),
@@ -112,6 +128,9 @@ class ARSubsidiaryLedgerService
                 0.0,
                 'sales_invoice',
                 $invoice->id,
+                $invoice->ar_account_id,
+                $invoice->arAccount?->account_code,
+                $invoice->arAccount?->account_name,
             ))
             ->all();
     }
@@ -119,7 +138,7 @@ class ARSubsidiaryLedgerService
     private function receiptMovements(array $filters): array
     {
         return SalesReceipt::query()
-            ->with('customer')
+            ->with('customer', 'salesInvoice.arAccount')
             ->where('status', 'posted')
             ->whereNotNull('posted_at')
             ->when($filters['customer_id'] ?? null, fn ($query, $customerId) => $query->where('customer_id', $customerId))
@@ -127,26 +146,33 @@ class ARSubsidiaryLedgerService
             ->when($filters['start_date'] ?? null, fn ($query, $date) => $query->where('receipt_date', '>=', $date))
             ->when($this->endDate($filters), fn ($query, $date) => $query->where('receipt_date', '<=', $date))
             ->get()
-            ->map(fn (SalesReceipt $receipt): array => $this->movement(
-                optional($receipt->receipt_date)->toDateString(),
-                $receipt->customer_id,
-                $receipt->customer?->name,
-                'sales_receipt',
-                $receipt->id,
-                $receipt->receipt_number,
-                'Sales receipt '.$receipt->receipt_number,
-                0.0,
-                (float) $receipt->amount,
-                'sales_receipt',
-                $receipt->id,
-            ))
+            ->map(function (SalesReceipt $receipt): array {
+                $invoice = $receipt->salesInvoice;
+
+                return $this->movement(
+                    optional($receipt->receipt_date)->toDateString(),
+                    $receipt->customer_id,
+                    $receipt->customer?->name,
+                    'sales_receipt',
+                    $receipt->id,
+                    $receipt->receipt_number,
+                    'Sales receipt '.$receipt->receipt_number,
+                    0.0,
+                    (float) $receipt->amount,
+                    'sales_receipt',
+                    $receipt->id,
+                    $invoice?->ar_account_id,
+                    $invoice?->arAccount?->account_code,
+                    $invoice?->arAccount?->account_name,
+                );
+            })
             ->all();
     }
 
     private function depositAllocationMovements(array $filters): array
     {
         return CustomerDepositAllocation::query()
-            ->with('salesInvoice.customer')
+            ->with('salesInvoice.customer', 'salesInvoice.arAccount')
             ->where('status', 'posted')
             ->whereNull('voided_at')
             ->whereHas('salesInvoice', fn ($query) => $query->whereNotIn('status', ['void'])->whereNotNull('posted_at'))
@@ -170,6 +196,9 @@ class ARSubsidiaryLedgerService
                     (float) $allocation->allocated_amount,
                     'customer_deposit_allocation',
                     $allocation->id,
+                    $invoice?->ar_account_id,
+                    $invoice?->arAccount?->account_code,
+                    $invoice?->arAccount?->account_name,
                 );
             })
             ->all();
@@ -178,7 +207,7 @@ class ARSubsidiaryLedgerService
     private function returnMovements(array $filters): array
     {
         return SalesReturn::query()
-            ->with('customer')
+            ->with('customer', 'salesInvoice.arAccount')
             ->where('status', 'posted')
             ->whereNotNull('posted_at')
             ->when($filters['customer_id'] ?? null, fn ($query, $customerId) => $query->where('customer_id', $customerId))
@@ -186,19 +215,26 @@ class ARSubsidiaryLedgerService
             ->when($filters['start_date'] ?? null, fn ($query, $date) => $query->where('return_date', '>=', $date))
             ->when($this->endDate($filters), fn ($query, $date) => $query->where('return_date', '<=', $date))
             ->get()
-            ->map(fn (SalesReturn $return): array => $this->movement(
-                optional($return->return_date)->toDateString(),
-                $return->customer_id,
-                $return->customer?->name,
-                'sales_return',
-                $return->id,
-                $return->return_number,
-                'Sales return '.$return->return_number,
-                0.0,
-                (float) $return->grand_total,
-                'sales_return',
-                $return->id,
-            ))
+            ->map(function (SalesReturn $return): array {
+                $invoice = $return->salesInvoice;
+
+                return $this->movement(
+                    optional($return->return_date)->toDateString(),
+                    $return->customer_id,
+                    $return->customer?->name,
+                    'sales_return',
+                    $return->id,
+                    $return->return_number,
+                    'Sales return '.$return->return_number,
+                    0.0,
+                    (float) $return->grand_total,
+                    'sales_return',
+                    $return->id,
+                    $invoice?->ar_account_id,
+                    $invoice?->arAccount?->account_code,
+                    $invoice?->arAccount?->account_name,
+                );
+            })
             ->all();
     }
 
@@ -216,7 +252,7 @@ class ARSubsidiaryLedgerService
             ->when($this->endDate($filters), fn ($query, $date) => $query->where('invoice_date', '<=', $date));
     }
 
-    private function movement(?string $date, ?int $customerId, ?string $customerName, string $documentType, int $documentId, ?string $documentNumber, string $description, float $debit, float $credit, string $sourceType, int $sourceId): array
+    private function movement(?string $date, ?int $customerId, ?string $customerName, string $documentType, int $documentId, ?string $documentNumber, string $description, float $debit, float $credit, string $sourceType, int $sourceId, int|string|null $arAccountId = null, ?string $arAccountCode = null, ?string $arAccountName = null): array
     {
         return [
             'date' => $date,
@@ -231,6 +267,9 @@ class ARSubsidiaryLedgerService
             'balance' => 0.0,
             'source_type' => $sourceType,
             'source_id' => $sourceId,
+            'ar_account_id' => $arAccountId === null ? null : (int) $arAccountId,
+            'ar_account_code' => $arAccountCode,
+            'ar_account_name' => $arAccountName,
         ];
     }
 

@@ -5,6 +5,7 @@ namespace App\Services\Sales;
 use App\Exceptions\ApiException;
 use App\Models\Tenant\AccountMapping;
 use App\Models\Tenant\JournalEntryLine;
+use App\Models\Tenant\SalesInvoice;
 
 class ARReconciliationService
 {
@@ -28,10 +29,13 @@ class ARReconciliationService
 
     public function getGLARBalance(array $filters = []): float
     {
-        $accountId = $this->arAccountId();
+        $accountIds = $this->arAccountIds();
+        if ($accountIds === []) {
+            return 0.0;
+        }
 
         $query = JournalEntryLine::query()
-            ->where('account_id', $accountId)
+            ->whereIn('account_id', $accountIds)
             ->whereHas('journalEntry', function ($journal) use ($filters) {
                 $journal->where('status', 'posted')
                     ->where('is_obsolete', false)
@@ -50,17 +54,31 @@ class ARReconciliationService
         return round((float) collect($movements)->sum('debit') - (float) collect($movements)->sum('credit'), 2);
     }
 
-    private function arAccountId(): int
+    /**
+     * @return array<int,int>
+     */
+    private function arAccountIds(): array
     {
-        $mapping = AccountMapping::query()
-            ->where('mapping_key', 'sales.accounts_receivable')
-            ->where('is_active', true)
-            ->first();
+        $snapshotIds = SalesInvoice::query()
+            ->whereNotNull('ar_account_id')
+            ->whereNotIn('status', ['draft', 'approved', 'void'])
+            ->pluck('ar_account_id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
 
-        if (! $mapping?->account_id) {
+        $mappingIds = AccountMapping::query()
+            ->whereIn('mapping_key', ['sales.accounts_receivable', 'accounts_receivable'])
+            ->where('is_active', true)
+            ->whereNotNull('account_id')
+            ->pluck('account_id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        $ids = array_values(array_unique(array_filter([...$snapshotIds, ...$mappingIds])));
+        if ($ids === []) {
             throw ApiException::make('ACCOUNT_MAPPING_MISSING', 'Required account mapping is missing: sales.accounts_receivable', 422);
         }
 
-        return (int) $mapping->account_id;
+        return $ids;
     }
 }

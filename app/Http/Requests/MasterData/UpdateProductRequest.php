@@ -3,6 +3,7 @@
 namespace App\Http\Requests\MasterData;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class UpdateProductRequest extends FormRequest
 {
@@ -22,7 +23,7 @@ class UpdateProductRequest extends FormRequest
             'is_stock_item' => ['nullable', 'boolean'],
             'is_active' => ['nullable', 'boolean'],
             'description' => ['nullable', 'string'],
-            'sales_account_id' => ['nullable', 'integer'],
+            'sales_account_id' => ['nullable', 'integer', Rule::exists('tenant.chart_of_accounts', 'id')->where('account_type', 'revenue')->where('is_active', true)],
             'purchase_account_id' => ['nullable', 'integer'],
             'inventory_account_id' => ['nullable', 'integer'],
             'cogs_account_id' => ['nullable', 'integer'],
@@ -46,4 +47,3 @@ class UpdateProductRequest extends FormRequest
         });
     }
 }
-

@@ -72,6 +72,49 @@ class AccountsReceivableLedgerTest extends SalesTestCase
             ->assertJsonPath('data.is_reconciled', false);
     }
 
+    public function test_reconciliation_uses_invoice_receivable_snapshots_across_multiple_ar_accounts(): void
+    {
+        $ctx = $this->setUpTenant();
+        $cash = $this->seedMappings();
+        $arA = $this->account('1110', 'AR Customer A', 'asset', 'debit');
+        $arB = $this->account('1120', 'AR Customer B', 'asset', 'debit');
+        $customerA = $this->createCustomer(['name' => 'Customer AR A', 'receivable_account_id' => $arA]);
+        $customerB = $this->createCustomer(['name' => 'Customer AR B', 'receivable_account_id' => $arB]);
+
+        $invoiceA = $this->postJson('/api/sales/invoices', [
+            'customer_id' => $customerA,
+            'invoice_date' => '2026-05-20',
+            'due_date' => '2026-06-20',
+            'lines' => [['description' => 'Service A', 'quantity' => 1, 'unit_price' => 100]],
+        ], $ctx['headers'])->assertStatus(201)->json('data');
+        $this->patchJson('/api/sales/invoices/'.$invoiceA['id'].'/post', [], $ctx['headers'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.ar_account_id', $arA);
+
+        $invoiceB = $this->postJson('/api/sales/invoices', [
+            'customer_id' => $customerB,
+            'invoice_date' => '2026-05-20',
+            'due_date' => '2026-06-20',
+            'lines' => [['description' => 'Service B', 'quantity' => 1, 'unit_price' => 200]],
+        ], $ctx['headers'])->assertStatus(201)->json('data');
+        $this->patchJson('/api/sales/invoices/'.$invoiceB['id'].'/post', [], $ctx['headers'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.ar_account_id', $arB);
+
+        $this->postReceipt($ctx, $cash, SalesInvoice::query()->with('lines')->findOrFail($invoiceA['id'])->toArray(), 40);
+
+        $this->getJson('/api/sales/ar/reconciliation', $ctx['headers'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.is_reconciled', true)
+            ->assertJsonPath('data.subsidiary_balance', 260)
+            ->assertJsonPath('data.gl_ar_balance', 260);
+
+        $this->getJson('/api/sales/ar/open-invoices', $ctx['headers'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.0.ar_account_id', $arA)
+            ->assertJsonPath('data.1.ar_account_id', $arB);
+    }
+
     private function postedInvoice(array $ctx, float $amount): array
     {
         $invoice = $this->postJson('/api/sales/invoices', [
