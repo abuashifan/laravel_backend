@@ -14,6 +14,7 @@ use App\Services\Purchase\Concerns\HandlesPurchaseDocuments;
 use App\Services\Tenant\TenantContext;
 use App\Services\Transactions\TransactionDateGuardService;
 use App\Services\Transactions\TransactionVoidEffectService;
+use App\Services\Validation\BusinessReferenceValidator;
 use App\Services\Audit\AuditLogService;
 use App\Support\DocumentNumbering\DocumentType;
 use App\Services\MasterData\AccountMappingStorageService;
@@ -104,7 +105,9 @@ class VendorDepositService
         }
 
         $amount = (float) $data['amount'];
+        if ($amount <= 0) throw ApiException::make('AMOUNT_INVALID', 'Amount must be greater than zero.', 422);
         $this->ensureVendorExists((int) $data['vendor_id']);
+        $this->ensureCashBankAccount((int) $data['cash_bank_account_id']);
 
         $deposit = VendorDeposit::query()->create(array_merge($data, [
             'deposit_number' => $this->documentNumberService->generate($company, DocumentType::VENDOR_DEPOSIT, (string) $data['deposit_date']),
@@ -138,8 +141,9 @@ class VendorDepositService
 
     public function post(VendorDeposit $deposit): VendorDeposit
     {
-        if ($deposit->status === 'posted') return $deposit;
+        if ($deposit->status === 'posted') throw ApiException::make('DOCUMENT_ALREADY_POSTED', 'Document has already been posted.', 422);
         $this->guardDate((string) $deposit->deposit_date);
+        $this->ensureCashBankAccount((int) $deposit->cash_bank_account_id);
 
         return DB::connection('tenant')->transaction(function () use ($deposit) {
             $journal = $this->journal($deposit, 'Vendor deposit '.$deposit->deposit_number, [
@@ -324,6 +328,7 @@ class VendorDepositService
                 422
             );
         }
+        app(BusinessReferenceValidator::class)->account((int) $mapping->account_id, $key === 'purchase.vendor_deposit' ? ['asset'] : null);
         return (int) $mapping->account_id;
     }
 
@@ -333,6 +338,14 @@ class VendorDepositService
         if ($check->denied()) {
             $arr = $check->toArray();
             throw ApiException::make((string) $arr['code'], (string) $arr['message'], 422, (array) $arr['reasons'], (array) $arr['meta']);
+        }
+    }
+
+    private function ensureCashBankAccount(int $accountId): void
+    {
+        $account = app(BusinessReferenceValidator::class)->account($accountId, ['asset']);
+        if (! $account->isCashBank()) {
+            throw ApiException::make('CASH_BANK_ACCOUNT_NOT_VALID', 'Cash/bank account must be active cash or bank account.', 422);
         }
     }
 

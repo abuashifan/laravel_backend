@@ -74,9 +74,7 @@ class StockMovementService
 
             $order = 0;
             foreach ($lines as $ln) {
-                $product = Product::query()->findOrFail((int) $ln['product_id']);
-                $this->validation->validateProductIsStockable($product);
-                $this->validation->validateWarehouseExists((int) $ln['warehouse_id']);
+                $product = $this->validation->validateStockMovementLine($ln);
 
                 $qty = $this->qtyService->normalizeQuantity($ln['quantity']);
                 $unitCost = (float) ($ln['unit_cost'] ?? 0);
@@ -115,7 +113,9 @@ class StockMovementService
 
     public function post(StockMovement $movement): StockMovement
     {
-        if ($movement->status === 'posted') return $movement;
+        if ($movement->status === 'posted') {
+            throw ApiException::make('DOCUMENT_ALREADY_POSTED', 'Document has already been posted.', 422);
+        }
 
         $this->validation->validatePeriodNotLocked((string) $movement->movement_date);
 

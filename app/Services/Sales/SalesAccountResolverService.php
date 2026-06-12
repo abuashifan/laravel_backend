@@ -116,6 +116,7 @@ class SalesAccountResolverService
             ->whereKey($accountId)
             ->where('account_type', $accountType)
             ->where('is_active', true)
+            ->whereDoesntHave('children')
             ->exists();
     }
 }

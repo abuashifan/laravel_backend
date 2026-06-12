@@ -13,6 +13,7 @@ use App\Services\Transactions\TransactionDateGuardService;
 use App\Services\Transactions\TransactionVoidEffectService;
 use App\Services\Purchase\Concerns\HandlesPurchaseDocuments;
 use App\Services\Tenant\TenantContext;
+use App\Services\Validation\BusinessReferenceValidator;
 use App\Support\DocumentNumbering\DocumentType;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -128,6 +129,7 @@ class GoodsReceiptService
         return DB::connection('tenant')->transaction(function () use ($goodsReceipt) {
             $goodsReceipt->load('lines');
             $this->validateRemainingQuantities($goodsReceipt);
+            $this->validateStockWarehousesForPurchaseLines($goodsReceipt->lines->toArray());
 
             foreach ($goodsReceipt->lines as $line) {
                 if (! $line->purchase_order_line_id) continue;
@@ -203,7 +205,7 @@ class GoodsReceiptService
     private function normalizeReceiptLines(array $lines): array
     {
         return array_values(array_map(function (array $line, int $index): array {
-            return [
+            $normalized = [
                 'purchase_order_line_id' => $line['purchase_order_line_id'] ?? null,
                 'product_id' => $line['product_id'] ?? null,
                 'product_code' => $line['product_code'] ?? null,
@@ -219,6 +221,9 @@ class GoodsReceiptService
                 'sort_order' => $line['sort_order'] ?? $index,
                 'metadata' => $line['metadata'] ?? null,
             ];
+            app(BusinessReferenceValidator::class)->transactionalLine($normalized);
+
+            return $normalized;
         }, $lines, array_keys($lines)));
     }
 

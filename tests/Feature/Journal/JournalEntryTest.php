@@ -4,6 +4,7 @@ namespace Tests\Feature\Journal;
 
 use App\Models\Company;
 use App\Models\CompanyUser;
+use App\Models\Tenant\AccountMapping;
 use App\Models\Tenant\JournalEntry;
 use App\Models\TenantDatabase;
 use App\Models\User;
@@ -92,6 +93,33 @@ class JournalEntryTest extends JournalTestCase
         $res = $this->postJson('/api/journals', $payload, $ctx['headers']);
         $res->assertStatus(422);
         $res->assertJsonPath('code', 'VALIDATION_ERROR');
+    }
+
+    public function test_manual_journal_to_control_account_is_rejected(): void
+    {
+        $ctx = $this->setUpTenant(role: 'owner', accountingSettingOverrides: [
+            'transaction_workflow_mode' => 'draft_then_post',
+            'auto_post_transactions' => false,
+        ]);
+
+        AccountMapping::query()->create([
+            'mapping_key' => 'sales.accounts_receivable',
+            'module' => 'sales',
+            'account_id' => $ctx['accounts']['debit'],
+            'is_required' => true,
+            'is_active' => true,
+        ]);
+
+        $this->postJson('/api/journals', [
+            'journal_date' => now()->toDateString(),
+            'description' => 'Control Account',
+            'lines' => [
+                ['account_id' => $ctx['accounts']['debit'], 'debit' => 100],
+                ['account_id' => $ctx['accounts']['credit'], 'credit' => 100],
+            ],
+        ], $ctx['headers'])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'VALIDATION_ERROR');
     }
 
     public function test_journal_index_hides_void_by_default(): void
@@ -226,4 +254,3 @@ class JournalEntryTest extends JournalTestCase
         $this->getJson("/api/journals/{$journalId}", $ctx1['headers'])->assertStatus(200);
     }
 }
-

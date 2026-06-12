@@ -24,6 +24,7 @@ use App\Services\Tenant\TenantContext;
 use App\Services\Transactions\PaymentTermDueDateService;
 use App\Services\Transactions\TransactionDateGuardService;
 use App\Services\Transactions\TransactionVoidEffectService;
+use App\Services\Validation\BusinessReferenceValidator;
 use App\Support\DocumentNumbering\DocumentType;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -69,6 +70,7 @@ class SalesInvoiceService
         }
 
         $this->ensureCustomerExists((int) $data['customer_id']);
+        app(BusinessReferenceValidator::class)->paymentTerm(isset($data['payment_term_id']) ? (int) $data['payment_term_id'] : null);
         $data = $this->paymentTermDueDateService->apply($data, 'invoice_date', (int) $data['customer_id']);
 
         return DB::connection('tenant')->transaction(function () use ($company, $data) {
@@ -116,6 +118,7 @@ class SalesInvoiceService
             'invoice_date',
             (int) ($data['customer_id'] ?? $invoice->customer_id)
         );
+        app(BusinessReferenceValidator::class)->paymentTerm(isset($data['payment_term_id']) ? (int) $data['payment_term_id'] : null);
 
         return DB::connection('tenant')->transaction(function () use ($invoice, $data) {
             $lines = $this->normalizeLines((array) ($data['lines'] ?? $invoice->lines()->get()->toArray()), fn (array $line): array => [
@@ -259,6 +262,9 @@ class SalesInvoiceService
         return DB::connection('tenant')->transaction(function () use ($invoice, $appliedDownPaymentAmount) {
             $invoice->load('lines', 'customer');
             $this->validateSourceRemainingQuantities($invoice);
+            if (! $invoice->delivery_order_id) {
+                $this->validateStockWarehousesForSalesLines($invoice->lines->toArray());
+            }
             if ($appliedDownPaymentAmount !== null) {
                 $invoice->applied_down_payment_amount = min($appliedDownPaymentAmount, (float) $invoice->grand_total);
             }
@@ -488,12 +494,7 @@ class SalesInvoiceService
 
     private function requiredMapping(string $key): int
     {
-        $mapping = AccountMapping::query()->where('mapping_key', $key)->where('is_active', true)->first();
-        if (! $mapping?->account_id) {
-            throw ApiException::make('ACCOUNT_MAPPING_MISSING', 'Required account mapping is missing: '.$key, 422);
-        }
-
-        return (int) $mapping->account_id;
+        return app(BusinessReferenceValidator::class)->accountMapping($key, $key === 'sales.tax_output' ? ['liability'] : null);
     }
 
     private function updateSourceProgress(SalesInvoice $invoice): void

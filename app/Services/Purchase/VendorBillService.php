@@ -23,6 +23,7 @@ use App\Services\Tenant\TenantContext;
 use App\Services\Transactions\PaymentTermDueDateService;
 use App\Services\Transactions\TransactionDateGuardService;
 use App\Services\Transactions\TransactionVoidEffectService;
+use App\Services\Validation\BusinessReferenceValidator;
 use App\Support\DocumentNumbering\DocumentType;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -63,6 +64,7 @@ class VendorBillService
         $company = $this->tenantContext->company();
         if (! $company) throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
         $this->ensureVendorExists((int) $data['vendor_id']);
+        app(BusinessReferenceValidator::class)->paymentTerm(isset($data['payment_term_id']) ? (int) $data['payment_term_id'] : null);
         $data = $this->paymentTermDueDateService->apply($data, 'bill_date', (int) $data['vendor_id']);
 
         return DB::connection('tenant')->transaction(function () use ($company, $data) {
@@ -103,6 +105,7 @@ class VendorBillService
             'bill_date',
             (int) ($data['vendor_id'] ?? $bill->vendor_id)
         );
+        app(BusinessReferenceValidator::class)->paymentTerm(isset($data['payment_term_id']) ? (int) $data['payment_term_id'] : null);
 
         return DB::connection('tenant')->transaction(function () use ($bill, $data) {
             $lines = $this->normalizePurchaseLines((array) ($data['lines'] ?? $bill->lines()->get()->toArray()), fn (array $line): array => [
@@ -192,6 +195,9 @@ class VendorBillService
         return DB::connection('tenant')->transaction(function () use ($bill, $appliedVendorDepositAmount) {
             $bill->load('lines.product', 'vendor');
             $this->validateSourceRemainingQuantities($bill);
+            if (! $bill->goods_receipt_id) {
+                $this->validateStockWarehousesForPurchaseLines($bill->lines->toArray());
+            }
             $requestedDepositAmount = min((float) ($appliedVendorDepositAmount ?? $bill->applied_vendor_deposit_amount), (float) $bill->grand_total);
             $journal = $this->createBillJournal($bill);
             $bill->journal_entry_id = $journal->id;
@@ -327,9 +333,7 @@ class VendorBillService
 
     private function requiredMapping(string $key): int
     {
-        $mapping = AccountMapping::query()->where('mapping_key', $key)->where('is_active', true)->first();
-        if (! $mapping?->account_id) throw ApiException::make('ACCOUNT_MAPPING_MISSING', 'Required account mapping is missing: '.$key, 422);
-        return (int) $mapping->account_id;
+        return app(BusinessReferenceValidator::class)->accountMapping($key, $key === 'purchase.tax_input' ? ['asset'] : null);
     }
 
     private function withDraftPurchaseExpenseSnapshots(array $lines): array

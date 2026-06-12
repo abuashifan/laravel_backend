@@ -26,6 +26,7 @@ class StockMovementJournalService
             'purchase_return_out' => $this->createPurchaseReturnOutJournal($movement),
             'sales_out' => $this->createCogsJournalForSalesOut($movement),
             'sales_return_in' => $this->createReturnJournal($movement),
+            'opname_in', 'opname_out' => $this->createStockOpnameJournal($movement),
             'adjustment_in', 'adjustment_out' => $this->createAdjustmentJournal($movement),
             'opening_stock' => $this->createOpeningStockJournal($movement),
             default => null,
@@ -122,6 +123,52 @@ class StockMovementJournalService
         ], 'Inventory adjustment out journal');
     }
 
+    public function createStockOpnameJournal(StockMovement $movement): JournalEntry
+    {
+        $movementType = (string) $movement->movement_type;
+        $direction = (string) $movement->direction;
+
+        if (! in_array($direction, ['in', 'out'], true)) {
+            throw ApiException::make('INVALID_STOCK_MOVEMENT_DIRECTION', 'Invalid stock opname movement direction.', 422);
+        }
+
+        $offsetAccount = $movementType === 'opname_in'
+            ? $this->mappingService->getStockAdjustmentGainAccount()
+            : $this->mappingService->getStockAdjustmentLossAccount();
+
+        if (! $offsetAccount) {
+            $key = $movementType === 'opname_in' ? 'inventory.adjustment_gain' : 'inventory.adjustment_loss';
+            $message = $this->mappingService->missingMappingMessage($key);
+            throw ApiException::make('ACCOUNT_MAPPING_MISSING', $message, 422, ['account_mapping' => [$message]]);
+        }
+
+        if ($movementType === 'opname_in') {
+            if ($direction === 'in') {
+                $lines = $this->opnameInventoryDebitLines($movement);
+                array_push($lines, ...$this->opnameOffsetLines($movement, $offsetAccount, 'credit', 'Stock Opname Adjustment Gain', count($lines) + 1));
+
+                return $this->createSimpleJournal($movement, $lines, 'Stock Opname Increase -');
+            }
+
+            $lines = $this->opnameOffsetLines($movement, $offsetAccount, 'debit', 'Reverse Stock Opname Adjustment Gain', 1);
+            array_push($lines, ...$this->opnameInventoryCreditLines($movement, count($lines) + 1));
+
+            return $this->createSimpleJournal($movement, $lines, 'Reversal Stock Opname Increase -');
+        }
+
+        if ($direction === 'out') {
+            $lines = $this->opnameOffsetLines($movement, $offsetAccount, 'debit', 'Stock Opname Adjustment Loss', 1);
+            array_push($lines, ...$this->opnameInventoryCreditLines($movement, count($lines) + 1));
+
+            return $this->createSimpleJournal($movement, $lines, 'Stock Opname Decrease -');
+        }
+
+        $lines = $this->opnameInventoryDebitLines($movement);
+        array_push($lines, ...$this->opnameOffsetLines($movement, $offsetAccount, 'credit', 'Reverse Stock Opname Adjustment Loss', count($lines) + 1));
+
+        return $this->createSimpleJournal($movement, $lines, 'Reversal Stock Opname Decrease -');
+    }
+
     public function createOpeningStockJournal(StockMovement $movement): ?JournalEntry
     {
         $inventory = $this->mappingService->getInventoryAccount();
@@ -184,6 +231,83 @@ class StockMovementJournalService
                 ];
             })
             ->all();
+    }
+
+    private function opnameInventoryDebitLines(StockMovement $movement, int $startOrder = 1): array
+    {
+        return $this->opnameInventoryLines($movement, 'debit', $startOrder);
+    }
+
+    private function opnameInventoryCreditLines(StockMovement $movement, int $startOrder = 1): array
+    {
+        return $this->opnameInventoryLines($movement, 'credit', $startOrder);
+    }
+
+    private function opnameInventoryLines(StockMovement $movement, string $side, int $startOrder): array
+    {
+        $movement->loadMissing('lines.product');
+
+        return $movement->lines
+            ->groupBy(function ($line): string {
+                return implode('|', [
+                    $this->resolveOpnameInventoryAccountId($line),
+                    $line->department_id ?: '',
+                    $line->project_id ?: '',
+                ]);
+            })
+            ->values()
+            ->map(function ($lines, int $index) use ($side, $startOrder): array {
+                $accountId = $this->resolveOpnameInventoryAccountId($lines->first());
+                $amount = round((float) $lines->sum('total_cost'), 2);
+
+                return [
+                    'account_id' => $accountId,
+                    'description' => 'Inventory',
+                    'debit' => $side === 'debit' ? $amount : 0,
+                    'credit' => $side === 'credit' ? $amount : 0,
+                    'department_id' => $lines->first()->department_id,
+                    'project_id' => $lines->first()->project_id,
+                    'line_order' => $startOrder + $index,
+                ];
+            })
+            ->all();
+    }
+
+    private function opnameOffsetLines(StockMovement $movement, int $accountId, string $side, string $description, int $startOrder): array
+    {
+        $movement->loadMissing('lines');
+
+        return $movement->lines
+            ->groupBy(fn ($line): string => implode('|', [$line->department_id ?: '', $line->project_id ?: '']))
+            ->values()
+            ->map(function ($lines, int $index) use ($accountId, $side, $description, $startOrder): array {
+                $amount = round((float) $lines->sum('total_cost'), 2);
+
+                return [
+                    'account_id' => $accountId,
+                    'description' => $description,
+                    'debit' => $side === 'debit' ? $amount : 0,
+                    'credit' => $side === 'credit' ? $amount : 0,
+                    'department_id' => $lines->first()->department_id,
+                    'project_id' => $lines->first()->project_id,
+                    'line_order' => $startOrder + $index,
+                ];
+            })
+            ->all();
+    }
+
+    private function resolveOpnameInventoryAccountId($line): int
+    {
+        if ($line->inventory_account_id) {
+            return (int) $line->inventory_account_id;
+        }
+
+        $product = $line->relationLoaded('product') ? $line->product : $line->product()->first();
+        if ($product?->inventory_account_id) {
+            return (int) $product->inventory_account_id;
+        }
+
+        return $this->mappingService->getInventoryAccount();
     }
 
     private function inventoryCreditLines(StockMovement $movement, int $startOrder = 1): array

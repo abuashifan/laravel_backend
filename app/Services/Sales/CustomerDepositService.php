@@ -16,6 +16,7 @@ use App\Services\Sales\Concerns\HandlesSalesDocuments;
 use App\Services\Tenant\TenantContext;
 use App\Services\Transactions\TransactionDateGuardService;
 use App\Services\Transactions\TransactionVoidEffectService;
+use App\Services\Validation\BusinessReferenceValidator;
 use App\Support\DocumentNumbering\DocumentType;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -100,7 +101,9 @@ class CustomerDepositService
         $company = $this->tenantContext->company();
         if (! $company) throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
         $amount = (float) $data['amount'];
+        if ($amount <= 0) throw ApiException::make('AMOUNT_INVALID', 'Amount must be greater than zero.', 422);
         $this->ensureCustomerExists((int) $data['customer_id']);
+        $this->ensureCashBankAccount((int) $data['cash_bank_account_id']);
         $deposit = CustomerDeposit::query()->create(array_merge($data, [
             'deposit_number' => $this->documentNumberService->generate($company, DocumentType::CUSTOMER_DEPOSIT, (string) $data['deposit_date']),
             'remaining_amount' => $amount,
@@ -130,8 +133,9 @@ class CustomerDepositService
 
     public function post(CustomerDeposit $deposit): CustomerDeposit
     {
-        if ($deposit->status === 'posted') return $deposit;
+        if ($deposit->status === 'posted') throw ApiException::make('DOCUMENT_ALREADY_POSTED', 'Document has already been posted.', 422);
         $this->guardDate((string) $deposit->deposit_date);
+        $this->ensureCashBankAccount((int) $deposit->cash_bank_account_id);
         return DB::connection('tenant')->transaction(function () use ($deposit) {
             $journal = $this->journal($deposit, 'Customer deposit '.$deposit->deposit_number, [
                 ['account_id' => $deposit->cash_bank_account_id, 'description' => 'Cash/Bank', 'debit' => $deposit->amount, 'credit' => 0, 'line_order' => 1],
@@ -280,8 +284,9 @@ class CustomerDepositService
     public function calculateAvailableForCustomer(int $customerId): float { return (float) CustomerDeposit::query()->where('customer_id', $customerId)->whereIn('status', ['posted', 'partially_allocated'])->sum('remaining_amount'); }
     public function calculateReceivedForSalesOrder(SalesOrder $order): float { return (float) $order->deposits()->where('status', '!=', 'void')->sum('amount'); }
 
-    private function mapping(string $key): int { app(AccountMappingStorageService::class)->syncDefaultMappingsFromConfig(); $mapping = AccountMapping::query()->where('mapping_key', $key)->where('is_active', true)->first(); if (! $mapping?->account_id) throw ApiException::make('ACCOUNT_MAPPING_MISSING', $key === 'sales.customer_deposit' ? 'Mapping akun Uang Muka Pelanggan belum diatur. Silakan atur sales.customer_deposit di Pemetaan Akun.' : 'Required account mapping is missing: '.$key, 422); return (int) $mapping->account_id; }
+    private function mapping(string $key): int { app(AccountMappingStorageService::class)->syncDefaultMappingsFromConfig(); $mapping = AccountMapping::query()->where('mapping_key', $key)->where('is_active', true)->first(); if (! $mapping?->account_id) throw ApiException::make('ACCOUNT_MAPPING_MISSING', $key === 'sales.customer_deposit' ? 'Mapping akun Uang Muka Pelanggan belum diatur. Silakan atur sales.customer_deposit di Pemetaan Akun.' : 'Required account mapping is missing: '.$key, 422); app(BusinessReferenceValidator::class)->account((int) $mapping->account_id, $key === 'sales.customer_deposit' ? ['liability'] : null); return (int) $mapping->account_id; }
     private function guardDate(string $date, string $action = 'post'): void { $check = $this->dateGuardService->check($date, $action, 'sales'); if ($check->denied()) { $arr = $check->toArray(); throw ApiException::make((string) $arr['code'], (string) $arr['message'], 422, (array) $arr['reasons'], (array) $arr['meta']); } }
+    private function ensureCashBankAccount(int $accountId): void { $account = app(BusinessReferenceValidator::class)->account($accountId, ['asset']); if (! $account->isCashBank()) throw ApiException::make('CASH_BANK_ACCOUNT_NOT_VALID', 'Cash/bank account must be active cash or bank account.', 422); }
     private function availableDepositRow(CustomerDeposit $deposit, ?int $salesOrderId = null): array
     {
         $matchesSalesOrder = $salesOrderId !== null && (int) $deposit->sales_order_id === $salesOrderId;

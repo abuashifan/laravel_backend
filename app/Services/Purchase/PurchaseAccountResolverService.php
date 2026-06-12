@@ -159,6 +159,7 @@ class PurchaseAccountResolverService
             ->whereKey($accountId)
             ->whereIn('account_type', $accountTypes)
             ->where('is_active', true)
+            ->whereDoesntHave('children')
             ->exists();
     }
 }

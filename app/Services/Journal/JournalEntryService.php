@@ -98,6 +98,10 @@ class JournalEntryService
                 'totals' => $validation['totals'] ?? null,
             ]);
         }
+        $controlValidation = $this->validator->validateNoControlAccounts($lines);
+        if (! $controlValidation['valid']) {
+            throw ApiException::make(ApiErrorCode::VALIDATION_ERROR, 'Manual journal cannot use protected control accounts.', 422, (array) ($controlValidation['errors'] ?? []));
+        }
 
         $journalNumber = $this->documentNumberService->generate($company, DocumentType::JOURNAL_ENTRY, $journalDate);
 
@@ -170,6 +174,10 @@ class JournalEntryService
             throw ApiException::make(ApiErrorCode::VALIDATION_ERROR, 'Journal validation failed.', 422, (array) ($validation['errors'] ?? []), [
                 'totals' => $validation['totals'] ?? null,
             ]);
+        }
+        $controlValidation = $this->validator->validateNoControlAccounts($lines);
+        if (! $controlValidation['valid']) {
+            throw ApiException::make(ApiErrorCode::VALIDATION_ERROR, 'Manual journal cannot use protected control accounts.', 422, (array) ($controlValidation['errors'] ?? []));
         }
 
         $userId = auth()->id();

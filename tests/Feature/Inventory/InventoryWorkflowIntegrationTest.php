@@ -108,7 +108,9 @@ class InventoryWorkflowIntegrationTest extends JournalTestCase
         $bill = app(VendorBillService::class)->createFromGoodsReceipt($gr->refresh()->load('lines'), [
             'bill_date' => '2026-01-03',
         ]);
-        app(VendorBillService::class)->post($bill->refresh()->load('lines'));
+        if ($bill->status !== 'posted') {
+            app(VendorBillService::class)->post($bill->refresh()->load('lines'));
+        }
 
         $this->assertSame(0, StockMovement::query()->where('source_type', 'vendor_bill')->where('source_id', $bill->id)->count());
         $bal->refresh();
@@ -256,7 +258,9 @@ class InventoryWorkflowIntegrationTest extends JournalTestCase
             'sort_order' => 0,
         ]);
 
-        app(VendorBillService::class)->post($bill->refresh()->load('lines'));
+        if ($bill->status !== 'posted') {
+            app(VendorBillService::class)->post($bill->refresh()->load('lines'));
+        }
         $this->assertSame(1, StockMovement::query()->where('source_type', 'vendor_bill')->where('source_id', $bill->id)->count());
     }
 
@@ -380,7 +384,9 @@ class InventoryWorkflowIntegrationTest extends JournalTestCase
                 'warehouse_id' => $wh->id,
             ]],
         ]);
-        app(SalesReturnService::class)->post($return);
+        if ($return->status !== 'posted') {
+            app(SalesReturnService::class)->post($return);
+        }
 
         $returnMovement = StockMovement::query()->where('source_type', 'sales_return')->where('source_id', $return->id)->firstOrFail();
         $this->assertSame('sales_return_in', (string) $returnMovement->movement_type);
@@ -467,7 +473,9 @@ class InventoryWorkflowIntegrationTest extends JournalTestCase
                 'warehouse_id' => $wh->id,
             ]],
         ]);
-        app(PurchaseReturnService::class)->post($return);
+        if ($return->status !== 'posted') {
+            app(PurchaseReturnService::class)->post($return);
+        }
 
         $movement = StockMovement::query()->where('source_type', 'purchase_return')->where('source_id', $return->id)->firstOrFail();
         $this->assertSame('purchase_return_out', (string) $movement->movement_type);

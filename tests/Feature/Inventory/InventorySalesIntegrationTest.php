@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Inventory;
 
+use App\Exceptions\ApiException;
 use App\Models\Tenant\AccountMapping;
 use App\Models\Tenant\ChartOfAccount;
 use App\Models\Tenant\Contact;
@@ -84,8 +85,13 @@ class InventorySalesIntegrationTest extends JournalTestCase
         $bal = StockBalance::query()->where('product_id', $p->id)->where('warehouse_id', $wh->id)->firstOrFail();
         $this->assertSame(8.0, (float) $bal->quantity_on_hand);
 
-        // deliver again should not duplicate
-        $svc->deliver($do->refresh()->load('lines'));
+        // deliver again should fail and not duplicate
+        try {
+            $svc->deliver($do->refresh()->load('lines'));
+            $this->fail('Expected double delivery to fail.');
+        } catch (ApiException $e) {
+            $this->assertSame('DOCUMENT_ALREADY_POSTED', $e->codeName);
+        }
         $this->assertSame(1, StockMovement::query()->where('source_type', 'delivery_order')->where('source_id', $do->id)->count());
 
         // sales invoice from delivery order should not create sales_invoice stock movement

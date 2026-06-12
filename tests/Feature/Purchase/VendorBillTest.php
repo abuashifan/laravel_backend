@@ -4,9 +4,11 @@ namespace Tests\Feature\Purchase;
 
 use App\Models\CompanyAccountingSetting;
 use App\Models\Tenant\GoodsReceiptLine;
+use App\Models\Tenant\Product;
 use App\Models\Tenant\PurchaseOrder;
 use App\Models\Tenant\PurchaseOrderLine;
 use App\Models\Tenant\StockMovement;
+use App\Models\Tenant\Unit;
 use App\Services\Tenant\TenantConnectionManager;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -20,6 +22,16 @@ class VendorBillTest extends PurchaseTestCase
         $this->postJson('/api/purchase/bills', $this->vendorBillPayload(['is_taxable' => false]), $ctx['headers'])
             ->assertStatus(201)
             ->assertJsonPath('data.status', 'draft');
+    }
+
+    public function test_inactive_vendor_is_rejected(): void
+    {
+        $ctx = $this->setUpTenant();
+        $vendorId = $this->createVendor(['is_active' => false]);
+
+        $this->postJson('/api/purchase/bills', $this->vendorBillPayload(['vendor_id' => $vendorId]), $ctx['headers'])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'VENDOR_NOT_VALID');
     }
 
     public function test_simple_auto_post_without_approval_posts_bill_on_create(): void
@@ -65,6 +77,30 @@ class VendorBillTest extends PurchaseTestCase
             ->assertStatus(200)
             ->assertJsonPath('data.status', 'void');
         $this->assertSame('void', DB::connection('tenant')->table('journal_entries')->where('source_type', 'vendor_bill')->value('status'));
+    }
+
+    public function test_direct_stock_bill_requires_warehouse_before_posting(): void
+    {
+        $ctx = $this->setUpTenant();
+        $this->seedPurchaseMappings();
+        $unit = Unit::query()->create(['code' => 'PCS', 'name' => 'Pieces', 'precision' => 0, 'is_active' => true]);
+        $productId = Product::query()->create([
+            'product_code' => 'STK-BILL',
+            'product_name' => 'Stock Bill',
+            'product_type' => 'goods',
+            'unit_id' => $unit->id,
+            'is_stock_item' => true,
+            'is_active' => true,
+        ])->id;
+
+        $bill = $this->postJson('/api/purchase/bills', $this->vendorBillPayload([
+            'is_taxable' => false,
+            'lines' => [['product_id' => $productId, 'description' => 'Stock Bill', 'quantity' => 1, 'unit_price' => 100]],
+        ]), $ctx['headers'])->assertStatus(201)->json('data');
+
+        $this->patchJson('/api/purchase/bills/'.$bill['id'].'/post', [], $ctx['headers'])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'WAREHOUSE_REQUIRED');
     }
 
     public function test_post_bill_fails_with_actionable_message_when_payable_account_is_missing(): void

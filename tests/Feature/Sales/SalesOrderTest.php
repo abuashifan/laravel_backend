@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Sales;
 
+use App\Models\Tenant\ChartOfAccount;
 use App\Models\Tenant\CustomerDeposit;
 use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\SalesQuotation;
@@ -89,12 +90,13 @@ class SalesOrderTest extends SalesTestCase
     public function test_has_down_payment_true_with_deposit_payload_creates_customer_deposit(): void
     {
         $ctx = $this->setUpTenant();
+        $cash = $this->cashBankAccount();
 
         $order = $this->postJson('/api/sales/orders', $this->orderPayload([
             'has_down_payment' => true,
             'down_payment' => [
                 'deposit_date' => '2026-05-20',
-                'cash_bank_account_id' => 1,
+                'cash_bank_account_id' => $cash,
                 'amount' => 50,
                 'notes' => 'DP awal',
             ],
@@ -110,17 +112,30 @@ class SalesOrderTest extends SalesTestCase
     public function test_customer_deposit_does_not_live_as_direct_sales_order_payment_field(): void
     {
         $ctx = $this->setUpTenant();
+        $cash = $this->cashBankAccount();
         $this->postJson('/api/sales/orders', $this->orderPayload([
             'has_down_payment' => true,
             'down_payment' => [
                 'deposit_date' => '2026-05-20',
-                'cash_bank_account_id' => 1,
+                'cash_bank_account_id' => $cash,
                 'amount' => 50,
             ],
         ]), $ctx['headers'])->assertStatus(201);
 
         $this->assertTrue(Schema::connection('tenant')->hasTable('customer_deposits'));
         $this->assertFalse(Schema::connection('tenant')->hasColumn('sales_orders', 'down_payment_amount'));
+    }
+
+    private function cashBankAccount(): int
+    {
+        return (int) ChartOfAccount::query()->create([
+            'account_code' => 'CASH-'.uniqid(),
+            'account_name' => 'Cash',
+            'account_type' => 'asset',
+            'normal_balance' => 'debit',
+            'is_cash_bank' => true,
+            'is_active' => true,
+        ])->id;
     }
 
     public function test_sales_order_does_not_create_ar_journal_or_stock_movement(): void

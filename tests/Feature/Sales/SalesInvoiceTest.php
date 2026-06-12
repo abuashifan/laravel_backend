@@ -16,6 +16,7 @@ use App\Models\Tenant\SalesInvoice;
 use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\SalesOrderLine;
 use App\Models\Tenant\StockMovement;
+use App\Models\Tenant\Unit;
 use App\Services\Tenant\TenantConnectionManager;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Artisan;
@@ -31,6 +32,16 @@ class SalesInvoiceTest extends SalesTestCase
             ->assertStatus(201)
             ->assertJsonPath('data.status', 'draft')
             ->assertJsonPath('data.grand_total', 222);
+    }
+
+    public function test_inactive_customer_is_rejected(): void
+    {
+        $ctx = $this->setUpTenant();
+        $customerId = $this->createCustomer(['is_active' => false]);
+
+        $this->postJson('/api/sales/invoices', $this->invoicePayload(['customer_id' => $customerId]), $ctx['headers'])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'CUSTOMER_NOT_VALID');
     }
 
     public function test_simple_auto_post_without_approval_posts_invoice_on_create(): void
@@ -230,6 +241,41 @@ class SalesInvoiceTest extends SalesTestCase
             ->assertStatus(422);
     }
 
+    public function test_direct_stock_invoice_requires_warehouse_before_posting(): void
+    {
+        $ctx = $this->setUpTenant();
+        $accounts = $this->seedSalesPostingMappings();
+        $unit = Unit::query()->create(['code' => 'PCS', 'name' => 'Pieces', 'precision' => 0, 'is_active' => true]);
+        $productId = Product::query()->create([
+            'product_code' => 'STK-INV',
+            'product_name' => 'Stock Item',
+            'product_type' => 'goods',
+            'unit_id' => $unit->id,
+            'is_stock_item' => true,
+            'is_active' => true,
+            'sales_account_id' => $accounts['revenue'],
+        ])->id;
+
+        $invoice = $this->postJson('/api/sales/invoices', $this->invoicePayload([
+            'is_taxable' => false,
+            'lines' => [['product_id' => $productId, 'description' => 'Stock Item', 'quantity' => 1, 'unit_price' => 100]],
+        ]), $ctx['headers'])->assertStatus(201)->json('data');
+
+        $this->patchJson('/api/sales/invoices/'.$invoice['id'].'/post', [], $ctx['headers'])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'WAREHOUSE_REQUIRED');
+    }
+
+    public function test_posted_invoice_cannot_be_posted_again(): void
+    {
+        $ctx = $this->setUpTenant();
+        $this->seedMappings();
+        $invoice = $this->postJson('/api/sales/invoices', $this->invoicePayload(['is_taxable' => false]), $ctx['headers'])->assertStatus(201)->json('data');
+
+        $this->patchJson('/api/sales/invoices/'.$invoice['id'].'/post', [], $ctx['headers'])->assertStatus(200);
+        $this->patchJson('/api/sales/invoices/'.$invoice['id'].'/post', [], $ctx['headers'])->assertStatus(422);
+    }
+
     public function test_post_invoice_fails_with_actionable_message_when_receivable_account_is_missing(): void
     {
         $ctx = $this->setUpTenant();
@@ -364,7 +410,7 @@ class SalesInvoiceTest extends SalesTestCase
     {
         $ctx = $this->setUpTenant();
         $customerAr = $this->account('1115', 'Piutang Customer Clearing', 'asset', 'debit');
-        $cash = $this->account('1010', 'Kas', 'asset', 'debit');
+        $cash = $this->account('1010', 'Kas', 'asset', 'debit', true);
         $defaultIds = $this->seedSalesPostingMappings();
         $customerId = $this->createCustomer(['receivable_account_id' => $customerAr]);
         $invoice = $this->postJson('/api/sales/invoices', $this->invoicePayload(['customer_id' => $customerId]), $ctx['headers'])->assertStatus(201)->json('data');
@@ -593,13 +639,14 @@ class SalesInvoiceTest extends SalesTestCase
         return ['ar' => $ar, 'revenue' => $revenueAccount, 'tax' => $tax, 'deposit' => $deposit, 'return' => $return];
     }
 
-    private function account(string $code, string $name, string $type, string $normal): int
+    private function account(string $code, string $name, string $type, string $normal, bool $cashBank = false): int
     {
         return (int) ChartOfAccount::query()->create([
             'account_code' => $code,
             'account_name' => $name,
             'account_type' => $type,
             'normal_balance' => $normal,
+            'is_cash_bank' => $cashBank,
             'is_active' => true,
         ])->id;
     }

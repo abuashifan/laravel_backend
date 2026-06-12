@@ -118,7 +118,9 @@ class InventoryPurchaseIntegrationTest extends JournalTestCase
         $this->assertSame(1000.0, (float) $bal->average_cost);
 
         $bill = app(VendorBillService::class)->createFromGoodsReceipt($gr->refresh()->load('lines'), ['bill_date' => '2026-01-03']);
-        app(VendorBillService::class)->post($bill->refresh()->load('lines'));
+        if ($bill->status !== 'posted') {
+            app(VendorBillService::class)->post($bill->refresh()->load('lines'));
+        }
         $billJournalLines = DB::connection('tenant')
             ->table('journal_entry_lines')
             ->join('journal_entries', 'journal_entry_lines.journal_entry_id', '=', 'journal_entries.id')

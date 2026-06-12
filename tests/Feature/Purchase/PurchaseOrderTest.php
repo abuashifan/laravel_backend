@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Purchase;
 
+use App\Models\Tenant\ChartOfAccount;
 use App\Models\Tenant\PurchaseOrder;
 use App\Models\Tenant\PurchaseRequest;
 use App\Models\Tenant\VendorDeposit;
@@ -65,12 +66,13 @@ class PurchaseOrderTest extends PurchaseTestCase
     public function test_has_down_payment_true_with_deposit_payload_creates_vendor_deposit(): void
     {
         $ctx = $this->setUpTenant();
+        $cash = $this->cashBankAccount();
 
         $order = $this->postJson('/api/purchase/orders', $this->purchaseOrderPayload([
             'has_down_payment' => true,
             'vendor_deposit' => [
                 'deposit_date' => '2026-05-20',
-                'cash_bank_account_id' => 1,
+                'cash_bank_account_id' => $cash,
                 'amount' => 50,
                 'notes' => 'DP vendor',
             ],
@@ -86,17 +88,30 @@ class PurchaseOrderTest extends PurchaseTestCase
     public function test_vendor_deposit_does_not_live_as_direct_purchase_order_payment_field(): void
     {
         $ctx = $this->setUpTenant();
+        $cash = $this->cashBankAccount();
         $this->postJson('/api/purchase/orders', $this->purchaseOrderPayload([
             'has_down_payment' => true,
             'vendor_deposit' => [
                 'deposit_date' => '2026-05-20',
-                'cash_bank_account_id' => 1,
+                'cash_bank_account_id' => $cash,
                 'amount' => 50,
             ],
         ]), $ctx['headers'])->assertStatus(201);
 
         $this->assertTrue(Schema::connection('tenant')->hasTable('vendor_deposits'));
         $this->assertFalse(Schema::connection('tenant')->hasColumn('purchase_orders', 'down_payment_amount'));
+    }
+
+    private function cashBankAccount(): int
+    {
+        return (int) ChartOfAccount::query()->create([
+            'account_code' => 'CASH-'.uniqid(),
+            'account_name' => 'Cash',
+            'account_type' => 'asset',
+            'normal_balance' => 'debit',
+            'is_cash_bank' => true,
+            'is_active' => true,
+        ])->id;
     }
 
     public function test_purchase_order_does_not_create_ap_journal_or_stock_movement(): void

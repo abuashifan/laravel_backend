@@ -7,15 +7,14 @@ use App\Models\Tenant\Contact;
 use App\Models\Tenant\Product;
 use App\Services\Audit\AuditLogService;
 use App\Services\Settings\CompanySettingService;
+use App\Services\Validation\BusinessReferenceValidator;
 use Illuminate\Database\Eloquent\Model;
 
 trait HandlesPurchaseDocuments
 {
     private function ensureVendorExists(int $vendorId): void
     {
-        if (! Contact::query()->whereKey($vendorId)->where('is_supplier', true)->exists()) {
-            throw ApiException::make('VENDOR_NOT_FOUND', 'Vendor not found.', 422);
-        }
+        app(BusinessReferenceValidator::class)->vendor($vendorId);
     }
 
     /**
@@ -33,7 +32,7 @@ trait HandlesPurchaseDocuments
             $quantity = (float) ($line['quantity'] ?? 0);
             $estimatedUnitPrice = (float) ($line['estimated_unit_price'] ?? 0);
 
-            return [
+            $normalized = [
                 'product_id' => $line['product_id'] ?? null,
                 'product_code' => $line['product_code'] ?? $product?->product_code,
                 'description' => $line['description'] ?? $product?->product_name,
@@ -49,6 +48,10 @@ trait HandlesPurchaseDocuments
                 'sort_order' => $line['sort_order'] ?? $index,
                 'metadata' => $line['metadata'] ?? null,
             ];
+
+            app(BusinessReferenceValidator::class)->transactionalLine($normalized);
+
+            return $normalized;
         }, $lines, array_keys($lines)));
     }
 
@@ -64,7 +67,7 @@ trait HandlesPurchaseDocuments
                 $product = Product::query()->find((int) $line['product_id']);
             }
 
-            return array_merge([
+            $normalized = array_merge([
                 'product_id' => $line['product_id'] ?? null,
                 'product_code' => $line['product_code'] ?? $product?->product_code,
                 'description' => $line['description'] ?? $product?->product_name,
@@ -84,7 +87,18 @@ trait HandlesPurchaseDocuments
                 'sort_order' => $line['sort_order'] ?? $index,
                 'metadata' => $line['metadata'] ?? null,
             ], $sourceMap ? $sourceMap($line, $index) : []);
+
+            app(BusinessReferenceValidator::class)->transactionalLine($normalized);
+
+            return $normalized;
         }, $lines, array_keys($lines)));
+    }
+
+    private function validateStockWarehousesForPurchaseLines(array $lines): void
+    {
+        foreach ($lines as $line) {
+            app(BusinessReferenceValidator::class)->requireWarehouseForStockLine($line);
+        }
     }
 
     private function guardedPurchaseHeader(array $data, array $excluded = []): array

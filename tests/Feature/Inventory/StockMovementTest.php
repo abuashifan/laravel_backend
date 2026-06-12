@@ -138,6 +138,25 @@ class StockMovementTest extends JournalTestCase
         $res2->assertJsonPath('code', 'DUPLICATE_SOURCE_MOVEMENT');
     }
 
+    public function test_stock_movement_rejects_non_stock_product(): void
+    {
+        $ctx = $this->setUpTenant(role: 'warehouse');
+
+        $unit = Unit::query()->create(['code' => 'PCS', 'name' => 'Pieces', 'precision' => 0, 'is_active' => true]);
+        $wh = Warehouse::query()->create(['code' => 'WH1', 'name' => 'Main', 'is_default' => true, 'is_active' => true]);
+        $p = Product::query()->create(['product_code' => 'NS1', 'product_name' => 'Service', 'product_type' => 'service', 'unit_id' => $unit->id, 'is_stock_item' => false, 'is_active' => true]);
+
+        $this->postJson('/api/inventory/stock-movements', [
+            'movement_date' => '2026-01-10',
+            'movement_type' => 'opening_stock',
+            'lines' => [
+                ['product_id' => $p->id, 'warehouse_id' => $wh->id, 'unit_id' => $unit->id, 'quantity' => 1, 'unit_cost' => 1000],
+            ],
+        ], $ctx['headers'])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'PRODUCT_NOT_STOCKABLE');
+    }
+
     public function test_period_lock_blocks_posting(): void
     {
         $ctx = $this->setUpTenant(role: 'warehouse');

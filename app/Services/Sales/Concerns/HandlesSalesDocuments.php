@@ -7,15 +7,14 @@ use App\Models\Tenant\Contact;
 use App\Models\Tenant\Product;
 use App\Services\Audit\AuditLogService;
 use App\Services\Settings\CompanySettingService;
+use App\Services\Validation\BusinessReferenceValidator;
 use Illuminate\Database\Eloquent\Model;
 
 trait HandlesSalesDocuments
 {
     private function ensureCustomerExists(int $customerId): void
     {
-        if (! Contact::query()->whereKey($customerId)->where('is_customer', true)->exists()) {
-            throw ApiException::make('CUSTOMER_NOT_FOUND', 'Customer not found.', 422);
-        }
+        app(BusinessReferenceValidator::class)->customer($customerId);
     }
 
     /**
@@ -30,7 +29,7 @@ trait HandlesSalesDocuments
                 $product = Product::query()->find((int) $line['product_id']);
             }
 
-            return array_merge([
+            $normalized = array_merge([
                 'product_id' => $line['product_id'] ?? null,
                 'product_code' => $line['product_code'] ?? $product?->product_code,
                 'description' => $line['description'] ?? $product?->product_name,
@@ -49,7 +48,18 @@ trait HandlesSalesDocuments
                 'sort_order' => $line['sort_order'] ?? $index,
                 'metadata' => $line['metadata'] ?? null,
             ], $sourceMap ? $sourceMap($line, $index) : []);
+
+            app(BusinessReferenceValidator::class)->transactionalLine($normalized);
+
+            return $normalized;
         }, $lines, array_keys($lines)));
+    }
+
+    private function validateStockWarehousesForSalesLines(array $lines): void
+    {
+        foreach ($lines as $line) {
+            app(BusinessReferenceValidator::class)->requireWarehouseForStockLine($line);
+        }
     }
 
     private function guardedForHeader(array $data, array $excluded = []): array

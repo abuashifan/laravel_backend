@@ -14,6 +14,7 @@ use App\Services\Tenant\TenantContext;
 use App\Services\Inventory\InventorySalesIntegrationService;
 use App\Services\Transactions\TransactionDateGuardService;
 use App\Services\Transactions\TransactionVoidEffectService;
+use App\Services\Validation\BusinessReferenceValidator;
 use App\Support\DocumentNumbering\DocumentType;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -86,14 +87,13 @@ class DeliveryOrderService
     public function deliver(DeliveryOrder $deliveryOrder): DeliveryOrder
     {
         if ($deliveryOrder->status === 'delivered') {
-            $this->inventoryIntegration->createSalesOutFromDeliveryOrder($deliveryOrder);
-            return $deliveryOrder->refresh()->load('lines', 'customer', 'salesOrder');
+            throw ApiException::make('DOCUMENT_ALREADY_POSTED', 'Document has already been posted.', 422);
         }
         if (! in_array($deliveryOrder->status, ['draft', 'ready', 'shipped'], true)) {
             throw ApiException::make('INVALID_DELIVERY_ORDER_STATUS', 'Delivery order cannot be delivered from current status.', 422);
         }
 
-        return DB::connection('tenant')->transaction(function () use ($deliveryOrder) { $this->validateRemainingQuantities($deliveryOrder->lines()->get()->toArray(), $deliveryOrder); $deliveryOrder->load('lines', 'salesOrder'); foreach ($deliveryOrder->lines as $line) { if ($line->sales_order_line_id) { $orderLine = SalesOrderLine::query()->findOrFail($line->sales_order_line_id); $orderLine->delivered_quantity = (float) $orderLine->delivered_quantity + (float) $line->quantity; $orderLine->save(); } } $deliveryOrder->status = 'delivered'; $deliveryOrder->delivered_by = auth()->id(); $deliveryOrder->delivered_at = now(); $deliveryOrder->save(); $this->inventoryIntegration->createSalesOutFromDeliveryOrder($deliveryOrder); if ($deliveryOrder->salesOrder) $this->salesOrderService->refreshDeliveryStatus($deliveryOrder->salesOrder); return $deliveryOrder->refresh()->load('lines', 'customer', 'salesOrder'); });
+        return DB::connection('tenant')->transaction(function () use ($deliveryOrder) { $this->validateRemainingQuantities($deliveryOrder->lines()->get()->toArray(), $deliveryOrder); $deliveryOrder->load('lines', 'salesOrder'); $this->validateStockWarehousesForSalesLines($deliveryOrder->lines->toArray()); foreach ($deliveryOrder->lines as $line) { if ($line->sales_order_line_id) { $orderLine = SalesOrderLine::query()->findOrFail($line->sales_order_line_id); $orderLine->delivered_quantity = (float) $orderLine->delivered_quantity + (float) $line->quantity; $orderLine->save(); } } $deliveryOrder->status = 'delivered'; $deliveryOrder->delivered_by = auth()->id(); $deliveryOrder->delivered_at = now(); $deliveryOrder->save(); $this->inventoryIntegration->createSalesOutFromDeliveryOrder($deliveryOrder); if ($deliveryOrder->salesOrder) $this->salesOrderService->refreshDeliveryStatus($deliveryOrder->salesOrder); return $deliveryOrder->refresh()->load('lines', 'customer', 'salesOrder'); });
     }
     public function cancel(DeliveryOrder $deliveryOrder, ?string $reason = null): DeliveryOrder { $deliveryOrder->cancel_reason = $reason; return $this->transition($deliveryOrder, 'cancelled', 'cancelled_by', 'cancelled_at', ['draft', 'ready', 'shipped']); }
     public function void(DeliveryOrder $deliveryOrder, ?string $reason = null): DeliveryOrder
@@ -123,7 +123,7 @@ class DeliveryOrderService
         });
     }
 
-    private function normalizeDeliveryLines(array $lines): array { return array_values(array_map(fn (array $line, int $i): array => ['sales_order_line_id' => $line['sales_order_line_id'] ?? null, 'product_id' => $line['product_id'] ?? null, 'product_code' => $line['product_code'] ?? null, 'description' => $line['description'], 'quantity' => (float) $line['quantity'], 'unit_id' => $line['unit_id'] ?? null, 'warehouse_id' => $line['warehouse_id'] ?? null, 'department_id' => $line['department_id'] ?? null, 'project_id' => $line['project_id'] ?? null, 'source_line_type' => $line['source_line_type'] ?? null, 'source_line_id' => $line['source_line_id'] ?? null, 'sort_order' => $line['sort_order'] ?? $i, 'metadata' => $line['metadata'] ?? null], $lines, array_keys($lines))); }
+    private function normalizeDeliveryLines(array $lines): array { return array_values(array_map(function (array $line, int $i): array { $normalized = ['sales_order_line_id' => $line['sales_order_line_id'] ?? null, 'product_id' => $line['product_id'] ?? null, 'product_code' => $line['product_code'] ?? null, 'description' => $line['description'], 'quantity' => (float) $line['quantity'], 'unit_id' => $line['unit_id'] ?? null, 'warehouse_id' => $line['warehouse_id'] ?? null, 'department_id' => $line['department_id'] ?? null, 'project_id' => $line['project_id'] ?? null, 'source_line_type' => $line['source_line_type'] ?? null, 'source_line_id' => $line['source_line_id'] ?? null, 'sort_order' => $line['sort_order'] ?? $i, 'metadata' => $line['metadata'] ?? null]; app(BusinessReferenceValidator::class)->transactionalLine($normalized); return $normalized; }, $lines, array_keys($lines))); }
     private function validateRemainingQuantities(array $lines, ?DeliveryOrder $current = null): void { foreach ($lines as $line) { if (empty($line['sales_order_line_id'])) continue; $orderLine = SalesOrderLine::query()->findOrFail((int) $line['sales_order_line_id']); $currentQuantity = $current ? (float) $current->lines()->where('sales_order_line_id', $orderLine->id)->sum('quantity') : 0.0; if ((float) $line['quantity'] > (float) $orderLine->quantity - (float) $orderLine->delivered_quantity + $currentQuantity) throw ApiException::make('DELIVERY_QUANTITY_EXCEEDS_REMAINING', 'Delivery quantity exceeds remaining sales order quantity.', 422); } }
     private function transition(DeliveryOrder $deliveryOrder, string $status, string $userField, string $dateField, array $from): DeliveryOrder { if (! in_array($deliveryOrder->status, $from, true)) throw ApiException::make('INVALID_DELIVERY_ORDER_STATUS', 'Invalid delivery order status transition.', 422); $deliveryOrder->status = $status; $deliveryOrder->{$userField} = auth()->id(); $deliveryOrder->{$dateField} = now(); $deliveryOrder->save(); return $deliveryOrder->refresh()->load('lines', 'customer', 'salesOrder'); }
     private function guardConvertibleSource(string $status, string $source): void { if (in_array($status, ['cancelled', 'void', 'closed'], true)) throw ApiException::make('SOURCE_NOT_CONVERTIBLE', ucfirst($source).' is not available for conversion.', 422); }

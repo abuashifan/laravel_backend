@@ -3,6 +3,7 @@
 namespace App\Services\Journal;
 
 use App\Models\Tenant\ChartOfAccount;
+use App\Models\Tenant\AccountMapping;
 use App\Models\Tenant\Department;
 use App\Models\Tenant\JournalEntry;
 use App\Models\Tenant\Project;
@@ -248,6 +249,45 @@ class JournalValidationService
             'errors' => $errors,
             'warnings' => $warnings,
         ];
+    }
+
+    /**
+     * @param array<int,array<string,mixed>> $lines
+     * @return array{valid:bool,errors:array,warnings:array}
+     */
+    public function validateNoControlAccounts(array $lines): array
+    {
+        $errors = [];
+        $warnings = [];
+
+        $controlAccountIds = AccountMapping::query()
+            ->where('is_active', true)
+            ->whereIn('mapping_key', [
+                'sales.accounts_receivable',
+                'purchase.accounts_payable',
+                'inventory.asset',
+                'sales.customer_deposit',
+                'purchase.vendor_deposit',
+                'purchase.inventory_interim',
+                'sales.tax_output',
+                'purchase.tax_input',
+            ])
+            ->whereNotNull('account_id')
+            ->pluck('mapping_key', 'account_id')
+            ->all();
+
+        if ($controlAccountIds === []) {
+            return ['valid' => true, 'errors' => $errors, 'warnings' => $warnings];
+        }
+
+        foreach ($lines as $i => $line) {
+            $accountId = isset($line['account_id']) ? (int) $line['account_id'] : null;
+            if ($accountId && isset($controlAccountIds[$accountId])) {
+                $errors["lines.$i.account_id"][] = 'Manual journal cannot use protected control account '.$controlAccountIds[$accountId].'.';
+            }
+        }
+
+        return ['valid' => empty($errors), 'errors' => $errors, 'warnings' => $warnings];
     }
 
     /**

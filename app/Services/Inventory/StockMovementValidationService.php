@@ -5,23 +5,35 @@ namespace App\Services\Inventory;
 use App\Exceptions\ApiException;
 use App\Models\Tenant\Product;
 use App\Models\Tenant\StockMovement;
-use App\Models\Tenant\Warehouse;
 use App\Services\Transactions\TransactionDateGuardService;
+use App\Services\Validation\BusinessReferenceValidator;
 use App\Support\Inventory\InventoryMovementType;
-use Illuminate\Support\Facades\Schema;
 
 class StockMovementValidationService
 {
+    private const ALLOWED_MOVEMENT_TYPES = [
+        'purchase_in',
+        'purchase_return_out',
+        'sales_out',
+        'sales_return_in',
+        'adjustment_in',
+        'adjustment_out',
+        'opening_stock',
+        'opname_in',
+        'opname_out',
+    ];
+
     public function __construct(
         private readonly InventoryQuantityService $qtyService,
         private readonly TransactionDateGuardService $dateGuardService,
         private readonly InventorySourceService $sourceService,
+        private readonly BusinessReferenceValidator $referenceValidator,
     ) {
     }
 
     public function validateMovementType(string $type): void
     {
-        if (! InventoryMovementType::exists($type)) {
+        if (! InventoryMovementType::exists($type) || ! in_array($type, self::ALLOWED_MOVEMENT_TYPES, true)) {
             throw ApiException::make('INVALID_MOVEMENT_TYPE', 'Invalid movement type: '.$type, 422);
         }
     }
@@ -35,8 +47,8 @@ class StockMovementValidationService
 
     public function directionForType(string $type): string
     {
-        $in = ['purchase_in', 'sales_return_in', 'adjustment_in', 'opname_in', 'transfer_in', 'opening_stock'];
-        $out = ['sales_out', 'purchase_return_out', 'adjustment_out', 'opname_out', 'transfer_out'];
+        $in = ['purchase_in', 'sales_return_in', 'adjustment_in', 'opname_in', 'opening_stock'];
+        $out = ['sales_out', 'purchase_return_out', 'adjustment_out', 'opname_out'];
         if (in_array($type, $in, true)) return 'in';
         if (in_array($type, $out, true)) return 'out';
         return 'in';
@@ -50,24 +62,30 @@ class StockMovementValidationService
 
         foreach ($lines as $idx => $ln) {
             $this->qtyService->assertPositiveQuantity($ln['quantity'] ?? 0);
+            if (isset($ln['unit_cost']) && (float) $ln['unit_cost'] < 0) {
+                throw ApiException::make('UNIT_COST_INVALID', 'Unit cost cannot be negative.', 422);
+            }
         }
     }
 
     public function validateProductIsStockable(Product $product): void
     {
-        // Project uses `is_stock_item` to indicate stockable items.
-        if (Schema::connection('tenant')->hasColumn('products', 'is_stock_item')) {
-            if (! $product->isStockItem()) {
-                throw ApiException::make('PRODUCT_NOT_STOCKABLE', 'Product is not stockable.', 422);
-            }
+        if (! $product->isActive()) {
+            throw ApiException::make('PRODUCT_NOT_VALID', 'Product is inactive or not found.', 422);
+        }
+        if (! $product->isStockItem()) {
+            throw ApiException::make('PRODUCT_NOT_STOCKABLE', 'Product is not stockable, stock movement cannot be posted.', 422);
         }
     }
 
     public function validateWarehouseExists(int $warehouseId): void
     {
-        if (! Warehouse::query()->whereKey($warehouseId)->exists()) {
-            throw ApiException::make('WAREHOUSE_NOT_FOUND', 'Warehouse not found.', 422);
-        }
+        $this->referenceValidator->warehouse($warehouseId);
+    }
+
+    public function validateStockMovementLine(array $line): Product
+    {
+        return $this->referenceValidator->stockMovementLine($line);
     }
 
     public function validatePeriodNotLocked(string $movementDate): void
@@ -97,4 +115,3 @@ class StockMovementValidationService
         $this->sourceService->assertNoDuplicateSourceMovement((string) $sourceType, (int) $sourceId);
     }
 }
-

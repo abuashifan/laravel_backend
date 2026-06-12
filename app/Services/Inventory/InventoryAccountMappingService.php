@@ -5,10 +5,15 @@ namespace App\Services\Inventory;
 use App\Exceptions\ApiException;
 use App\Models\Tenant\AccountMapping;
 use App\Services\Purchase\PurchaseAccountResolverService;
+use App\Services\Validation\BusinessReferenceValidator;
 use App\Support\AccountMapping\AccountMappingKey;
 
 class InventoryAccountMappingService
 {
+    public function __construct(private readonly BusinessReferenceValidator $referenceValidator)
+    {
+    }
+
     public function getInventoryAccount(): int
     {
         return $this->resolveRequiredAccount(AccountMappingKey::INVENTORY_ASSET);
@@ -60,13 +65,22 @@ class InventoryAccountMappingService
                 'account_mapping' => [$this->missingMappingMessage($key)],
             ]);
         }
+
+        $this->referenceValidator->account((int) $mapping->account_id, $this->accountTypesForKey($key));
+
         return (int) $mapping->account_id;
     }
 
     public function resolveOptionalAccount(string $key): ?int
     {
         $mapping = AccountMapping::query()->where('mapping_key', $key)->where('is_active', true)->first();
-        return $mapping?->account_id ? (int) $mapping->account_id : null;
+        if (! $mapping?->account_id) {
+            return null;
+        }
+
+        $this->referenceValidator->account((int) $mapping->account_id, $this->accountTypesForKey($key));
+
+        return (int) $mapping->account_id;
     }
 
     public function missingMappingMessage(string $key): string
@@ -88,5 +102,18 @@ class InventoryAccountMappingService
         };
 
         return $label.' account mapping is not configured. Set it in Account Mappings before posting inventory transactions.';
+    }
+
+    private function accountTypesForKey(string $key): ?array
+    {
+        return match ($key) {
+            AccountMappingKey::INVENTORY_ASSET => ['asset'],
+            AccountMappingKey::INVENTORY_COGS => ['expense'],
+            AccountMappingKey::INVENTORY_ADJUSTMENT_GAIN => ['revenue', 'equity'],
+            AccountMappingKey::INVENTORY_ADJUSTMENT_LOSS => ['expense'],
+            AccountMappingKey::OPENING_BALANCE_EQUITY => ['equity'],
+            AccountMappingKey::PURCHASE_INVENTORY_INTERIM => ['liability'],
+            default => null,
+        };
     }
 }
