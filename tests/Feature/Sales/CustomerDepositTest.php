@@ -71,6 +71,23 @@ class CustomerDepositTest extends SalesTestCase
             ->assertJsonPath('message', 'Mapping akun Uang Muka Pelanggan belum diatur. Silakan atur sales.customer_deposit di Pemetaan Akun.');
     }
 
+    public function test_post_deposit_auto_binds_customer_deposit_mapping_from_default_coa_code(): void
+    {
+        $ctx = $this->setUpTenant();
+        $cash = $this->seedMappings(includeDeposit: false);
+        $depositAccount = $this->account('2130', 'Uang Muka Pelanggan', 'liability', 'credit');
+        $deposit = $this->postJson('/api/sales/customer-deposits', $this->depositPayload($cash), $ctx['headers'])->assertStatus(201)->json('data');
+
+        $this->patchJson('/api/sales/customer-deposits/'.$deposit['id'].'/post', [], $ctx['headers'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.status', 'posted');
+
+        $this->assertSame(
+            $depositAccount,
+            (int) AccountMapping::query()->where('mapping_key', 'sales.customer_deposit')->value('account_id')
+        );
+    }
+
     public function test_allocate_deposit_to_invoice_creates_journal_and_updates_invoice(): void
     {
         $ctx = $this->setUpTenant();

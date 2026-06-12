@@ -3,6 +3,7 @@
 namespace Tests\Feature\MasterData;
 
 use App\Models\Tenant\AccountMapping;
+use App\Models\Tenant\ChartOfAccount;
 
 class AccountMappingTest extends MasterDataTestCase
 {
@@ -30,13 +31,16 @@ class AccountMappingTest extends MasterDataTestCase
 
         $this->assertNotEmpty($list);
         $depositMapping = collect($list)->firstWhere('mapping_key', 'sales.customer_deposit');
-        $this->assertSame('Uang Muka Pelanggan', $depositMapping['label'] ?? null);
+        $this->assertSame('Uang Muka Penjualan', $depositMapping['label'] ?? null);
         $this->assertTrue((bool) ($depositMapping['is_required'] ?? false));
         $this->assertSame(['liability'], $depositMapping['account_types'] ?? []);
+        $this->assertTrue((bool) ($depositMapping['visible_in_settings'] ?? false));
         $vendorDepositMapping = collect($list)->firstWhere('mapping_key', 'purchase.vendor_deposit');
-        $this->assertSame('Uang Muka Pemasok', $vendorDepositMapping['label'] ?? null);
+        $this->assertSame('Uang Muka Pembelian', $vendorDepositMapping['label'] ?? null);
         $this->assertTrue((bool) ($vendorDepositMapping['is_required'] ?? false));
         $this->assertSame(['asset'], $vendorDepositMapping['account_types'] ?? []);
+        $this->assertTrue((bool) ($vendorDepositMapping['visible_in_settings'] ?? false));
+        $this->assertFalse((bool) (collect($list)->firstWhere('mapping_key', 'journal.suspense')['visible_in_settings'] ?? true));
 
         // valid mapping update
         $this->patchJson('/api/master-data/account-mappings/sales.accounts_receivable', [
@@ -50,5 +54,24 @@ class AccountMappingTest extends MasterDataTestCase
         $this->patchJson('/api/master-data/account-mappings/sales.accounts_receivable', [
             'account_id' => $rev['id'],
         ], $ctx['headers'])->assertStatus(422);
+    }
+
+    public function test_sync_default_mappings_binds_customer_deposit_to_existing_default_account(): void
+    {
+        $ctx = $this->setUpTenant();
+        $deposit = ChartOfAccount::query()->create([
+            'account_code' => '2130',
+            'account_name' => 'Uang Muka Pelanggan',
+            'account_type' => 'liability',
+            'normal_balance' => 'credit',
+            'is_active' => true,
+        ]);
+
+        $this->getJson('/api/master-data/account-mappings', $ctx['headers'])->assertStatus(200);
+
+        $this->assertSame(
+            (int) $deposit->id,
+            (int) AccountMapping::query()->where('mapping_key', 'sales.customer_deposit')->value('account_id')
+        );
     }
 }

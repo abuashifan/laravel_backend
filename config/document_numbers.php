@@ -38,10 +38,6 @@ return [
             'prefix' => 'SI',
             'name' => 'Sales Invoice',
         ],
-        'billing_invoice' => [
-            'prefix' => 'BI',
-            'name' => 'Billing Invoice',
-        ],
         'sales_receipt' => [
             'prefix' => 'SR',
             'name' => 'Sales Receipt',

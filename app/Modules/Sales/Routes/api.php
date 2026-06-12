@@ -1,7 +1,6 @@
 <?php
 
 use App\Http\Controllers\Api\Sales\AccountsReceivableController;
-use App\Http\Controllers\Api\Sales\BillingInvoiceController;
 use App\Http\Controllers\Api\Sales\CustomerDepositController;
 use App\Http\Controllers\Api\Sales\DeliveryOrderController;
 use App\Http\Controllers\Api\Sales\ProformaInvoiceController;
@@ -74,13 +73,6 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('sales')->group(fu
     Route::patch('/invoices/{id}/approve', [SalesInvoiceController::class, 'approve'])->middleware('permission:sales.invoices.approve');
     Route::patch('/invoices/{id}/post', [SalesInvoiceController::class, 'post'])->middleware('permission:sales.invoices.post');
     Route::patch('/invoices/{id}/void', [SalesInvoiceController::class, 'void'])->middleware('permission:sales.invoices.void');
-
-    Route::get('/billings', [BillingInvoiceController::class, 'index'])->middleware('permission:sales.billings.view');
-    Route::post('/billings', [BillingInvoiceController::class, 'store'])->middleware('permission:sales.billings.create');
-    Route::get('/billings/{id}', [BillingInvoiceController::class, 'show'])->middleware('permission:sales.billings.view');
-    Route::post('/billings/from-sales-invoice/{salesInvoiceId}', [BillingInvoiceController::class, 'createFromSalesInvoice'])->middleware('permission:sales.billings.create');
-    Route::patch('/billings/{id}/issue', [BillingInvoiceController::class, 'issue'])->middleware('permission:sales.billings.issue');
-    Route::patch('/billings/{id}/cancel', [BillingInvoiceController::class, 'cancel'])->middleware('permission:sales.billings.cancel');
 
     Route::get('/customer-deposits', [CustomerDepositController::class, 'index'])->middleware('permission:sales.deposits.view');
     Route::post('/customer-deposits', [CustomerDepositController::class, 'store'])->middleware('permission:sales.deposits.create');

@@ -12,7 +12,6 @@ class SourceType
     public const DELIVERY_ORDER = 'delivery_order';
     public const PROFORMA_INVOICE = 'proforma_invoice';
     public const SALES_INVOICE = 'sales_invoice';
-    public const BILLING_INVOICE = 'billing_invoice';
     public const SALES_RECEIPT = 'sales_receipt';
     public const SALES_PAYMENT = 'sales_payment';
     public const SALES_RETURN = 'sales_return';

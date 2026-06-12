@@ -14,7 +14,6 @@ return new class extends Migration
             $table->date('receipt_date');
             $table->unsignedBigInteger('customer_id');
             $table->unsignedBigInteger('sales_invoice_id')->nullable();
-            $table->unsignedBigInteger('billing_invoice_id')->nullable();
             $table->unsignedBigInteger('cash_bank_account_id');
             $table->string('currency_code', 3)->default('IDR');
             $table->decimal('exchange_rate', 18, 6)->default(1);
@@ -37,7 +36,6 @@ return new class extends Migration
 
             $table->index(['customer_id', 'receipt_date']);
             $table->index('sales_invoice_id');
-            $table->index('billing_invoice_id');
             $table->index('status');
         });
     }

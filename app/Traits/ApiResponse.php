@@ -146,7 +146,6 @@ trait ApiResponse
             'delivery_date',
             'proforma_date',
             'invoice_date',
-            'billing_date',
             'receipt_date',
             'return_date',
             'request_date',

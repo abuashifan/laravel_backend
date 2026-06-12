@@ -19,5 +19,4 @@ class SalesReceipt extends Model
     public function lines(): HasMany { return $this->hasMany(SalesReceiptLine::class, 'sales_receipt_id'); }
     public function customer(): BelongsTo { return $this->belongsTo(Contact::class, 'customer_id'); }
     public function salesInvoice(): BelongsTo { return $this->belongsTo(SalesInvoice::class, 'sales_invoice_id'); }
-    public function billingInvoice(): BelongsTo { return $this->belongsTo(BillingInvoice::class, 'billing_invoice_id'); }
 }

@@ -7,7 +7,6 @@ return [
         'delivery_order',
         'proforma_invoice',
         'sales_invoice',
-        'billing_invoice',
         'sales_receipt',
         'sales_return',
         'customer_deposit',

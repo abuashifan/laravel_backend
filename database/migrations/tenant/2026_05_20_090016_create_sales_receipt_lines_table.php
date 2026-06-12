@@ -12,7 +12,6 @@ return new class extends Migration
             $table->id();
             $table->unsignedBigInteger('sales_receipt_id');
             $table->unsignedBigInteger('sales_invoice_id')->nullable();
-            $table->unsignedBigInteger('billing_invoice_id')->nullable();
             $table->decimal('amount', 18, 2);
             $table->text('description')->nullable();
             $table->string('source_line_type')->nullable();
@@ -22,7 +21,6 @@ return new class extends Migration
 
             $table->foreign('sales_receipt_id')->references('id')->on('sales_receipts')->cascadeOnDelete();
             $table->index('sales_invoice_id');
-            $table->index('billing_invoice_id');
         });
     }
 

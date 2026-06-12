@@ -23,6 +23,9 @@ class AccountMappingStorageService
                 $mapping->account_id = null;
                 $mapping->is_active = true;
             }
+            if ($mapping->account_id === null) {
+                $mapping->account_id = $this->defaultAccountIdForRequirement($req);
+            }
             $mapping->save();
         }
     }
@@ -41,10 +44,20 @@ class AccountMappingStorageService
                     'label' => $requirement?->label,
                     'description' => $requirement?->description,
                     'account_types' => $requirement?->accountTypes ?? [],
+                    'visible_in_settings' => $requirement?->visibleInSettings ?? false,
+                    'settings_section' => $requirement?->settingsSection,
+                    'settings_order' => $requirement?->settingsOrder ?? 999,
                     'account_code' => $mapping->account?->account_code,
                     'account_name' => $mapping->account?->account_name,
                 ]);
-            });
+            })
+            ->sortBy([
+                ['visible_in_settings', 'desc'],
+                ['settings_order', 'asc'],
+                ['settings_section', 'asc'],
+                ['mapping_key', 'asc'],
+            ])
+            ->values();
     }
 
     public function updateMapping(string $key, ?int $accountId): AccountMapping
@@ -91,6 +104,22 @@ class AccountMappingStorageService
                 'errors' => $result['errors'],
             ]);
         }
+    }
+
+    private function defaultAccountIdForRequirement($req): ?int
+    {
+        foreach ($req->defaultAccountCodes as $accountCode) {
+            $account = ChartOfAccount::query()
+                ->where('account_code', (string) $accountCode)
+                ->where('is_active', true)
+                ->first();
+
+            if ($account && $req->allowsAccountType($account->account_type)) {
+                return (int) $account->id;
+            }
+        }
+
+        return null;
     }
 
     public function requiredMappingsComplete(?string $module = null): bool

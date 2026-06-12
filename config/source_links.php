@@ -12,7 +12,6 @@ return [
         'delivery_order',
         'proforma_invoice',
         'sales_invoice',
-        'billing_invoice',
         'sales_receipt',
         'sales_payment',
         'sales_return',

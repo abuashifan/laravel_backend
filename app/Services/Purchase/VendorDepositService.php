@@ -16,6 +16,7 @@ use App\Services\Transactions\TransactionDateGuardService;
 use App\Services\Transactions\TransactionVoidEffectService;
 use App\Services\Audit\AuditLogService;
 use App\Support\DocumentNumbering\DocumentType;
+use App\Services\MasterData\AccountMappingStorageService;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -312,6 +313,7 @@ class VendorDepositService
 
     private function mapping(string $key): int
     {
+        app(AccountMappingStorageService::class)->syncDefaultMappingsFromConfig();
         $mapping = AccountMapping::query()->where('mapping_key', $key)->where('is_active', true)->first();
         if (! $mapping?->account_id) {
             throw ApiException::make(

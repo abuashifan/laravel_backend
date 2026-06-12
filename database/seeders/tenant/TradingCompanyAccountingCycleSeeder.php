@@ -138,8 +138,6 @@ class TradingCompanyAccountingCycleSeeder extends Seeder
             'sales_returns',
             'sales_receipt_lines',
             'sales_receipts',
-            'billing_invoice_lines',
-            'billing_invoices',
             'customer_deposit_allocations',
             'customer_deposits',
             'sales_invoice_lines',
@@ -424,22 +422,6 @@ class TradingCompanyAccountingCycleSeeder extends Seeder
             'posted_at' => $this->at($month, 9),
         ], 'sales_invoice_lines', 'sales_invoice_id', $this->itemLine($productCode, $qty, $unitPrice, $gross, $base, $total, $unitId, $warehouseId, $deptId, $projectId, $tax));
 
-        $billing = $this->document('billing_invoices', 'billing_number', $this->doc('BI', $suffix), [
-            'billing_date' => $this->date($month, 10),
-            'due_date' => $this->date(min(12, $month + 1), 8),
-            'customer_id' => $customerId,
-            'sales_invoice_id' => $invoice,
-            'sales_invoice_number' => $this->doc('SI', $suffix),
-            'status' => $invoiceBalance > 0 ? 'partial' : 'paid',
-            'billing_amount' => $total,
-            'paid_amount' => $receiptAmount + $depositAmount,
-            'balance_due' => $invoiceBalance,
-            'issued_at' => $this->at($month, 10),
-        ], 'billing_invoice_lines', 'billing_invoice_id', [
-            'description' => 'Billing for '.$this->doc('SI', $suffix),
-            'amount' => $total,
-        ]);
-
         $refs = [
             'sales_invoice_'.$suffix => ['table' => 'sales_invoices', 'id' => $invoice],
             'delivery_'.$suffix => ['table' => 'delivery_orders', 'id' => $delivery],
@@ -472,14 +454,12 @@ class TradingCompanyAccountingCycleSeeder extends Seeder
                 'receipt_date' => $this->date(min(12, $month + 1), 12),
                 'customer_id' => $customerId,
                 'sales_invoice_id' => $invoice,
-                'billing_invoice_id' => $billing,
                 'cash_bank_account_id' => $this->accounts['1110'],
                 'amount' => $receiptAmount,
                 'status' => 'posted',
                 'posted_at' => $this->at(min(12, $month + 1), 12),
             ], 'sales_receipt_lines', 'sales_receipt_id', [
                 'sales_invoice_id' => $invoice,
-                'billing_invoice_id' => $billing,
                 'amount' => $receiptAmount,
                 'description' => 'Customer receipt for '.$this->doc('SI', $suffix),
             ]);
@@ -1530,12 +1510,14 @@ class TradingCompanyAccountingCycleSeeder extends Seeder
             'purchase.tax_input' => ['purchase', '2140', false],
             'purchase.discount' => ['purchase', '5110', false],
             'purchase.return' => ['purchase', '5110', false],
-            'purchase.vendor_deposit' => ['purchase', '1140', false],
+            'purchase.vendor_deposit' => ['purchase', '1140', true],
             'purchase.default_cash_bank' => ['purchase', '1110', false],
             'inventory.asset' => ['inventory', '1130', true],
             'inventory.cogs' => ['inventory', '5100', true],
+            'inventory.adjustment_gain' => ['inventory', '5120', false],
             'inventory.adjustment_loss' => ['inventory', '5120', false],
             'inventory.write_off' => ['inventory', '5120', false],
+            'inventory.opening_stock_equity' => ['inventory', '3100', false],
             'cash_bank.default_cash' => ['cash_bank', '1100', true],
             'cash_bank.default_bank' => ['cash_bank', '1110', true],
             'cash_bank.bank_admin_fee' => ['cash_bank', '6160', false],
@@ -1543,6 +1525,7 @@ class TradingCompanyAccountingCycleSeeder extends Seeder
             'opening_balance.equity' => ['opening_balance', '3100', true],
             'closing.retained_earnings' => ['closing', '3200', true],
             'closing.current_year_earnings' => ['closing', '3300', true],
+            'journal.suspense' => ['journal', '3100', false],
         ];
     }
 

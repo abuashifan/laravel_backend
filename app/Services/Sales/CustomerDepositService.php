@@ -11,6 +11,7 @@ use App\Models\Tenant\SalesInvoice;
 use App\Models\Tenant\SalesOrder;
 use App\Services\Audit\AuditLogService;
 use App\Services\DocumentNumbering\DocumentNumberService;
+use App\Services\MasterData\AccountMappingStorageService;
 use App\Services\Sales\Concerns\HandlesSalesDocuments;
 use App\Services\Tenant\TenantContext;
 use App\Services\Transactions\TransactionDateGuardService;
@@ -279,7 +280,7 @@ class CustomerDepositService
     public function calculateAvailableForCustomer(int $customerId): float { return (float) CustomerDeposit::query()->where('customer_id', $customerId)->whereIn('status', ['posted', 'partially_allocated'])->sum('remaining_amount'); }
     public function calculateReceivedForSalesOrder(SalesOrder $order): float { return (float) $order->deposits()->where('status', '!=', 'void')->sum('amount'); }
 
-    private function mapping(string $key): int { $mapping = AccountMapping::query()->where('mapping_key', $key)->where('is_active', true)->first(); if (! $mapping?->account_id) throw ApiException::make('ACCOUNT_MAPPING_MISSING', $key === 'sales.customer_deposit' ? 'Mapping akun Uang Muka Pelanggan belum diatur. Silakan atur sales.customer_deposit di Pemetaan Akun.' : 'Required account mapping is missing: '.$key, 422); return (int) $mapping->account_id; }
+    private function mapping(string $key): int { app(AccountMappingStorageService::class)->syncDefaultMappingsFromConfig(); $mapping = AccountMapping::query()->where('mapping_key', $key)->where('is_active', true)->first(); if (! $mapping?->account_id) throw ApiException::make('ACCOUNT_MAPPING_MISSING', $key === 'sales.customer_deposit' ? 'Mapping akun Uang Muka Pelanggan belum diatur. Silakan atur sales.customer_deposit di Pemetaan Akun.' : 'Required account mapping is missing: '.$key, 422); return (int) $mapping->account_id; }
     private function guardDate(string $date, string $action = 'post'): void { $check = $this->dateGuardService->check($date, $action, 'sales'); if ($check->denied()) { $arr = $check->toArray(); throw ApiException::make((string) $arr['code'], (string) $arr['message'], 422, (array) $arr['reasons'], (array) $arr['meta']); } }
     private function availableDepositRow(CustomerDeposit $deposit, ?int $salesOrderId = null): array
     {
