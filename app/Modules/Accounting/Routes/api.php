@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\Accounting\FiscalYearClosingController;
 use App\Http\Controllers\Api\Accounting\FiscalYearStatusController;
+use App\Http\Controllers\Api\Accounting\AccountMappingHealthController;
 use App\Http\Controllers\Api\Accounting\PeriodLockController;
 use Illuminate\Support\Facades\Route;
 
@@ -24,3 +25,10 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('accounting')->gro
     Route::patch('/period-locks', [PeriodLockController::class, 'update'])
         ->middleware('permission:fiscal_year.lock_manage');
 });
+
+Route::middleware(['auth:sanctum', 'company.access'])
+    ->prefix('v1/accounting')
+    ->group(function () {
+        Route::get('/account-mapping-health', [AccountMappingHealthController::class, 'index'])
+            ->middleware('permission:fiscal_year.view');
+    });

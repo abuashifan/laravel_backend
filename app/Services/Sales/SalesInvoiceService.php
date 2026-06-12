@@ -259,6 +259,10 @@ class SalesInvoiceService
             throw ApiException::make((string) $arr['code'], (string) $arr['message'], 422, (array) $arr['reasons'], (array) $arr['meta']);
         }
 
+        if ((float) $invoice->tax_total > 0) {
+            $this->assertMapping('sales.tax_output');
+        }
+
         return DB::connection('tenant')->transaction(function () use ($invoice, $appliedDownPaymentAmount) {
             $invoice->load('lines', 'customer');
             $this->validateSourceRemainingQuantities($invoice);
@@ -495,6 +499,19 @@ class SalesInvoiceService
     private function requiredMapping(string $key): int
     {
         return app(BusinessReferenceValidator::class)->accountMapping($key, $key === 'sales.tax_output' ? ['liability'] : null);
+    }
+
+    private function assertMapping(string $key): void
+    {
+        $mapping = AccountMapping::query()->where('mapping_key', $key)->where('is_active', true)->first();
+        if (! $mapping?->account_id) {
+            throw ApiException::make(
+                'MAPPING_REQUIRED',
+                "Account mapping [{$key}] is required for this operation.",
+                422,
+                ['account_mapping' => ["{$key} is not configured"]]
+            );
+        }
     }
 
     private function updateSourceProgress(SalesInvoice $invoice): void

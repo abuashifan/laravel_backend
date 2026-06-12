@@ -230,16 +230,6 @@ return [
             'default_account_codes' => ['5120', '6190', '5100'],
             'visible_in_settings' => false,
         ],
-        'inventory.opening_stock_equity' => [
-            'module' => 'inventory',
-            'label' => 'Opening Stock Equity (Optional)',
-            'required' => false,
-            'account_types' => ['equity'],
-            'description' => 'Optional equity account for opening stock balancing if needed.',
-            'default_account_codes' => ['3100'],
-            'visible_in_settings' => false,
-        ],
-
         'cash_bank.default_cash' => [
             'module' => 'cash_bank',
             'label' => 'Default Cash',

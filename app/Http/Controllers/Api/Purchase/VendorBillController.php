@@ -35,5 +35,5 @@ class VendorBillController extends Controller
     public function createFromGoodsReceipt(Request $request, int $goodsReceiptId): JsonResponse { return $this->successResponse($this->service->createFromGoodsReceipt(GoodsReceipt::query()->findOrFail($goodsReceiptId), $request->all()), 'Vendor bill created from goods receipt successfully', 201); }
     public function approve(int $id): JsonResponse { return $this->successResponse($this->service->approve(VendorBill::query()->findOrFail($id)), 'Vendor bill approved successfully'); }
     public function post(PostVendorBillRequest $request, int $id): JsonResponse { return $this->successResponse($this->service->post(VendorBill::query()->findOrFail($id), $request->validated('applied_vendor_deposit_amount')), 'Vendor bill posted successfully'); }
-    public function void(PurchaseRequestActionRequest $request, int $id): JsonResponse { return $this->successResponse($this->service->void(VendorBill::query()->findOrFail($id), $request->validated('reason')), 'Vendor bill voided successfully'); }
+    public function void(PurchaseRequestActionRequest $request, int $id): JsonResponse { $request->validated(); return $this->successResponse($this->service->void(VendorBill::query()->findOrFail($id), $request->input('reason')), 'Vendor bill voided successfully'); }
 }

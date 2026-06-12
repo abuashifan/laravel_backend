@@ -2,7 +2,9 @@
 
 namespace App\Services\Inventory;
 
+use App\Enums\SourceType;
 use App\Exceptions\ApiException;
+use App\Models\Tenant\AccountMapping;
 use App\Models\Tenant\Product;
 use App\Models\Tenant\StockAdjustment;
 use App\Models\Tenant\StockAdjustmentLine;
@@ -160,6 +162,14 @@ class StockAdjustmentService
             throw ApiException::make('INVALID_STOCK_ADJUSTMENT_STATUS', 'Stock adjustment cannot be posted.', 422);
         }
 
+        $adjustment->loadMissing('lines');
+        if ($adjustment->lines->contains(fn ($l) => (string) $l->adjustment_type === 'increase')) {
+            $this->assertMapping('inventory.adjustment_gain');
+        }
+        if ($adjustment->lines->contains(fn ($l) => (string) $l->adjustment_type !== 'increase')) {
+            $this->assertMapping('inventory.adjustment_loss');
+        }
+
         return DB::connection('tenant')->transaction(function () use ($adjustment) {
             $adjustment->loadMissing('lines');
             $this->movementValidation->validatePeriodNotLocked((string) $adjustment->adjustment_date);
@@ -218,7 +228,10 @@ class StockAdjustmentService
 
     public function void(StockAdjustment $adjustment, ?string $reason = null): StockAdjustment
     {
-        if ($adjustment->status === 'void') return $adjustment;
+        if ($adjustment->status === 'void') {
+            throw ApiException::make('STOCK_ADJUSTMENT_ALREADY_VOID', 'Stock adjustment already void.', 422);
+        }
+
         $reason = trim((string) $reason);
         if ($reason === '') throw ApiException::make('VALIDATION_ERROR', 'Void reason is required.', 422, ['reason' => ['Void reason is required.']]);
         $this->movementValidation->validatePeriodNotLocked((string) $adjustment->adjustment_date);
@@ -347,7 +360,7 @@ class StockAdjustmentService
             $m = $this->stockMovementService->createAndPost([
                 'movement_date' => (string) $adjustment->adjustment_date,
                 'movement_type' => 'adjustment_in',
-                'source_type' => 'stock_adjustment',
+                'source_type' => SourceType::STOCK_ADJUSTMENT->value,
                 'source_id' => (int) $adjustment->id,
                 'source_number' => $adjustment->adjustment_number,
                 'source_revision' => (int) $adjustment->revision_no,
@@ -363,7 +376,7 @@ class StockAdjustmentService
             $m = $this->stockMovementService->createAndPost([
                 'movement_date' => (string) $adjustment->adjustment_date,
                 'movement_type' => 'adjustment_out',
-                'source_type' => 'stock_adjustment',
+                'source_type' => SourceType::STOCK_ADJUSTMENT->value,
                 'source_id' => (int) $adjustment->id,
                 'source_number' => $adjustment->adjustment_number,
                 'source_revision' => (int) $adjustment->revision_no,
@@ -384,5 +397,18 @@ class StockAdjustmentService
         $ids = $meta['stock_movement_ids'] ?? null;
         if (is_array($ids) && $ids !== []) return array_values(array_map('intval', $ids));
         return $adjustment->stock_movement_id ? [(int) $adjustment->stock_movement_id] : [];
+    }
+
+    private function assertMapping(string $key): void
+    {
+        $mapping = AccountMapping::query()->where('mapping_key', $key)->where('is_active', true)->first();
+        if (! $mapping?->account_id) {
+            throw ApiException::make(
+                'MAPPING_REQUIRED',
+                "Account mapping [{$key}] is required for this operation.",
+                422,
+                ['account_mapping' => ["{$key} is not configured"]]
+            );
+        }
     }
 }

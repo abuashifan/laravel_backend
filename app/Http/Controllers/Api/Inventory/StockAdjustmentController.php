@@ -55,7 +55,7 @@ class StockAdjustmentController extends Controller
     public function void(VoidStockAdjustmentRequest $request, int $id): JsonResponse
     {
         $adj = StockAdjustment::query()->findOrFail($id);
-        return $this->successResponse($this->service->void($adj, $request->validated('reason')), 'Stock adjustment voided successfully');
+        $request->validated();
+        return $this->successResponse($this->service->void($adj, $request->input('reason')), 'Stock adjustment voided successfully');
     }
 }
-

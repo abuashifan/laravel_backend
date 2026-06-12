@@ -192,6 +192,10 @@ class VendorBillService
         if (! in_array($bill->status, ['draft', 'approved'], true)) throw ApiException::make('INVALID_VENDOR_BILL_STATUS', 'Vendor bill cannot be posted from current status.', 422);
         $this->guardDate((string) $bill->bill_date);
 
+        if ((float) $bill->tax_total > 0) {
+            $this->assertMapping('purchase.tax_input');
+        }
+
         return DB::connection('tenant')->transaction(function () use ($bill, $appliedVendorDepositAmount) {
             $bill->load('lines.product', 'vendor');
             $this->validateSourceRemainingQuantities($bill);
@@ -334,6 +338,19 @@ class VendorBillService
     private function requiredMapping(string $key): int
     {
         return app(BusinessReferenceValidator::class)->accountMapping($key, $key === 'purchase.tax_input' ? ['asset'] : null);
+    }
+
+    private function assertMapping(string $key): void
+    {
+        $mapping = AccountMapping::query()->where('mapping_key', $key)->where('is_active', true)->first();
+        if (! $mapping?->account_id) {
+            throw ApiException::make(
+                'MAPPING_REQUIRED',
+                "Account mapping [{$key}] is required for this operation.",
+                422,
+                ['account_mapping' => ["{$key} is not configured"]]
+            );
+        }
     }
 
     private function withDraftPurchaseExpenseSnapshots(array $lines): array

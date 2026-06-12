@@ -119,8 +119,8 @@ class StockOpnameTest extends JournalTestCase
         $res = $this->patchJson('/api/inventory/stock-opnames/'.$opname->id.'/finalize', [], $ctx['headers']);
 
         $res->assertStatus(422);
-        $res->assertJsonPath('code', 'ACCOUNT_MAPPING_MISSING');
-        $this->assertStringContainsString('Stock Adjustment Gain account mapping is not configured', (string) $res->json('message'));
+        $res->assertJsonPath('code', 'MAPPING_REQUIRED');
+        $this->assertStringContainsString('inventory.adjustment_gain', (string) $res->json('message'));
     }
 
     public function test_opname_out_fails_when_adjustment_loss_mapping_missing(): void
@@ -133,8 +133,8 @@ class StockOpnameTest extends JournalTestCase
         $res = $this->patchJson('/api/inventory/stock-opnames/'.$opname->id.'/finalize', [], $ctx['headers']);
 
         $res->assertStatus(422);
-        $res->assertJsonPath('code', 'ACCOUNT_MAPPING_MISSING');
-        $this->assertStringContainsString('Stock Adjustment Loss account mapping is not configured', (string) $res->json('message'));
+        $res->assertJsonPath('code', 'MAPPING_REQUIRED');
+        $this->assertStringContainsString('inventory.adjustment_loss', (string) $res->json('message'));
     }
 
     public function test_reposting_posted_opname_movement_does_not_create_double_journal(): void

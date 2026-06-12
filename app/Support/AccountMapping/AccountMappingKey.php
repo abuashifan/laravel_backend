@@ -30,7 +30,6 @@ class AccountMappingKey
     public const INVENTORY_ADJUSTMENT_GAIN = 'inventory.adjustment_gain';
     public const INVENTORY_ADJUSTMENT_LOSS = 'inventory.adjustment_loss';
     public const INVENTORY_WRITE_OFF = 'inventory.write_off';
-    public const INVENTORY_OPENING_STOCK_EQUITY = 'inventory.opening_stock_equity';
 
     // Cash/Bank
     public const CASH_BANK_DEFAULT_CASH = 'cash_bank.default_cash';

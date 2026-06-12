@@ -16,6 +16,7 @@ use App\Models\Tenant\SalesInvoice;
 use App\Models\Tenant\SalesReceipt;
 use App\Models\Tenant\StockBalance;
 use App\Models\Tenant\StockMovement;
+use App\Models\Tenant\Unit;
 use App\Models\Tenant\VendorBill;
 use App\Models\Tenant\VendorDeposit;
 use App\Models\Tenant\VendorPayment;
@@ -25,6 +26,26 @@ use Tests\Feature\Journal\JournalTestCase;
 
 class ReconciliationReportTest extends JournalTestCase
 {
+    public function test_reconciliation_endpoint_requires_authentication(): void
+    {
+        $this->getJson('/api/reports/reconciliation/inventory')
+            ->assertStatus(401);
+    }
+
+    public function test_reconciliation_endpoint_returns_standard_response_structure(): void
+    {
+        $ctx = $this->setUpTenant(role: 'finance');
+
+        $res = $this->getJson('/api/reports/reconciliation/inventory?date_to=2026-01-31', $ctx['headers'])
+            ->assertStatus(200);
+
+        $res->assertJsonPath('success', true);
+        $this->assertIsArray($res->json('data'));
+        $this->assertIsArray($res->json('data.summary'));
+        $this->assertIsArray($res->json('data.data'));
+        $this->assertIsArray($res->json('meta'));
+    }
+
     public function test_ar_reconciliation_reports_matched_and_mismatched_customers(): void
     {
         $ctx = $this->setUpTenant(role: 'finance');
@@ -74,6 +95,45 @@ class ReconciliationReportTest extends JournalTestCase
             ->assertStatus(200);
         $this->assertCount(1, $diff->json('data.data'));
         $this->assertSame($mismatched->id, $diff->json('data.data.0.customer_id'));
+    }
+
+    public function test_reconciliation_date_range_filter_changes_response_rows(): void
+    {
+        $ctx = $this->setUpTenant(role: 'finance');
+        $cash = ChartOfAccount::query()->findOrFail($ctx['accounts']['debit']);
+        $customer = $this->customer('CUST-DATE', 'Date Filter Customer');
+
+        CustomerDeposit::query()->create([
+            'deposit_number' => 'CD-JAN',
+            'deposit_date' => '2026-01-10',
+            'customer_id' => $customer->id,
+            'cash_bank_account_id' => $cash->id,
+            'amount' => 100,
+            'allocated_amount' => 0,
+            'remaining_amount' => 100,
+            'status' => 'posted',
+            'posted_at' => now(),
+        ]);
+        CustomerDeposit::query()->create([
+            'deposit_number' => 'CD-FEB',
+            'deposit_date' => '2026-02-10',
+            'customer_id' => $customer->id,
+            'cash_bank_account_id' => $cash->id,
+            'amount' => 200,
+            'allocated_amount' => 0,
+            'remaining_amount' => 200,
+            'status' => 'posted',
+            'posted_at' => now(),
+        ]);
+
+        $jan = $this->getJson('/api/reports/reconciliation/customer-deposits?date_from=2026-01-01&date_to=2026-01-31', $ctx['headers'])
+            ->assertStatus(200);
+        $feb = $this->getJson('/api/reports/reconciliation/customer-deposits?date_from=2026-02-01&date_to=2026-02-28', $ctx['headers'])
+            ->assertStatus(200);
+
+        $this->assertSame(100.0, (float) $jan->json('data.summary.total_deposit'));
+        $this->assertSame(200.0, (float) $feb->json('data.summary.total_deposit'));
+        $this->assertNotSame($jan->json('data.data.0.deposit_number'), $feb->json('data.data.0.deposit_number'));
     }
 
     public function test_ap_reconciliation_reports_matched_and_mismatched_vendors(): void
@@ -157,6 +217,52 @@ class ReconciliationReportTest extends JournalTestCase
         $this->assertSame(500.0, (float) $res->json('data.summary.total_valuation'));
         $this->assertSame(450.0, (float) $res->json('data.summary.total_gl_inventory'));
         $this->assertSame('mismatch', $res->json('data.data.0.status'));
+    }
+
+    public function test_inventory_reconciliation_matches_posted_stock_movement_to_gl(): void
+    {
+        $ctx = $this->setUpTenant(role: 'owner');
+        $inventory = $this->account('1200', 'Inventory', 'asset', 'debit');
+        $cogs = $this->account('5100', 'COGS', 'expense', 'debit');
+        $equity = $this->account('3000', 'Opening Balance Equity', 'equity', 'credit');
+        $this->mapping(AccountMappingKey::INVENTORY_ASSET, $inventory, 'inventory');
+        $this->mapping(AccountMappingKey::INVENTORY_COGS, $cogs, 'inventory');
+        $this->mapping(AccountMappingKey::OPENING_BALANCE_EQUITY, $equity, 'opening_balance');
+
+        $unit = Unit::query()->create(['code' => 'PCS', 'name' => 'Pieces', 'precision' => 0, 'is_active' => true]);
+        $warehouse = Warehouse::query()->create(['code' => 'WH-SM', 'name' => 'Stock Movement Warehouse', 'is_active' => true]);
+        $product = Product::query()->create([
+            'product_code' => 'SM-ITEM',
+            'product_name' => 'Stock Movement Item',
+            'product_type' => 'goods',
+            'unit_id' => $unit->id,
+            'is_stock_item' => true,
+            'is_active' => true,
+            'inventory_account_id' => $inventory->id,
+        ]);
+
+        $movement = $this->postJson('/api/inventory/stock-movements', [
+            'movement_date' => '2026-01-10',
+            'movement_type' => 'opening_stock',
+            'lines' => [[
+                'product_id' => $product->id,
+                'warehouse_id' => $warehouse->id,
+                'unit_id' => $unit->id,
+                'quantity' => 5,
+                'unit_cost' => 100,
+            ]],
+        ], $ctx['headers'])->assertStatus(201)->json('data');
+
+        $this->patchJson('/api/inventory/stock-movements/'.$movement['id'].'/post', [], $ctx['headers'])
+            ->assertStatus(200);
+
+        $res = $this->getJson('/api/reports/reconciliation/inventory?date_to=2026-01-31', $ctx['headers'])
+            ->assertStatus(200);
+
+        $this->assertSame(500.0, (float) $res->json('data.summary.total_valuation'));
+        $this->assertSame(500.0, (float) $res->json('data.summary.total_gl_inventory'));
+        $this->assertSame(0.0, (float) $res->json('data.summary.total_difference'));
+        $this->assertSame('matched', $res->json('data.data.0.status'));
     }
 
     public function test_grni_reconciliation_reports_outstanding_goods_receipt_against_interim_gl(): void

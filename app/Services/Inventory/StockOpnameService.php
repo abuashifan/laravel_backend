@@ -2,7 +2,9 @@
 
 namespace App\Services\Inventory;
 
+use App\Enums\SourceType;
 use App\Exceptions\ApiException;
+use App\Models\Tenant\AccountMapping;
 use App\Models\Tenant\Product;
 use App\Models\Tenant\StockBalance;
 use App\Models\Tenant\StockMovement;
@@ -179,6 +181,14 @@ class StockOpnameService
             throw ApiException::make('INVALID_STOCK_OPNAME_STATUS', 'Stock opname cannot be finalized.', 422);
         }
 
+        $opname->loadMissing('lines');
+        if ($opname->lines->contains(fn ($l) => (float) $l->difference_quantity > 1e-9)) {
+            $this->assertMapping('inventory.adjustment_gain');
+        }
+        if ($opname->lines->contains(fn ($l) => (float) $l->difference_quantity < -1e-9)) {
+            $this->assertMapping('inventory.adjustment_loss');
+        }
+
         return DB::connection('tenant')->transaction(function () use ($opname) {
             $opname->loadMissing('lines');
             $this->movementValidation->validatePeriodNotLocked((string) $opname->opname_date);
@@ -295,7 +305,7 @@ class StockOpnameService
             $m = $this->stockMovementService->createAndPost([
                 'movement_date' => (string) $opname->opname_date,
                 'movement_type' => 'opname_in',
-                'source_type' => 'stock_opname',
+                'source_type' => SourceType::STOCK_OPNAME->value,
                 'source_id' => (int) $opname->id,
                 'source_number' => $opname->opname_number,
                 'source_revision' => 1,
@@ -308,7 +318,7 @@ class StockOpnameService
             $m = $this->stockMovementService->createAndPost([
                 'movement_date' => (string) $opname->opname_date,
                 'movement_type' => 'opname_out',
-                'source_type' => 'stock_opname',
+                'source_type' => SourceType::STOCK_OPNAME->value,
                 'source_id' => (int) $opname->id,
                 'source_number' => $opname->opname_number,
                 'source_revision' => 1,
@@ -327,5 +337,18 @@ class StockOpnameService
         $ids = $meta['stock_movement_ids'] ?? null;
         if (is_array($ids) && $ids !== []) return array_values(array_map('intval', $ids));
         return $opname->stock_movement_id ? [(int) $opname->stock_movement_id] : [];
+    }
+
+    private function assertMapping(string $key): void
+    {
+        $mapping = AccountMapping::query()->where('mapping_key', $key)->where('is_active', true)->first();
+        if (! $mapping?->account_id) {
+            throw ApiException::make(
+                'MAPPING_REQUIRED',
+                "Account mapping [{$key}] is required for this operation.",
+                422,
+                ['account_mapping' => ["{$key} is not configured"]]
+            );
+        }
     }
 }

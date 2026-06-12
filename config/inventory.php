@@ -42,8 +42,6 @@ return [
         'adjustment_out',
         'opname_in',
         'opname_out',
-        'transfer_in',
-        'transfer_out',
         'opening_stock',
     ],
 ];

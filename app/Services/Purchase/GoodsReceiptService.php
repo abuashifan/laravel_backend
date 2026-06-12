@@ -3,6 +3,7 @@
 namespace App\Services\Purchase;
 
 use App\Exceptions\ApiException;
+use App\Models\Tenant\AccountMapping;
 use App\Models\Tenant\GoodsReceipt;
 use App\Models\Tenant\PurchaseOrder;
 use App\Models\Tenant\PurchaseOrderLine;
@@ -126,6 +127,17 @@ class GoodsReceiptService
     {
         if ($goodsReceipt->status !== 'draft') throw ApiException::make('INVALID_GOODS_RECEIPT_STATUS', 'Invalid goods receipt status transition.', 422);
 
+        $check = $this->dateGuardService->check((string) $goodsReceipt->receipt_date, 'post', 'purchase');
+        if ($check->denied()) { $arr = $check->toArray(); throw ApiException::make((string) $arr['code'], (string) $arr['message'], 422, (array) $arr['reasons'], (array) $arr['meta']); }
+
+        $goodsReceipt->loadMissing('lines.product');
+        $hasStockLine = $goodsReceipt->lines->contains(
+            fn ($l) => $l->warehouse_id && $l->product_id && (bool) optional($l->product)->is_stock_item
+        );
+        if ($hasStockLine) {
+            $this->assertMapping('purchase.inventory_interim');
+        }
+
         return DB::connection('tenant')->transaction(function () use ($goodsReceipt) {
             $goodsReceipt->load('lines');
             $this->validateRemainingQuantities($goodsReceipt);
@@ -236,6 +248,19 @@ class GoodsReceiptService
             if ((float) $line->quantity > $remaining) {
                 throw ApiException::make('GOODS_RECEIPT_QUANTITY_EXCEEDS_REMAINING', 'Received quantity exceeds remaining purchase order quantity.', 422);
             }
+        }
+    }
+
+    private function assertMapping(string $key): void
+    {
+        $mapping = AccountMapping::query()->where('mapping_key', $key)->where('is_active', true)->first();
+        if (! $mapping?->account_id) {
+            throw ApiException::make(
+                'MAPPING_REQUIRED',
+                "Account mapping [{$key}] is required for this operation.",
+                422,
+                ['account_mapping' => ["{$key} is not configured"]]
+            );
         }
     }
 }

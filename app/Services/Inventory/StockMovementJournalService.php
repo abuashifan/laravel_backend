@@ -5,17 +5,13 @@ namespace App\Services\Inventory;
 use App\Exceptions\ApiException;
 use App\Models\Tenant\JournalEntry;
 use App\Models\Tenant\StockMovement;
-use App\Services\DocumentNumbering\DocumentNumberService;
-use App\Services\Tenant\TenantContext;
-use App\Support\DocumentNumbering\DocumentType;
-use Illuminate\Support\Facades\DB;
+use App\Services\Journal\SystemJournalBuilder;
 
 class StockMovementJournalService
 {
     public function __construct(
-        private readonly TenantContext $tenantContext,
-        private readonly DocumentNumberService $documentNumberService,
         private readonly InventoryAccountMappingService $mappingService,
+        private readonly SystemJournalBuilder $journalBuilder,
     ) {
     }
 
@@ -98,6 +94,10 @@ class StockMovementJournalService
 
     public function createAdjustmentJournal(StockMovement $movement): ?JournalEntry
     {
+        if (abs((float) $movement->total_value) < PHP_FLOAT_EPSILON) {
+            return null;
+        }
+
         $inventory = $this->mappingService->getInventoryAccount();
 
         if ($movement->movement_type === 'adjustment_in') {
@@ -186,32 +186,15 @@ class StockMovementJournalService
 
     private function createSimpleJournal(StockMovement $movement, array $lines, string $desc): JournalEntry
     {
-        $company = $this->tenantContext->company();
-        if (! $company) {
-            throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
-        }
-
-        return DB::connection('tenant')->transaction(function () use ($company, $movement, $lines, $desc) {
-            $journal = JournalEntry::query()->create([
-                'journal_number' => $this->documentNumberService->generate($company, DocumentType::JOURNAL_ENTRY, (string) $movement->movement_date),
-                'journal_date' => $movement->movement_date,
-                'description' => $desc.' '.$movement->movement_number,
-                'status' => 'posted',
-                'revision_no' => 1,
-                'source_type' => 'stock_movement',
-                'source_id' => $movement->id,
-                'source_number' => $movement->movement_number,
-                'source_revision' => 1,
-                'source_module' => 'inventory',
-                'is_system_generated' => true,
-                'created_by' => auth()->id(),
-                'posted_by' => auth()->id(),
-                'posted_at' => now(),
-            ]);
-
-            $journal->lines()->createMany($lines);
-            return $journal->refresh();
-        });
+        return $this->journalBuilder->create([
+            'source_type'     => 'stock_movement',
+            'source_id'       => $movement->id,
+            'source_number'   => $movement->movement_number,
+            'source_revision' => 1,
+            'source_module'   => 'inventory',
+            'journal_date'    => (string) $movement->movement_date,
+            'description'     => $desc.' '.$movement->movement_number,
+        ], $lines);
     }
 
     private function inventoryDebitLines(StockMovement $movement, int $startOrder = 1): array

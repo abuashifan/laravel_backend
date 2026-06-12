@@ -3,6 +3,7 @@
 namespace App\Services\Inventory;
 
 use App\Exceptions\ApiException;
+use App\Models\Tenant\JournalEntry;
 use App\Models\Tenant\Product;
 use App\Models\Tenant\StockMovement;
 use App\Services\Audit\AuditLogService;
@@ -166,11 +167,12 @@ class StockMovementService
         if ($reason === '') {
             throw ApiException::make('VALIDATION_ERROR', 'Void reason is required.', 422, ['reason' => ['Void reason is required.']]);
         }
-        $this->validation->validatePeriodNotLocked((string) $movement->movement_date);
 
         if ($movement->status === 'void') {
-            return $movement;
+            throw ApiException::make('MOVEMENT_ALREADY_VOIDED', 'Stock movement already voided.', 422);
         }
+
+        $this->validation->validatePeriodNotLocked((string) $movement->movement_date);
 
         if ($movement->status !== 'posted') {
             $movement->status = 'void';
@@ -192,6 +194,17 @@ class StockMovementService
         }
 
         return DB::connection('tenant')->transaction(function () use ($movement, $reason) {
+            if ($movement->journal_entry_id) {
+                JournalEntry::query()
+                    ->whereKey((int) $movement->journal_entry_id)
+                    ->update([
+                        'status' => 'void',
+                        'voided_by' => auth()->id(),
+                        'voided_at' => now(),
+                        'void_reason' => $reason,
+                    ]);
+            }
+
             $reversal = $this->createReversal($movement, $reason);
             $movement->status = 'void';
             $movement->voided_by = auth()->id();
@@ -227,7 +240,7 @@ class StockMovementService
         if (! $company) throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
 
         $movement->loadMissing('lines');
-        $movementType = (string) $movement->movement_type;
+        $movementType = $this->reversalMovementTypeFor((string) $movement->movement_type);
         $direction = (string) $movement->direction;
         $reversalDirection = $direction === 'in' ? 'out' : 'in';
 
@@ -287,12 +300,29 @@ class StockMovementService
         return $this->post($reversal);
     }
 
-    public function assertSourceNotAlreadyMoved(string $sourceType, int $sourceId, ?int $sourceLineId = null): void
+    private function reversalMovementTypeFor(string $movementType): string
+    {
+        return match ($movementType) {
+            'adjustment_in' => 'adjustment_out',
+            'adjustment_out' => 'adjustment_in',
+            'opname_in', 'opname_out' => $movementType,
+            'purchase_in' => 'purchase_return_out',
+            'sales_out' => 'sales_return_in',
+            'opening_stock' => 'adjustment_out',
+            default => $movementType,
+        };
+    }
+
+    public function assertSourceNotAlreadyMoved(string $sourceType, int $sourceId, ?int $sourceLineId = null, ?string $movementType = null): void
     {
         $q = StockMovement::query()
             ->where('source_type', $sourceType)
             ->where('source_id', $sourceId)
             ->whereIn('status', ['draft', 'posted']);
+
+        if ($movementType !== null) {
+            $q->where('movement_type', $movementType);
+        }
 
         if ($q->exists()) {
             throw ApiException::make('DUPLICATE_SOURCE_MOVEMENT', 'Source already has stock movement.', 422);
@@ -304,7 +334,12 @@ class StockMovementService
         $sourceType = $data['source_type'] ?? null;
         $sourceId = $data['source_id'] ?? null;
         if ($sourceType && $sourceId) {
-            $this->assertSourceNotAlreadyMoved((string) $sourceType, (int) $sourceId);
+            $this->assertSourceNotAlreadyMoved(
+                (string) $sourceType,
+                (int) $sourceId,
+                null,
+                isset($data['movement_type']) ? (string) $data['movement_type'] : null,
+            );
         }
     }
 

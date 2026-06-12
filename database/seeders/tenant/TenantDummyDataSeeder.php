@@ -250,7 +250,6 @@ class TenantDummyDataSeeder extends Seeder
                 'inventory.adjustment_gain' => ['inventory', '5120'],
                 'inventory.adjustment_loss' => ['inventory', '5120'],
                 'inventory.write_off' => ['inventory', '5120'],
-                'inventory.opening_stock_equity' => ['inventory', '3100'],
                 'cash_bank.default_cash' => ['cash_bank', '1100'],
                 'cash_bank.default_bank' => ['cash_bank', '1110'],
                 'cash_bank.bank_admin_fee' => ['cash_bank', '6140'],

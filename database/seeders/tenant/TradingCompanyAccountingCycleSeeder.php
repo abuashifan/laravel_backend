@@ -1517,7 +1517,6 @@ class TradingCompanyAccountingCycleSeeder extends Seeder
             'inventory.adjustment_gain' => ['inventory', '5120', false],
             'inventory.adjustment_loss' => ['inventory', '5120', false],
             'inventory.write_off' => ['inventory', '5120', false],
-            'inventory.opening_stock_equity' => ['inventory', '3100', false],
             'cash_bank.default_cash' => ['cash_bank', '1100', true],
             'cash_bank.default_bank' => ['cash_bank', '1110', true],
             'cash_bank.bank_admin_fee' => ['cash_bank', '6160', false],

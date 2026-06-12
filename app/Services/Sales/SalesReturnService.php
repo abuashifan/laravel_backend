@@ -5,6 +5,7 @@ namespace App\Services\Sales;
 use App\Exceptions\ApiException;
 use App\Models\Tenant\AccountMapping;
 use App\Models\Tenant\DeliveryOrder;
+use App\Models\Tenant\DeliveryOrderLine;
 use App\Models\Tenant\JournalEntry;
 use App\Models\Tenant\SalesInvoice;
 use App\Models\Tenant\SalesInvoiceLine;
@@ -67,6 +68,10 @@ class SalesReturnService
 
     public function createFromDeliveryOrder(DeliveryOrder $deliveryOrder, array $overrides = []): SalesReturn
     {
+        if (in_array((string) $deliveryOrder->status, ['cancelled', 'void', 'closed'], true)) {
+            throw ApiException::make('SOURCE_NOT_CONVERTIBLE', 'Delivery order is not available for conversion.', 422);
+        }
+
         $deliveryOrder->loadMissing('lines');
         return $this->create(array_merge(['return_date' => now()->toDateString(), 'customer_id' => $deliveryOrder->customer_id, 'delivery_order_id' => $deliveryOrder->id, 'source_type' => 'delivery_order', 'source_id' => $deliveryOrder->id, 'source_number' => $deliveryOrder->delivery_number, 'source_revision' => $deliveryOrder->revision_no, 'lines' => $deliveryOrder->lines->map(fn ($line) => ['delivery_order_line_id' => $line->id, 'product_id' => $line->product_id, 'product_code' => $line->product_code, 'description' => $line->description, 'quantity' => $line->quantity, 'unit_id' => $line->unit_id, 'unit_price' => 0, 'line_total' => 0, 'warehouse_id' => $line->warehouse_id, 'department_id' => $line->department_id, 'project_id' => $line->project_id, 'source_line_type' => 'delivery_order_line', 'source_line_id' => $line->id, 'sort_order' => $line->sort_order])->toArray()], $overrides));
     }
@@ -76,6 +81,7 @@ class SalesReturnService
     {
         if (! in_array($return->status, ['draft', 'approved'], true)) throw ApiException::make('INVALID_SALES_RETURN_STATUS', 'Sales return cannot be posted.', 422);
         $this->guardDate((string) $return->return_date);
+        $this->assertMapping('sales.return');
         return DB::connection('tenant')->transaction(function () use ($return) { $return->load('lines'); $journal = $this->journal($return); $return->journal_entry_id = $journal->id; $return->status = 'posted'; $return->posted_by = auth()->id(); $return->posted_at = now(); $return->save(); $this->inventoryIntegration->createSalesReturnIn($return); $this->updateInvoice($return); return $return->refresh()->load('lines', 'customer', 'salesInvoice'); });
     }
     public function void(SalesReturn $return, ?string $reason = null): SalesReturn
@@ -95,11 +101,44 @@ class SalesReturnService
     }
 
     private function normalizeReturnLines(array $lines): array { return array_values(array_map(fn (array $line, int $i): array => ['sales_invoice_line_id' => $line['sales_invoice_line_id'] ?? null, 'delivery_order_line_id' => $line['delivery_order_line_id'] ?? null, 'product_id' => $line['product_id'] ?? null, 'product_code' => $line['product_code'] ?? null, 'description' => $line['description'], 'quantity' => (float) $line['quantity'], 'unit_id' => $line['unit_id'] ?? null, 'unit_price' => (float) ($line['unit_price'] ?? 0), 'discount_amount' => (float) ($line['discount_amount'] ?? 0), 'tax_amount' => (float) ($line['tax_amount'] ?? 0), 'line_total' => (float) ($line['line_total'] ?? ((float) ($line['quantity'] ?? 0) * (float) ($line['unit_price'] ?? 0) - (float) ($line['discount_amount'] ?? 0) + (float) ($line['tax_amount'] ?? 0))), 'warehouse_id' => $line['warehouse_id'] ?? null, 'department_id' => $line['department_id'] ?? null, 'project_id' => $line['project_id'] ?? null, 'source_line_type' => $line['source_line_type'] ?? null, 'source_line_id' => $line['source_line_id'] ?? null, 'sort_order' => $line['sort_order'] ?? $i, 'metadata' => $line['metadata'] ?? null], $lines, array_keys($lines))); }
-    private function validateReturnedQuantities(array $lines, ?SalesReturn $current = null): void { foreach ($lines as $line) { if (! $line['sales_invoice_line_id']) continue; $invoiceLine = SalesInvoiceLine::query()->findOrFail((int) $line['sales_invoice_line_id']); $currentQty = $current ? (float) $current->lines()->where('sales_invoice_line_id', $invoiceLine->id)->sum('quantity') : 0.0; if ((float) $line['quantity'] > (float) $invoiceLine->quantity - (float) $invoiceLine->returned_quantity + $currentQty) throw ApiException::make('RETURN_QUANTITY_EXCEEDS_INVOICED', 'Return quantity exceeds invoiced quantity.', 422); } }
+    private function validateReturnedQuantities(array $lines, ?SalesReturn $current = null): void { foreach ($lines as $line) { if ($line['sales_invoice_line_id']) { $invoiceLine = SalesInvoiceLine::query()->findOrFail((int) $line['sales_invoice_line_id']); $currentQty = $current ? (float) $current->lines()->where('sales_invoice_line_id', $invoiceLine->id)->sum('quantity') : 0.0; if ((float) $line['quantity'] > (float) $invoiceLine->quantity - (float) $invoiceLine->returned_quantity + $currentQty) throw ApiException::make('RETURN_QUANTITY_EXCEEDS_INVOICED', 'Return quantity exceeds invoiced quantity.', 422); } if ($line['delivery_order_line_id']) { $deliveryLine = DeliveryOrderLine::query()->findOrFail((int) $line['delivery_order_line_id']); $currentQty = $current ? (float) $current->lines()->where('delivery_order_line_id', $deliveryLine->id)->sum('quantity') : 0.0; if ((float) $line['quantity'] > (float) $deliveryLine->quantity - (float) $deliveryLine->returned_quantity + $currentQty) throw ApiException::make('RETURN_QUANTITY_EXCEEDS_DELIVERED', 'Return quantity exceeds delivered quantity.', 422); } } }
     private function totals(array $lines): array { $subtotal = array_sum(array_map(fn ($line) => (float) $line['quantity'] * (float) $line['unit_price'], $lines)); $discount = array_sum(array_column($lines, 'discount_amount')); $tax = array_sum(array_column($lines, 'tax_amount')); $grand = array_sum(array_column($lines, 'line_total')); return ['subtotal_before_discount' => $subtotal, 'discount_total' => $discount, 'tax_total' => $tax, 'grand_total' => $grand]; }
-    private function updateInvoice(SalesReturn $return): void { if (! $return->sales_invoice_id) return; $invoice = SalesInvoice::query()->find($return->sales_invoice_id); if (! $invoice) return; $invoice->returned_amount = (float) $invoice->returned_amount + (float) $return->grand_total; $invoice->balance_due = max(0, (float) $invoice->balance_due - (float) $return->grand_total); $invoice->save(); foreach ($return->lines as $line) { if ($line->sales_invoice_line_id) { $invoiceLine = SalesInvoiceLine::query()->find($line->sales_invoice_line_id); if ($invoiceLine) { $invoiceLine->returned_quantity = (float) $invoiceLine->returned_quantity + (float) $line->quantity; $invoiceLine->save(); } } } }
-    private function restoreInvoice(SalesReturn $return): void { if (! $return->sales_invoice_id) return; $invoice = SalesInvoice::query()->lockForUpdate()->find($return->sales_invoice_id); if (! $invoice || $invoice->status === 'void') return; $invoice->returned_amount = max(0, (float) $invoice->returned_amount - (float) $return->grand_total); $invoice->balance_due = min((float) $invoice->grand_total, (float) $invoice->balance_due + (float) $return->grand_total); $invoice->save(); foreach ($return->lines as $line) { if ($line->sales_invoice_line_id && ($invoiceLine = SalesInvoiceLine::query()->lockForUpdate()->find($line->sales_invoice_line_id))) { $invoiceLine->returned_quantity = max(0, (float) $invoiceLine->returned_quantity - (float) $line->quantity); $invoiceLine->save(); } } }
-    private function journal(SalesReturn $return): JournalEntry { $company = $this->tenantContext->company(); if (! $company) throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422); $journal = JournalEntry::query()->create(['journal_number' => $this->documentNumberService->generate($company, DocumentType::JOURNAL_ENTRY, (string) $return->return_date), 'journal_date' => $return->return_date, 'description' => 'Sales return '.$return->return_number, 'status' => 'posted', 'revision_no' => 1, 'source_type' => 'sales_return', 'source_id' => $return->id, 'source_number' => $return->return_number, 'source_revision' => $return->revision_no, 'source_module' => 'sales', 'is_system_generated' => true, 'created_by' => auth()->id(), 'posted_by' => auth()->id(), 'posted_at' => now()]); $lines = [['account_id' => $this->mapping('sales.return'), 'description' => 'Sales Return', 'debit' => $return->grand_total - $return->tax_total, 'credit' => 0, 'line_order' => 1]]; if ((float) $return->tax_total > 0) $lines[] = ['account_id' => $this->mapping('sales.tax_output'), 'description' => 'Output Tax', 'debit' => $return->tax_total, 'credit' => 0, 'line_order' => 2]; $ar = $return->sales_invoice_id ? $this->accountResolver->resolveInvoiceReceivableAccountId(SalesInvoice::query()->findOrFail((int) $return->sales_invoice_id)) : $this->mapping('sales.accounts_receivable'); $lines[] = ['account_id' => $ar, 'description' => 'Accounts Receivable', 'debit' => 0, 'credit' => $return->grand_total, 'line_order' => 3]; $journal->lines()->createMany($lines); return $journal->refresh(); }
+    private function updateInvoice(SalesReturn $return): void
+    {
+        if ($return->sales_invoice_id) {
+            $invoice = SalesInvoice::query()->lockForUpdate()->find($return->sales_invoice_id);
+            if ($invoice) {
+                $invoice->returned_amount = (float) $invoice->returned_amount + (float) $return->grand_total;
+                $invoice->balance_due = max(0, (float) $invoice->balance_due - (float) $return->grand_total);
+
+                if ((float) $invoice->balance_due <= 0) {
+                    $invoice->status = (float) $invoice->paid_amount > 0 ? 'paid' : 'returned';
+                }
+
+                $invoice->save();
+            }
+        }
+
+        foreach ($return->lines as $line) {
+            if ($line->sales_invoice_line_id) {
+                $invoiceLine = SalesInvoiceLine::query()->find($line->sales_invoice_line_id);
+                if ($invoiceLine) {
+                    $invoiceLine->returned_quantity = (float) $invoiceLine->returned_quantity + (float) $line->quantity;
+                    $invoiceLine->save();
+                }
+            }
+            if ($line->delivery_order_line_id) {
+                $deliveryLine = DeliveryOrderLine::query()->lockForUpdate()->find($line->delivery_order_line_id);
+                if ($deliveryLine) {
+                    $deliveryLine->returned_quantity = (float) $deliveryLine->returned_quantity + (float) $line->quantity;
+                    $deliveryLine->save();
+                }
+            }
+        }
+    }
+    private function restoreInvoice(SalesReturn $return): void { if ($return->sales_invoice_id && ($invoice = SalesInvoice::query()->lockForUpdate()->find($return->sales_invoice_id)) && $invoice->status !== 'void') { $invoice->returned_amount = max(0, (float) $invoice->returned_amount - (float) $return->grand_total); $invoice->balance_due = min((float) $invoice->grand_total, (float) $invoice->balance_due + (float) $return->grand_total); $invoice->save(); } foreach ($return->lines as $line) { if ($line->sales_invoice_line_id && ($invoiceLine = SalesInvoiceLine::query()->lockForUpdate()->find($line->sales_invoice_line_id))) { $invoiceLine->returned_quantity = max(0, (float) $invoiceLine->returned_quantity - (float) $line->quantity); $invoiceLine->save(); } if ($line->delivery_order_line_id && ($deliveryLine = DeliveryOrderLine::query()->lockForUpdate()->find($line->delivery_order_line_id))) { $deliveryLine->returned_quantity = max(0, (float) $deliveryLine->returned_quantity - (float) $line->quantity); $deliveryLine->save(); } } }
+    private function journal(SalesReturn $return): JournalEntry { $company = $this->tenantContext->company(); if (! $company) throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422); $journal = JournalEntry::query()->create(['journal_number' => $this->documentNumberService->generate($company, DocumentType::JOURNAL_ENTRY, (string) $return->return_date), 'journal_date' => $return->return_date, 'description' => 'Sales return '.$return->return_number, 'status' => 'posted', 'revision_no' => 1, 'source_type' => 'sales_return', 'source_id' => $return->id, 'source_number' => $return->return_number, 'source_revision' => $return->revision_no, 'source_module' => 'sales', 'is_system_generated' => true, 'created_by' => auth()->id(), 'posted_by' => auth()->id(), 'posted_at' => now()]); $lines = [['account_id' => $this->mapping('sales.return'), 'description' => 'Sales Return', 'debit' => $return->grand_total - $return->tax_total, 'credit' => 0, 'line_order' => 1]]; if ((float) $return->tax_total > 0) $lines[] = ['account_id' => $this->mapping('sales.tax_output'), 'description' => 'Output Tax', 'debit' => $return->tax_total, 'credit' => 0, 'line_order' => 2]; if ($return->sales_invoice_id) { $ar = $this->accountResolver->resolveInvoiceReceivableAccountId(SalesInvoice::query()->findOrFail((int) $return->sales_invoice_id)); $lines[] = ['account_id' => $ar, 'description' => 'Accounts Receivable', 'debit' => 0, 'credit' => $return->grand_total, 'line_order' => 3]; } $journal->lines()->createMany($lines); return $journal->refresh(); }
     private function mapping(string $key): int { $mapping = AccountMapping::query()->where('mapping_key', $key)->where('is_active', true)->first(); if (! $mapping?->account_id) throw ApiException::make('ACCOUNT_MAPPING_MISSING', 'Required account mapping is missing: '.$key, 422); return (int) $mapping->account_id; }
     private function guardDate(string $date, string $action = 'post'): void { $check = $this->dateGuardService->check($date, $action, 'sales'); if ($check->denied()) { $arr = $check->toArray(); throw ApiException::make((string) $arr['code'], (string) $arr['message'], 422, (array) $arr['reasons'], (array) $arr['meta']); } }
+    private function assertMapping(string $key): void { $mapping = AccountMapping::query()->where('mapping_key', $key)->where('is_active', true)->first(); if (! $mapping?->account_id) throw ApiException::make('MAPPING_REQUIRED', "Account mapping [{$key}] is required for this operation.", 422, ['account_mapping' => ["{$key} is not configured"]]); }
 }

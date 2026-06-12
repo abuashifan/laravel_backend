@@ -50,15 +50,25 @@ class PeriodLockService
 
     public function isDateReadOnly(Company $company, string $date): bool
     {
-        // Phase 8E/8F: fiscal year closed or locked_until override makes transactions read-only.
-        // Monthly accounting period status is still not used for blocking in this MVP.
-        return $this->isFiscalYearClosed($company, $date) || $this->isLockedUntil($company, $date);
+        if ($this->isFiscalYearClosed($company, $date)) {
+            return true;
+        }
+
+        if ($this->isPeriodClosed($company, $date)) {
+            return true;
+        }
+
+        return $this->isLockedUntil($company, $date);
     }
 
     public function blockingReasonForDate(Company $company, string $date): ?string
     {
         if ($this->isFiscalYearClosed($company, $date)) {
             return 'FISCAL_YEAR_CLOSED';
+        }
+
+        if ($this->isPeriodClosed($company, $date)) {
+            return 'PERIOD_LOCKED';
         }
 
         if ($this->isLockedUntil($company, $date)) {

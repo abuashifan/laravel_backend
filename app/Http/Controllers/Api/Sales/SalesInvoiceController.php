@@ -81,6 +81,8 @@ class SalesInvoiceController extends Controller
 
     public function void(SalesActionRequest $request, int $id): JsonResponse
     {
-        return $this->successResponse($this->service->void(SalesInvoice::query()->findOrFail($id), $request->validated('reason')), 'Sales invoice voided successfully');
+        $request->validated();
+
+        return $this->successResponse($this->service->void(SalesInvoice::query()->findOrFail($id), $request->input('reason')), 'Sales invoice voided successfully');
     }
 }

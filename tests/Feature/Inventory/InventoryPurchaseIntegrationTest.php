@@ -167,7 +167,7 @@ class InventoryPurchaseIntegrationTest extends JournalTestCase
             'sort_order' => 0,
         ]);
 
-        $this->expectExceptionMessage('Akun Inventory Interim/GRNI belum diatur.');
+        $this->expectExceptionMessage('Account mapping [purchase.inventory_interim] is required for this operation.');
         app(GoodsReceiptService::class)->receive($gr->refresh()->load('lines'));
     }
 

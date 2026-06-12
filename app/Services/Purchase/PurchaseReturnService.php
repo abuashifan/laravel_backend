@@ -99,6 +99,7 @@ class PurchaseReturnService
     {
         if (! in_array($return->status, ['draft', 'approved'], true)) throw ApiException::make('INVALID_PURCHASE_RETURN_STATUS', 'Purchase return cannot be posted.', 422);
         $this->guardDate((string) $return->return_date);
+        $this->assertMapping('purchase.return');
         return DB::connection('tenant')->transaction(function () use ($return) {
             $return->load('lines'); $journal = $this->journal($return);
             $return->journal_entry_id = $journal->id; $return->status = 'posted'; $return->posted_by = auth()->id(); $return->posted_at = now(); $return->save();
@@ -133,4 +134,5 @@ class PurchaseReturnService
     private function returnPayableAccountId(PurchaseReturn $return): int { if ($return->vendor_bill_id && ($bill = VendorBill::query()->find($return->vendor_bill_id))) return $this->accountResolver->resolveBillPayableAccountId($bill); $vendor = $return->relationLoaded('vendor') ? $return->vendor : Contact::query()->find($return->vendor_id); if (! $vendor) throw ApiException::make('VENDOR_NOT_FOUND', 'Vendor not found.', 422); return $this->accountResolver->getPayableAccountId($vendor); }
     private function mapping(string $key): int { $mapping = AccountMapping::query()->where('mapping_key', $key)->where('is_active', true)->first(); if (! $mapping?->account_id) throw ApiException::make('ACCOUNT_MAPPING_MISSING', 'Required account mapping is missing: '.$key, 422); return (int) $mapping->account_id; }
     private function guardDate(string $date, string $action = 'post'): void { $check = $this->dateGuardService->check($date, $action, 'purchase'); if ($check->denied()) { $arr = $check->toArray(); throw ApiException::make((string) $arr['code'], (string) $arr['message'], 422, (array) $arr['reasons'], (array) $arr['meta']); } }
+    private function assertMapping(string $key): void { $mapping = AccountMapping::query()->where('mapping_key', $key)->where('is_active', true)->first(); if (! $mapping?->account_id) throw ApiException::make('MAPPING_REQUIRED', "Account mapping [{$key}] is required for this operation.", 422, ['account_mapping' => ["{$key} is not configured"]]); }
 }
