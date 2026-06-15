@@ -10,6 +10,7 @@ use App\Models\CompanySetupState;
 use App\Models\Tenant\AccountMapping;
 use App\Models\Tenant\ChartOfAccount;
 use App\Services\Audit\AuditLogService;
+use App\Services\OpeningBalance\OpeningBalanceBatchService;
 use App\Services\Tenant\TenantContext;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -39,6 +40,7 @@ class SetupWizardService
     public function __construct(
         private readonly TenantContext $tenantContext,
         private readonly AuditLogService $auditLogService,
+        private readonly OpeningBalanceBatchService $openingBalanceBatchService,
     ) {
     }
 
@@ -478,45 +480,59 @@ class SetupWizardService
     {
         $blocking = [];
         $warnings = [];
-        $batch = null;
-        $batchTotals = ['debit' => 0.0, 'credit' => 0.0, 'difference' => 0.0];
-
         if (! Schema::connection('tenant')->hasTable('opening_balance_batches')) {
             $blocking[] = $this->error('OPENING_BALANCE_MODULE_NOT_IMPLEMENTED', 'Opening Balance persistence is not implemented yet.');
-        } else {
-            $batch = DB::connection('tenant')->table('opening_balance_batches')
-                ->whereIn('status', ['draft', 'validated', 'posted', 'locked', 'reopened'])
-                ->orderByDesc('id')
-                ->first();
-
-            if (! $batch) {
-                $blocking[] = $this->error('OPENING_BALANCE_BATCH_REQUIRED', 'Opening balance batch is required.');
-            } else {
-                $batchTotals = [
-                    'debit' => round((float) ($batch->total_debit ?? 0), 2),
-                    'credit' => round((float) ($batch->total_credit ?? 0), 2),
-                    'difference' => round((float) ($batch->difference ?? 0), 2),
-                ];
-                if (abs($batchTotals['difference']) > 0.005) {
-                    $blocking[] = $this->error('OPENING_BALANCE_NOT_BALANCED', 'Opening balance preview is not balanced.', $batchTotals);
-                }
-            }
+            return [
+                'state' => $this->serializeState($state),
+                'implemented' => false,
+                'reconciled' => false,
+                'blocking_errors' => $blocking,
+                'warnings' => $warnings,
+                'opening_balance_batch' => null,
+                'opening_balance_totals' => ['debit' => 0.0, 'credit' => 0.0, 'difference' => 0.0],
+                'fixed_asset_totals' => $this->fixedAssetsEnabled() ? $this->openingFixedAssetTotals() : null,
+            ];
         }
 
+        $batch = $this->openingBalanceBatchService->latestActiveBatch();
+        if (! $batch) {
+            $blocking[] = $this->error('OPENING_BALANCE_BATCH_REQUIRED', 'Opening balance batch is required.');
+            return [
+                'state' => $this->serializeState($state),
+                'implemented' => true,
+                'reconciled' => false,
+                'blocking_errors' => $blocking,
+                'warnings' => $warnings,
+                'opening_balance_batch' => null,
+                'opening_balance_totals' => ['debit' => 0.0, 'credit' => 0.0, 'difference' => 0.0],
+                'fixed_asset_totals' => $this->fixedAssetsEnabled() ? $this->openingFixedAssetTotals() : null,
+            ];
+        }
+
+        $preview = $this->openingBalanceBatchService->preview($batch);
+        $blocking = array_values(array_merge($blocking, $preview['blocking_errors']));
+        $warnings = array_values(array_merge($warnings, $preview['warnings']));
         $fixedAssetTotals = $this->fixedAssetsEnabled() ? $this->openingFixedAssetTotals() : null;
         if ($this->fixedAssetsEnabled() && $fixedAssetTotals && abs($fixedAssetTotals['net_book_value'] - ($fixedAssetTotals['cost'] - $fixedAssetTotals['accumulated_depreciation'])) > 0.005) {
             $blocking[] = $this->error('FIXED_ASSET_NBV_MISMATCH', 'Opening fixed asset net book value does not match cost minus accumulated depreciation.');
+        } else {
+            $fixedAssetTotals = $preview['fixed_asset_totals'] ?? $fixedAssetTotals;
         }
 
         return [
             'state' => $this->serializeState($state),
-            'implemented' => Schema::connection('tenant')->hasTable('opening_balance_batches'),
+            'implemented' => true,
             'reconciled' => $blocking === [],
             'blocking_errors' => $blocking,
             'warnings' => $warnings,
             'opening_balance_batch' => $batch,
-            'opening_balance_totals' => $batchTotals,
+            'opening_balance_totals' => [
+                'debit' => $preview['total_debit'],
+                'credit' => $preview['total_credit'],
+                'difference' => $preview['difference'],
+            ],
             'fixed_asset_totals' => $fixedAssetTotals,
+            'opening_balance_preview' => $preview,
         ];
     }
 
@@ -529,8 +545,14 @@ class SetupWizardService
             ]);
         }
 
-        if (! $preview['opening_balance_batch'] || ! in_array((string) $preview['opening_balance_batch']->status, ['posted', 'locked'], true)) {
-            throw ApiException::make('OPENING_BALANCE_NOT_POSTED', 'Opening balance must be posted or locked before setup finalization.', 422);
+        $batch = $this->openingBalanceBatchService->latestActiveBatch();
+        if (! $batch) {
+            throw ApiException::make('OPENING_BALANCE_BATCH_REQUIRED', 'Opening balance batch is required.', 422);
+        }
+
+        $posted = $this->openingBalanceBatchService->post($batch);
+        if ($posted->status !== 'locked') {
+            $this->openingBalanceBatchService->lock($posted);
         }
     }
 

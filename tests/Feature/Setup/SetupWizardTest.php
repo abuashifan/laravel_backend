@@ -7,6 +7,7 @@ namespace Tests\Feature\Setup;
 use App\Models\CompanySetupState;
 use App\Models\Tenant\AccountMapping;
 use App\Models\Tenant\ChartOfAccount;
+use App\Services\Settings\CompanySettingService;
 use Tests\Feature\Journal\JournalTestCase;
 
 class SetupWizardTest extends JournalTestCase
@@ -38,9 +39,10 @@ class SetupWizardTest extends JournalTestCase
             ->assertJsonPath('data.state.opening_date', '2026-01-01');
     }
 
-    public function test_validate_all_blocks_at_opening_balance_boundary_until_opening_balance_module_exists(): void
+    public function test_validate_all_blocks_when_opening_balance_batch_is_missing(): void
     {
         $ctx = $this->setUpTenant(role: 'owner');
+        app(CompanySettingService::class)->getOrCreateModuleSetting($ctx['company']);
         $this->seedSetupCoaAndMappings();
 
         $this->patchJson('/api/setup/current-step', [
@@ -52,7 +54,7 @@ class SetupWizardTest extends JournalTestCase
             ->assertOk();
 
         $response->assertJsonPath('data.valid', false);
-        $response->assertJsonPath('data.results.opening_balance_preview.errors.0.code', 'OPENING_BALANCE_MODULE_NOT_IMPLEMENTED');
+        $response->assertJsonPath('data.results.opening_balance_preview.errors.0.code', 'OPENING_BALANCE_BATCH_REQUIRED');
         $response->assertJsonPath('data.state.status', 'in_progress');
     }
 

@@ -234,6 +234,14 @@ return [
         'period_end.run',
         'period_end.reopen',
 
+        // Opening Balance
+        'opening_balance.view',
+        'opening_balance.manage',
+        'opening_balance.validate',
+        'opening_balance.post',
+        'opening_balance.lock',
+        'opening_balance.reopen',
+
         // Audit
         'audit.view',
 
