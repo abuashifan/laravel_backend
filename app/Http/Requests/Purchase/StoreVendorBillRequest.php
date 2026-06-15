@@ -56,6 +56,7 @@ class StoreVendorBillRequest extends FormRequest
             'internal_notes' => ['nullable', 'string'],
             'metadata' => ['nullable', 'array'],
             'lines' => ['required', 'array', 'min:1'],
+            'lines.*.line_classification' => ['nullable', 'in:inventory,fixed_asset'],
             'lines.*.purchase_order_line_id' => ['nullable', 'integer'],
             'lines.*.goods_receipt_line_id' => ['nullable', 'integer'],
             'lines.*.product_id' => ['nullable', 'integer'],
@@ -70,7 +71,8 @@ class StoreVendorBillRequest extends FormRequest
             'lines.*.warehouse_id' => ['nullable', 'integer'],
             'lines.*.department_id' => ['nullable', 'integer'],
             'lines.*.project_id' => ['nullable', 'integer'],
-            'lines.*.expense_account_id' => ['nullable', 'integer'],
+            'lines.*.expense_account_id' => ['prohibited'],
+            'lines.*.fixed_asset_category_id' => ['nullable', 'integer', 'exists:tenant.fixed_asset_categories,id'],
             'lines.*.source_line_type' => ['nullable', 'string'],
             'lines.*.source_line_id' => ['nullable', 'integer'],
         ];

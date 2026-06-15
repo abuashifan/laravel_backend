@@ -31,6 +31,10 @@ class DocumentType
     public const STOCK_TRANSFER = 'stock_transfer';
     public const OPENING_STOCK = 'opening_stock';
     public const OPENING_BALANCE = 'opening_balance';
+    public const FIXED_ASSET = 'fixed_asset';
+    public const FIXED_ASSET_CAPITALIZATION = 'fixed_asset_capitalization';
+    public const FIXED_ASSET_DEPRECIATION = 'fixed_asset_depreciation';
+    public const FIXED_ASSET_DISPOSAL = 'fixed_asset_disposal';
     public const CLOSING_ENTRY = 'closing_entry';
 
     public static function all(): array

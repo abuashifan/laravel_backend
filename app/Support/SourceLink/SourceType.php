@@ -26,6 +26,10 @@ class SourceType
     public const STOCK_MOVEMENT = 'stock_movement';
     public const STOCK_OPNAME = 'stock_opname';
     public const INVENTORY_TRANSFER = 'inventory_transfer';
+    public const FIXED_ASSET = 'fixed_asset';
+    public const FIXED_ASSET_CAPITALIZATION = 'fixed_asset_capitalization';
+    public const FIXED_ASSET_DEPRECIATION = 'fixed_asset_depreciation';
+    public const FIXED_ASSET_DISPOSAL = 'fixed_asset_disposal';
     public const IMPORT_BATCH = 'import_batch';
     public const SYSTEM = 'system';
 

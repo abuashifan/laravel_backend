@@ -7,6 +7,7 @@ class AccountMappingModule
     public const SALES = 'sales';
     public const PURCHASE = 'purchase';
     public const INVENTORY = 'inventory';
+    public const FIXED_ASSETS = 'fixed_assets';
     public const CASH_BANK = 'cash_bank';
     public const JOURNAL = 'journal';
     public const OPENING_BALANCE = 'opening_balance';
@@ -23,4 +24,3 @@ class AccountMappingModule
         return in_array($module, self::all(), true);
     }
 }
-

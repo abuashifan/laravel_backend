@@ -122,6 +122,22 @@ return [
             'prefix' => 'OB',
             'name' => 'Opening Balance',
         ],
+        'fixed_asset' => [
+            'prefix' => 'FA',
+            'name' => 'Fixed Asset',
+        ],
+        'fixed_asset_capitalization' => [
+            'prefix' => 'FAC',
+            'name' => 'Fixed Asset Capitalization',
+        ],
+        'fixed_asset_depreciation' => [
+            'prefix' => 'FAD',
+            'name' => 'Fixed Asset Depreciation',
+        ],
+        'fixed_asset_disposal' => [
+            'prefix' => 'FAS',
+            'name' => 'Fixed Asset Disposal',
+        ],
         'closing_entry' => [
             'prefix' => 'CL',
             'name' => 'Closing Entry',

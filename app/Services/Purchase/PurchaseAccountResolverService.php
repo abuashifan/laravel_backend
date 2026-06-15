@@ -16,6 +16,7 @@ class PurchaseAccountResolverService
     public const PURCHASE_EXPENSE_MAPPING_MESSAGE = 'Akun Pembelian/Beban belum diatur. Buka Pengaturan > Pemetaan Akun > Purchase > Beban Pembelian atau atur Akun Pembelian di master data produk.';
     public const INVENTORY_MAPPING_MESSAGE = 'Akun Persediaan belum diatur. Buka Pengaturan > Pemetaan Akun > Inventory > Persediaan atau atur Akun Persediaan di master data produk.';
     public const INVENTORY_INTERIM_MAPPING_MESSAGE = 'Akun Inventory Interim/GRNI belum diatur. Buka Pengaturan > Pemetaan Akun > Purchase > Inventory Interim sebelum menerima barang persediaan.';
+    public const FIXED_ASSET_CLEARING_MAPPING_MESSAGE = 'Akun Fixed Asset Clearing belum diatur. Buka Pengaturan > Pemetaan Akun > Fixed Assets > Clearing.';
 
     public function resolveBillPayableAccountId(VendorBill $bill): int
     {
@@ -108,6 +109,16 @@ class PurchaseAccountResolverService
         }
 
         throw ApiException::make('ACCOUNT_MAPPING_MISSING', self::INVENTORY_INTERIM_MAPPING_MESSAGE, 422);
+    }
+
+    public function getFixedAssetClearingAccountId(): int
+    {
+        $accountId = $this->mappingAccountId('fixed_assets.clearing', ['asset']);
+        if ($accountId !== null) {
+            return $accountId;
+        }
+
+        throw ApiException::make('ACCOUNT_MAPPING_MISSING', self::FIXED_ASSET_CLEARING_MAPPING_MESSAGE, 422);
     }
 
     public function lineIsStockItem(array|VendorBillLine $line): bool

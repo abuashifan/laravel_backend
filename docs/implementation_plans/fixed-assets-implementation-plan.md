@@ -291,6 +291,12 @@ Purchase bill lines must support:
 
 Do not add `expense` as a purchase bill line classification.
 
+Implementation finding:
+
+- Current Purchase/Vendor Bill implementation still supports non-stock expense posting through `expense_account_id` snapshots and `purchase.expense` account mapping.
+- Fixed Asset implementation starts enforcing the new product rule: vendor bills should only accept inventory stock lines or fixed asset lines, while other expenses are recorded through CashBank cash payments.
+- Keep the legacy `expense_account_id` column only for backward compatibility with existing data until a later cleanup migration removes or fully deprecates it.
+
 Rules for `fixed_asset` purchase bill lines:
 
 - Posting debits Fixed Asset Clearing and credits Accounts Payable.

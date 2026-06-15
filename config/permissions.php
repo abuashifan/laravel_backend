@@ -199,6 +199,19 @@ return [
         'inventory.reports.view',
         'inventory.integration.run',
 
+        // Fixed Assets
+        'fixed_assets.view',
+        'fixed_assets.create',
+        'fixed_assets.edit',
+        'fixed_assets.deactivate',
+        'fixed_assets.capitalize',
+        'fixed_assets.depreciate',
+        'fixed_assets.dispose',
+        'fixed_assets.opening_import',
+        'fixed_assets.reports.view',
+        'fixed_assets.settings.view',
+        'fixed_assets.settings.manage',
+
         // Reports
         'reports.view',
         'reports.export',

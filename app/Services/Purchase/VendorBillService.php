@@ -7,6 +7,7 @@ use App\Models\Tenant\AccountMapping;
 use App\Models\Tenant\GoodsReceipt;
 use App\Models\Tenant\GoodsReceiptLine;
 use App\Models\Tenant\JournalEntry;
+use App\Models\Tenant\Product;
 use App\Models\Tenant\PurchaseOrder;
 use App\Models\Tenant\PurchaseOrderLine;
 use App\Models\Tenant\VendorBill;
@@ -72,6 +73,7 @@ class VendorBillService
                 'purchase_order_line_id' => $line['purchase_order_line_id'] ?? null,
                 'goods_receipt_line_id' => $line['goods_receipt_line_id'] ?? null,
             ]);
+            $this->validateFixedAssetLines($lines);
             $lines = $this->withDraftPurchaseExpenseSnapshots($lines);
             $totals = $this->calculationService->calculateDocument($lines, $data);
             $headerTotals = $totals; unset($headerTotals['lines']);
@@ -112,6 +114,7 @@ class VendorBillService
                 'purchase_order_line_id' => $line['purchase_order_line_id'] ?? null,
                 'goods_receipt_line_id' => $line['goods_receipt_line_id'] ?? null,
             ]);
+            $this->validateFixedAssetLines($lines);
             $lines = $this->withDraftPurchaseExpenseSnapshots($lines);
             $totals = $this->calculationService->calculateDocument($lines, array_merge($bill->toArray(), $data));
             $headerTotals = $totals; unset($headerTotals['lines']);
@@ -238,6 +241,9 @@ class VendorBillService
         if (PurchaseReturn::query()->where('vendor_bill_id', $bill->id)->where('status', 'posted')->exists()) {
             throw ApiException::make('VENDOR_BILL_HAS_RETURN', 'Void posted purchase returns before voiding this bill.', 422);
         }
+        if ($bill->lines()->where('capitalized_amount', '>', 0)->exists()) {
+            throw ApiException::make('VENDOR_BILL_HAS_CAPITALIZED_FIXED_ASSET', 'Vendor bill has capitalized fixed asset lines and cannot be voided directly.', 422);
+        }
         return DB::connection('tenant')->transaction(function () use ($bill, $reason) {
             $bill->load('lines');
             $journalIds = $this->voidEffectService->voidJournalsForSource('vendor_bill', (int) $bill->id, $reason);
@@ -356,12 +362,40 @@ class VendorBillService
     private function withDraftPurchaseExpenseSnapshots(array $lines): array
     {
         return array_map(function (array $line): array {
-            if (! $this->lineReceivesStock($line)) {
-                $line['expense_account_id'] = $this->accountResolver->tryPurchaseExpenseAccountIdForLine($line);
+            if (($line['line_classification'] ?? null) === 'fixed_asset') {
+                $line['expense_account_id'] = null;
+                return $line;
             }
+            if (! $this->lineReceivesStock($line)) {
+                throw ApiException::make('PURCHASE_BILL_LINE_CLASSIFICATION_REQUIRED', 'Purchase bill lines must be inventory stock lines or fixed asset lines. Record other expenses through Cash/Bank payments.', 422);
+            }
+
+            $line['line_classification'] = $line['line_classification'] ?? 'inventory';
+            $line['expense_account_id'] = null;
 
             return $line;
         }, $lines);
+    }
+
+    private function validateFixedAssetLines(array $lines): void
+    {
+        foreach ($lines as $line) {
+            if (($line['line_classification'] ?? null) !== 'fixed_asset') {
+                continue;
+            }
+            if (empty($line['fixed_asset_category_id'])) {
+                throw ApiException::make('FIXED_ASSET_CATEGORY_REQUIRED', 'Fixed asset purchase lines require fixed_asset_category_id.', 422);
+            }
+            if (! empty($line['product_id'])) {
+                $product = Product::query()->find((int) $line['product_id']);
+                if ($product && (bool) $product->is_stock_item) {
+                    throw ApiException::make('FIXED_ASSET_PRODUCT_MUST_BE_NON_STOCK', 'Fixed asset purchase line product must be non-stock.', 422);
+                }
+            }
+            if (! empty($line['warehouse_id'])) {
+                throw ApiException::make('FIXED_ASSET_LINE_CANNOT_USE_WAREHOUSE', 'Fixed asset purchase lines must not create stock balances.', 422);
+            }
+        }
     }
 
     private function billDebitJournalLines(VendorBill $bill): array
@@ -378,7 +412,10 @@ class VendorBillService
                 continue;
             }
 
-            if ($this->lineReceivesStock($line)) {
+            if ((string) $line->line_classification === 'fixed_asset') {
+                $accountId = $this->accountResolver->getFixedAssetClearingAccountId();
+                $description = 'Fixed Asset Clearing';
+            } elseif ($this->lineReceivesStock($line)) {
                 if ($bill->goods_receipt_id || $line->goods_receipt_line_id) {
                     $accountId = $this->accountResolver->getInventoryInterimAccountId();
                     $description = 'Inventory Interim';
@@ -387,12 +424,7 @@ class VendorBillService
                     $description = 'Inventory';
                 }
             } else {
-                $accountId = $this->accountResolver->getPurchaseExpenseAccountIdForLine($line);
-                $description = 'Purchase Expense';
-                if ((int) $line->expense_account_id !== $accountId) {
-                    $line->expense_account_id = $accountId;
-                    $line->save();
-                }
+                throw ApiException::make('PURCHASE_BILL_LINE_CLASSIFICATION_REQUIRED', 'Purchase bill lines must be inventory stock lines or fixed asset lines. Record other expenses through Cash/Bank payments.', 422);
             }
 
             $grouped[$accountId] = ($grouped[$accountId] ?? 0.0) + $amount;

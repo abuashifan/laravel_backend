@@ -13,7 +13,10 @@ class VendorBillLine extends Model
     protected $connection = 'tenant';
     protected $table = 'vendor_bill_lines';
     protected $guarded = [];
-    protected $casts = ['metadata' => 'array'];
+    protected $casts = [
+        'metadata' => 'array',
+        'capitalized_amount' => 'decimal:2',
+    ];
 
     public function bill(): BelongsTo { return $this->belongsTo(VendorBill::class, 'vendor_bill_id'); }
     public function product(): BelongsTo { return $this->belongsTo(Product::class, 'product_id'); }

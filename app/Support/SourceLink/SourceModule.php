@@ -9,6 +9,7 @@ class SourceModule
     public const PURCHASE = 'purchase';
     public const CASH_BANK = 'cash_bank';
     public const INVENTORY = 'inventory';
+    public const FIXED_ASSETS = 'fixed_assets';
     public const CLOSING = 'closing';
     public const OPENING_BALANCE = 'opening_balance';
     public const IMPORT = 'import';
@@ -24,4 +25,3 @@ class SourceModule
         return in_array($sourceModule, self::all(), true);
     }
 }
-

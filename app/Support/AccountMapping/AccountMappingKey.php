@@ -31,6 +31,16 @@ class AccountMappingKey
     public const INVENTORY_ADJUSTMENT_LOSS = 'inventory.adjustment_loss';
     public const INVENTORY_WRITE_OFF = 'inventory.write_off';
 
+    // Fixed Assets
+    public const FIXED_ASSETS_CLEARING = 'fixed_assets.clearing';
+    public const FIXED_ASSETS_COST = 'fixed_assets.cost';
+    public const FIXED_ASSETS_ACCUMULATED_DEPRECIATION = 'fixed_assets.accumulated_depreciation';
+    public const FIXED_ASSETS_DEPRECIATION_EXPENSE = 'fixed_assets.depreciation_expense';
+    public const FIXED_ASSETS_ACCUMULATED_AMORTIZATION = 'fixed_assets.accumulated_amortization';
+    public const FIXED_ASSETS_AMORTIZATION_EXPENSE = 'fixed_assets.amortization_expense';
+    public const FIXED_ASSETS_DISPOSAL_GAIN = 'fixed_assets.disposal_gain';
+    public const FIXED_ASSETS_DISPOSAL_LOSS = 'fixed_assets.disposal_loss';
+
     // Cash/Bank
     public const CASH_BANK_DEFAULT_CASH = 'cash_bank.default_cash';
     public const CASH_BANK_DEFAULT_BANK = 'cash_bank.default_bank';

@@ -17,7 +17,7 @@ class StoreProductRequest extends FormRequest
         return [
             'product_code' => ['nullable', 'string', 'max:50'],
             'product_name' => ['required', 'string', 'max:255'],
-            'product_type' => ['nullable', 'in:goods,service,non_inventory'],
+            'product_type' => ['nullable', 'in:goods,service,non_inventory,fixed_asset'],
             'product_category_id' => ['nullable', 'integer'],
             'unit_id' => ['nullable', 'integer'],
             'is_stock_item' => ['nullable', 'boolean'],
@@ -41,8 +41,8 @@ class StoreProductRequest extends FormRequest
             }
 
             $type = $this->input('product_type', 'goods');
-            if ($type === 'service' && $isStockItem) {
-                $validator->errors()->add('is_stock_item', 'Service tidak boleh menjadi stock item.');
+            if (in_array($type, ['service', 'fixed_asset'], true) && $isStockItem) {
+                $validator->errors()->add('is_stock_item', 'Service dan fixed asset tidak boleh menjadi stock item.');
             }
         });
     }
