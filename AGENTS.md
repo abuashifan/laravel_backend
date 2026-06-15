@@ -23,3 +23,17 @@ Summarize first, then inspect only relevant files.
 Preserve existing API contracts, tenant middleware, permissions, posting rules, journal immutability, and rollback/void behavior.
 Do not refactor unrelated modules unless the task explicitly requires it.
 After backend changes, run the narrowest relevant verification command available.
+
+## Backend Docs Reading Order
+
+Before backend audit, module planning, route work, migration work, or feature-gap analysis, read backend-local docs first:
+
+1. `docs/backend-modular-monolith-plan.md`
+2. `docs/backend-missing-modules-audit.md`
+
+For fixed asset, opening balance, setup wizard, or period-end work, also read:
+
+3. `docs/accounting-setup-and-fixed-assets-context.md`
+4. The relevant file under `docs/implementation_plans/`, when it exists.
+
+Use `/workspace/laravel_backend/docs/` as the source of truth for backend planning notes. Do not use `/workspace/docs` or `/workspace/frontend/docs` for backend gap status unless the user explicitly asks for historical/frontend context.
