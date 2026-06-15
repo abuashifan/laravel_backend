@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\Accounting\FiscalYearClosingController;
 use App\Http\Controllers\Api\Accounting\FiscalYearStatusController;
 use App\Http\Controllers\Api\Accounting\AccountMappingHealthController;
 use App\Http\Controllers\Api\Accounting\PeriodLockController;
+use App\Http\Controllers\Api\Accounting\PeriodEndController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth:sanctum', 'company.access', 'permission:dashboard.view'])->group(function () {
@@ -24,6 +25,15 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('accounting')->gro
         ->middleware('permission:fiscal_year.view');
     Route::patch('/period-locks', [PeriodLockController::class, 'update'])
         ->middleware('permission:fiscal_year.lock_manage');
+
+    Route::get('/period-end/status', [PeriodEndController::class, 'status'])
+        ->middleware('permission:period_end.view');
+    Route::get('/period-end/checklist', [PeriodEndController::class, 'checklist'])
+        ->middleware('permission:period_end.view');
+    Route::post('/period-end/run', [PeriodEndController::class, 'run'])
+        ->middleware('permission:period_end.run');
+    Route::post('/period-end/reopen', [PeriodEndController::class, 'reopen'])
+        ->middleware('permission:period_end.reopen');
 });
 
 Route::middleware(['auth:sanctum', 'company.access'])

@@ -223,6 +223,9 @@ return [
         'fiscal_year.lock_override',
         'fiscal_year.lock_manage',
         'fiscal_year.closing_wizard',
+        'period_end.view',
+        'period_end.run',
+        'period_end.reopen',
 
         // Audit
         'audit.view',

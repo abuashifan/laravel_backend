@@ -35,6 +35,7 @@ class DocumentType
     public const FIXED_ASSET_CAPITALIZATION = 'fixed_asset_capitalization';
     public const FIXED_ASSET_DEPRECIATION = 'fixed_asset_depreciation';
     public const FIXED_ASSET_DISPOSAL = 'fixed_asset_disposal';
+    public const PERIOD_END = 'period_end';
     public const CLOSING_ENTRY = 'closing_entry';
 
     public static function all(): array

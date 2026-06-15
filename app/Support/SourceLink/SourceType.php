@@ -30,6 +30,7 @@ class SourceType
     public const FIXED_ASSET_CAPITALIZATION = 'fixed_asset_capitalization';
     public const FIXED_ASSET_DEPRECIATION = 'fixed_asset_depreciation';
     public const FIXED_ASSET_DISPOSAL = 'fixed_asset_disposal';
+    public const PERIOD_END = 'period_end';
     public const IMPORT_BATCH = 'import_batch';
     public const SYSTEM = 'system';
 

@@ -138,6 +138,10 @@ return [
             'prefix' => 'FAS',
             'name' => 'Fixed Asset Disposal',
         ],
+        'period_end' => [
+            'prefix' => 'PE',
+            'name' => 'Period End',
+        ],
         'closing_entry' => [
             'prefix' => 'CL',
             'name' => 'Closing Entry',
