@@ -518,7 +518,7 @@ class PeriodEndService
     private function requiredFixedAssetMappingErrors(string $period): array
     {
         $errors = [];
-        $required = collect((array) config('account_mappings.mappings', []))
+        $required = collect((array) config('account_mappings.required_mappings', []))
             ->filter(fn (array $mapping): bool => ($mapping['module'] ?? null) === 'fixed_assets' && (bool) ($mapping['required'] ?? false));
 
         $hasScheduledAmortization = FixedAssetDepreciationSchedule::query()
@@ -533,7 +533,7 @@ class PeriodEndService
                     continue;
                 }
 
-                $definition = (array) config('account_mappings.mappings.'.$conditionalKey, []);
+                $definition = (array) config('account_mappings.required_mappings.'.$conditionalKey, []);
                 if ($definition !== []) {
                     $required[$conditionalKey] = $definition;
                 }

@@ -13,6 +13,13 @@ return [
         'settings.permissions.view',
         'settings.permissions.manage',
 
+        // Setup Wizard
+        'setup.view',
+        'setup.edit',
+        'setup.validate',
+        'setup.finalize',
+        'setup.reopen',
+
         // Master Data
         'master_data.view',
         'master_data.manage',
