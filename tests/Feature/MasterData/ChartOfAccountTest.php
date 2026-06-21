@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\MasterData;
 
+use App\Models\Tenant\ChartOfAccount;
+
 class ChartOfAccountTest extends MasterDataTestCase
 {
     public function test_unauthenticated_cannot_list_coa(): void
@@ -86,5 +88,41 @@ class ChartOfAccountTest extends MasterDataTestCase
         $this->patchJson('/api/master-data/chart-of-accounts/'.$created['id'].'/deactivate', [], $ctx['headers'])
             ->assertStatus(200)
             ->assertJsonPath('data.is_active', false);
+    }
+
+    public function test_account_search_can_filter_multiple_active_account_types(): void
+    {
+        $ctx = $this->setUpTenant();
+
+        foreach ([
+            ['1100', 'Kas Aktif', 'asset', true],
+            ['2100', 'Hutang Aktif', 'liability', true],
+            ['4100', 'Pendapatan Aktif', 'revenue', true],
+            ['1199', 'Kas Nonaktif', 'asset', false],
+        ] as [$code, $name, $type, $active]) {
+            $this->postJson('/api/master-data/chart-of-accounts', [
+                'account_code' => $code,
+                'account_name' => $name,
+                'account_type' => $type,
+            ], $ctx['headers'])->assertCreated();
+
+            if (! $active) {
+                $id = (int) ChartOfAccount::query()
+                    ->where('account_code', $code)
+                    ->value('id');
+                $this->patchJson('/api/master-data/chart-of-accounts/'.$id.'/deactivate', [], $ctx['headers'])
+                    ->assertOk();
+            }
+        }
+
+        $response = $this->getJson(
+            '/api/master-data/chart-of-accounts?page=1&per_page=10&is_active=1&account_types[]=asset&account_types[]=liability',
+            $ctx['headers'],
+        )->assertOk();
+
+        $this->assertSame(
+            ['Hutang Aktif', 'Kas Aktif'],
+            collect($response->json('data.data'))->pluck('account_name')->sort()->values()->all(),
+        );
     }
 }

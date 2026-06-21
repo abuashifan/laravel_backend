@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Settings;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class UpdateCompanyTransactionDefaultRequest extends FormRequest
 {
@@ -14,7 +15,11 @@ class UpdateCompanyTransactionDefaultRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'default_payment_term_id' => ['nullable', 'integer', 'exists:tenant.payment_terms,id'],
+            'default_payment_term_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('tenant.payment_terms', 'id')->where('is_active', true),
+            ],
         ];
     }
 }

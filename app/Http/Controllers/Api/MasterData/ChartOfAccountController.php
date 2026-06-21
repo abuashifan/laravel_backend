@@ -15,25 +15,26 @@ class ChartOfAccountController extends Controller
 {
     use ApiResponse;
 
-    public function __construct(private readonly ChartOfAccountService $service)
-    {
-    }
+    public function __construct(private readonly ChartOfAccountService $service) {}
 
     public function index(Request $request): JsonResponse
     {
         $items = $this->service->list($request->query());
+
         return $this->listResponse($items, $request, 'Chart of accounts retrieved successfully');
     }
 
     public function store(StoreChartOfAccountRequest $request): JsonResponse
     {
         $account = $this->service->create($request->validated());
+
         return $this->successResponse($account, 'Chart of account created successfully', 201);
     }
 
     public function show(int $id): JsonResponse
     {
-        $account = ChartOfAccount::query()->findOrFail($id);
+        $account = ChartOfAccount::query()->with('parent')->findOrFail($id);
+
         return $this->successResponse($account, 'Chart of account retrieved successfully');
     }
 
@@ -61,4 +62,3 @@ class ChartOfAccountController extends Controller
         return $this->successResponse($account, 'Chart of account activated successfully');
     }
 }
-

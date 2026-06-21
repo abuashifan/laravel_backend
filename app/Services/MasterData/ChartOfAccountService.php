@@ -9,18 +9,33 @@ class ChartOfAccountService
 {
     public function list(array $filters = [])
     {
-        $query = ChartOfAccount::query();
+        $query = ChartOfAccount::query()->with('parent');
 
         if (array_key_exists('is_active', $filters)) {
             $query->where('is_active', (bool) $filters['is_active']);
         }
 
-        if (! empty($filters['account_type'])) {
+        if (! empty($filters['account_types']) && is_array($filters['account_types'])) {
+            $query->whereIn('account_type', array_values(array_filter(
+                $filters['account_types'],
+                fn (mixed $type): bool => is_string($type) && $type !== '',
+            )));
+        } elseif (! empty($filters['account_type'])) {
             $query->where('account_type', (string) $filters['account_type']);
         }
 
         if (array_key_exists('is_cash_bank', $filters)) {
             $query->where('is_cash_bank', (bool) $filters['is_cash_bank']);
+        }
+
+        if (! empty($filters['search'])) {
+            $term = '%'.str_replace('%', '', (string) $filters['search']).'%';
+            $query->where(function ($builder) use ($term): void {
+                $builder
+                    ->where('account_code', 'like', $term)
+                    ->orWhere('account_name', 'like', $term)
+                    ->orWhere('description', 'like', $term);
+            });
         }
 
         return $query->orderBy('account_code')->get();

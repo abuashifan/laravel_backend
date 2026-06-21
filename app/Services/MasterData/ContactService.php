@@ -9,14 +9,30 @@ class ContactService
 {
     public function list(array $filters = [])
     {
-        $query = Contact::query();
+        $query = Contact::query()->with('paymentTerm');
 
         if (array_key_exists('is_active', $filters)) {
             $query->where('is_active', (bool) $filters['is_active']);
         }
 
         if (! empty($filters['contact_type'])) {
-            $query->where('contact_type', (string) $filters['contact_type']);
+            $contactType = (string) $filters['contact_type'];
+            if ($contactType === 'both') {
+                $query->where('is_customer', true)->where('is_supplier', true);
+            } else {
+                $query->where('contact_type', $contactType);
+            }
+        }
+
+        if (! empty($filters['search'])) {
+            $term = '%'.str_replace('%', '', (string) $filters['search']).'%';
+            $query->where(function ($builder) use ($term): void {
+                $builder
+                    ->where('contact_code', 'like', $term)
+                    ->orWhere('name', 'like', $term)
+                    ->orWhere('phone', 'like', $term)
+                    ->orWhere('email', 'like', $term);
+            });
         }
 
         return $query->orderBy('name')->get();
@@ -32,7 +48,7 @@ class ContactService
             ]);
         }
 
-        return Contact::query()->create($data);
+        return Contact::query()->create($data)->load('paymentTerm');
     }
 
     public function update(Contact $contact, array $data): Contact
@@ -50,7 +66,7 @@ class ContactService
         $contact->fill($data);
         $contact->save();
 
-        return $contact->refresh();
+        return $contact->refresh()->load('paymentTerm');
     }
 
     public function deactivate(Contact $contact): Contact

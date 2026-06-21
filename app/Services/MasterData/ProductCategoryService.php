@@ -14,6 +14,10 @@ class ProductCategoryService
         if (array_key_exists('is_active', $filters)) {
             $query->where('is_active', (bool) $filters['is_active']);
         }
+        if (! empty($filters['search'])) {
+            $term = '%'.str_replace('%', '', (string) $filters['search']).'%';
+            $query->where('name', 'like', $term);
+        }
 
         return $query->orderBy('name')->get();
     }
@@ -61,4 +65,3 @@ class ProductCategoryService
         return $category->refresh();
     }
 }
-

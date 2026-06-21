@@ -17,7 +17,7 @@ class StorePaymentTermRequest extends FormRequest
         return [
             'code' => ['required', 'string', 'max:30'],
             'name' => ['required', 'string', 'max:255'],
-            'days' => ['nullable', 'integer', 'min:0', 'max:3650'],
+            'days' => ['nullable', 'integer', 'min:1', 'max:3650'],
             'is_custom' => ['nullable', 'boolean'],
             'is_active' => ['nullable', 'boolean'],
             'sort_order' => ['nullable', 'integer', 'min:0', 'max:65535'],

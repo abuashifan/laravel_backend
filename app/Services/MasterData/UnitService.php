@@ -14,6 +14,10 @@ class UnitService
         if (array_key_exists('is_active', $filters)) {
             $query->where('is_active', (bool) $filters['is_active']);
         }
+        if (! empty($filters['search'])) {
+            $term = '%'.str_replace('%', '', (string) $filters['search']).'%';
+            $query->where(fn ($builder) => $builder->where('code', 'like', $term)->orWhere('name', 'like', $term));
+        }
 
         return $query->orderBy('code')->get();
     }

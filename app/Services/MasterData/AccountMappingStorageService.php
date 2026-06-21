@@ -6,12 +6,11 @@ use App\Exceptions\ApiException;
 use App\Models\Tenant\AccountMapping;
 use App\Models\Tenant\ChartOfAccount;
 use App\Services\AccountMapping\AccountMappingService;
+use Illuminate\Support\Facades\DB;
 
 class AccountMappingStorageService
 {
-    public function __construct(private readonly AccountMappingService $definitionService)
-    {
-    }
+    public function __construct(private readonly AccountMappingService $definitionService) {}
 
     public function syncDefaultMappingsFromConfig(): void
     {
@@ -62,18 +61,41 @@ class AccountMappingStorageService
 
     public function updateMapping(string $key, ?int $accountId): AccountMapping
     {
+        $this->validateMappingValue($key, $accountId);
+
+        return $this->persistMapping($key, $accountId);
+    }
+
+    public function updateMappings(array $items)
+    {
+        foreach ($items as $item) {
+            $this->validateMappingValue(
+                (string) $item['mapping_key'],
+                isset($item['account_id']) ? (int) $item['account_id'] : null,
+            );
+        }
+
+        DB::connection('tenant')->transaction(function () use ($items): void {
+            foreach ($items as $item) {
+                $this->persistMapping(
+                    (string) $item['mapping_key'],
+                    isset($item['account_id']) ? (int) $item['account_id'] : null,
+                );
+            }
+        });
+
+        return $this->list();
+    }
+
+    private function validateMappingValue(string $key, ?int $accountId): void
+    {
         if (! $this->definitionService->exists($key)) {
             throw ApiException::make('UNKNOWN_MAPPING_KEY', 'Unknown mapping key.', 404);
         }
 
-        $mapping = AccountMapping::query()->where('mapping_key', $key)->first();
-        if (! $mapping) {
-            $req = $this->definitionService->requirement($key);
-            $mapping = AccountMapping::query()->create([
-                'mapping_key' => $key,
-                'module' => $req?->module ?? $this->definitionService->requirement($key)?->module ?? 'unknown',
-                'is_required' => (bool) ($req?->required ?? $this->definitionService->isRequired($key)),
-                'is_active' => true,
+        if ($accountId === null && $this->definitionService->isRequired($key)) {
+            throw ApiException::make('REQUIRED_MAPPING_EMPTY', 'Required account mapping cannot be empty.', 422, [
+                $key => ['Pemetaan akun wajib harus memiliki akun aktif yang sesuai.'],
             ]);
         }
 
@@ -89,11 +111,25 @@ class AccountMappingStorageService
 
             $this->validateMappingAccountType($key, $account);
         }
+    }
+
+    private function persistMapping(string $key, ?int $accountId): AccountMapping
+    {
+        $mapping = AccountMapping::query()->where('mapping_key', $key)->first();
+        if (! $mapping) {
+            $req = $this->definitionService->requirement($key);
+            $mapping = AccountMapping::query()->create([
+                'mapping_key' => $key,
+                'module' => $req?->module ?? 'unknown',
+                'is_required' => (bool) ($req?->required ?? false),
+                'is_active' => true,
+            ]);
+        }
 
         $mapping->account_id = $accountId;
         $mapping->save();
 
-        return $mapping->refresh();
+        return $mapping->refresh()->load('account');
     }
 
     public function validateMappingAccountType(string $key, ChartOfAccount $account): void
@@ -101,7 +137,7 @@ class AccountMappingStorageService
         $result = $this->definitionService->validateAccountTypeForKey($key, $account->account_type);
         if (! $result['valid']) {
             throw ApiException::make('ACCOUNT_TYPE_NOT_ALLOWED', 'Account type is not allowed for this mapping key.', 422, [
-                'errors' => $result['errors'],
+                'account_id' => $result['errors'],
             ]);
         }
     }
@@ -125,6 +161,7 @@ class AccountMappingStorageService
     public function requiredMappingsComplete(?string $module = null): bool
     {
         $missing = $this->missingRequiredMappings($module);
+
         return $missing === [];
     }
 

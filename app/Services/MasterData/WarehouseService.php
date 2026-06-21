@@ -14,6 +14,12 @@ class WarehouseService
         if (array_key_exists('is_active', $filters)) {
             $query->where('is_active', (bool) $filters['is_active']);
         }
+        if (! empty($filters['search'])) {
+            $term = '%'.str_replace('%', '', (string) $filters['search']).'%';
+            $query->where(function ($builder) use ($term): void {
+                $builder->where('code', 'like', $term)->orWhere('name', 'like', $term)->orWhere('address', 'like', $term);
+            });
+        }
 
         return $query->orderByDesc('is_default')->orderBy('name')->get();
     }

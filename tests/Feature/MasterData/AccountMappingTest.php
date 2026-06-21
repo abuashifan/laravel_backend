@@ -74,4 +74,56 @@ class AccountMappingTest extends MasterDataTestCase
             (int) AccountMapping::query()->where('mapping_key', 'sales.customer_deposit')->value('account_id')
         );
     }
+
+    public function test_required_mapping_cannot_be_cleared_and_bulk_update_is_atomic(): void
+    {
+        $ctx = $this->setUpTenant();
+        $asset = ChartOfAccount::query()->create([
+            'account_code' => '1100',
+            'account_name' => 'Piutang Usaha',
+            'account_type' => 'asset',
+            'normal_balance' => 'debit',
+            'is_active' => true,
+        ]);
+        $revenue = ChartOfAccount::query()->create([
+            'account_code' => '4100',
+            'account_name' => 'Pendapatan',
+            'account_type' => 'revenue',
+            'normal_balance' => 'credit',
+            'is_active' => true,
+        ]);
+
+        $this->getJson('/api/master-data/account-mappings', $ctx['headers'])->assertOk();
+
+        $this->patchJson('/api/master-data/account-mappings/sales.accounts_receivable', [
+            'account_id' => null,
+        ], $ctx['headers'])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'REQUIRED_MAPPING_EMPTY');
+
+        $this->patchJson('/api/master-data/account-mappings', [
+            'mappings' => [
+                ['mapping_key' => 'sales.accounts_receivable', 'account_id' => $asset->id],
+                ['mapping_key' => 'sales.customer_deposit', 'account_id' => $revenue->id],
+            ],
+        ], $ctx['headers'])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'ACCOUNT_TYPE_NOT_ALLOWED');
+
+        $this->assertNotSame(
+            $asset->id,
+            AccountMapping::query()->where('mapping_key', 'sales.accounts_receivable')->value('account_id'),
+        );
+
+        $this->patchJson('/api/master-data/account-mappings', [
+            'mappings' => [
+                ['mapping_key' => 'sales.accounts_receivable', 'account_id' => $asset->id],
+            ],
+        ], $ctx['headers'])->assertOk();
+
+        $this->assertSame(
+            $asset->id,
+            AccountMapping::query()->where('mapping_key', 'sales.accounts_receivable')->value('account_id'),
+        );
+    }
 }

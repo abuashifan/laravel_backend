@@ -13,7 +13,14 @@ class ProductService
 {
     public function list(array $filters = [])
     {
-        $query = Product::query();
+        $query = Product::query()->with([
+            'category',
+            'unit',
+            'salesAccount',
+            'purchaseAccount',
+            'inventoryAccount',
+            'cogsAccount',
+        ]);
 
         if (array_key_exists('is_active', $filters)) {
             $query->where('is_active', (bool) $filters['is_active']);
@@ -21,6 +28,20 @@ class ProductService
 
         if (! empty($filters['product_type'])) {
             $query->where('product_type', (string) $filters['product_type']);
+        }
+
+        if (! empty($filters['product_category_id'])) {
+            $query->where('product_category_id', (int) $filters['product_category_id']);
+        }
+
+        if (! empty($filters['search'])) {
+            $term = '%'.str_replace('%', '', (string) $filters['search']).'%';
+            $query->where(function ($builder) use ($term): void {
+                $builder
+                    ->where('product_code', 'like', $term)
+                    ->orWhere('product_name', 'like', $term)
+                    ->orWhere('description', 'like', $term);
+            });
         }
 
         $products = $query->orderBy('product_name')->get();
@@ -40,7 +61,14 @@ class ProductService
 
         $this->validateRelations($data);
 
-        return Product::query()->create($data);
+        return Product::query()->create($data)->load([
+            'category',
+            'unit',
+            'salesAccount',
+            'purchaseAccount',
+            'inventoryAccount',
+            'cogsAccount',
+        ]);
     }
 
     public function update(Product $product, array $data): Product
@@ -61,7 +89,14 @@ class ProductService
         $product->fill($data);
         $product->save();
 
-        return $product->refresh();
+        return $product->refresh()->load([
+            'category',
+            'unit',
+            'salesAccount',
+            'purchaseAccount',
+            'inventoryAccount',
+            'cogsAccount',
+        ]);
     }
 
     public function deactivate(Product $product): Product
@@ -118,7 +153,9 @@ class ProductService
                     'inventory_account_id' => 'asset',
                     default => null,
                 };
-                if ($type !== null) $query->where('account_type', $type);
+                if ($type !== null) {
+                    $query->where('account_type', $type);
+                }
                 if (! $query->exists()) {
                     throw ApiException::make('ACCOUNT_NOT_FOUND', $key.' not found.', 422);
                 }
