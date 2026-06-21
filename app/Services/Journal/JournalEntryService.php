@@ -30,8 +30,7 @@ class JournalEntryService
         private readonly TransactionPolicyService $policyService,
         private readonly TransactionRevisionService $revisionService,
         private readonly ?AuditLogService $auditLogService = null,
-    ) {
-    }
+    ) {}
 
     /**
      * @return Collection<int,JournalEntry>
@@ -69,6 +68,15 @@ class JournalEntryService
                     ->orWhere('description', 'like', $term);
             });
         }
+
+        if (array_key_exists('is_system_generated', $filters)
+            && $filters['is_system_generated'] !== null
+            && $filters['is_system_generated'] !== '') {
+            $query->where('is_system_generated', filter_var($filters['is_system_generated'], FILTER_VALIDATE_BOOLEAN));
+        }
+
+        $query->withSum('lines as total_debit', 'debit')
+            ->withSum('lines as total_credit', 'credit');
 
         return $query->orderByDesc('journal_date')->orderByDesc('id')->get();
     }
@@ -395,7 +403,7 @@ class JournalEntryService
     }
 
     /**
-     * @param array<int,array<string,mixed>> $lines
+     * @param  array<int,array<string,mixed>>  $lines
      * @return array<int,array<string,mixed>>
      */
     private function mapLinesForValidation(array $lines): array

@@ -5,7 +5,6 @@ namespace Tests\Feature\Journal;
 use App\Models\Company;
 use App\Models\CompanyUser;
 use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\JournalEntry;
 use App\Models\TenantDatabase;
 use App\Models\User;
 use App\Services\Tenant\TenantConnectionManager;
@@ -148,6 +147,37 @@ class JournalEntryTest extends JournalTestCase
 
         $index2 = $this->getJson('/api/journals?include_void=true', $ctx['headers'])->assertStatus(200);
         $this->assertCount(1, $index2->json('data'));
+    }
+
+    public function test_journal_index_returns_line_totals_and_filters_system_generated(): void
+    {
+        $ctx = $this->setUpTenant(role: 'owner', accountingSettingOverrides: [
+            'transaction_workflow_mode' => 'draft_then_post',
+            'auto_post_transactions' => false,
+        ]);
+
+        $this->postJson('/api/journals', [
+            'journal_date' => now()->toDateString(),
+            'description' => 'Totals Journal',
+            'lines' => [
+                ['account_id' => $ctx['accounts']['debit'], 'debit' => 200],
+                ['account_id' => $ctx['accounts']['credit'], 'credit' => 200],
+            ],
+        ], $ctx['headers'])->assertStatus(201);
+
+        // List mengirim aggregate total_debit/total_credit (A13-047).
+        $index = $this->getJson('/api/journals?page=1&per_page=25', $ctx['headers'])->assertStatus(200);
+        $this->assertSame(1, count($index->json('data.data')));
+        $this->assertEquals(200, (float) $index->json('data.data.0.total_debit'));
+        $this->assertEquals(200, (float) $index->json('data.data.0.total_credit'));
+
+        // Filter manual (is_system_generated=false) tetap menampilkan jurnal manual.
+        $manual = $this->getJson('/api/journals?page=1&per_page=25&is_system_generated=false', $ctx['headers'])->assertStatus(200);
+        $this->assertSame(1, count($manual->json('data.data')));
+
+        // Filter system (is_system_generated=true) mengecualikan jurnal manual (A13-094).
+        $system = $this->getJson('/api/journals?page=1&per_page=25&is_system_generated=true', $ctx['headers'])->assertStatus(200);
+        $this->assertSame(0, count($system->json('data.data')));
     }
 
     public function test_journal_show_works(): void
