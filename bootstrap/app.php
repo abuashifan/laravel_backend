@@ -1,12 +1,17 @@
 <?php
 
+use App\Http\Middleware\EnsureCompanyAccess;
+use App\Http\Middleware\EnsurePermission;
+use App\Support\Api\ApiErrorCode;
+use App\Support\Api\ApiResponseBuilder;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
-use Illuminate\Database\QueryException;
 use Illuminate\Validation\ValidationException;
-use App\Support\Api\ApiResponseBuilder;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -17,8 +22,8 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
-            'company.access' => \App\Http\Middleware\EnsureCompanyAccess::class,
-            'permission' => \App\Http\Middleware\EnsurePermission::class,
+            'company.access' => EnsureCompanyAccess::class,
+            'permission' => EnsurePermission::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
@@ -28,6 +33,24 @@ return Application::configure(basePath: dirname(__DIR__))
             }
 
             return ApiResponseBuilder::validation($e->errors(), 'Please review the highlighted fields.');
+        });
+
+        // Resource tidak ditemukan: kembalikan envelope aman tanpa membocorkan
+        // class/file/line/stack trace backend (A13-096).
+        $exceptions->renderable(function (ModelNotFoundException $e, Request $request) {
+            if (! $request->expectsJson()) {
+                return null;
+            }
+
+            return ApiResponseBuilder::error(ApiErrorCode::RESOURCE_NOT_FOUND, 'The requested resource was not found.', [], 404);
+        });
+
+        $exceptions->renderable(function (NotFoundHttpException $e, Request $request) {
+            if (! $request->expectsJson()) {
+                return null;
+            }
+
+            return ApiResponseBuilder::error(ApiErrorCode::RESOURCE_NOT_FOUND, 'The requested resource was not found.', [], 404);
         });
 
         $exceptions->renderable(function (QueryException $e, Request $request) {

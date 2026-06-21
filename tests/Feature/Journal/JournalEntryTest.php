@@ -180,6 +180,24 @@ class JournalEntryTest extends JournalTestCase
         $this->assertSame(0, count($system->json('data.data')));
     }
 
+    public function test_missing_journal_returns_safe_not_found_without_stack_trace(): void
+    {
+        $ctx = $this->setUpTenant(role: 'owner', accountingSettingOverrides: [
+            'transaction_workflow_mode' => 'draft_then_post',
+            'auto_post_transactions' => false,
+        ]);
+
+        $res = $this->getJson('/api/journals/999999999', $ctx['headers']);
+        $res->assertStatus(404);
+        $res->assertJsonPath('code', 'RESOURCE_NOT_FOUND');
+
+        // Envelope aman: tidak membocorkan detail internal (A13-096).
+        $body = $res->getContent() ?: '';
+        $this->assertStringNotContainsString('trace', $body);
+        $this->assertStringNotContainsString('/workspace/laravel_backend', $body);
+        $this->assertStringNotContainsString('ModelNotFoundException', $body);
+    }
+
     public function test_journal_show_works(): void
     {
         $ctx = $this->setUpTenant(role: 'owner', accountingSettingOverrides: [
