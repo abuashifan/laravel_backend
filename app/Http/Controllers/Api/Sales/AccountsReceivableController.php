@@ -18,8 +18,7 @@ class AccountsReceivableController extends Controller
         private readonly ARSubsidiaryLedgerService $ledgerService,
         private readonly ARAgingService $agingService,
         private readonly ARReconciliationService $reconciliationService,
-    ) {
-    }
+    ) {}
 
     public function customerSummary(Request $request): JsonResponse
     {
@@ -31,9 +30,9 @@ class AccountsReceivableController extends Controller
         return $this->successResponse($this->ledgerService->ledgerByCustomer($customerId, $request->query()), 'AR customer ledger retrieved successfully');
     }
 
-    public function invoiceLedger(int $invoiceId): JsonResponse
+    public function invoiceLedger(Request $request, int $invoiceId): JsonResponse
     {
-        return $this->successResponse($this->ledgerService->ledgerByInvoice($invoiceId), 'AR invoice ledger retrieved successfully');
+        return $this->successResponse($this->ledgerService->ledgerByInvoice($invoiceId, $request->query()), 'AR invoice ledger retrieved successfully');
     }
 
     public function openInvoices(Request $request): JsonResponse

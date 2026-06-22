@@ -23,6 +23,7 @@ class SalesOrderService
     {
         $query = SalesOrder::query()->with('customer');
         if (! empty($filters['status'])) $query->where('status', (string) $filters['status']);
+        if (! empty($filters['customer_id'])) $query->where('customer_id', (int) $filters['customer_id']);
         return $query->orderByDesc('order_date')->orderByDesc('id')->get();
     }
 

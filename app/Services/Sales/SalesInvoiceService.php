@@ -53,6 +53,9 @@ class SalesInvoiceService
         if (! empty($filters['status'])) {
             $query->where('status', (string) $filters['status']);
         }
+        if (! empty($filters['customer_id'])) {
+            $query->where('customer_id', (int) $filters['customer_id']);
+        }
 
         return $query->orderByDesc('invoice_date')->orderByDesc('id')->get();
     }

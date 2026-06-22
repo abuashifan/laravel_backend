@@ -39,6 +39,7 @@ class CustomerDepositService
     {
         $query = CustomerDeposit::query()->with('customer', 'salesOrder', 'cashBankAccount');
         if (! empty($filters['status'])) $query->where('status', (string) $filters['status']);
+        if (! empty($filters['customer_id'])) $query->where('customer_id', (int) $filters['customer_id']);
         return $query->orderByDesc('deposit_date')->orderByDesc('id')->get();
     }
 

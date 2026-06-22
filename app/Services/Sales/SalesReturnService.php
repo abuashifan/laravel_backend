@@ -34,8 +34,8 @@ class SalesReturnService
         private readonly SalesAccountResolverService $accountResolver,
         private readonly ?AuditLogService $auditLogService = null,
     ) {}
-    public function list(array $filters = []): Collection { $q = SalesReturn::query()->with('customer', 'salesInvoice'); if (! empty($filters['status'])) $q->where('status', (string) $filters['status']); return $q->orderByDesc('return_date')->orderByDesc('id')->get(); }
-    public function find(int $id): SalesReturn { return SalesReturn::query()->with('lines', 'customer', 'salesInvoice', 'deliveryOrder')->findOrFail($id); }
+    public function list(array $filters = []): Collection { $q = SalesReturn::query()->with('customer', 'salesInvoice', 'deliveryOrder'); if (! empty($filters['status'])) $q->where('status', (string) $filters['status']); if (! empty($filters['customer_id'])) $q->where('customer_id', (int) $filters['customer_id']); return $q->orderByDesc('return_date')->orderByDesc('id')->get(); }
+    public function find(int $id): SalesReturn { return SalesReturn::query()->with('lines.salesInvoiceLine.product', 'lines.deliveryOrderLine.product', 'customer', 'salesInvoice', 'deliveryOrder')->findOrFail($id); }
 
     public function create(array $data): SalesReturn
     {

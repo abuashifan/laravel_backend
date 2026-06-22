@@ -32,7 +32,7 @@ class DeliveryOrderService
         private readonly TransactionVoidEffectService $voidEffectService,
         private readonly ?AuditLogService $auditLogService = null,
     ) {}
-    public function list(array $filters = []): Collection { $q = DeliveryOrder::query()->with('customer', 'salesOrder'); if (! empty($filters['status'])) $q->where('status', (string) $filters['status']); return $q->orderByDesc('delivery_date')->orderByDesc('id')->get(); }
+    public function list(array $filters = []): Collection { $q = DeliveryOrder::query()->with('customer', 'salesOrder', 'warehouse'); if (! empty($filters['status'])) $q->where('status', (string) $filters['status']); if (! empty($filters['customer_id'])) $q->where('customer_id', (int) $filters['customer_id']); if (! empty($filters['warehouse_id'])) $q->where('warehouse_id', (int) $filters['warehouse_id']); return $q->orderByDesc('delivery_date')->orderByDesc('id')->get(); }
     public function find(int $id): DeliveryOrder { return DeliveryOrder::query()->with('lines.product', 'customer', 'salesOrder')->findOrFail($id); }
 
     public function create(array $data): DeliveryOrder

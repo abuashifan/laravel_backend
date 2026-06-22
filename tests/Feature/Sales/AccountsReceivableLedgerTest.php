@@ -160,6 +160,37 @@ class AccountsReceivableLedgerTest extends SalesTestCase
             ->assertJsonPath('data.1.ar_account_id', $arB);
     }
 
+    public function test_invoice_ledger_respects_end_date_cutoff_filter(): void
+    {
+        $ctx = $this->setUpTenant();
+        $cash = $this->seedMappings();
+        $invoice = $this->postedInvoice($ctx, 200);
+        $this->postReceipt($ctx, $cash, $invoice, 50, '2026-05-21');
+        $this->postReturn($ctx, $invoice, 25, '2026-05-22');
+
+        $this->getJson('/api/sales/ar/invoices/'.$invoice['id'].'/ledger?end_date=2026-05-21', $ctx['headers'])
+            ->assertStatus(200)
+            ->assertJsonCount(2, 'data.movements')
+            ->assertJsonPath('data.movements.1.balance', 150);
+    }
+
+    public function test_reconciliation_cutoff_stays_consistent_on_boundary_date(): void
+    {
+        $ctx = $this->setUpTenant();
+        $this->seedMappings();
+        $this->postedInvoice($ctx, 200);
+
+        // A document dated exactly on the cutoff must be counted by both the
+        // subledger (invoice_date) and the GL (journal_date) sides so the two
+        // balances stay reconciled instead of showing a phantom difference.
+        $this->getJson('/api/sales/ar/reconciliation?as_of_date=2026-05-20', $ctx['headers'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.subsidiary_balance', 200)
+            ->assertJsonPath('data.gl_ar_balance', 200)
+            ->assertJsonPath('data.difference', 0)
+            ->assertJsonPath('data.is_reconciled', true);
+    }
+
     private function postedInvoice(array $ctx, float $amount): array
     {
         $invoice = $this->postJson('/api/sales/invoices', [
@@ -173,10 +204,10 @@ class AccountsReceivableLedgerTest extends SalesTestCase
         return SalesInvoice::query()->with('lines')->find($invoice['id'])->toArray();
     }
 
-    private function postReceipt(array $ctx, int $cash, array $invoice, float $amount): void
+    private function postReceipt(array $ctx, int $cash, array $invoice, float $amount, string $date = '2026-05-20'): void
     {
         $receipt = $this->postJson('/api/sales/receipts', [
-            'receipt_date' => '2026-05-20',
+            'receipt_date' => $date,
             'customer_id' => $invoice['customer_id'],
             'sales_invoice_id' => $invoice['id'],
             'cash_bank_account_id' => $cash,
@@ -206,10 +237,10 @@ class AccountsReceivableLedgerTest extends SalesTestCase
         $this->assertSame(1, CustomerDepositAllocation::query()->count());
     }
 
-    private function postReturn(array $ctx, array $invoice, float $amount): void
+    private function postReturn(array $ctx, array $invoice, float $amount, string $date = '2026-05-20'): void
     {
         $return = $this->postJson('/api/sales/returns', [
-            'return_date' => '2026-05-20',
+            'return_date' => $date,
             'customer_id' => $invoice['customer_id'],
             'sales_invoice_id' => $invoice['id'],
             'lines' => [[

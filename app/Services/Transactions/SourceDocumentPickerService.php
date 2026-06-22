@@ -8,6 +8,7 @@ use App\Models\Tenant\GoodsReceipt;
 use App\Models\Tenant\ProformaInvoice;
 use App\Models\Tenant\PurchaseOrder;
 use App\Models\Tenant\PurchaseRequest;
+use App\Models\Tenant\SalesInvoice;
 use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\SalesQuotation;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -61,6 +62,16 @@ class SourceDocumentPickerService
             ],
         ],
         'sales.invoices' => [
+            'sales_order' => [
+                'model' => SalesOrder::class,
+                'lines' => 'lines',
+                'number' => 'order_number',
+                'date' => 'order_date',
+                'partner' => 'customer_id',
+                'statuses' => ['confirmed', 'partially_delivered', 'delivered', 'partially_invoiced'],
+                'line_source' => 'sales_order_line',
+                'remaining' => ['quantity', 'invoiced_quantity'],
+            ],
             'delivery_order' => [
                 'model' => DeliveryOrder::class,
                 'lines' => 'lines',
@@ -71,6 +82,39 @@ class SourceDocumentPickerService
                 'line_source' => 'delivery_order_line',
                 'remaining' => ['quantity', 'invoiced_quantity'],
                 'with' => ['salesOrder', 'lines.salesOrderLine', 'lines.product', 'lines.unit'],
+            ],
+            'proforma_invoice' => [
+                'model' => ProformaInvoice::class,
+                'lines' => 'lines',
+                'number' => 'proforma_number',
+                'date' => 'proforma_date',
+                'partner' => 'customer_id',
+                'statuses' => ['issued', 'accepted'],
+                'line_source' => 'proforma_invoice_line',
+            ],
+        ],
+        'sales.returns' => [
+            'sales_invoice' => [
+                'model' => SalesInvoice::class,
+                'lines' => 'lines',
+                'number' => 'invoice_number',
+                'date' => 'invoice_date',
+                'partner' => 'customer_id',
+                'statuses' => ['posted', 'partially_paid', 'paid'],
+                'line_source' => 'sales_invoice_line',
+                'remaining' => ['quantity', 'returned_quantity'],
+                'with' => ['lines.product', 'lines.unit'],
+            ],
+            'delivery_order' => [
+                'model' => DeliveryOrder::class,
+                'lines' => 'lines',
+                'number' => 'delivery_number',
+                'date' => 'delivery_date',
+                'partner' => 'customer_id',
+                'statuses' => ['delivered', 'partially_invoiced'],
+                'line_source' => 'delivery_order_line',
+                'remaining' => ['quantity', 'returned_quantity'],
+                'with' => ['lines.product', 'lines.unit'],
             ],
         ],
         'purchase.orders' => [
@@ -297,6 +341,7 @@ class SourceDocumentPickerService
                 'sales_order_line_id' => $line->getAttribute('sales_order_line_id'),
             ],
             'proforma_invoice' => ['proforma_invoice_line_id' => $line->getKey()],
+            'sales_invoice' => ['sales_invoice_line_id' => $line->getKey()],
             'purchase_request' => ['purchase_request_line_id' => $line->getKey()],
             'purchase_order' => ['purchase_order_line_id' => $line->getKey()],
             'goods_receipt' => [
@@ -334,6 +379,13 @@ class SourceDocumentPickerService
                 'sales_order_id' => $document->getAttribute('sales_order_id'),
                 'customer_id' => $document->getAttribute('customer_id'),
                 'customer_address' => $document->getAttribute('shipping_address'),
+            ],
+            'sales_invoice' => [
+                'sales_invoice_id' => $document->getKey(),
+                'sales_order_id' => $document->getAttribute('sales_order_id'),
+                'delivery_order_id' => $document->getAttribute('delivery_order_id'),
+                'customer_id' => $document->getAttribute('customer_id'),
+                'customer_address' => $document->getAttribute('customer_address'),
             ],
             'purchase_request' => [
                 'purchase_request_id' => $document->getKey(),

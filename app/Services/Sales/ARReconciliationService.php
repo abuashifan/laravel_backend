@@ -9,9 +9,7 @@ use App\Models\Tenant\SalesInvoice;
 
 class ARReconciliationService
 {
-    public function __construct(private readonly ARSubsidiaryLedgerService $ledgerService)
-    {
-    }
+    public function __construct(private readonly ARSubsidiaryLedgerService $ledgerService) {}
 
     public function compareSubsidiaryToGL(array $filters = []): array
     {
@@ -40,8 +38,8 @@ class ARReconciliationService
                 $journal->where('status', 'posted')
                     ->where('is_obsolete', false)
                     ->whereNull('voided_at')
-                    ->when($filters['start_date'] ?? null, fn ($query, $date) => $query->where('journal_date', '>=', $date))
-                    ->when($filters['end_date'] ?? $filters['as_of_date'] ?? null, fn ($query, $date) => $query->where('journal_date', '<=', $date));
+                    ->when($filters['start_date'] ?? null, fn ($query, $date) => $query->whereDate('journal_date', '>=', $date))
+                    ->when($filters['end_date'] ?? $filters['as_of_date'] ?? null, fn ($query, $date) => $query->whereDate('journal_date', '<=', $date));
             });
 
         return round((float) $query->sum('debit') - (float) $query->sum('credit'), 2);

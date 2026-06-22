@@ -2,8 +2,8 @@
 
 namespace App\Services\Sales;
 
-use App\Models\Tenant\CustomerDepositAllocation;
 use App\Models\Tenant\CustomerDeposit;
+use App\Models\Tenant\CustomerDepositAllocation;
 use App\Models\Tenant\SalesInvoice;
 use App\Models\Tenant\SalesReceipt;
 use App\Models\Tenant\SalesReturn;
@@ -21,11 +21,11 @@ class ARSubsidiaryLedgerService
         ];
     }
 
-    public function ledgerByInvoice(int $invoiceId): array
+    public function ledgerByInvoice(int $invoiceId, array $filters = []): array
     {
         return [
             'invoice_id' => $invoiceId,
-            'movements' => $this->calculateRunningBalance($this->movements(['invoice_id' => $invoiceId])),
+            'movements' => $this->calculateRunningBalance($this->movements(array_merge($filters, ['invoice_id' => $invoiceId]))),
         ];
     }
 
@@ -153,8 +153,8 @@ class ARSubsidiaryLedgerService
             ->whereNotNull('posted_at')
             ->when($filters['customer_id'] ?? null, fn ($query, $customerId) => $query->where('customer_id', $customerId))
             ->when($filters['invoice_id'] ?? null, fn ($query, $invoiceId) => $query->where('sales_invoice_id', $invoiceId))
-            ->when($filters['start_date'] ?? null, fn ($query, $date) => $query->where('receipt_date', '>=', $date))
-            ->when($this->endDate($filters), fn ($query, $date) => $query->where('receipt_date', '<=', $date))
+            ->when($filters['start_date'] ?? null, fn ($query, $date) => $query->whereDate('receipt_date', '>=', $date))
+            ->when($this->endDate($filters), fn ($query, $date) => $query->whereDate('receipt_date', '<=', $date))
             ->get()
             ->map(function (SalesReceipt $receipt): array {
                 $invoice = $receipt->salesInvoice;
@@ -188,8 +188,8 @@ class ARSubsidiaryLedgerService
             ->whereHas('salesInvoice', fn ($query) => $query->whereNotIn('status', ['void'])->whereNotNull('posted_at'))
             ->when($filters['customer_id'] ?? null, fn ($query, $customerId) => $query->whereHas('salesInvoice', fn ($invoice) => $invoice->where('customer_id', $customerId)))
             ->when($filters['invoice_id'] ?? null, fn ($query, $invoiceId) => $query->where('sales_invoice_id', $invoiceId))
-            ->when($filters['start_date'] ?? null, fn ($query, $date) => $query->where('allocation_date', '>=', $date))
-            ->when($this->endDate($filters), fn ($query, $date) => $query->where('allocation_date', '<=', $date))
+            ->when($filters['start_date'] ?? null, fn ($query, $date) => $query->whereDate('allocation_date', '>=', $date))
+            ->when($this->endDate($filters), fn ($query, $date) => $query->whereDate('allocation_date', '<=', $date))
             ->get()
             ->map(function (CustomerDepositAllocation $allocation): array {
                 $invoice = $allocation->salesInvoice;
@@ -222,8 +222,8 @@ class ARSubsidiaryLedgerService
             ->whereNotNull('posted_at')
             ->when($filters['customer_id'] ?? null, fn ($query, $customerId) => $query->where('customer_id', $customerId))
             ->when($filters['invoice_id'] ?? null, fn ($query, $invoiceId) => $query->where('sales_invoice_id', $invoiceId))
-            ->when($filters['start_date'] ?? null, fn ($query, $date) => $query->where('return_date', '>=', $date))
-            ->when($this->endDate($filters), fn ($query, $date) => $query->where('return_date', '<=', $date))
+            ->when($filters['start_date'] ?? null, fn ($query, $date) => $query->whereDate('return_date', '>=', $date))
+            ->when($this->endDate($filters), fn ($query, $date) => $query->whereDate('return_date', '<=', $date))
             ->get()
             ->map(function (SalesReturn $return): array {
                 $invoice = $return->salesInvoice;
@@ -258,8 +258,8 @@ class ARSubsidiaryLedgerService
             ->when($filters['invoice_id'] ?? null, fn ($query, $invoiceId) => $query->where('id', $invoiceId))
             ->when($filters['status'] ?? null, fn ($query, $status) => $query->where('status', $status))
             ->when($filters['salesperson_id'] ?? null, fn ($query, $salespersonId) => $query->where('salesperson_id', $salespersonId))
-            ->when($filters['start_date'] ?? null, fn ($query, $date) => $query->where('invoice_date', '>=', $date))
-            ->when($this->endDate($filters), fn ($query, $date) => $query->where('invoice_date', '<=', $date));
+            ->when($filters['start_date'] ?? null, fn ($query, $date) => $query->whereDate('invoice_date', '>=', $date))
+            ->when($this->endDate($filters), fn ($query, $date) => $query->whereDate('invoice_date', '<=', $date));
     }
 
     private function movement(?string $date, ?int $customerId, ?string $customerName, string $documentType, int $documentId, ?string $documentNumber, string $description, float $debit, float $credit, string $sourceType, int $sourceId, int|string|null $arAccountId = null, ?string $arAccountCode = null, ?string $arAccountName = null): array
@@ -300,7 +300,7 @@ class ARSubsidiaryLedgerService
     }
 
     /**
-     * @param array<int,int> $customerIds
+     * @param  array<int,int>  $customerIds
      * @return array<int,float>
      */
     private function unappliedDepositTotals(array $customerIds): array

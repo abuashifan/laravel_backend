@@ -22,8 +22,8 @@ class SalesReceiptService
     use HandlesSalesDocuments;
 
     public function __construct(private readonly TenantContext $tenantContext, private readonly DocumentNumberService $documentNumberService, private readonly TransactionDateGuardService $dateGuardService, private readonly TransactionVoidEffectService $voidEffectService, private readonly SalesAccountResolverService $accountResolver, private readonly CustomerDepositService $depositService, private readonly ARSubsidiaryLedgerService $ledgerService, private readonly ?AuditLogService $auditLogService = null) {}
-    public function list(array $filters = []): Collection { $q = SalesReceipt::query()->with('customer', 'salesInvoice'); if (! empty($filters['status'])) $q->where('status', (string) $filters['status']); return $q->orderByDesc('receipt_date')->orderByDesc('id')->get(); }
-    public function find(int $id): SalesReceipt { return SalesReceipt::query()->with('lines', 'customer', 'salesInvoice')->findOrFail($id); }
+    public function list(array $filters = []): Collection { $q = SalesReceipt::query()->with('customer', 'salesInvoice', 'cashBankAccount'); if (! empty($filters['status'])) $q->where('status', (string) $filters['status']); if (! empty($filters['customer_id'])) $q->where('customer_id', (int) $filters['customer_id']); return $q->orderByDesc('receipt_date')->orderByDesc('id')->get(); }
+    public function find(int $id): SalesReceipt { return SalesReceipt::query()->with('lines.salesInvoice', 'customer', 'salesInvoice', 'cashBankAccount')->findOrFail($id); }
 
     public function create(array $data): SalesReceipt
     {
