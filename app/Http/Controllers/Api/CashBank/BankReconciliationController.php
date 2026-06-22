@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api\CashBank;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\CashBank\MarkBankReconciliationLinesRequest;
+use App\Http\Requests\CashBank\RefreshBankReconciliationLinesRequest;
+use App\Http\Requests\CashBank\ReopenBankReconciliationRequest;
 use App\Http\Requests\CashBank\StoreBankReconciliationRequest;
 use App\Http\Requests\CashBank\UpdateBankReconciliationRequest;
 use App\Models\Tenant\BankReconciliation;
@@ -36,23 +38,45 @@ class BankReconciliationController extends Controller
     public function update(UpdateBankReconciliationRequest $request, int $id): JsonResponse
     {
         $rec = BankReconciliation::query()->findOrFail($id);
+
         return $this->successResponse($this->service->update($rec, $request->validated()), 'Bank reconciliation updated successfully');
     }
 
-    public function refreshLines(int $id): JsonResponse
+    public function refreshLines(RefreshBankReconciliationLinesRequest $request, int $id): JsonResponse
     {
         $rec = BankReconciliation::query()->findOrFail($id);
-        return $this->successResponse($this->service->refreshLines($rec), 'Bank reconciliation lines refreshed successfully');
+
+        return $this->successResponse(
+            $this->service->refreshLines($rec, $request->boolean('reset_cleared')),
+            'Bank reconciliation lines refreshed successfully'
+        );
     }
 
     public function markLines(MarkBankReconciliationLinesRequest $request, int $id): JsonResponse
     {
         $rec = BankReconciliation::query()->findOrFail($id);
         $data = $request->validated();
+
         return $this->successResponse(
             $this->service->markLines($rec, (array) $data['line_ids'], (bool) $data['cleared'], $data['cleared_date'] ?? null),
             'Bank reconciliation lines updated successfully'
         );
     }
-}
 
+    public function finalize(int $id): JsonResponse
+    {
+        $rec = BankReconciliation::query()->findOrFail($id);
+
+        return $this->successResponse($this->service->finalize($rec), 'Bank reconciliation finalized successfully');
+    }
+
+    public function reopen(ReopenBankReconciliationRequest $request, int $id): JsonResponse
+    {
+        $rec = BankReconciliation::query()->findOrFail($id);
+
+        return $this->successResponse(
+            $this->service->reopen($rec, (string) $request->validated('reason')),
+            'Bank reconciliation reopened successfully'
+        );
+    }
+}

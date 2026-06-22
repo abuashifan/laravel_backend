@@ -5,11 +5,11 @@ namespace App\Services\CashBank;
 use App\Exceptions\ApiException;
 use App\Models\Tenant\CashReceipt;
 use App\Models\Tenant\JournalEntry;
+use App\Services\Audit\AuditLogService;
 use App\Services\DocumentNumbering\DocumentNumberService;
 use App\Services\Tenant\TenantContext;
 use App\Services\Transactions\TransactionDateGuardService;
 use App\Services\Transactions\TransactionVoidEffectService;
-use App\Services\Audit\AuditLogService;
 use App\Support\DocumentNumbering\DocumentType;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -23,25 +23,45 @@ class CashReceiptService
         private readonly CashBankAccountService $cashBankAccountService,
         private readonly TransactionVoidEffectService $voidEffectService,
         private readonly ?AuditLogService $auditLogService = null,
-    ) {
-    }
+    ) {}
 
     public function list(array $filters = []): Collection
     {
         $query = CashReceipt::query()->with('contact', 'cashBankAccount');
-        if (! empty($filters['status'])) $query->where('status', (string) $filters['status']);
+        if (! empty($filters['statuses']) && is_array($filters['statuses'])) {
+            $query->whereIn('status', array_map('strval', $filters['statuses']));
+        } elseif (! empty($filters['status'])) {
+            $query->where('status', (string) $filters['status']);
+        }
+        if (! empty($filters['date_from'])) {
+            $query->whereDate('receipt_date', '>=', (string) $filters['date_from']);
+        }
+        if (! empty($filters['date_to'])) {
+            $query->whereDate('receipt_date', '<=', (string) $filters['date_to']);
+        }
+        if (! empty($filters['search'])) {
+            $term = '%'.str_replace('%', '', (string) $filters['search']).'%';
+            $query->where(function ($builder) use ($term): void {
+                $builder->where('receipt_number', 'like', $term)
+                    ->orWhere('notes', 'like', $term)
+                    ->orWhereHas('contact', fn ($contact) => $contact->where('name', 'like', $term));
+            });
+        }
+
         return $query->orderByDesc('receipt_date')->orderByDesc('id')->get();
     }
 
     public function find(int $id): CashReceipt
     {
-        return CashReceipt::query()->with('lines', 'contact', 'cashBankAccount')->findOrFail($id);
+        return CashReceipt::query()->with('lines.account', 'lines.department', 'lines.project', 'contact', 'cashBankAccount')->findOrFail($id);
     }
 
     public function create(array $data): CashReceipt
     {
         $company = $this->tenantContext->company();
-        if (! $company) throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
+        if (! $company) {
+            throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
+        }
 
         $cashAccountId = (int) $data['cash_bank_account_id'];
         if (! $this->cashBankAccountService->isCashBankAccount($cashAccountId)) {
@@ -58,19 +78,7 @@ class CashReceiptService
                 'created_by' => auth()->id(),
             ]));
 
-            $lines = $data['lines'] ?? [];
-            if ($lines === []) {
-                throw ApiException::make('LINES_REQUIRED', 'Cash receipt lines are required.', 422);
-            }
-
-            $sum = 0.0;
-            foreach ($lines as $ln) { $sum += (float) ($ln['amount'] ?? 0); }
-
-            if (abs($sum - (float) $data['amount']) > 0.01) {
-                throw ApiException::make('AMOUNT_MISMATCH', 'Header amount must equal sum(lines.amount).', 422, [
-                    'amount' => ['Header amount must equal sum of lines.'],
-                ], ['lines_sum' => $sum]);
-            }
+            $lines = $this->validatedLines($data);
 
             $receipt->lines()->createMany(array_map(function ($ln) {
                 return array_merge($ln, [
@@ -78,13 +86,40 @@ class CashReceiptService
                 ]);
             }, $lines));
 
-            return $receipt->refresh()->load('lines', 'contact', 'cashBankAccount');
+            return $receipt->refresh()->load('lines.account', 'lines.department', 'lines.project', 'contact', 'cashBankAccount');
+        });
+    }
+
+    public function update(CashReceipt $receipt, array $data): CashReceipt
+    {
+        if ($receipt->status !== 'draft') {
+            throw ApiException::make('CASH_RECEIPT_NOT_EDITABLE', 'Only draft cash receipts can be updated.', 422);
+        }
+        if (! $this->cashBankAccountService->isCashBankAccount((int) $data['cash_bank_account_id'])) {
+            throw ApiException::make('CASH_BANK_ACCOUNT_REQUIRED', 'Cash/bank account must be an active cash/bank marked COA.', 422);
+        }
+
+        return DB::connection('tenant')->transaction(function () use ($receipt, $data) {
+            $lines = $this->validatedLines($data);
+            $header = $data;
+            unset($header['lines']);
+            $receipt->fill($header)->save();
+            $receipt->lines()->delete();
+            $receipt->lines()->createMany(array_map(
+                fn (array $line, int $index): array => array_merge($line, ['line_order' => $index + 1]),
+                $lines,
+                array_keys($lines),
+            ));
+
+            return $receipt->refresh()->load('lines.account', 'lines.department', 'lines.project', 'contact', 'cashBankAccount');
         });
     }
 
     public function post(CashReceipt $receipt): CashReceipt
     {
-        if ($receipt->status === 'posted') return $receipt;
+        if ($receipt->status === 'posted') {
+            return $receipt;
+        }
         $this->guardDate((string) $receipt->receipt_date);
 
         if (! $this->cashBankAccountService->isCashBankAccount((int) $receipt->cash_bank_account_id)) {
@@ -110,13 +145,21 @@ class CashReceiptService
 
     public function void(CashReceipt $receipt, ?string $reason = null): CashReceipt
     {
-        if ($receipt->status === 'void') throw ApiException::make('CASH_RECEIPT_ALREADY_VOID', 'Cash receipt already void.', 422);
+        if ($receipt->status === 'void') {
+            throw ApiException::make('CASH_RECEIPT_ALREADY_VOID', 'Cash receipt already void.', 422);
+        }
         $reason = $this->voidEffectService->requireReason($reason);
         $this->guardDate((string) $receipt->receipt_date, 'void');
+
         return DB::connection('tenant')->transaction(function () use ($receipt, $reason) {
             $journalIds = $this->voidEffectService->voidJournalsForSource('cash_receipt', (int) $receipt->id, $reason);
-            $receipt->status = 'void'; $receipt->voided_by = auth()->id(); $receipt->voided_at = now(); $receipt->void_reason = $reason; $receipt->save();
+            $receipt->status = 'void';
+            $receipt->voided_by = auth()->id();
+            $receipt->voided_at = now();
+            $receipt->void_reason = $reason;
+            $receipt->save();
             $this->auditVoid('cash_receipt', $receipt->id, $receipt->receipt_number, $reason, $journalIds);
+
             return $receipt->refresh();
         });
     }
@@ -124,7 +167,9 @@ class CashReceiptService
     private function journal(CashReceipt $receipt): JournalEntry
     {
         $company = $this->tenantContext->company();
-        if (! $company) throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
+        if (! $company) {
+            throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
+        }
 
         $receipt->loadMissing('lines');
         $journal = JournalEntry::query()->create([
@@ -167,6 +212,7 @@ class CashReceiptService
         }
 
         $journal->lines()->createMany($lines);
+
         return $journal->refresh();
     }
 
@@ -177,6 +223,26 @@ class CashReceiptService
             $arr = $check->toArray();
             throw ApiException::make((string) $arr['code'], (string) $arr['message'], 422, (array) $arr['reasons'], (array) $arr['meta']);
         }
+    }
+
+    private function validatedLines(array $data): array
+    {
+        $lines = $data['lines'] ?? [];
+        if ($lines === []) {
+            throw ApiException::make('LINES_REQUIRED', 'Cash receipt lines are required.', 422, [
+                'lines' => ['At least one allocation line is required.'],
+            ]);
+        }
+
+        $sum = array_reduce($lines, fn (float $total, array $line): float => $total + (float) ($line['amount'] ?? 0), 0.0);
+        if (abs($sum - (float) $data['amount']) > 0.01) {
+            throw ApiException::make('AMOUNT_MISMATCH', 'Header amount must equal sum(lines.amount).', 422, [
+                'amount' => ['Header amount must equal sum of lines.'],
+                'lines' => ['Allocation total must equal header amount.'],
+            ], ['lines_sum' => $sum]);
+        }
+
+        return array_values($lines);
     }
 
     private function auditVoid(string $type, int $id, string $number, string $reason, array $journalIds): void

@@ -27,7 +27,7 @@ class CashBankAccountService
         return ChartOfAccount::query()
             ->whereKey($accountId)
             ->where('is_cash_bank', true)
+            ->where('is_active', true)
             ->exists();
     }
 }
-

@@ -18,6 +18,8 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('cash-bank')->grou
         ->middleware('permission:cash_bank.create');
     Route::get('/cash-receipts/{id}', [CashReceiptController::class, 'show'])
         ->middleware('permission:cash_bank.view');
+    Route::patch('/cash-receipts/{id}', [CashReceiptController::class, 'update'])
+        ->middleware('permission:cash_bank.edit');
     Route::patch('/cash-receipts/{id}/post', [CashReceiptController::class, 'post'])
         ->middleware('permission:cash_bank.post');
     Route::patch('/cash-receipts/{id}/void', [CashReceiptController::class, 'void'])
@@ -29,6 +31,8 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('cash-bank')->grou
         ->middleware('permission:cash_bank.create');
     Route::get('/cash-payments/{id}', [CashPaymentController::class, 'show'])
         ->middleware('permission:cash_bank.view');
+    Route::patch('/cash-payments/{id}', [CashPaymentController::class, 'update'])
+        ->middleware('permission:cash_bank.edit');
     Route::patch('/cash-payments/{id}/post', [CashPaymentController::class, 'post'])
         ->middleware('permission:cash_bank.post');
     Route::patch('/cash-payments/{id}/void', [CashPaymentController::class, 'void'])
@@ -40,6 +44,8 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('cash-bank')->grou
         ->middleware('permission:cash_bank.transfer');
     Route::get('/bank-transfers/{id}', [BankTransferController::class, 'show'])
         ->middleware('permission:cash_bank.view');
+    Route::patch('/bank-transfers/{id}', [BankTransferController::class, 'update'])
+        ->middleware('permission:cash_bank.edit');
     Route::patch('/bank-transfers/{id}/post', [BankTransferController::class, 'post'])
         ->middleware('permission:cash_bank.post');
     Route::patch('/bank-transfers/{id}/void', [BankTransferController::class, 'void'])
@@ -56,6 +62,10 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('cash-bank')->grou
     Route::post('/bank-reconciliations/{id}/refresh-lines', [BankReconciliationController::class, 'refreshLines'])
         ->middleware('permission:cash_bank.edit');
     Route::post('/bank-reconciliations/{id}/mark-lines', [BankReconciliationController::class, 'markLines'])
+        ->middleware('permission:cash_bank.edit');
+    Route::post('/bank-reconciliations/{id}/finalize', [BankReconciliationController::class, 'finalize'])
+        ->middleware('permission:cash_bank.edit');
+    Route::post('/bank-reconciliations/{id}/reopen', [BankReconciliationController::class, 'reopen'])
         ->middleware('permission:cash_bank.edit');
 
     Route::get('/reports/account-statement', [CashBankReportController::class, 'accountStatement'])

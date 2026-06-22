@@ -116,5 +116,41 @@ class CashReceiptTest extends JournalTestCase
         $res->assertStatus(422);
         $res->assertJsonPath('code', 'CASH_BANK_ACCOUNT_REQUIRED');
     }
-}
 
+    public function test_lines_are_required_and_draft_can_be_updated_with_account_relations(): void
+    {
+        $ctx = $this->setUpTenant(role: 'finance');
+        $cashId = (int) $ctx['accounts']['debit'];
+        $incomeId = (int) $ctx['accounts']['credit'];
+
+        $this->postJson('/api/cash-bank/cash-receipts', [
+            'receipt_date' => '2026-01-10',
+            'cash_bank_account_id' => $cashId,
+            'amount' => 1000,
+        ], $ctx['headers'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('lines');
+
+        $created = $this->postJson('/api/cash-bank/cash-receipts', [
+            'receipt_date' => '2026-01-10',
+            'cash_bank_account_id' => $cashId,
+            'currency_code' => 'IDR',
+            'exchange_rate' => 1,
+            'amount' => 1000,
+            'lines' => [['account_id' => $incomeId, 'amount' => 1000]],
+        ], $ctx['headers'])->assertCreated();
+
+        $id = (int) $created->json('data.id');
+        $this->patchJson('/api/cash-bank/cash-receipts/'.$id, [
+            'receipt_date' => '2026-01-11',
+            'cash_bank_account_id' => $cashId,
+            'currency_code' => 'IDR',
+            'exchange_rate' => 1,
+            'amount' => 1250,
+            'lines' => [['account_id' => $incomeId, 'amount' => 1250]],
+        ], $ctx['headers'])
+            ->assertOk()
+            ->assertJsonPath('data.amount', 1250)
+            ->assertJsonPath('data.lines.0.account.id', $incomeId);
+    }
+}

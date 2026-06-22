@@ -76,5 +76,36 @@ class CashPaymentTest extends JournalTestCase
         $this->assertSame(0.0, (float) $lines[1]->debit);
         $this->assertSame(2000.0, (float) $lines[1]->credit);
     }
-}
 
+    public function test_lines_are_required_and_amount_must_match(): void
+    {
+        $ctx = $this->setUpTenant(role: 'finance');
+        $cashId = (int) $ctx['accounts']['debit'];
+        $expense = ChartOfAccount::query()->create([
+            'account_code' => '5100',
+            'account_name' => 'Other Expense',
+            'account_type' => 'expense',
+            'normal_balance' => 'debit',
+            'is_cash_bank' => false,
+            'is_active' => true,
+            'is_system_default' => false,
+        ]);
+
+        $this->postJson('/api/cash-bank/cash-payments', [
+            'payment_date' => '2026-01-11',
+            'cash_bank_account_id' => $cashId,
+            'amount' => 1000,
+        ], $ctx['headers'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('lines');
+
+        $this->postJson('/api/cash-bank/cash-payments', [
+            'payment_date' => '2026-01-11',
+            'cash_bank_account_id' => $cashId,
+            'amount' => 1000,
+            'lines' => [['account_id' => $expense->id, 'amount' => 900]],
+        ], $ctx['headers'])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'AMOUNT_MISMATCH');
+    }
+}
