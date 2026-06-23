@@ -11,6 +11,7 @@ use App\Models\Tenant\PurchaseRequest;
 use App\Models\Tenant\SalesInvoice;
 use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\SalesQuotation;
+use App\Models\Tenant\VendorBill;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -152,6 +153,30 @@ class SourceDocumentPickerService
                 'line_source' => 'goods_receipt_line',
                 'remaining' => ['quantity', 'billed_quantity'],
                 'with' => ['purchaseOrder', 'lines.purchaseOrderLine', 'lines.product', 'lines.unit'],
+            ],
+        ],
+        'purchase.returns' => [
+            'vendor_bill' => [
+                'model' => VendorBill::class,
+                'lines' => 'lines',
+                'number' => 'bill_number',
+                'date' => 'bill_date',
+                'partner' => 'vendor_id',
+                'statuses' => ['posted', 'partially_paid'],
+                'line_source' => 'vendor_bill_line',
+                'remaining' => ['quantity', 'returned_quantity'],
+                'with' => ['lines.product', 'lines.unit'],
+            ],
+            'goods_receipt' => [
+                'model' => GoodsReceipt::class,
+                'lines' => 'lines',
+                'number' => 'receipt_number',
+                'date' => 'receipt_date',
+                'partner' => 'vendor_id',
+                'statuses' => ['received', 'partially_billed'],
+                'line_source' => 'goods_receipt_line',
+                'remaining' => ['quantity', 'returned_quantity'],
+                'with' => ['lines.product', 'lines.unit'],
             ],
         ],
     ];

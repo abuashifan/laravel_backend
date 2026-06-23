@@ -7,7 +7,6 @@ use App\Models\Tenant\StockMovement;
 use App\Models\Tenant\VendorBill;
 use App\Models\Tenant\VendorBillLine;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 
 class PurchaseReturnTest extends PurchaseTestCase
 {
@@ -21,6 +20,22 @@ class PurchaseReturnTest extends PurchaseTestCase
             ->assertStatus(201)
             ->assertJsonPath('data.vendor_bill_id', $bill['id'])
             ->assertJsonPath('data.status', 'draft');
+    }
+
+    public function test_create_return_requires_a_source_document(): void
+    {
+        // A13-170: an unlinked purchase return must be rejected so it cannot
+        // bypass billed/received quantity and accounting controls.
+        $ctx = $this->setUpTenant();
+        $vendor = $this->createVendor();
+
+        $this->postJson('/api/purchase/returns', [
+            'return_date' => '2026-05-20',
+            'vendor_id' => $vendor,
+            'lines' => [['description' => 'Item', 'quantity' => 1, 'unit_price' => 100]],
+        ], $ctx['headers'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['vendor_bill_id', 'goods_receipt_id', 'lines.0.vendor_bill_line_id', 'lines.0.goods_receipt_line_id']);
     }
 
     public function test_create_return_from_goods_receipt(): void

@@ -24,14 +24,18 @@ class PurchaseOrderService
         private readonly PurchaseRequestService $requestService,
         private readonly VendorDepositService $depositService,
         private readonly ?AuditLogService $auditLogService = null,
-    ) {
-    }
+    ) {}
 
     public function list(array $filters = []): Collection
     {
         $query = PurchaseOrder::query()->with('vendor');
-        if (! empty($filters['status'])) $query->where('status', (string) $filters['status']);
-        if (! empty($filters['vendor_id'])) $query->where('vendor_id', (int) $filters['vendor_id']);
+        if (! empty($filters['status'])) {
+            $query->where('status', (string) $filters['status']);
+        }
+        if (! empty($filters['vendor_id'])) {
+            $query->where('vendor_id', (int) $filters['vendor_id']);
+        }
+
         return $query->orderByDesc('order_date')->orderByDesc('id')->get();
     }
 
@@ -43,7 +47,9 @@ class PurchaseOrderService
     public function create(array $data): PurchaseOrder
     {
         $company = $this->tenantContext->company();
-        if (! $company) throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
+        if (! $company) {
+            throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
+        }
         $this->ensureVendorExists((int) $data['vendor_id']);
 
         return DB::connection('tenant')->transaction(function () use ($company, $data) {
@@ -51,7 +57,8 @@ class PurchaseOrderService
                 'purchase_request_line_id' => $line['purchase_request_line_id'] ?? null,
             ]);
             $totals = $this->calculationService->calculateDocument($lines, $data);
-            $headerTotals = $totals; unset($headerTotals['lines']);
+            $headerTotals = $totals;
+            unset($headerTotals['lines']);
             $order = PurchaseOrder::query()->create(array_merge($this->guardedPurchaseHeader($data), $headerTotals, [
                 'order_number' => $this->documentNumberService->generate($company, DocumentType::PURCHASE_ORDER, (string) $data['order_date']),
                 'status' => 'draft',
@@ -59,41 +66,51 @@ class PurchaseOrderService
                 'created_by' => auth()->id(),
                 'updated_by' => auth()->id(),
             ]));
-            $order->lines()->createMany($totals['lines']);
+            $order->lines()->createMany(array_map($this->purchaseOrderLinePayload(...), $totals['lines']));
             if ((bool) ($data['has_down_payment'] ?? false) && ! empty($data['vendor_deposit'])) {
                 $this->depositService->createFromPurchaseOrder($order->refresh(), (array) $data['vendor_deposit']);
             }
             $order = $order->refresh()->load('lines', 'vendor', 'deposits');
             $this->auditPurchase($this->auditLogService, 'purchase_order.created', $order, 'order_number');
+
             return $order;
         });
     }
 
     public function update(PurchaseOrder $order, array $data): PurchaseOrder
     {
-        if (! in_array($order->status, ['draft', 'approved'], true)) throw ApiException::make('PURCHASE_ORDER_NOT_EDITABLE', 'Purchase order status is not editable.', 422);
+        if (! in_array($order->status, ['draft', 'approved'], true)) {
+            throw ApiException::make('PURCHASE_ORDER_NOT_EDITABLE', 'Purchase order status is not editable.', 422);
+        }
+
         return DB::connection('tenant')->transaction(function () use ($order, $data) {
             $lines = $this->normalizePurchaseLines((array) ($data['lines'] ?? $order->lines()->get()->toArray()), fn (array $line): array => [
                 'purchase_request_line_id' => $line['purchase_request_line_id'] ?? null,
             ]);
             $totals = $this->calculationService->calculateDocument($lines, array_merge($order->toArray(), $data));
-            $headerTotals = $totals; unset($headerTotals['lines']);
+            $headerTotals = $totals;
+            unset($headerTotals['lines']);
             $order->fill(array_merge($this->guardedPurchaseHeader($data), $headerTotals, [
                 'updated_by' => auth()->id(),
                 'revision_no' => (int) $order->revision_no + 1,
             ]))->save();
             $order->lines()->delete();
-            $order->lines()->createMany($totals['lines']);
+            $order->lines()->createMany(array_map($this->purchaseOrderLinePayload(...), $totals['lines']));
             $order = $order->refresh()->load('lines', 'vendor', 'deposits');
             $this->auditPurchase($this->auditLogService, 'purchase_order.updated', $order, 'order_number');
+
             return $order;
         });
     }
 
     public function createFromPurchaseRequest(PurchaseRequest $request, array $overrides = []): PurchaseOrder
     {
-        if (in_array($request->status, ['converted', 'cancelled', 'rejected'], true)) throw ApiException::make('PURCHASE_REQUEST_NOT_CONVERTIBLE', 'Purchase request is not available for conversion.', 422);
-        if (empty($overrides['vendor_id'])) throw ApiException::make('VENDOR_REQUIRED', 'Vendor is required to convert purchase request.', 422);
+        if (in_array($request->status, ['converted', 'cancelled', 'rejected'], true)) {
+            throw ApiException::make('PURCHASE_REQUEST_NOT_CONVERTIBLE', 'Purchase request is not available for conversion.', 422);
+        }
+        if (empty($overrides['vendor_id'])) {
+            throw ApiException::make('VENDOR_REQUIRED', 'Vendor is required to convert purchase request.', 422);
+        }
         $request->loadMissing('lines');
         $order = $this->create(array_merge([
             'order_date' => now()->toDateString(),
@@ -122,13 +139,31 @@ class PurchaseOrderService
             ])->toArray(),
         ], $overrides));
         $this->requestService->markConverted($request);
+
         return $order;
     }
 
-    public function approve(PurchaseOrder $order): PurchaseOrder { return $this->transition($order, 'approved', 'approved_by', 'approved_at', ['draft']); }
-    public function confirm(PurchaseOrder $order): PurchaseOrder { return $this->transition($order, 'confirmed', 'confirmed_by', 'confirmed_at', ['draft', 'approved']); }
-    public function cancel(PurchaseOrder $order, ?string $reason = null): PurchaseOrder { $order->cancel_reason = $reason; return $this->transition($order, 'cancelled', 'cancelled_by', 'cancelled_at', ['draft', 'approved', 'confirmed']); }
-    public function close(PurchaseOrder $order): PurchaseOrder { return $this->transition($order, 'closed', 'closed_by', 'closed_at', ['confirmed', 'received', 'billed']); }
+    public function approve(PurchaseOrder $order): PurchaseOrder
+    {
+        return $this->transition($order, 'approved', 'approved_by', 'approved_at', ['draft']);
+    }
+
+    public function confirm(PurchaseOrder $order): PurchaseOrder
+    {
+        return $this->transition($order, 'confirmed', 'confirmed_by', 'confirmed_at', ['draft', 'approved']);
+    }
+
+    public function cancel(PurchaseOrder $order, ?string $reason = null): PurchaseOrder
+    {
+        $order->cancel_reason = $reason;
+
+        return $this->transition($order, 'cancelled', 'cancelled_by', 'cancelled_at', ['draft', 'approved', 'confirmed']);
+    }
+
+    public function close(PurchaseOrder $order): PurchaseOrder
+    {
+        return $this->transition($order, 'closed', 'closed_by', 'closed_at', ['confirmed', 'received', 'billed']);
+    }
 
     public function refreshReceiptStatus(PurchaseOrder $order): PurchaseOrder
     {
@@ -151,10 +186,50 @@ class PurchaseOrderService
 
     private function transition(PurchaseOrder $order, string $status, string $userField, string $dateField, array $from): PurchaseOrder
     {
-        if (! in_array($order->status, $from, true)) throw ApiException::make('INVALID_PURCHASE_ORDER_STATUS', 'Invalid purchase order status transition.', 422);
-        $order->status = $status; $order->{$userField} = auth()->id(); $order->{$dateField} = now(); $order->save();
+        if (! in_array($order->status, $from, true)) {
+            throw ApiException::make('INVALID_PURCHASE_ORDER_STATUS', 'Invalid purchase order status transition.', 422);
+        }
+        $order->status = $status;
+        $order->{$userField} = auth()->id();
+        $order->{$dateField} = now();
+        $order->save();
         $order = $order->refresh()->load('lines', 'vendor', 'deposits');
         $this->auditPurchase($this->auditLogService, 'purchase_order.'.$status, $order, 'order_number');
+
         return $order;
+    }
+
+    /**
+     * @param  array<string,mixed>  $line
+     * @return array<string,mixed>
+     */
+    private function purchaseOrderLinePayload(array $line): array
+    {
+        return array_intersect_key($line, array_flip([
+            'purchase_request_line_id',
+            'product_id',
+            'product_code',
+            'description',
+            'quantity',
+            'unit_id',
+            'unit_price',
+            'gross_amount',
+            'discount_type',
+            'discount_value',
+            'discount_amount',
+            'tax_id',
+            'tax_rate',
+            'tax_amount',
+            'subtotal_after_discount',
+            'line_total',
+            'warehouse_id',
+            'department_id',
+            'project_id',
+            'expense_account_id',
+            'source_line_type',
+            'source_line_id',
+            'sort_order',
+            'metadata',
+        ]));
     }
 }

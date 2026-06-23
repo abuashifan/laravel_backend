@@ -5,6 +5,10 @@ namespace Tests\Feature\Purchase;
 use App\Models\Company;
 use App\Models\CompanyAccountingSetting;
 use App\Models\CompanyUser;
+use App\Models\Tenant\AccountMapping;
+use App\Models\Tenant\ChartOfAccount;
+use App\Models\Tenant\Contact;
+use App\Models\Tenant\FixedAssetCategory;
 use App\Models\TenantDatabase;
 use App\Models\User;
 use App\Services\Tenant\TenantConnectionManager;
@@ -93,7 +97,7 @@ abstract class PurchaseTestCase extends TestCase
 
     protected function createVendor(array $attributes = []): int
     {
-        return (int) \App\Models\Tenant\Contact::query()->create(array_merge([
+        return (int) Contact::query()->create(array_merge([
             'name' => 'Vendor A',
             'contact_type' => 'supplier',
             'is_supplier' => true,
@@ -136,7 +140,7 @@ abstract class PurchaseTestCase extends TestCase
 
     protected function createAccount(string $type, string $code, bool $cashBank = false): int
     {
-        return (int) \App\Models\Tenant\ChartOfAccount::query()->create([
+        return (int) ChartOfAccount::query()->create([
             'account_code' => $code,
             'account_name' => $code,
             'account_type' => $type,
@@ -154,6 +158,8 @@ abstract class PurchaseTestCase extends TestCase
         $deposit = $this->createAccount('asset', 'VD-'.uniqid());
         $return = $this->createAccount('expense', 'PRET-'.uniqid());
         $cash = $this->createAccount('asset', 'CASH-'.uniqid(), true);
+        $inventory = $this->createAccount('asset', 'INV-'.uniqid());
+        $fixedAssetClearing = $this->createAccount('asset', 'FAC-'.uniqid());
         $interimAccount = $interim ? $this->createAccount('liability', 'GRNI-'.uniqid()) : null;
 
         foreach ([
@@ -161,17 +167,19 @@ abstract class PurchaseTestCase extends TestCase
             'purchase.vendor_deposit' => $deposit,
             'purchase.return' => $return,
             'purchase.default_cash_bank' => $cash,
+            'inventory.asset' => $inventory,
+            'fixed_assets.clearing' => $fixedAssetClearing,
         ] + ($payable ? ['purchase.accounts_payable' => $ap] : [])
             + ($legacyPayable ? ['purchase.payable' => $ap] : [])
             + ($expenseAccount !== null ? ['purchase.expense' => $expenseAccount] : [])
             + ($interimAccount !== null ? ['purchase.inventory_interim' => $interimAccount] : []) as $key => $id) {
-            \App\Models\Tenant\AccountMapping::query()->updateOrCreate(
+            AccountMapping::query()->updateOrCreate(
                 ['mapping_key' => $key],
                 ['module' => 'purchase', 'account_id' => $id, 'is_required' => true, 'is_active' => true]
             );
         }
 
-        return ['ap' => $ap, 'expense' => $expenseAccount, 'tax' => $tax, 'deposit' => $deposit, 'return' => $return, 'cash' => $cash, 'interim' => $interimAccount];
+        return ['ap' => $ap, 'expense' => $expenseAccount, 'tax' => $tax, 'deposit' => $deposit, 'return' => $return, 'cash' => $cash, 'inventory' => $inventory, 'fixed_asset_clearing' => $fixedAssetClearing, 'interim' => $interimAccount];
     }
 
     protected function vendorBillPayload(array $overrides = []): array
@@ -183,12 +191,28 @@ abstract class PurchaseTestCase extends TestCase
             'is_taxable' => true,
             'lines' => [
                 [
-                    'description' => 'Purchase service',
+                    'line_classification' => 'fixed_asset',
+                    'fixed_asset_category_id' => $this->fixedAssetCategoryId(),
+                    'description' => 'Purchase fixed asset',
                     'quantity' => 2,
                     'unit_price' => 100,
                     'tax_rate' => 11,
                 ],
             ],
         ], $overrides);
+    }
+
+    protected function fixedAssetCategoryId(): int
+    {
+        return (int) FixedAssetCategory::query()->firstOrCreate(
+            ['code' => 'TEST-FA'],
+            [
+                'name' => 'Test Fixed Asset',
+                'asset_class' => 'tangible',
+                'depreciation_type' => 'depreciation',
+                'default_useful_life_years' => 4,
+                'is_active' => true,
+            ],
+        )->id;
     }
 }
