@@ -24,4 +24,6 @@ class VendorPayment extends Model
     public function lines(): HasMany { return $this->hasMany(VendorPaymentLine::class, 'vendor_payment_id'); }
     public function vendor(): BelongsTo { return $this->belongsTo(Contact::class, 'vendor_id'); }
     public function vendorBill(): BelongsTo { return $this->belongsTo(VendorBill::class, 'vendor_bill_id'); }
+
+    public function cashBankAccount(): BelongsTo { return $this->belongsTo(ChartOfAccount::class, 'cash_bank_account_id'); }
 }

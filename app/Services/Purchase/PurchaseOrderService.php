@@ -41,7 +41,7 @@ class PurchaseOrderService
 
     public function find(int $id): PurchaseOrder
     {
-        return PurchaseOrder::query()->with('lines.product', 'vendor', 'purchaseRequest', 'deposits')->findOrFail($id);
+        return PurchaseOrder::query()->with('lines.product', 'vendor', 'purchaseRequest', 'deposits', 'buyer')->findOrFail($id);
     }
 
     public function create(array $data): PurchaseOrder

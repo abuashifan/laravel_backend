@@ -57,7 +57,7 @@ class VendorBillService
 
     public function find(int $id): VendorBill
     {
-        return $this->withAvailableDepositSummary(VendorBill::query()->with('lines.product', 'vendor', 'paymentTerm', 'purchaseOrder', 'goodsReceipt')->findOrFail($id));
+        return $this->withAvailableDepositSummary(VendorBill::query()->with('lines.product', 'vendor', 'paymentTerm', 'purchaseOrder', 'goodsReceipt', 'buyer')->findOrFail($id));
     }
 
     public function create(array $data): VendorBill

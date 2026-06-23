@@ -2,6 +2,7 @@
 
 namespace App\Models\Tenant;
 
+use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -31,4 +32,5 @@ class PurchaseOrder extends Model
     public function vendor(): BelongsTo { return $this->belongsTo(Contact::class, 'vendor_id'); }
     public function purchaseRequest(): BelongsTo { return $this->belongsTo(PurchaseRequest::class, 'purchase_request_id'); }
     public function deposits(): HasMany { return $this->hasMany(VendorDeposit::class, 'purchase_order_id'); }
+    public function buyer(): BelongsTo { return $this->belongsTo(User::class, 'buyer_id'); }
 }

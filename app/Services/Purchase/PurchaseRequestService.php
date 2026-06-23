@@ -45,7 +45,7 @@ class PurchaseRequestService
     public function find(int $id): PurchaseRequest
     {
         return PurchaseRequest::query()
-            ->with('lines.product', 'lines.unit', 'department', 'project')
+            ->with('lines.product', 'lines.unit', 'department', 'project', 'requester')
             ->findOrFail($id);
     }
 

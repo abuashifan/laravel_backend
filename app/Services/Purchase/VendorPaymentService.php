@@ -43,7 +43,7 @@ class VendorPaymentService
 
     public function find(int $id): VendorPayment
     {
-        return VendorPayment::query()->with('lines', 'vendor', 'vendorBill')->findOrFail($id);
+        return VendorPayment::query()->with('lines.vendorBill', 'vendor', 'vendorBill', 'cashBankAccount')->findOrFail($id);
     }
 
     public function create(array $data): VendorPayment
