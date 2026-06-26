@@ -30,7 +30,7 @@ class StockMovementService
 
     public function list(array $filters = []): Collection
     {
-        $query = StockMovement::query();
+        $query = StockMovement::query()->with('warehouse');
 
         if (! empty($filters['status'])) {
             $statuses = array_values(array_filter(array_map('trim', explode(',', (string) $filters['status']))));
@@ -48,7 +48,23 @@ class StockMovementService
 
         if (! empty($filters['warehouse_id'])) {
             $warehouseId = (int) $filters['warehouse_id'];
-            $query->whereHas('lines', fn ($lineQuery) => $lineQuery->where('warehouse_id', $warehouseId));
+            $query->where(function ($q) use ($warehouseId) {
+                $q->where('warehouse_id', $warehouseId)
+                    ->orWhereHas('lines', fn ($lq) => $lq->where('warehouse_id', $warehouseId));
+            });
+        }
+
+        if (! empty($filters['product_id'])) {
+            $productId = (int) $filters['product_id'];
+            $query->whereHas('lines', fn ($lq) => $lq->where('product_id', $productId));
+        }
+
+        if (! empty($filters['date_from'])) {
+            $query->whereDate('movement_date', '>=', (string) $filters['date_from']);
+        }
+
+        if (! empty($filters['date_to'])) {
+            $query->whereDate('movement_date', '<=', (string) $filters['date_to']);
         }
 
         return $query->orderByDesc('movement_date')->orderByDesc('id')->get();

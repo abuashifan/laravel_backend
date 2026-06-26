@@ -24,6 +24,7 @@ class StockMovement extends Model
     ];
 
     public function lines(): HasMany { return $this->hasMany(StockMovementLine::class, 'stock_movement_id'); }
+    public function warehouse(): BelongsTo { return $this->belongsTo(Warehouse::class, 'warehouse_id'); }
     public function journalEntry(): BelongsTo { return $this->belongsTo(JournalEntry::class, 'journal_entry_id'); }
     public function reversalOf(): BelongsTo { return $this->belongsTo(self::class, 'reversal_of_id'); }
     public function reversedBy(): BelongsTo { return $this->belongsTo(self::class, 'reversed_by_id'); }

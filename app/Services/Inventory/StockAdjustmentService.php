@@ -33,9 +33,25 @@ class StockAdjustmentService
 
     public function list(array $filters = []): Collection
     {
-        $q = StockAdjustment::query();
-        if (! empty($filters['status'])) $q->where('status', (string) $filters['status']);
+        $q = StockAdjustment::query()->with('warehouse')->withCount('lines');
+
+        if (! empty($filters['status'])) {
+            $statuses = array_values(array_filter(array_map('trim', explode(',', (string) $filters['status']))));
+            if ($statuses !== []) {
+                $q->whereIn('status', $statuses);
+            }
+        }
+
         if (! empty($filters['warehouse_id'])) $q->where('warehouse_id', (int) $filters['warehouse_id']);
+
+        if (! empty($filters['date_from'])) {
+            $q->whereDate('adjustment_date', '>=', (string) $filters['date_from']);
+        }
+
+        if (! empty($filters['date_to'])) {
+            $q->whereDate('adjustment_date', '<=', (string) $filters['date_to']);
+        }
+
         return $q->orderByDesc('adjustment_date')->orderByDesc('id')->get();
     }
 
