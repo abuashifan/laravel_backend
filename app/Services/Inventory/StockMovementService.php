@@ -31,8 +31,26 @@ class StockMovementService
     public function list(array $filters = []): Collection
     {
         $query = StockMovement::query();
-        if (! empty($filters['status'])) $query->where('status', (string) $filters['status']);
-        if (! empty($filters['movement_type'])) $query->where('movement_type', (string) $filters['movement_type']);
+
+        if (! empty($filters['status'])) {
+            $statuses = array_values(array_filter(array_map('trim', explode(',', (string) $filters['status']))));
+            if ($statuses !== []) {
+                $query->whereIn('status', $statuses);
+            }
+        }
+
+        if (! empty($filters['movement_type'])) {
+            $types = array_values(array_filter(array_map('trim', explode(',', (string) $filters['movement_type']))));
+            if ($types !== []) {
+                $query->whereIn('movement_type', $types);
+            }
+        }
+
+        if (! empty($filters['warehouse_id'])) {
+            $warehouseId = (int) $filters['warehouse_id'];
+            $query->whereHas('lines', fn ($lineQuery) => $lineQuery->where('warehouse_id', $warehouseId));
+        }
+
         return $query->orderByDesc('movement_date')->orderByDesc('id')->get();
     }
 

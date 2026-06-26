@@ -185,6 +185,19 @@ class TransactionPolicyServiceTest extends TestCase
         $this->assertSame('TRANSACTION_HAS_DEPENDENCY', $result->toArray()['code']);
     }
 
+    public function test_inventory_edit_is_blocked_when_generated_stock_movements_exist(): void
+    {
+        $service = $this->makeService(['inventory.manage']);
+        $result = $service->canEdit('inventory', [
+            'status' => 'draft',
+            'transaction_date' => '2026-05-17',
+            'stock_movement_id' => 15,
+        ]);
+
+        $this->assertTrue($result->denied());
+        $this->assertSame('TRANSACTION_HAS_DEPENDENCY', $result->toArray()['code']);
+    }
+
     public function test_can_view_void_transaction_if_user_has_view_permission(): void
     {
         $service = $this->makeService(['sales.view']);

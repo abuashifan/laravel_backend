@@ -3,9 +3,14 @@
 namespace App\Services\Inventory\Reports;
 
 use App\Models\Tenant\StockBalance;
+use App\Services\Inventory\InventoryConfigService;
 
 class StockBalanceReportService
 {
+    public function __construct(private readonly InventoryConfigService $configService)
+    {
+    }
+
     public function report(array $filters = []): array
     {
         $q = StockBalance::query()->with(['product', 'warehouse']);
@@ -52,6 +57,12 @@ class StockBalanceReportService
             'totals' => [
                 'total_quantity_on_hand' => $totQty,
                 'total_value' => round($totVal, (int) config('inventory.amount_precision', 2)),
+            ],
+            'policy' => [
+                'allow_negative_stock' => $this->configService->allowNegativeStock(),
+                'stock_precision' => $this->configService->stockPrecision(),
+                'cost_precision' => $this->configService->costPrecision(),
+                'amount_precision' => $this->configService->amountPrecision(),
             ],
         ];
     }

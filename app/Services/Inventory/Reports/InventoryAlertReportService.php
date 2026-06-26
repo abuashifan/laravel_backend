@@ -3,9 +3,14 @@
 namespace App\Services\Inventory\Reports;
 
 use App\Models\Tenant\StockBalance;
+use App\Services\Inventory\InventoryConfigService;
 
 class InventoryAlertReportService
 {
+    public function __construct(private readonly InventoryConfigService $configService)
+    {
+    }
+
     public function lowStock(array $filters = []): array
     {
         $threshold = isset($filters['threshold']) ? (float) $filters['threshold'] : 1.0;
@@ -27,6 +32,7 @@ class InventoryAlertReportService
                 'warehouse_name' => $b->warehouse?->name,
                 'quantity_on_hand' => (float) $b->quantity_on_hand,
             ])->values()->all(),
+            'policy' => $this->policy(),
         ];
     }
 
@@ -48,6 +54,7 @@ class InventoryAlertReportService
                 'warehouse_name' => $b->warehouse?->name,
                 'quantity_on_hand' => (float) $b->quantity_on_hand,
             ])->values()->all(),
+            'policy' => $this->policy(),
         ];
     }
 
@@ -69,6 +76,17 @@ class InventoryAlertReportService
                 'warehouse_name' => $b->warehouse?->name,
                 'quantity_on_hand' => (float) $b->quantity_on_hand,
             ])->values()->all(),
+            'policy' => $this->policy(),
+        ];
+    }
+
+    private function policy(): array
+    {
+        return [
+            'allow_negative_stock' => $this->configService->allowNegativeStock(),
+            'stock_precision' => $this->configService->stockPrecision(),
+            'cost_precision' => $this->configService->costPrecision(),
+            'amount_precision' => $this->configService->amountPrecision(),
         ];
     }
 
