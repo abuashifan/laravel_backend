@@ -84,14 +84,21 @@ trait ApiResponse
             return $items;
         }
 
-        return $items->filter(function (mixed $item) use ($status): bool {
+        // Mendukung satu status maupun beberapa status comma-separated (mis. "draft,posted").
+        $statuses = array_values(array_filter(array_map('trim', explode(',', (string) $status)), fn (string $s): bool => $s !== ''));
+        if ($statuses === []) {
+            return $items;
+        }
+
+        return $items->filter(function (mixed $item) use ($statuses): bool {
             foreach (['status', 'state', 'is_active'] as $key) {
                 $value = data_get($item, $key);
                 if ($value === null) {
                     continue;
                 }
                 $normalized = is_bool($value) ? ($value ? 'active' : 'inactive') : (string) $value;
-                return $normalized === (string) $status;
+
+                return in_array($normalized, $statuses, true);
             }
 
             return false;

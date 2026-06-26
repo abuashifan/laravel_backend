@@ -37,7 +37,7 @@ class PurchaseReturnService
     ) {}
 
     public function list(array $filters = []): Collection { $q = PurchaseReturn::query()->with('vendor', 'vendorBill'); if (! empty($filters['status'])) $q->where('status', (string) $filters['status']); return $q->orderByDesc('return_date')->orderByDesc('id')->get(); }
-    public function find(int $id): PurchaseReturn { return PurchaseReturn::query()->with('lines', 'vendor', 'vendorBill', 'goodsReceipt')->findOrFail($id); }
+    public function find(int $id): PurchaseReturn { return PurchaseReturn::query()->with('lines.product', 'vendor', 'vendorBill', 'goodsReceipt')->findOrFail($id); }
 
     public function create(array $data): PurchaseReturn
     {
@@ -53,7 +53,7 @@ class PurchaseReturnService
                 'created_by' => auth()->id(),
             ]));
             $return->lines()->createMany($lines);
-            $return = $return->refresh()->load('lines', 'vendor', 'vendorBill');
+            $return = $return->refresh()->load('lines.product', 'vendor', 'vendorBill', 'goodsReceipt');
             return $this->shouldAutoPostOnCreateAccountingWorkflow() ? $this->post($return) : $return;
         });
     }
@@ -67,7 +67,7 @@ class PurchaseReturnService
             $return->fill(array_merge($this->guardedPurchaseHeader($data), $this->totals($lines), ['revision_no' => (int) $return->revision_no + 1]))->save();
             $return->lines()->delete();
             $return->lines()->createMany($lines);
-            return $return->refresh()->load('lines', 'vendor', 'vendorBill');
+            return $return->refresh()->load('lines.product', 'vendor', 'vendorBill', 'goodsReceipt');
         });
     }
 
@@ -105,7 +105,7 @@ class PurchaseReturnService
             $return->journal_entry_id = $journal->id; $return->status = 'posted'; $return->posted_by = auth()->id(); $return->posted_at = now(); $return->save();
             $this->inventoryIntegration->createPurchaseReturnOut($return);
             $this->updateBill($return);
-            return $return->refresh()->load('lines', 'vendor', 'vendorBill');
+            return $return->refresh()->load('lines.product', 'vendor', 'vendorBill', 'goodsReceipt');
         });
     }
 
@@ -121,7 +121,7 @@ class PurchaseReturnService
             if ($return->status === 'posted') $this->restoreSource($return);
             $return->status = 'void'; $return->voided_by = auth()->id(); $return->voided_at = now(); $return->void_reason = $reason; $return->save();
             $this->auditPurchase($this->auditLogService, 'purchase_return.voided', $return, 'return_number', ['reason' => $reason, 'voided_journal_ids' => $journalIds, 'reversed_stock_movement_ids' => $movementIds]);
-            return $return->refresh();
+            return $return->refresh()->load('lines.product', 'vendor', 'vendorBill', 'goodsReceipt');
         });
     }
 

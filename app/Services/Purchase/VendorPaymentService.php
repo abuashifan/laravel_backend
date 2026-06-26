@@ -43,7 +43,7 @@ class VendorPaymentService
 
     public function find(int $id): VendorPayment
     {
-        return VendorPayment::query()->with('lines', 'vendor', 'vendorBill')->findOrFail($id);
+        return VendorPayment::query()->with('lines.vendorBill', 'vendor', 'vendorBill')->findOrFail($id);
     }
 
     public function create(array $data): VendorPayment
@@ -62,7 +62,7 @@ class VendorPaymentService
                 'amount' => $data['amount'],
                 'description' => $data['notes'] ?? null,
             ]]);
-            $payment = $payment->refresh()->load('lines', 'vendor', 'vendorBill');
+            $payment = $payment->refresh()->load('lines.vendorBill', 'vendor', 'vendorBill');
             return $this->shouldAutoPostOnCreateAccountingWorkflow() ? $this->post($payment) : $payment;
         });
     }
@@ -83,7 +83,7 @@ class VendorPaymentService
             foreach ($allocations as $allocation) {
                 $this->applyToBillAmount($allocation['bill'], $allocation['amount']);
             }
-            return $payment->refresh()->load('lines', 'vendor', 'vendorBill');
+            return $payment->refresh()->load('lines.vendorBill', 'vendor', 'vendorBill');
         });
     }
 
@@ -110,7 +110,7 @@ class VendorPaymentService
             }
             $payment->status = 'void'; $payment->voided_by = auth()->id(); $payment->voided_at = now(); $payment->void_reason = $reason; $payment->save();
             $this->auditPurchase($this->auditLogService, 'vendor_payment.voided', $payment, 'payment_number', ['reason' => $reason, 'voided_journal_ids' => $journalIds]);
-            return $payment->refresh();
+            return $payment->refresh()->load('lines.vendorBill', 'vendor', 'vendorBill');
         });
     }
 

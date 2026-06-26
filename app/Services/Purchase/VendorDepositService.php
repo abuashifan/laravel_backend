@@ -115,7 +115,7 @@ class VendorDepositService
             'allocated_amount' => 0,
             'status' => 'draft',
             'created_by' => auth()->id(),
-        ]))->refresh();
+        ]))->refresh()->load('vendor', 'purchaseOrder', 'cashBankAccount');
 
         return $this->shouldAutoPostOnCreateAccountingWorkflow() ? $this->post($deposit) : $deposit;
     }
@@ -157,7 +157,7 @@ class VendorDepositService
             $deposit->remaining_amount = $deposit->amount;
             $deposit->save();
 
-            return $deposit->refresh();
+            return $deposit->refresh()->load('vendor', 'purchaseOrder', 'cashBankAccount');
         });
     }
 
@@ -184,7 +184,7 @@ class VendorDepositService
             }
             $deposit->status = 'void'; $deposit->voided_by = auth()->id(); $deposit->voided_at = now(); $deposit->void_reason = $reason; $deposit->save();
             $this->auditPurchase($this->auditLogService, 'vendor_deposit.voided', $deposit, 'deposit_number', ['reason' => $reason, 'voided_journal_ids' => array_values(array_unique($journalIds)), 'voided_allocation_ids' => $allocations->pluck('id')->all()]);
-            return $deposit->refresh();
+            return $deposit->refresh()->load('vendor', 'purchaseOrder', 'cashBankAccount');
         });
     }
 
@@ -205,7 +205,7 @@ class VendorDepositService
             $deposit->refunded_at = now();
             $deposit->refund_reason = $reason;
             $deposit->save();
-            return $deposit->refresh();
+            return $deposit->refresh()->load('vendor', 'purchaseOrder', 'cashBankAccount');
         });
     }
 
@@ -301,7 +301,7 @@ class VendorDepositService
             $lockedAllocation->void_reason = $reason;
             $lockedAllocation->save();
 
-            return $lockedAllocation->refresh();
+            return $lockedAllocation->refresh()->load('vendorDeposit', 'vendorBill');
         });
     }
 

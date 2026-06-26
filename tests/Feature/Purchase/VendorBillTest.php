@@ -9,6 +9,7 @@ use App\Models\Tenant\PurchaseOrder;
 use App\Models\Tenant\PurchaseOrderLine;
 use App\Models\Tenant\StockMovement;
 use App\Models\Tenant\Unit;
+use App\Models\Tenant\Warehouse;
 use App\Services\Tenant\TenantConnectionManager;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -306,6 +307,41 @@ class VendorBillTest extends PurchaseTestCase
         $this->patchJson('/api/purchase/bills/'.$bill['id'].'/void', ['reason' => 'Remove bill allocation'], $ctx['headers'])->assertStatus(200);
         $this->assertSame('void', DB::connection('tenant')->table('vendor_deposit_allocations')->value('status'));
         $this->assertSame(50.0, (float) DB::connection('tenant')->table('vendor_deposits')->where('id', $depositId)->value('remaining_amount'));
+    }
+
+    public function test_list_filters_by_multiple_statuses_server_side(): void
+    {
+        $ctx = $this->setUpTenant();
+        $this->seedPurchaseMappings();
+        $unit = Unit::query()->create(['code' => 'PCS', 'name' => 'Pieces', 'precision' => 0, 'is_active' => true]);
+        $productId = Product::query()->create([
+            'product_code' => 'STK-LIST',
+            'product_name' => 'Stock List',
+            'product_type' => 'goods',
+            'unit_id' => $unit->id,
+            'is_stock_item' => true,
+            'is_active' => true,
+        ])->id;
+        $warehouseId = Warehouse::factory()->create(['code' => 'WHL', 'name' => 'List WH', 'is_default' => true])->id;
+        $lines = [['product_id' => $productId, 'line_classification' => 'inventory', 'warehouse_id' => $warehouseId, 'description' => 'Stock', 'quantity' => 1, 'unit_price' => 100]];
+
+        $draft = $this->postJson('/api/purchase/bills', $this->vendorBillPayload(['is_taxable' => false, 'lines' => $lines]), $ctx['headers'])->assertStatus(201)->json('data');
+        $posted = $this->postJson('/api/purchase/bills', $this->vendorBillPayload(['is_taxable' => false, 'lines' => $lines]), $ctx['headers'])->assertStatus(201)->json('data');
+        // Set status langsung agar test fokus ke filter list, lepas dari aturan posting/warehouse.
+        DB::connection('tenant')->table('vendor_bills')->where('id', $posted['id'])->update(['status' => 'posted']);
+
+        // Satu status difilter server-side sebelum pagination.
+        $this->getJson('/api/purchase/bills?page=1&per_page=25&status=draft', $ctx['headers'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.total', 1)
+            ->assertJsonPath('data.data.0.id', $draft['id']);
+
+        // Multi status comma-separated mengembalikan union keduanya.
+        $ids = collect($this->getJson('/api/purchase/bills?page=1&per_page=25&status=draft,posted', $ctx['headers'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.total', 2)
+            ->json('data.data'))->pluck('id')->sort()->values()->all();
+        $this->assertSame(collect([$draft['id'], $posted['id']])->sort()->values()->all(), $ids);
     }
 
     public function test_permission_denied_for_viewer(): void

@@ -49,8 +49,8 @@ class VendorBillService
 
     public function list(array $filters = []): Collection
     {
+        // Status difilter oleh listResponse (mendukung multi-status comma-separated); vendor_id difilter di query.
         $query = VendorBill::query()->with('vendor', 'paymentTerm');
-        if (! empty($filters['status'])) $query->where('status', (string) $filters['status']);
         if (! empty($filters['vendor_id'])) $query->where('vendor_id', (int) $filters['vendor_id']);
         return $query->orderByDesc('bill_date')->orderByDesc('id')->get();
     }
