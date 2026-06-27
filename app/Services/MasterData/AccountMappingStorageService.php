@@ -15,7 +15,10 @@ class AccountMappingStorageService
 
     public function syncDefaultMappingsFromConfig(): void
     {
+        $validKeys = [];
+
         foreach ($this->definitionService->allRequirements() as $req) {
+            $validKeys[] = $req->key;
             $mapping = AccountMapping::query()->firstOrNew(['mapping_key' => $req->key]);
             $mapping->module = $req->module;
             $mapping->is_required = $req->required;
@@ -28,6 +31,12 @@ class AccountMappingStorageService
             }
             $mapping->save();
         }
+
+        // Remove stale keys from older schemas that are no longer defined in config
+        // (e.g. cash.bank, purchase.payable, sales.receivable).
+        AccountMapping::query()
+            ->whereNotIn('mapping_key', $validKeys)
+            ->delete();
     }
 
     public function list()

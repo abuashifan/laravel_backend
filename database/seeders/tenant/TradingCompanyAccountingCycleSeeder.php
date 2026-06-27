@@ -829,7 +829,7 @@ class TradingCompanyAccountingCycleSeeder extends Seeder
             ['1130', 80000000, 0],
             ['1150', 5000000, 0],
             ['1160', 12000000, 0],
-            ['1210', 30000000, 0],
+            ['1520', 30000000, 0],
             ['3100', 0, 327000000],
         ], 'opening_balance', 'OB-NDS-'.$this->year);
 
@@ -983,8 +983,8 @@ class TradingCompanyAccountingCycleSeeder extends Seeder
             ['1150', 0, 4000000],
         ], 'adjustment', 'ADJ-SUPPLIES-NDS-'.$this->year);
         $this->journal($seq++, 12, 31, 'Penyusutan peralatan kantor', [
-            ['6170', 6000000, 0],
-            ['1220', 0, 6000000],
+            ['6172', 6000000, 0],
+            ['1521', 0, 6000000],
         ], 'adjustment', 'ADJ-DEPR-NDS-'.$this->year);
         $this->journal($seq++, 12, 31, 'Akrual gaji Desember', [
             ['6120', 8000000, 0],
@@ -1459,8 +1459,16 @@ class TradingCompanyAccountingCycleSeeder extends Seeder
             ['1140', 'Uang Muka Pembelian / Vendor Deposit', 'asset', 'debit', false],
             ['1150', 'Perlengkapan Kantor', 'asset', 'debit', false],
             ['1160', 'Sewa Dibayar Dimuka', 'asset', 'debit', false],
-            ['1210', 'Peralatan Kantor', 'asset', 'debit', false],
-            ['1220', 'Akumulasi Penyusutan Peralatan Kantor', 'asset', 'debit', false],
+            ['1500', 'Tanah', 'asset', 'debit', false],
+            ['1510', 'Bangunan / Gedung', 'asset', 'debit', false],
+            ['1511', 'Akumulasi Penyusutan Bangunan', 'asset', 'credit', false],
+            ['1520', 'Peralatan Kantor', 'asset', 'debit', false],
+            ['1521', 'Akumulasi Penyusutan Peralatan', 'asset', 'credit', false],
+            ['1530', 'Kendaraan', 'asset', 'debit', false],
+            ['1531', 'Akumulasi Penyusutan Kendaraan', 'asset', 'credit', false],
+            ['1590', 'Aset Tetap Dalam Penyelesaian', 'asset', 'debit', false],
+            ['1600', 'Perangkat Lunak / Software', 'asset', 'debit', false],
+            ['1601', 'Akumulasi Amortisasi Software', 'asset', 'credit', false],
             ['2100', 'Hutang Usaha', 'liability', 'credit', false],
             ['2120', 'PPN Keluaran', 'liability', 'credit', false],
             ['2140', 'PPN Masukan', 'asset', 'debit', false],
@@ -1483,10 +1491,16 @@ class TradingCompanyAccountingCycleSeeder extends Seeder
             ['6150', 'Beban Transportasi', 'expense', 'debit', false],
             ['6160', 'Beban Administrasi Bank', 'expense', 'debit', false],
             ['6170', 'Beban Penyusutan', 'expense', 'debit', false],
+            ['6171', 'Beban Penyusutan Bangunan', 'expense', 'debit', false],
+            ['6172', 'Beban Penyusutan Peralatan', 'expense', 'debit', false],
+            ['6173', 'Beban Penyusutan Kendaraan', 'expense', 'debit', false],
+            ['6175', 'Beban Amortisasi Software', 'expense', 'debit', false],
             ['6180', 'Beban Perlengkapan', 'expense', 'debit', false],
             ['6190', 'Beban Lain-lain', 'expense', 'debit', false],
             ['7100', 'Pendapatan Bunga Bank', 'revenue', 'credit', false],
+            ['7200', 'Laba Pelepasan Aset Tetap', 'revenue', 'credit', false],
             ['8100', 'Beban Pajak / Beban Lain', 'expense', 'debit', false],
+            ['8200', 'Rugi Pelepasan Aset Tetap', 'expense', 'debit', false],
         ];
     }
 
@@ -1517,6 +1531,14 @@ class TradingCompanyAccountingCycleSeeder extends Seeder
             'inventory.adjustment_gain' => ['inventory', '5120', false],
             'inventory.adjustment_loss' => ['inventory', '5120', false],
             'inventory.write_off' => ['inventory', '5120', false],
+            'fixed_assets.clearing' => ['fixed_assets', '1590', true],
+            'fixed_assets.cost' => ['fixed_assets', '1520', true],
+            'fixed_assets.accumulated_depreciation' => ['fixed_assets', '1521', true],
+            'fixed_assets.depreciation_expense' => ['fixed_assets', '6170', true],
+            'fixed_assets.accumulated_amortization' => ['fixed_assets', '1601', false],
+            'fixed_assets.amortization_expense' => ['fixed_assets', '6175', false],
+            'fixed_assets.disposal_gain' => ['fixed_assets', '7200', true],
+            'fixed_assets.disposal_loss' => ['fixed_assets', '8200', true],
             'cash_bank.default_cash' => ['cash_bank', '1100', true],
             'cash_bank.default_bank' => ['cash_bank', '1110', true],
             'cash_bank.bank_admin_fee' => ['cash_bank', '6160', false],
