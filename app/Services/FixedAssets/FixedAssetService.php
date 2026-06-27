@@ -14,6 +14,7 @@ use App\Models\Tenant\VendorBillLine;
 use App\Services\Audit\AuditLogService;
 use App\Services\DocumentNumbering\DocumentNumberService;
 use App\Services\Tenant\TenantContext;
+use App\Services\Transactions\TransactionDateGuardService;
 use App\Support\DocumentNumbering\DocumentType;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Collection;
@@ -25,12 +26,20 @@ class FixedAssetService
         private readonly TenantContext $tenantContext,
         private readonly DocumentNumberService $documentNumberService,
         private readonly AuditLogService $auditLogService,
+        private readonly TransactionDateGuardService $dateGuardService,
     ) {
     }
 
     public function categories(array $filters = []): Collection
     {
-        $query = FixedAssetCategory::query();
+        $query = FixedAssetCategory::query()->with([
+            'assetAccount',
+            'accumulatedDepreciationAccount',
+            'depreciationExpenseAccount',
+            'clearingAccount',
+            'disposalGainAccount',
+            'disposalLossAccount',
+        ]);
         if (array_key_exists('is_active', $filters)) {
             $query->where('is_active', filter_var($filters['is_active'], FILTER_VALIDATE_BOOLEAN));
         }
@@ -44,13 +53,27 @@ class FixedAssetService
     {
         return FixedAssetCategory::query()->create(array_merge($data, [
             'is_active' => (bool) ($data['is_active'] ?? true),
-        ]));
+        ]))->load([
+            'assetAccount',
+            'accumulatedDepreciationAccount',
+            'depreciationExpenseAccount',
+            'clearingAccount',
+            'disposalGainAccount',
+            'disposalLossAccount',
+        ]);
     }
 
     public function updateCategory(FixedAssetCategory $category, array $data): FixedAssetCategory
     {
         $category->fill($data)->save();
-        return $category->refresh();
+        return $category->refresh()->load([
+            'assetAccount',
+            'accumulatedDepreciationAccount',
+            'depreciationExpenseAccount',
+            'clearingAccount',
+            'disposalGainAccount',
+            'disposalLossAccount',
+        ]);
     }
 
     public function list(array $filters = []): Collection
@@ -65,7 +88,15 @@ class FixedAssetService
     public function find(int $id): FixedAsset
     {
         return FixedAsset::query()
-            ->with('category', 'department', 'project', 'acquisitions', 'schedules', 'disposals', 'transactions')
+            ->with(
+                'category',
+                'department',
+                'project',
+                'acquisitions.journalEntry',
+                'schedules.journalEntry',
+                'disposals.journalEntry',
+                'transactions.journalEntry'
+            )
             ->findOrFail($id);
     }
 
@@ -93,6 +124,9 @@ class FixedAssetService
         if (in_array((string) $asset->status, ['disposed', 'partially_disposed'], true)) {
             throw ApiException::make('FIXED_ASSET_NOT_EDITABLE', 'Disposed asset cannot be edited.', 422);
         }
+        if ($this->hasLockedFinancialChanges($asset, $data)) {
+            throw ApiException::make('FIXED_ASSET_FINANCIAL_FIELDS_LOCKED', 'Financial fields are locked after capitalization.', 422);
+        }
 
         $category = isset($data['fixed_asset_category_id'])
             ? FixedAssetCategory::query()->findOrFail((int) $data['fixed_asset_category_id'])
@@ -118,6 +152,7 @@ class FixedAssetService
         if (! $company) throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
 
         $date = (string) ($data['capitalization_date'] ?? $asset->acquisition_date?->toDateString());
+        $this->guardDate($date, 'post');
         $amount = (float) ($data['amount'] ?? $asset->acquisition_cost);
         if ($amount <= 0 || $amount > (float) $asset->acquisition_cost) {
             throw ApiException::make('INVALID_CAPITALIZATION_AMOUNT', 'Capitalization amount is invalid.', 422);
@@ -189,6 +224,8 @@ class FixedAssetService
 
         $company = $this->tenantContext->company();
         if (! $company) throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
+
+        $this->guardDate((string) $data['disposal_date'], 'post');
 
         return DB::connection('tenant')->transaction(function () use ($asset, $data, $disposedQty, $remainingQty, $company, $period) {
             $asset->loadMissing('category');
@@ -405,6 +442,58 @@ class FixedAssetService
             'source_id' => $data['source_id'] ?? null,
             'metadata' => $data['metadata'] ?? null,
         ];
+    }
+
+    private function guardDate(string $date, string $action = 'post'): void
+    {
+        $check = $this->dateGuardService->check($date, $action, 'fixed_assets');
+        if ($check->denied()) {
+            $arr = $check->toArray();
+            throw ApiException::make((string) $arr['code'], (string) $arr['message'], 422, (array) $arr['reasons'], (array) $arr['meta']);
+        }
+    }
+
+    private function hasLockedFinancialChanges(FixedAsset $asset, array $data): bool
+    {
+        if ((string) $asset->status === 'draft') {
+            return false;
+        }
+
+        foreach ($this->lockedFinancialFields() as $field) {
+            if (! array_key_exists($field, $data)) {
+                continue;
+            }
+
+            if ($this->normalizeFinancialField($field, $asset->{$field} ?? null) !== $this->normalizeFinancialField($field, $data[$field])) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function lockedFinancialFields(): array
+    {
+        return [
+            'fixed_asset_category_id',
+            'acquisition_date',
+            'acquisition_cost',
+            'quantity',
+            'service_start_date',
+            'useful_life_years',
+            'salvage_value',
+        ];
+    }
+
+    private function normalizeFinancialField(string $field, mixed $value): string
+    {
+        return match ($field) {
+            'fixed_asset_category_id', 'useful_life_years' => (string) (int) ($value ?? 0),
+            'acquisition_date', 'service_start_date' => $value ? Carbon::parse((string) $value)->format('Y-m-d') : '',
+            'quantity' => number_format((float) ($value ?? 0), 4, '.', ''),
+            'acquisition_cost', 'salvage_value' => number_format((float) ($value ?? 0), 2, '.', ''),
+            default => (string) ($value ?? ''),
+        };
     }
 
     private function generateSchedules(FixedAsset $asset): void

@@ -14,25 +14,7 @@ class FixedAssetReportService
 {
     public function register(string $period): array
     {
-        return FixedAsset::query()->with('category', 'department', 'project')->get()->map(fn (FixedAsset $asset): array => [
-            'asset_number' => $asset->asset_number,
-            'asset_name' => $asset->name,
-            'category' => $asset->category?->name,
-            'asset_class' => $asset->asset_class,
-            'acquisition_date' => $asset->acquisition_date?->toDateString(),
-            'service_start_date' => $asset->service_start_date?->toDateString(),
-            'useful_life_years' => $asset->useful_life_years,
-            'acquisition_cost' => (float) $asset->acquisition_cost,
-            'depreciation_period_total' => (float) $asset->schedules()->where('period', $period)->where('status', 'posted')->sum('depreciation_amount'),
-            'depreciation_current_year' => (float) $asset->schedules()->where('period', 'like', substr($period, 0, 4).'-%')->where('period', '<=', $period)->where('status', 'posted')->sum('depreciation_amount'),
-            'accumulated_depreciation_until_period' => (float) $asset->schedules()->where('period', '<=', $period)->where('status', 'posted')->sum('depreciation_amount'),
-            'net_book_value_as_of_period' => (float) $asset->net_book_value,
-            'quantity' => (float) $asset->quantity,
-            'remaining_quantity' => (float) $asset->remaining_quantity,
-            'status' => $asset->status,
-            'department' => $asset->department?->name,
-            'project' => $asset->project?->name,
-        ])->all();
+        return $this->registerSnapshot($period)->all();
     }
 
     public function depreciation(?string $from, string $to, string $mode = 'detail'): array
@@ -79,8 +61,9 @@ class FixedAssetReportService
     public function reconciliation(string $period): array
     {
         $asOfDate = Carbon::createFromFormat('Y-m', $period)->endOfMonth()->toDateString();
-        $registerCost = (float) FixedAsset::query()->sum('acquisition_cost');
-        $registerAccumulated = (float) FixedAsset::query()->sum('accumulated_depreciation');
+        $register = $this->registerSnapshot($period);
+        $registerCost = (float) $register->sum('acquisition_cost');
+        $registerAccumulated = (float) $register->sum('accumulated_depreciation_until_period');
         $costAccounts = $this->mappingAccountIds(['fixed_assets.cost']);
         $accumulatedAccounts = $this->mappingAccountIds(['fixed_assets.accumulated_depreciation', 'fixed_assets.accumulated_amortization']);
         $glCost = $this->glBalance($costAccounts, $asOfDate, normalDebit: true);
@@ -97,6 +80,65 @@ class FixedAssetReportService
             'difference_cost' => round($registerCost - $glCost, 2),
             'difference_accumulated_depreciation' => round($registerAccumulated - $glAccumulated, 2),
         ];
+    }
+
+    private function registerSnapshot(string $period): Collection
+    {
+        $cutoff = Carbon::createFromFormat('Y-m', $period)->endOfMonth();
+        $cutoffDate = $cutoff->toDateString();
+        $yearStartPeriod = substr($period, 0, 4).'-01';
+
+        return FixedAsset::query()
+            ->with([
+                'category',
+                'department',
+                'project',
+                'disposals' => fn ($query) => $query->whereDate('disposal_date', '>', $cutoffDate),
+            ])
+            ->whereDate('acquisition_date', '<=', $cutoffDate)
+            ->where(function ($query) use ($cutoffDate): void {
+                $query->whereNull('disposed_at')->orWhereDate('disposed_at', '>', $cutoffDate);
+            })
+            ->orderBy('asset_number')
+            ->get()
+            ->map(function (FixedAsset $asset) use ($period, $yearStartPeriod, $cutoffDate): array {
+                $currentCost = (float) $asset->acquisition_cost;
+                $futureDisposals = $asset->disposals;
+                $accumulatedAsOf = $this->depreciationSum($asset, null, $period);
+
+                $costAsOf = round($currentCost + (float) $futureDisposals->sum('disposal_cost_amount'), 2);
+
+                return [
+                    'asset_number' => $asset->asset_number,
+                    'asset_name' => $asset->name,
+                    'category' => $asset->category?->name,
+                    'asset_class' => $asset->asset_class,
+                    'acquisition_date' => $asset->acquisition_date?->toDateString(),
+                    'service_start_date' => $asset->service_start_date?->toDateString(),
+                    'useful_life_years' => $asset->useful_life_years,
+                    'acquisition_cost' => $costAsOf,
+                    'depreciation_period_total' => $this->depreciationSum($asset, $period, $period),
+                    'depreciation_current_year' => $this->depreciationSum($asset, $yearStartPeriod, $period),
+                    'accumulated_depreciation_until_period' => $accumulatedAsOf,
+                    'net_book_value_as_of_period' => round($costAsOf - $accumulatedAsOf, 2),
+                    'quantity' => (float) $asset->quantity,
+                    'remaining_quantity' => (float) $asset->remaining_quantity,
+                    'status' => $asset->status,
+                    'department' => $asset->department?->name,
+                    'project' => $asset->project?->name,
+                    'period_cutoff' => $cutoffDate,
+                ];
+            });
+    }
+
+    private function depreciationSum(FixedAsset $asset, ?string $from, string $to): float
+    {
+        $query = $asset->schedules()->where('status', 'posted')->where('period', '<=', $to);
+        if ($from !== null) {
+            $query->where('period', '>=', $from);
+        }
+
+        return (float) $query->sum('depreciation_amount');
     }
 
     private function mappingAccountIds(array $keys): array
