@@ -207,8 +207,8 @@ class FixedAssetService
 
     public function dispose(FixedAsset $asset, array $data): FixedAsset
     {
-        if (! in_array((string) $asset->status, ['active', 'capitalized', 'partially_disposed'], true)) {
-            throw ApiException::make('FIXED_ASSET_NOT_DISPOSABLE', 'Only capitalized or active assets can be disposed.', 422);
+        if (! in_array((string) $asset->status, ['active', 'capitalized', 'partially_disposed', 'fully_depreciated'], true)) {
+            throw ApiException::make('FIXED_ASSET_NOT_DISPOSABLE', 'Only capitalized, active, or fully depreciated assets can be disposed.', 422);
         }
 
         $disposedQty = (float) $data['disposed_quantity'];
@@ -287,6 +287,10 @@ class FixedAssetService
                 'disposed_at' => $newRemainingQty <= 0 ? now() : $asset->disposed_at,
             ])->save();
 
+            if ($newRemainingQty <= 0) {
+                $asset->schedules()->where('status', 'scheduled')->where('period', '>=', $period)->delete();
+            }
+
             $this->transaction($asset, 'disposal', $date, $nbv, $disposedQty, [
                 'source_type' => 'fixed_asset_disposal',
                 'source_id' => $disposal->id,
@@ -357,6 +361,10 @@ class FixedAssetService
                 $asset = $schedule->asset;
                 if (! $asset) continue;
 
+                if ($this->isDisposedBeforeOrInPeriod($asset, $period)) {
+                    continue;
+                }
+
                 $schedule->status = 'posted';
                 $schedule->journal_entry_id = $journal?->id;
                 $schedule->save();
@@ -379,6 +387,8 @@ class FixedAssetService
                     'source_type' => 'fixed_asset_depreciation',
                     'source_id' => $run->id,
                 ]);
+
+                $this->syncLifecycleStatus($asset->refresh());
             }
 
             $run->status = 'posted';
@@ -529,6 +539,28 @@ class FixedAssetService
             $period->addMonthNoOverflow();
         }
         $asset->schedules()->createMany($rows);
+    }
+
+    private function syncLifecycleStatus(FixedAsset $asset): void
+    {
+        if ($asset->disposed_at || ! in_array((string) $asset->status, ['active', 'capitalized', 'partially_disposed'], true)) {
+            return;
+        }
+
+        if ($asset->schedules()->where('status', 'scheduled')->exists()) {
+            return;
+        }
+
+        $asset->forceFill(['status' => 'fully_depreciated'])->save();
+    }
+
+    private function isDisposedBeforeOrInPeriod(FixedAsset $asset, string $period): bool
+    {
+        if (! $asset->disposed_at) {
+            return false;
+        }
+
+        return Carbon::parse((string) $asset->disposed_at)->format('Y-m') <= $period;
     }
 
     private function lockSourceVendorBillLine(FixedAsset $asset, array $data): ?VendorBillLine
