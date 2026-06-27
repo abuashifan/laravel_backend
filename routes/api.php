@@ -11,6 +11,7 @@ require base_path('app/Modules/Tenant/Routes/api.php');
 require base_path('app/Modules/Setup/Routes/api.php');
 require base_path('app/Modules/Settings/Routes/api.php');
 require base_path('app/Modules/Access/Routes/api.php');
+require base_path('app/Modules/Dashboard/Routes/api.php');
 require base_path('app/Modules/Accounting/Routes/api.php');
 require base_path('app/Modules/OpeningBalance/Routes/api.php');
 require base_path('app/Modules/MasterData/Routes/api.php');
