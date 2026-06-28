@@ -21,6 +21,7 @@ class ChartOfAccount extends Model
         'account_type',
         'parent_account_id',
         'normal_balance',
+        'cash_flow_section',
         'is_cash_bank',
         'is_active',
         'is_system_default',

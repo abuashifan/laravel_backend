@@ -13,17 +13,26 @@ class InventoryAlertReportService
 
     public function lowStock(array $filters = []): array
     {
-        $threshold = isset($filters['threshold']) ? (float) $filters['threshold'] : 1.0;
+        // Per-product min_stock takes priority; global threshold is a fallback
+        // when a product has no min_stock set.
+        $globalThreshold = isset($filters['threshold']) ? (float) $filters['threshold'] : null;
 
-        $q = StockBalance::query()->with(['product', 'warehouse'])
-            ->where('quantity_on_hand', '>', 0)
-            ->where('quantity_on_hand', '<', $threshold);
+        $q = StockBalance::query()->with(['product.unit', 'warehouse']);
 
         $this->applyCommonFilters($q, $filters);
 
+        $rows = $q->get()->filter(function ($b) use ($globalThreshold): bool {
+            $minStock = $b->product?->min_stock;
+            $threshold = $minStock !== null ? (float) $minStock : $globalThreshold;
+            if ($threshold === null) {
+                return false;
+            }
+            return (float) $b->quantity_on_hand < $threshold;
+        })->sortBy('quantity_on_hand')->values();
+
         return [
-            'filters' => array_merge($filters, ['threshold' => $threshold]),
-            'rows' => $q->orderBy('quantity_on_hand')->get()->map(fn ($b) => [
+            'filters' => array_merge($filters, ['threshold' => $globalThreshold]),
+            'rows' => $rows->map(fn ($b) => [
                 'product_id' => (int) $b->product_id,
                 'product_code' => $b->product?->product_code,
                 'product_name' => $b->product?->product_name,
@@ -31,6 +40,8 @@ class InventoryAlertReportService
                 'warehouse_code' => $b->warehouse?->code,
                 'warehouse_name' => $b->warehouse?->name,
                 'quantity_on_hand' => (float) $b->quantity_on_hand,
+                'min_stock' => $b->product?->min_stock !== null ? (float) $b->product->min_stock : null,
+                'unit' => $b->product?->unit?->name ?? '',
             ])->values()->all(),
             'policy' => $this->policy(),
         ];
@@ -38,7 +49,7 @@ class InventoryAlertReportService
 
     public function negativeStock(array $filters = []): array
     {
-        $q = StockBalance::query()->with(['product', 'warehouse'])
+        $q = StockBalance::query()->with(['product.unit', 'warehouse'])
             ->where('quantity_on_hand', '<', 0);
 
         $this->applyCommonFilters($q, $filters);
@@ -53,6 +64,7 @@ class InventoryAlertReportService
                 'warehouse_code' => $b->warehouse?->code,
                 'warehouse_name' => $b->warehouse?->name,
                 'quantity_on_hand' => (float) $b->quantity_on_hand,
+                'unit' => $b->product?->unit?->name ?? '',
             ])->values()->all(),
             'policy' => $this->policy(),
         ];

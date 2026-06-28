@@ -248,9 +248,9 @@ class BalanceSheetService
             }
 
             if ($filter->groupBy === 'none') {
-                $pushAccount('accounts', 'Accounts', $accRow);
+                $pushAccount('accounts', 'Akun', $accRow);
             } else {
-                $label = $accountType === 'asset' ? 'Assets' : ($accountType === 'liability' ? 'Liabilities' : 'Equity');
+                $label = $accountType === 'asset' ? 'Aset' : ($accountType === 'liability' ? 'Kewajiban' : 'Ekuitas');
                 $pushAccount($accountType, $label, $accRow);
             }
 
@@ -261,7 +261,7 @@ class BalanceSheetService
         $plRow = [
             'account_id' => null,
             'account_code' => null,
-            'account_name' => 'Current Year Profit / Loss',
+            'account_name' => 'Laba / Rugi Tahun Berjalan',
             'account_type' => 'equity',
             'normal_balance' => 'credit',
             'debit' => 0.0,
@@ -272,9 +272,9 @@ class BalanceSheetService
         ];
 
         if ($filter->groupBy === 'none') {
-            $pushAccount('accounts', 'Accounts', $plRow);
+            $pushAccount('accounts', 'Akun', $plRow);
         } else {
-            $pushAccount('equity', 'Equity', $plRow);
+            $pushAccount('equity', 'Ekuitas', $plRow);
         }
 
         $sections['__totals']['equity'] += $currentYearProfitLoss;
@@ -288,9 +288,9 @@ class BalanceSheetService
         } else {
             $sections = [
                 '__totals' => $sections['__totals'],
-                'asset' => $sections['asset'] ?? ['key' => 'asset', 'label' => 'Assets', 'accounts' => [], 'total' => 0.0],
-                'liability' => $sections['liability'] ?? ['key' => 'liability', 'label' => 'Liabilities', 'accounts' => [], 'total' => 0.0],
-                'equity' => $sections['equity'] ?? ['key' => 'equity', 'label' => 'Equity', 'accounts' => [], 'total' => 0.0],
+                'asset' => $sections['asset'] ?? ['key' => 'asset', 'label' => 'Aset', 'accounts' => [], 'total' => 0.0],
+                'liability' => $sections['liability'] ?? ['key' => 'liability', 'label' => 'Kewajiban', 'accounts' => [], 'total' => 0.0],
+                'equity' => $sections['equity'] ?? ['key' => 'equity', 'label' => 'Ekuitas', 'accounts' => [], 'total' => 0.0],
             ];
         }
 

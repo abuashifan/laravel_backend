@@ -81,11 +81,15 @@ class CashFlowService
             $summary['ending_cash_balance'] += (float) $r['ending_balance'];
         }
 
+        $cashAccountIds = array_column($cashAccounts, 'account_id');
+        $sections = $this->getSectionedCashFlow($filter, $cashAccountIds, $start, $end);
+
         return [
             'valid' => true,
             'filter' => $filter->toArray(),
             'summary' => $summary,
             'accounts' => $filter->includeAccountBreakdown ? $accountRows : [],
+            'sections' => $sections,
         ];
     }
 
@@ -108,6 +112,98 @@ class CashFlowService
             'normal_balance' => (string) $a->normal_balance,
             'is_active' => (bool) $a->is_active,
         ])->all();
+    }
+
+    /**
+     * Classify period cash flows into operating / investing / financing / unclassified
+     * by looking at the cash_flow_section of contra (non-cash) accounts in each JE.
+     * For compound JEs with mixed sections, cash is attributed proportionally by
+     * contra-side amounts.
+     *
+     * @param  int[]  $cashAccountIds
+     * @return array<string,array{cash_in:float,cash_out:float,net:float}>
+     */
+    public function getSectionedCashFlow(CashFlowFilter $filter, array $cashAccountIds, string $start, string $end): array
+    {
+        $empty = static fn () => ['cash_in' => 0.0, 'cash_out' => 0.0, 'net' => 0.0];
+        $sections = [
+            'operating' => $empty(),
+            'investing' => $empty(),
+            'financing' => $empty(),
+            'unclassified' => $empty(),
+        ];
+
+        if (empty($cashAccountIds)) {
+            return $sections;
+        }
+
+        // Step 1: all JEs in period that touch a cash account (with dimension filters applied)
+        $cashJeQuery = $this->applyDimensionFilters($this->baseReportableCashLineQuery(), $filter)
+            ->whereIn('jel.account_id', $cashAccountIds)
+            ->whereDate('je.journal_date', '>=', $start)
+            ->whereDate('je.journal_date', '<=', $end)
+            ->selectRaw('je.id as je_id, SUM(jel.debit) as total_debit, SUM(jel.credit) as total_credit')
+            ->groupBy('je.id')
+            ->get();
+
+        if ($cashJeQuery->isEmpty()) {
+            return $sections;
+        }
+
+        $cashJeMap = $cashJeQuery->keyBy('je_id');
+        $jeIds = $cashJeMap->keys()->all();
+
+        // Step 2: non-cash lines from those JEs, grouped by JE + section
+        $contraRows = DB::connection('tenant')
+            ->table('journal_entry_lines as jel')
+            ->join('chart_of_accounts as coa', 'coa.id', '=', 'jel.account_id')
+            ->whereIn('jel.journal_entry_id', $jeIds)
+            ->whereNotIn('jel.account_id', $cashAccountIds)
+            ->selectRaw("jel.journal_entry_id as je_id, COALESCE(coa.cash_flow_section, 'unclassified') as section, SUM(jel.debit + jel.credit) as weight")
+            ->groupBy('jel.journal_entry_id', 'section')
+            ->get();
+
+        // Index by je_id
+        $contraByJe = [];
+        foreach ($contraRows as $row) {
+            $contraByJe[(int) $row->je_id][] = [
+                'section' => (string) $row->section,
+                'weight' => (float) $row->weight,
+            ];
+        }
+
+        // Step 3: proportionally attribute each JE's cash to its sections
+        foreach ($cashJeMap as $jeId => $je) {
+            $cashIn = (float) $je->total_debit;
+            $cashOut = (float) $je->total_credit;
+
+            $contras = $contraByJe[(int) $jeId] ?? [];
+
+            if (empty($contras)) {
+                // Cash-to-cash transfer — unclassified
+                $sections['unclassified']['cash_in'] += $cashIn;
+                $sections['unclassified']['cash_out'] += $cashOut;
+                $sections['unclassified']['net'] += $cashIn - $cashOut;
+                continue;
+            }
+
+            $totalWeight = (float) array_sum(array_column($contras, 'weight'));
+
+            foreach ($contras as $c) {
+                $section = $c['section'];
+                $proportion = $totalWeight > 0 ? $c['weight'] / $totalWeight : 1.0 / count($contras);
+
+                if (! isset($sections[$section])) {
+                    $sections[$section] = $empty();
+                }
+
+                $sections[$section]['cash_in'] += $cashIn * $proportion;
+                $sections[$section]['cash_out'] += $cashOut * $proportion;
+                $sections[$section]['net'] += ($cashIn - $cashOut) * $proportion;
+            }
+        }
+
+        return $sections;
     }
 
     /**

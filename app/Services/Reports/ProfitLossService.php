@@ -174,7 +174,7 @@ class ProfitLossService
         $pushAccount = function (string $sectionKey, array $accRow) use (&$sections) {
             $sections[$sectionKey] ??= [
                 'key' => $sectionKey,
-                'label' => $sectionKey === 'revenue' ? 'Revenue' : ($sectionKey === 'expense' ? 'Expense' : ucfirst($sectionKey)),
+                'label' => $sectionKey === 'revenue' ? 'Pendapatan' : ($sectionKey === 'expense' ? 'Beban' : ucfirst($sectionKey)),
                 'accounts' => [],
                 'total' => 0.0,
             ];
@@ -237,13 +237,13 @@ class ProfitLossService
         if ($filter->groupBy === 'none') {
             if (isset($sections['accounts'])) {
                 $sections['accounts']['key'] = 'accounts';
-                $sections['accounts']['label'] = 'Accounts';
+                $sections['accounts']['label'] = 'Akun';
             }
         } else {
             $sections = [
                 '__totals' => $sections['__totals'],
-                'revenue' => $sections['revenue'] ?? ['key' => 'revenue', 'label' => 'Revenue', 'accounts' => [], 'total' => 0.0],
-                'expense' => $sections['expense'] ?? ['key' => 'expense', 'label' => 'Expense', 'accounts' => [], 'total' => 0.0],
+                'revenue' => $sections['revenue'] ?? ['key' => 'revenue', 'label' => 'Pendapatan', 'accounts' => [], 'total' => 0.0],
+                'expense' => $sections['expense'] ?? ['key' => 'expense', 'label' => 'Beban', 'accounts' => [], 'total' => 0.0],
             ];
         }
 
