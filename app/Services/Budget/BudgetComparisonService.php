@@ -34,8 +34,8 @@ class BudgetComparisonService
             ->when(! empty($filters['project_id']), fn ($q) => $q->where('project_id', (int) $filters['project_id']))
             ->select(
                 'budget_lines.account_id',
-                DB::raw('MAX(coa.name) as account_name'),
-                DB::raw('MAX(coa.code) as account_code'),
+                DB::raw('MAX(coa.account_name) as account_name'),
+                DB::raw('MAX(coa.account_code) as account_code'),
                 DB::raw('SUM(budget_lines.amount) as budget_amount')
             )
             ->groupBy('budget_lines.account_id');

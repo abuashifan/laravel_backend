@@ -73,7 +73,7 @@ class BudgetConsolidationService
                 'bs.department_id',
                 DB::raw('MAX(dept.name) as department_name'),
                 'budget_lines.account_id',
-                DB::raw('MAX(coa.name) as account_name'),
+                DB::raw('MAX(coa.account_name) as account_name'),
                 DB::raw('SUM(budget_lines.amount) as total_amount')
             )
             ->groupBy('bs.department_id', 'budget_lines.account_id')
@@ -101,7 +101,7 @@ class BudgetConsolidationService
                 'budget_lines.project_id',
                 DB::raw('MAX(proj.name) as project_name'),
                 'budget_lines.account_id',
-                DB::raw('MAX(coa.name) as account_name'),
+                DB::raw('MAX(coa.account_name) as account_name'),
                 DB::raw('SUM(budget_lines.amount) as total_amount')
             )
             ->groupBy('budget_lines.project_id', 'budget_lines.account_id')
@@ -131,7 +131,7 @@ class BudgetConsolidationService
                 'budget_lines.project_id',
                 DB::raw('MAX(proj.name) as project_name'),
                 'budget_lines.account_id',
-                DB::raw('MAX(coa.name) as account_name'),
+                DB::raw('MAX(coa.account_name) as account_name'),
                 DB::raw('SUM(budget_lines.amount) as total_amount')
             )
             ->groupBy('bs.department_id', 'budget_lines.project_id', 'budget_lines.account_id')
