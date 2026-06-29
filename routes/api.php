@@ -22,3 +22,4 @@ require base_path('app/Modules/Purchase/Routes/api.php');
 require base_path('app/Modules/CashBank/Routes/api.php');
 require base_path('app/Modules/Inventory/Routes/api.php');
 require base_path('app/Modules/FixedAssets/Routes/api.php');
+require base_path('app/Modules/Budget/Routes/api.php');

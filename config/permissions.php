@@ -242,6 +242,13 @@ return [
         'opening_balance.lock',
         'opening_balance.reopen',
 
+        // Budget
+        'budgets.view',
+        'budgets.submit',
+        'budgets.approve_head',
+        'budgets.approve_finance',
+        'budgets.manage',
+
         // Audit
         'audit.view',
 
@@ -306,6 +313,11 @@ return [
             'fiscal_year.view',
             'fiscal_year.close',
             'fiscal_year.closing_wizard',
+            'budgets.view',
+            'budgets.submit',
+            'budgets.approve_head',
+            'budgets.approve_finance',
+            'budgets.manage',
         ],
         'accountant' => [
             'dashboard.view',
