@@ -201,6 +201,80 @@ class CashFlowReportTest extends JournalTestCase
         $this->assertSame([], $res2->json('data.accounts'));
     }
 
+    public function test_sections_classify_cash_flows_by_contra_account_cash_flow_section(): void
+    {
+        $ctx = $this->setUpTenant(role: 'finance');
+        $cashId = (int) $ctx['accounts']['debit'];
+
+        // Revenue account with section = operating (seeded by migration for account_type=revenue,
+        // but we set it explicitly here so the test is not coupled to migration order)
+        $revenue = ChartOfAccount::query()->create([
+            'account_code' => '4010',
+            'account_name' => 'Revenue Ops',
+            'account_type' => 'revenue',
+            'normal_balance' => 'credit',
+            'is_cash_bank' => false,
+            'is_active' => true,
+            'is_system_default' => false,
+            'cash_flow_section' => 'operating',
+        ]);
+
+        // Equity account with section = financing
+        $equity = ChartOfAccount::query()->create([
+            'account_code' => '3010',
+            'account_name' => 'Owner Capital',
+            'account_type' => 'equity',
+            'normal_balance' => 'credit',
+            'is_cash_bank' => false,
+            'is_active' => true,
+            'is_system_default' => false,
+            'cash_flow_section' => 'financing',
+        ]);
+
+        // Cash-in from operations: debit cash 10,000 credit revenue 10,000
+        $jOps = JournalEntry::query()->create([
+            'journal_number' => 'JV-CF-OPS',
+            'journal_date' => '2026-01-10',
+            'status' => 'posted',
+            'is_obsolete' => false,
+        ]);
+        $jOps->lines()->createMany([
+            ['account_id' => $cashId, 'debit' => 10000, 'credit' => 0, 'line_order' => 1],
+            ['account_id' => $revenue->id, 'debit' => 0, 'credit' => 10000, 'line_order' => 2],
+        ]);
+
+        // Cash-in from financing: debit cash 50,000 credit equity 50,000
+        $jFin = JournalEntry::query()->create([
+            'journal_number' => 'JV-CF-FIN',
+            'journal_date' => '2026-01-15',
+            'status' => 'posted',
+            'is_obsolete' => false,
+        ]);
+        $jFin->lines()->createMany([
+            ['account_id' => $cashId, 'debit' => 50000, 'credit' => 0, 'line_order' => 1],
+            ['account_id' => $equity->id, 'debit' => 0, 'credit' => 50000, 'line_order' => 2],
+        ]);
+
+        $res = $this->getJson('/api/reports/cash-flow?start_date=2026-01-01&end_date=2026-01-31', $ctx['headers'])
+            ->assertStatus(200);
+
+        $res->assertJsonPath('data.valid', true);
+
+        $sections = $res->json('data.sections');
+        $this->assertIsArray($sections, 'sections key must be present in response');
+
+        $this->assertArrayHasKey('operating', $sections, 'operating section required');
+        $this->assertArrayHasKey('financing', $sections, 'financing section required');
+
+        $this->assertSame(10000.0, round((float) $sections['operating']['cash_in'], 2));
+        $this->assertSame(0.0, round((float) $sections['operating']['cash_out'], 2));
+        $this->assertSame(10000.0, round((float) $sections['operating']['net'], 2));
+
+        $this->assertSame(50000.0, round((float) $sections['financing']['cash_in'], 2));
+        $this->assertSame(0.0, round((float) $sections['financing']['cash_out'], 2));
+        $this->assertSame(50000.0, round((float) $sections['financing']['net'], 2));
+    }
+
     public function test_user_cannot_access_another_company_tenant_cash_flow(): void
     {
         $ctx1 = $this->setUpTenant(role: 'finance');

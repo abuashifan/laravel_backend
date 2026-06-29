@@ -10,6 +10,8 @@ use InvalidArgumentException;
 
 class AccountLedgerDetailService
 {
+    private const MAX_LINES = 2000;
+
     public function __construct(
         private readonly LedgerBalanceCalculator $calculator,
         private readonly LedgerFilterValidator $filterValidator,
@@ -71,6 +73,9 @@ class AccountLedgerDetailService
         );
 
         $lines = $this->getLines($accountId, $filter, (float) ($opening['balance'] ?? 0), $normalBalance);
+        $totalLines = count($lines);
+        $truncated = $totalLines > self::MAX_LINES;
+        $visibleLines = $truncated ? array_slice($lines, 0, self::MAX_LINES) : $lines;
 
         return [
             'valid' => true,
@@ -86,7 +91,9 @@ class AccountLedgerDetailService
             'opening_balance' => $opening,
             'period_totals' => $period,
             'ending_balance' => $ending,
-            'lines' => array_map(fn (AccountLedgerLineData $l) => $l->toArray(), $lines),
+            'lines' => array_map(fn (AccountLedgerLineData $l) => $l->toArray(), $visibleLines),
+            'total_lines' => $totalLines,
+            'truncated' => $truncated,
         ];
     }
 
