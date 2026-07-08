@@ -5,7 +5,7 @@ namespace App\Modules\CashBank\Services;
 use App\Exceptions\ApiException;
 use App\Models\Tenant\ChartOfAccount;
 use App\Models\Tenant\JournalEntryLine;
-use App\Services\Reports\LedgerBalanceCalculator;
+use App\Modules\Reports\Services\LedgerBalanceCalculator;
 use Carbon\Carbon;
 
 class CashBankReportService

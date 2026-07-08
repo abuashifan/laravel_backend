@@ -247,6 +247,30 @@ class AliasServiceProvider extends ServiceProvider
         'App\\Services\\Purchase\\VendorBillService' => \App\Modules\Purchase\Services\VendorBillService::class,
         'App\\Services\\Purchase\\VendorDepositService' => \App\Modules\Purchase\Services\VendorDepositService::class,
         'App\\Services\\Purchase\\VendorPaymentService' => \App\Modules\Purchase\Services\VendorPaymentService::class,
+
+        // ── Fase 6: FixedAssets · Reports · Dashboard ──
+        // FixedAssets (2)
+        'App\\Services\\FixedAssets\\FixedAssetReportService' => \App\Modules\FixedAssets\Services\FixedAssetReportService::class,
+        'App\\Services\\FixedAssets\\FixedAssetService' => \App\Modules\FixedAssets\Services\FixedAssetService::class,
+        // Reports (16; trait Concerns di-update langsung, tak di-alias)
+        'App\\Services\\Reports\\AccountLedgerDetailService' => \App\Modules\Reports\Services\AccountLedgerDetailService::class,
+        'App\\Services\\Reports\\BalanceSheetService' => \App\Modules\Reports\Services\BalanceSheetService::class,
+        'App\\Services\\Reports\\CashFlowService' => \App\Modules\Reports\Services\CashFlowService::class,
+        'App\\Services\\Reports\\FinancialSummaryService' => \App\Modules\Reports\Services\FinancialSummaryService::class,
+        'App\\Services\\Reports\\GeneralLedgerQueryService' => \App\Modules\Reports\Services\GeneralLedgerQueryService::class,
+        'App\\Services\\Reports\\LedgerBalanceCalculator' => \App\Modules\Reports\Services\LedgerBalanceCalculator::class,
+        'App\\Services\\Reports\\LedgerFilterValidator' => \App\Modules\Reports\Services\LedgerFilterValidator::class,
+        'App\\Services\\Reports\\ProfitLossService' => \App\Modules\Reports\Services\ProfitLossService::class,
+        'App\\Services\\Reports\\ReconciliationReportService' => \App\Modules\Reports\Services\ReconciliationReportService::class,
+        'App\\Services\\Reports\\ReportFilterService' => \App\Modules\Reports\Services\ReportFilterService::class,
+        'App\\Services\\Reports\\ReportPeriodResolver' => \App\Modules\Reports\Services\ReportPeriodResolver::class,
+        'App\\Services\\Reports\\ReportQueryService' => \App\Modules\Reports\Services\ReportQueryService::class,
+        'App\\Services\\Reports\\ReportResponseBuilder' => \App\Modules\Reports\Services\ReportResponseBuilder::class,
+        'App\\Services\\Reports\\ReportVisibilityService' => \App\Modules\Reports\Services\ReportVisibilityService::class,
+        'App\\Services\\Reports\\TrialBalanceCalculator' => \App\Modules\Reports\Services\TrialBalanceCalculator::class,
+        'App\\Services\\Reports\\TrialBalanceService' => \App\Modules\Reports\Services\TrialBalanceService::class,
+        // Dashboard (1)
+        'App\\Services\\Dashboard\\DashboardService' => \App\Modules\Dashboard\Services\DashboardService::class,
     ];
 
     public function register(): void

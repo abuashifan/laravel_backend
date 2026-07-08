@@ -1,8 +1,8 @@
 <?php
 
-use App\Http\Controllers\Api\FixedAssets\FixedAssetCategoryController;
-use App\Http\Controllers\Api\FixedAssets\FixedAssetController;
-use App\Http\Controllers\Api\FixedAssets\FixedAssetReportController;
+use App\Modules\FixedAssets\Controllers\FixedAssetCategoryController;
+use App\Modules\FixedAssets\Controllers\FixedAssetController;
+use App\Modules\FixedAssets\Controllers\FixedAssetReportController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth:sanctum', 'company.access'])->prefix('fixed-assets')->group(function () {

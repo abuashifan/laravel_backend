@@ -3,7 +3,7 @@
 use App\Modules\Budget\Controllers\BudgetConsolidationController;
 use App\Modules\Budget\Controllers\BudgetPeriodController;
 use App\Modules\Budget\Controllers\BudgetSubmissionController;
-use App\Http\Controllers\Api\Reports\BudgetComparisonController;
+use App\Modules\Reports\Controllers\BudgetComparisonController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth:sanctum', 'company.access'])->group(function () {

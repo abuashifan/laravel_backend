@@ -1,13 +1,13 @@
 <?php
 
-use App\Http\Controllers\Api\Reports\AccountLedgerDetailController;
-use App\Http\Controllers\Api\Reports\BalanceSheetController;
-use App\Http\Controllers\Api\Reports\CashFlowController;
-use App\Http\Controllers\Api\Reports\FinancialSummaryController;
-use App\Http\Controllers\Api\Reports\GeneralLedgerController;
-use App\Http\Controllers\Api\Reports\ProfitLossController;
-use App\Http\Controllers\Api\Reports\ReconciliationReportController;
-use App\Http\Controllers\Api\Reports\TrialBalanceController;
+use App\Modules\Reports\Controllers\AccountLedgerDetailController;
+use App\Modules\Reports\Controllers\BalanceSheetController;
+use App\Modules\Reports\Controllers\CashFlowController;
+use App\Modules\Reports\Controllers\FinancialSummaryController;
+use App\Modules\Reports\Controllers\GeneralLedgerController;
+use App\Modules\Reports\Controllers\ProfitLossController;
+use App\Modules\Reports\Controllers\ReconciliationReportController;
+use App\Modules\Reports\Controllers\TrialBalanceController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth:sanctum', 'company.access'])->prefix('reports')->group(function () {
