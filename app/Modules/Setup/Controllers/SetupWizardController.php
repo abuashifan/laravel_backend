@@ -1,12 +1,12 @@
 <?php
 
-namespace App\Http\Controllers\Api\Setup;
+namespace App\Modules\Setup\Controllers;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Setup\ReopenSetupRequest;
-use App\Http\Requests\Setup\UpdateSetupCurrentStepRequest;
-use App\Http\Requests\Setup\ValidateSetupStepRequest;
-use App\Services\Setup\SetupWizardService;
+use App\Modules\Setup\Requests\ReopenSetupRequest;
+use App\Modules\Setup\Requests\UpdateSetupCurrentStepRequest;
+use App\Modules\Setup\Requests\ValidateSetupStepRequest;
+use App\Modules\Setup\Services\SetupWizardService;
 use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 

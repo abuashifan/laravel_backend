@@ -1,10 +1,10 @@
 <?php
 
-namespace App\Http\Controllers\Api\Access;
+namespace App\Modules\Access\Controllers;
 
 use App\Exceptions\ApiException;
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Access\InviteCompanyUserRequest;
+use App\Modules\Access\Requests\InviteCompanyUserRequest;
 use App\Models\CompanyInvitation;
 use App\Models\Role;
 use App\Services\Audit\AuditLogService;

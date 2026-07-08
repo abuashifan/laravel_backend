@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Services\Setup;
+namespace App\Modules\Setup\Services;
 
 use App\Exceptions\ApiException;
 use App\Models\Company;

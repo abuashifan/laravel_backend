@@ -1,6 +1,6 @@
 <?php
 
-use App\Http\Controllers\Api\Setup\SetupWizardController;
+use App\Modules\Setup\Controllers\SetupWizardController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth:sanctum', 'company.access'])->prefix('setup')->group(function () {

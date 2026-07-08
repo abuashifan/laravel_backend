@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\Api\Access;
+namespace App\Modules\Access\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;

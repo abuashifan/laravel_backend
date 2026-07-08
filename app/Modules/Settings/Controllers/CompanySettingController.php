@@ -1,13 +1,13 @@
 <?php
 
-namespace App\Http\Controllers\Api\Settings;
+namespace App\Modules\Settings\Controllers;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Settings\UpdateCompanyAccountingSettingRequest;
-use App\Http\Requests\Settings\UpdateCompanyModuleSettingRequest;
-use App\Http\Requests\Settings\UpdateCompanyTransactionDefaultRequest;
+use App\Modules\Settings\Requests\UpdateCompanyAccountingSettingRequest;
+use App\Modules\Settings\Requests\UpdateCompanyModuleSettingRequest;
+use App\Modules\Settings\Requests\UpdateCompanyTransactionDefaultRequest;
 use App\Services\Audit\AuditLogService;
-use App\Services\Settings\CompanySettingService;
+use App\Modules\Settings\Services\CompanySettingService;
 use App\Services\Tenant\TenantContext;
 use App\Support\Audit\AuditAction;
 use App\Support\Audit\AuditEvent;

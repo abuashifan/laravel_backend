@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Services\Settings;
+namespace App\Modules\Settings\Services;
 
 use App\Models\Company;
 use App\Models\CompanyAccountingSetting;

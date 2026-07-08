@@ -129,6 +129,11 @@ class AliasServiceProvider extends ServiceProvider
         // ── Fase 1: Auth · Companies · Tenant ──
         // Service dipakai lintas layer (Console Commands) → butuh alias.
         'App\\Services\\Companies\\CompanyUserAssignmentService' => \App\Modules\Companies\Services\CompanyUserAssignmentService::class,
+
+        // ── Fase 2: Access · Settings · Setup ──
+        // CompanySettingService dipakai luas (services transaksi + tests); SetupWizardService oleh tests.
+        'App\\Services\\Settings\\CompanySettingService' => \App\Modules\Settings\Services\CompanySettingService::class,
+        'App\\Services\\Setup\\SetupWizardService' => \App\Modules\Setup\Services\SetupWizardService::class,
     ];
 
     public function register(): void

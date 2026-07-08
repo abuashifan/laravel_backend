@@ -1,11 +1,11 @@
 <?php
 
-namespace App\Http\Controllers\Api\Access;
+namespace App\Modules\Access\Controllers;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Access\CopyAccessRequest;
-use App\Http\Requests\Access\UpdateCompanyUserPermissionRequest;
-use App\Http\Requests\Access\UpdateCompanyUserRoleRequest;
+use App\Modules\Access\Requests\CopyAccessRequest;
+use App\Modules\Access\Requests\UpdateCompanyUserPermissionRequest;
+use App\Modules\Access\Requests\UpdateCompanyUserRoleRequest;
 use App\Exceptions\ApiException;
 use App\Models\CompanyUser;
 use App\Models\CompanyUserPermissionOverride;

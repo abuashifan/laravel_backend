@@ -1,10 +1,10 @@
 <?php
 
-use App\Http\Controllers\Api\Access\AccessAuditController;
-use App\Http\Controllers\Api\Access\CompanyInvitationAccessController;
-use App\Http\Controllers\Api\Access\CompanyUserAccessController;
-use App\Http\Controllers\Api\Access\PermissionCatalogController;
-use App\Http\Controllers\Api\Access\RoleAccessController;
+use App\Modules\Access\Controllers\AccessAuditController;
+use App\Modules\Access\Controllers\CompanyInvitationAccessController;
+use App\Modules\Access\Controllers\CompanyUserAccessController;
+use App\Modules\Access\Controllers\PermissionCatalogController;
+use App\Modules\Access\Controllers\RoleAccessController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth:sanctum', 'company.access'])->prefix('access')->group(function () {

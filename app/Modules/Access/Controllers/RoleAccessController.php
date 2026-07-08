@@ -1,12 +1,12 @@
 <?php
 
-namespace App\Http\Controllers\Api\Access;
+namespace App\Modules\Access\Controllers;
 
 use App\Exceptions\ApiException;
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Access\StoreRoleRequest;
-use App\Http\Requests\Access\UpdateRolePermissionsRequest;
-use App\Http\Requests\Access\UpdateRoleRequest;
+use App\Modules\Access\Requests\StoreRoleRequest;
+use App\Modules\Access\Requests\UpdateRolePermissionsRequest;
+use App\Modules\Access\Requests\UpdateRoleRequest;
 use App\Models\Permission;
 use App\Models\Role;
 use App\Services\Audit\AuditLogService;

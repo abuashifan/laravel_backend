@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Requests\Access;
+namespace App\Modules\Access\Requests;
 
 use App\Services\Tenant\TenantContext;
 use Illuminate\Foundation\Http\FormRequest;
