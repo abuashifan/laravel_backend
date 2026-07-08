@@ -9,7 +9,7 @@ use App\Http\Requests\Purchase\UpdatePurchaseOrderRequest;
 use App\Models\Tenant\PurchaseOrder;
 use App\Models\Tenant\PurchaseRequest;
 use App\Services\Purchase\PurchaseOrderService;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 

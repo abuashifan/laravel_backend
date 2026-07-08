@@ -11,7 +11,7 @@ use App\Models\Permission;
 use App\Models\Role;
 use App\Services\Audit\AuditLogService;
 use App\Services\Tenant\TenantContext;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;

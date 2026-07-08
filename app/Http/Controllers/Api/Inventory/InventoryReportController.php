@@ -9,7 +9,7 @@ use App\Services\Inventory\Reports\InventoryValuationReportService;
 use App\Services\Inventory\Reports\StockBalanceReportService;
 use App\Services\Inventory\Reports\StockCardReportService;
 use App\Services\Inventory\Reports\StockMovementReportService;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 

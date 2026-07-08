@@ -9,7 +9,7 @@ use App\Http\Requests\Purchase\UpdateGoodsReceiptRequest;
 use App\Models\Tenant\GoodsReceipt;
 use App\Models\Tenant\PurchaseOrder;
 use App\Services\Purchase\GoodsReceiptService;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 

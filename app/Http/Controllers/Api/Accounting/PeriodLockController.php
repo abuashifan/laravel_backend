@@ -9,7 +9,7 @@ use App\Services\Accounting\FiscalYearService;
 use App\Services\Audit\AuditLogService;
 use App\Services\Tenant\TenantContext;
 use App\Support\Api\ApiResponseBuilder;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 

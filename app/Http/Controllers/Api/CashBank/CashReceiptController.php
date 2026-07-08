@@ -7,7 +7,7 @@ use App\Http\Requests\CashBank\CashBankActionRequest;
 use App\Http\Requests\CashBank\StoreCashReceiptRequest;
 use App\Models\Tenant\CashReceipt;
 use App\Services\CashBank\CashReceiptService;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 

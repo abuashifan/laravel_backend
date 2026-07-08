@@ -7,7 +7,7 @@ use App\Http\Requests\MasterData\StoreProjectRequest;
 use App\Http\Requests\MasterData\UpdateProjectRequest;
 use App\Models\Tenant\Project;
 use App\Services\MasterData\ProjectService;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 

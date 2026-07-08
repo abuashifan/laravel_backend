@@ -2,10 +2,10 @@
 
 namespace App\Models\Tenant;
 
-use App\Traits\HasReportVisibility;
-use App\Traits\HasRevisionTracking;
-use App\Traits\HasSourceLink;
-use App\Traits\HasTransactionLifecycle;
+use App\Shared\Reports\HasReportVisibility;
+use App\Shared\TransactionLifecycle\HasRevisionTracking;
+use App\Shared\SourceDocument\HasSourceLink;
+use App\Shared\TransactionLifecycle\HasTransactionLifecycle;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;

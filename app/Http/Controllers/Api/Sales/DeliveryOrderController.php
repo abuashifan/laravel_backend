@@ -9,7 +9,7 @@ use App\Http\Requests\Sales\UpdateDeliveryOrderRequest;
 use App\Models\Tenant\DeliveryOrder;
 use App\Models\Tenant\SalesOrder;
 use App\Services\Sales\DeliveryOrderService;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 

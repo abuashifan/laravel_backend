@@ -6,7 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Services\Purchase\APAgingService;
 use App\Services\Purchase\APReconciliationService;
 use App\Services\Purchase\APSubsidiaryLedgerService;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 

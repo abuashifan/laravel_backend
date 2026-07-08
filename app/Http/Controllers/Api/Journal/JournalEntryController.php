@@ -13,7 +13,7 @@ use App\Services\Budget\BudgetWarningService;
 use App\Services\Journal\JournalEntryService;
 use App\Services\Tenant\TenantContext;
 use App\Support\Api\ApiResponseBuilder;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 

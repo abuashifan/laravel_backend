@@ -7,7 +7,7 @@ use App\Http\Requests\CashBank\CashBankActionRequest;
 use App\Http\Requests\CashBank\StoreBankTransferRequest;
 use App\Models\Tenant\BankTransfer;
 use App\Services\CashBank\BankTransferService;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 

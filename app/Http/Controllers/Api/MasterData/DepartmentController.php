@@ -7,7 +7,7 @@ use App\Http\Requests\MasterData\StoreDepartmentRequest;
 use App\Http\Requests\MasterData\UpdateDepartmentRequest;
 use App\Models\Tenant\Department;
 use App\Services\MasterData\DepartmentService;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 

@@ -7,7 +7,7 @@ use App\Http\Requests\Sales\SalesActionRequest;
 use App\Http\Requests\Sales\StoreSalesReceiptRequest;
 use App\Models\Tenant\SalesReceipt;
 use App\Services\Sales\SalesReceiptService;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 

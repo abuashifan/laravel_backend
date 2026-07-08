@@ -7,7 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Reports\AccountLedgerDetailRequest;
 use App\Services\Reports\AccountLedgerDetailService;
 use App\Support\Api\ApiResponseBuilder;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 
 class AccountLedgerDetailController extends Controller

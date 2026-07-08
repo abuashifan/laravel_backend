@@ -9,7 +9,7 @@ use App\Http\Requests\FixedAssets\StoreFixedAssetRequest;
 use App\Http\Requests\FixedAssets\UpdateFixedAssetRequest;
 use App\Models\Tenant\FixedAsset;
 use App\Services\FixedAssets\FixedAssetService;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 

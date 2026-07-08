@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Api\FixedAssets;
 
 use App\Http\Controllers\Controller;
 use App\Services\FixedAssets\FixedAssetReportService;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;

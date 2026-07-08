@@ -8,7 +8,7 @@ use App\Http\Requests\Purchase\StorePurchaseRequestRequest;
 use App\Http\Requests\Purchase\UpdatePurchaseRequestRequest;
 use App\Models\Tenant\PurchaseRequest;
 use App\Services\Purchase\PurchaseRequestService;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 

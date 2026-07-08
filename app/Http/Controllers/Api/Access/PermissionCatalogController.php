@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Api\Access;
 
 use App\Http\Controllers\Controller;
 use App\Services\Permissions\PermissionCatalogService;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 
 class PermissionCatalogController extends Controller

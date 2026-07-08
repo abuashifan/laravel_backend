@@ -9,7 +9,7 @@ use App\Http\Requests\OpeningBalance\StoreOpeningBalanceBatchRequest;
 use App\Http\Requests\OpeningBalance\UpdateOpeningBalanceBatchRequest;
 use App\Models\Tenant\OpeningBalanceBatch;
 use App\Services\OpeningBalance\OpeningBalanceBatchService;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 
 class OpeningBalanceController extends Controller

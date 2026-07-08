@@ -11,7 +11,7 @@ use App\Models\Tenant\CustomerDeposit;
 use App\Models\Tenant\SalesInvoice;
 use App\Services\Permissions\PermissionService;
 use App\Services\Sales\CustomerDepositService;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use App\Support\Api\ApiErrorCode;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;

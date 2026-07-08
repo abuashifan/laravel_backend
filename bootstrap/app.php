@@ -6,7 +6,7 @@ use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
 use Illuminate\Database\QueryException;
 use Illuminate\Validation\ValidationException;
-use App\Support\Api\ApiResponseBuilder;
+use App\Shared\Api\ApiResponseBuilder;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -17,8 +17,8 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
-            'company.access' => \App\Http\Middleware\EnsureCompanyAccess::class,
-            'permission' => \App\Http\Middleware\EnsurePermission::class,
+            'company.access' => \App\Shared\Http\Middleware\EnsureCompanyAccess::class,
+            'permission' => \App\Shared\Http\Middleware\EnsurePermission::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

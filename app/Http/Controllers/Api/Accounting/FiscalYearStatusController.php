@@ -6,7 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Services\Accounting\AnnualClosingGateService;
 use App\Services\Accounting\FiscalYearService;
 use App\Services\Tenant\TenantContext;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 
 class FiscalYearStatusController extends Controller

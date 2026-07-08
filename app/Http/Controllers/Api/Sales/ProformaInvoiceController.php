@@ -10,7 +10,7 @@ use App\Models\Tenant\ProformaInvoice;
 use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\SalesQuotation;
 use App\Services\Sales\ProformaInvoiceService;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 

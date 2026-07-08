@@ -7,7 +7,7 @@ use App\Http\Requests\MasterData\StoreChartOfAccountRequest;
 use App\Http\Requests\MasterData\UpdateChartOfAccountRequest;
 use App\Models\Tenant\ChartOfAccount;
 use App\Services\MasterData\ChartOfAccountService;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 

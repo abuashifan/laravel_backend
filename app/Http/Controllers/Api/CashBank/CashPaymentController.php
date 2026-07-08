@@ -7,7 +7,7 @@ use App\Http\Requests\CashBank\CashBankActionRequest;
 use App\Http\Requests\CashBank\StoreCashPaymentRequest;
 use App\Models\Tenant\CashPayment;
 use App\Services\CashBank\CashPaymentService;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 

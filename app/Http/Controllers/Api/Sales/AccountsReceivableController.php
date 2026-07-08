@@ -6,7 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Services\Sales\ARAgingService;
 use App\Services\Sales\ARReconciliationService;
 use App\Services\Sales\ARSubsidiaryLedgerService;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 

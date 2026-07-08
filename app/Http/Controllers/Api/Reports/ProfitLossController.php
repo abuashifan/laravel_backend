@@ -7,7 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Reports\ProfitLossRequest;
 use App\Services\Reports\ProfitLossService;
 use App\Support\Api\ApiResponseBuilder;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 
 class ProfitLossController extends Controller

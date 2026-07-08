@@ -7,7 +7,7 @@ use App\Http\Requests\Purchase\PurchaseRequestActionRequest;
 use App\Http\Requests\Purchase\StoreVendorPaymentRequest;
 use App\Models\Tenant\VendorPayment;
 use App\Services\Purchase\VendorPaymentService;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 

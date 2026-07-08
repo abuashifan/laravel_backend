@@ -9,7 +9,7 @@ use App\Http\Controllers\Api\Sales\SalesOrderController;
 use App\Http\Controllers\Api\Sales\SalesQuotationController;
 use App\Http\Controllers\Api\Sales\SalesReceiptController;
 use App\Http\Controllers\Api\Sales\SalesReturnController;
-use App\Http\Controllers\Api\Transactions\SourceDocumentPickerController;
+use App\Shared\SourceDocument\SourceDocumentPickerController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth:sanctum', 'company.access'])->prefix('sales')->group(function () {

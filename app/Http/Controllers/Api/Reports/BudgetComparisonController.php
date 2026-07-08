@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Api\Reports;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Budget\BudgetComparisonRequest;
 use App\Services\Budget\BudgetComparisonService;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 
 class BudgetComparisonController extends Controller

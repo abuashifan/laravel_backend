@@ -10,7 +10,7 @@ use App\Models\Tenant\DeliveryOrder;
 use App\Models\Tenant\SalesInvoice;
 use App\Models\Tenant\SalesReturn;
 use App\Services\Sales\SalesReturnService;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 

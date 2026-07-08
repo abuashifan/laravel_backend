@@ -7,7 +7,7 @@ use App\Http\Requests\FixedAssets\StoreFixedAssetCategoryRequest;
 use App\Http\Requests\FixedAssets\UpdateFixedAssetCategoryRequest;
 use App\Models\Tenant\FixedAssetCategory;
 use App\Services\FixedAssets\FixedAssetService;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 

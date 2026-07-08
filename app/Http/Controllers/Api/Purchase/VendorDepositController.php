@@ -12,7 +12,7 @@ use App\Models\Tenant\VendorDeposit;
 use App\Services\Permissions\PermissionService;
 use App\Services\Purchase\VendorDepositService;
 use App\Support\Api\ApiErrorCode;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 

@@ -8,7 +8,7 @@ use App\Http\Requests\Sales\StoreSalesQuotationRequest;
 use App\Http\Requests\Sales\UpdateSalesQuotationRequest;
 use App\Models\Tenant\SalesQuotation;
 use App\Services\Sales\SalesQuotationService;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 

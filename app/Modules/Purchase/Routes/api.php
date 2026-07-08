@@ -8,7 +8,7 @@ use App\Http\Controllers\Api\Purchase\PurchaseReturnController;
 use App\Http\Controllers\Api\Purchase\VendorBillController;
 use App\Http\Controllers\Api\Purchase\VendorDepositController;
 use App\Http\Controllers\Api\Purchase\VendorPaymentController;
-use App\Http\Controllers\Api\Transactions\SourceDocumentPickerController;
+use App\Shared\SourceDocument\SourceDocumentPickerController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth:sanctum', 'company.access'])->prefix('purchase')->group(function () {

@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Api\Companies;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 
 class MyCompaniesController extends Controller

@@ -7,7 +7,7 @@ use App\Http\Requests\MasterData\StoreProductRequest;
 use App\Http\Requests\MasterData\UpdateProductRequest;
 use App\Models\Tenant\Product;
 use App\Services\MasterData\ProductService;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 

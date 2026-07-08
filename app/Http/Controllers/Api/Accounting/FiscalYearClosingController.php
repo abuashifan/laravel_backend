@@ -7,7 +7,7 @@ use App\Http\Requests\Accounting\CloseFiscalYearRequest;
 use App\Http\Requests\Accounting\ReopenFiscalYearRequest;
 use App\Services\Accounting\FiscalYearClosingService;
 use App\Support\Api\ApiResponseBuilder;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 
 class FiscalYearClosingController extends Controller

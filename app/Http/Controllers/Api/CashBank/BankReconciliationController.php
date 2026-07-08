@@ -8,7 +8,7 @@ use App\Http\Requests\CashBank\StoreBankReconciliationRequest;
 use App\Http\Requests\CashBank\UpdateBankReconciliationRequest;
 use App\Models\Tenant\BankReconciliation;
 use App\Services\CashBank\BankReconciliationService;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 

@@ -7,7 +7,7 @@ use App\Http\Requests\Inventory\StoreStockMovementRequest;
 use App\Http\Requests\Inventory\VoidStockMovementRequest;
 use App\Models\Tenant\StockMovement;
 use App\Services\Inventory\StockMovementService;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 

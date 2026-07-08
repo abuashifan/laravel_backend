@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api\Tenant;
 
 use App\Services\Tenant\TenantContext;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 
 class TenantContextTestController

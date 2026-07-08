@@ -11,7 +11,7 @@ use App\Services\Settings\CompanySettingService;
 use App\Services\Tenant\TenantContext;
 use App\Support\Audit\AuditAction;
 use App\Support\Audit\AuditEvent;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Throwable;
 

@@ -9,7 +9,7 @@ use App\Http\Requests\Inventory\UpdateStockAdjustmentRequest;
 use App\Http\Requests\Inventory\VoidStockAdjustmentRequest;
 use App\Models\Tenant\StockAdjustment;
 use App\Services\Inventory\StockAdjustmentService;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 

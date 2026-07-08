@@ -6,7 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Budget\StoreBudgetPeriodRequest;
 use App\Http\Requests\Budget\UpdateBudgetPeriodRequest;
 use App\Services\Budget\BudgetPeriodService;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 
 class BudgetPeriodController extends Controller

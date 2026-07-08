@@ -7,7 +7,7 @@ use App\Http\Requests\MasterData\StorePaymentTermRequest;
 use App\Http\Requests\MasterData\UpdatePaymentTermRequest;
 use App\Models\Tenant\PaymentTerm;
 use App\Services\MasterData\PaymentTermService;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 

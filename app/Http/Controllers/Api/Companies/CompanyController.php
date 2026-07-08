@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Api\Companies;
 use App\Http\Controllers\Controller;
 use App\Models\Company;
 use App\Models\CompanyUser;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 

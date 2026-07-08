@@ -10,7 +10,7 @@ use App\Http\Requests\Inventory\VoidStockOpnameRequest;
 use App\Models\Tenant\StockOpname;
 use App\Models\Tenant\StockOpnameLine;
 use App\Services\Inventory\StockOpnameService;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 

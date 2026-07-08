@@ -7,7 +7,7 @@ use App\Http\Requests\MasterData\StoreUnitRequest;
 use App\Http\Requests\MasterData\UpdateUnitRequest;
 use App\Models\Tenant\Unit;
 use App\Services\MasterData\UnitService;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 

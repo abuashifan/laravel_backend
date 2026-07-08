@@ -7,7 +7,7 @@ use App\Http\Requests\Setup\ReopenSetupRequest;
 use App\Http\Requests\Setup\UpdateSetupCurrentStepRequest;
 use App\Http\Requests\Setup\ValidateSetupStepRequest;
 use App\Services\Setup\SetupWizardService;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 
 class SetupWizardController extends Controller

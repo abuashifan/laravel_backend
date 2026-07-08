@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Api\CashBank;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\CashBank\CashBankAccountStatementRequest;
 use App\Services\CashBank\CashBankReportService;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 
 class CashBankReportController extends Controller

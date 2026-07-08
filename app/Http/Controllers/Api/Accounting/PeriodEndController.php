@@ -6,7 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Accounting\PeriodEndPeriodRequest;
 use App\Http\Requests\Accounting\ReopenPeriodEndRequest;
 use App\Services\Accounting\PeriodEndService;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 
 class PeriodEndController extends Controller

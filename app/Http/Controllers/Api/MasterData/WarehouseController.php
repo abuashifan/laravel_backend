@@ -7,7 +7,7 @@ use App\Http\Requests\MasterData\StoreWarehouseRequest;
 use App\Http\Requests\MasterData\UpdateWarehouseRequest;
 use App\Models\Tenant\Warehouse;
 use App\Services\MasterData\WarehouseService;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 

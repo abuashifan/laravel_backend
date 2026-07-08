@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Api\Budget;
 use App\Http\Controllers\Controller;
 use App\Services\Budget\BudgetConsolidationService;
 use App\Services\Budget\BudgetPeriodService;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 

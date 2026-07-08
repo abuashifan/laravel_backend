@@ -7,7 +7,7 @@ use App\Http\Requests\MasterData\StoreContactRequest;
 use App\Http\Requests\MasterData\UpdateContactRequest;
 use App\Models\Tenant\Contact;
 use App\Services\MasterData\ContactService;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 

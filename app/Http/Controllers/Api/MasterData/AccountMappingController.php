@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Api\MasterData;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\MasterData\UpdateAccountMappingRequest;
 use App\Services\MasterData\AccountMappingStorageService;
-use App\Traits\ApiResponse;
+use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
 
 class AccountMappingController extends Controller
