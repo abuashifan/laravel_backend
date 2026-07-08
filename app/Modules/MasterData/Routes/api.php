@@ -1,15 +1,15 @@
 <?php
 
-use App\Http\Controllers\Api\MasterData\AccountMappingController;
-use App\Http\Controllers\Api\MasterData\ChartOfAccountController;
-use App\Http\Controllers\Api\MasterData\ContactController;
-use App\Http\Controllers\Api\MasterData\DepartmentController;
-use App\Http\Controllers\Api\MasterData\PaymentTermController;
-use App\Http\Controllers\Api\MasterData\ProductCategoryController;
-use App\Http\Controllers\Api\MasterData\ProductController;
-use App\Http\Controllers\Api\MasterData\ProjectController;
-use App\Http\Controllers\Api\MasterData\UnitController;
-use App\Http\Controllers\Api\MasterData\WarehouseController;
+use App\Modules\MasterData\Controllers\AccountMappingController;
+use App\Modules\MasterData\Controllers\ChartOfAccountController;
+use App\Modules\MasterData\Controllers\ContactController;
+use App\Modules\MasterData\Controllers\DepartmentController;
+use App\Modules\MasterData\Controllers\PaymentTermController;
+use App\Modules\MasterData\Controllers\ProductCategoryController;
+use App\Modules\MasterData\Controllers\ProductController;
+use App\Modules\MasterData\Controllers\ProjectController;
+use App\Modules\MasterData\Controllers\UnitController;
+use App\Modules\MasterData\Controllers\WarehouseController;
 use Illuminate\Support\Facades\Route;
 
 // NOTE: Phase 1B demo endpoint `/api/my-companies-demo` has been disabled in Phase 2A.

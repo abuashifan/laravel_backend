@@ -1,6 +1,6 @@
 <?php
 
-use App\Http\Controllers\Api\Journal\JournalEntryController;
+use App\Modules\Journal\Controllers\JournalEntryController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth:sanctum', 'company.access'])->group(function () {

@@ -134,6 +134,35 @@ class AliasServiceProvider extends ServiceProvider
         // CompanySettingService dipakai luas (services transaksi + tests); SetupWizardService oleh tests.
         'App\\Services\\Settings\\CompanySettingService' => \App\Modules\Settings\Services\CompanySettingService::class,
         'App\\Services\\Setup\\SetupWizardService' => \App\Modules\Setup\Services\SetupWizardService::class,
+
+        // ── Fase 3: MasterData · Accounting · Journal ──
+        // Semua 22 service foundational dipakai lintas modul (posting/period/master data
+        // di-consume Sales/Purchase/CashBank/Inventory/FixedAssets/Budget/OpeningBalance).
+        // MasterData (10)
+        'App\\Services\\MasterData\\AccountMappingStorageService' => \App\Modules\MasterData\Services\AccountMappingStorageService::class,
+        'App\\Services\\MasterData\\ChartOfAccountService' => \App\Modules\MasterData\Services\ChartOfAccountService::class,
+        'App\\Services\\MasterData\\ContactService' => \App\Modules\MasterData\Services\ContactService::class,
+        'App\\Services\\MasterData\\DepartmentService' => \App\Modules\MasterData\Services\DepartmentService::class,
+        'App\\Services\\MasterData\\PaymentTermService' => \App\Modules\MasterData\Services\PaymentTermService::class,
+        'App\\Services\\MasterData\\ProductCategoryService' => \App\Modules\MasterData\Services\ProductCategoryService::class,
+        'App\\Services\\MasterData\\ProductService' => \App\Modules\MasterData\Services\ProductService::class,
+        'App\\Services\\MasterData\\ProjectService' => \App\Modules\MasterData\Services\ProjectService::class,
+        'App\\Services\\MasterData\\UnitService' => \App\Modules\MasterData\Services\UnitService::class,
+        'App\\Services\\MasterData\\WarehouseService' => \App\Modules\MasterData\Services\WarehouseService::class,
+        // Accounting (6)
+        'App\\Services\\Accounting\\AccountMappingHealthService' => \App\Modules\Accounting\Services\AccountMappingHealthService::class,
+        'App\\Services\\Accounting\\AnnualClosingGateService' => \App\Modules\Accounting\Services\AnnualClosingGateService::class,
+        'App\\Services\\Accounting\\FiscalYearClosingService' => \App\Modules\Accounting\Services\FiscalYearClosingService::class,
+        'App\\Services\\Accounting\\FiscalYearService' => \App\Modules\Accounting\Services\FiscalYearService::class,
+        'App\\Services\\Accounting\\PeriodEndService' => \App\Modules\Accounting\Services\PeriodEndService::class,
+        'App\\Services\\Accounting\\PeriodLockService' => \App\Modules\Accounting\Services\PeriodLockService::class,
+        // Journal (6)
+        'App\\Services\\Journal\\JournalEntryService' => \App\Modules\Journal\Services\JournalEntryService::class,
+        'App\\Services\\Journal\\JournalLineNormalizer' => \App\Modules\Journal\Services\JournalLineNormalizer::class,
+        'App\\Services\\Journal\\JournalPostingService' => \App\Modules\Journal\Services\JournalPostingService::class,
+        'App\\Services\\Journal\\JournalValidationService' => \App\Modules\Journal\Services\JournalValidationService::class,
+        'App\\Services\\Journal\\JournalVoidService' => \App\Modules\Journal\Services\JournalVoidService::class,
+        'App\\Services\\Journal\\SystemJournalBuilder' => \App\Modules\Journal\Services\SystemJournalBuilder::class,
     ];
 
     public function register(): void
