@@ -1,8 +1,8 @@
 <?php
 
-use App\Http\Controllers\Api\Budget\BudgetConsolidationController;
-use App\Http\Controllers\Api\Budget\BudgetPeriodController;
-use App\Http\Controllers\Api\Budget\BudgetSubmissionController;
+use App\Modules\Budget\Controllers\BudgetConsolidationController;
+use App\Modules\Budget\Controllers\BudgetPeriodController;
+use App\Modules\Budget\Controllers\BudgetSubmissionController;
 use App\Http\Controllers\Api\Reports\BudgetComparisonController;
 use Illuminate\Support\Facades\Route;
 

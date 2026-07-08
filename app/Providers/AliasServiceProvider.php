@@ -163,6 +163,29 @@ class AliasServiceProvider extends ServiceProvider
         'App\\Services\\Journal\\JournalValidationService' => \App\Modules\Journal\Services\JournalValidationService::class,
         'App\\Services\\Journal\\JournalVoidService' => \App\Modules\Journal\Services\JournalVoidService::class,
         'App\\Services\\Journal\\SystemJournalBuilder' => \App\Modules\Journal\Services\SystemJournalBuilder::class,
+
+        // ── Fase 4: CashBank · OpeningBalance · Budget ──
+        // CashBank (6)
+        'App\\Services\\CashBank\\BankReconciliationService' => \App\Modules\CashBank\Services\BankReconciliationService::class,
+        'App\\Services\\CashBank\\BankTransferService' => \App\Modules\CashBank\Services\BankTransferService::class,
+        'App\\Services\\CashBank\\CashBankAccountService' => \App\Modules\CashBank\Services\CashBankAccountService::class,
+        'App\\Services\\CashBank\\CashBankReportService' => \App\Modules\CashBank\Services\CashBankReportService::class,
+        'App\\Services\\CashBank\\CashPaymentService' => \App\Modules\CashBank\Services\CashPaymentService::class,
+        'App\\Services\\CashBank\\CashReceiptService' => \App\Modules\CashBank\Services\CashReceiptService::class,
+        // OpeningBalance services (3)
+        'App\\Services\\OpeningBalance\\OpeningBalanceBatchService' => \App\Modules\OpeningBalance\Services\OpeningBalanceBatchService::class,
+        'App\\Services\\OpeningBalance\\OpeningBalanceService' => \App\Modules\OpeningBalance\Services\OpeningBalanceService::class,
+        'App\\Services\\OpeningBalance\\OpeningBalanceValidator' => \App\Modules\OpeningBalance\Services\OpeningBalanceValidator::class,
+        // OpeningBalance value objects (Support → modul)
+        'App\\Support\\OpeningBalance\\OpeningBalanceBatch' => \App\Modules\OpeningBalance\Support\OpeningBalanceBatch::class,
+        'App\\Support\\OpeningBalance\\OpeningBalanceLine' => \App\Modules\OpeningBalance\Support\OpeningBalanceLine::class,
+        'App\\Support\\OpeningBalance\\OpeningBalanceType' => \App\Modules\OpeningBalance\Support\OpeningBalanceType::class,
+        // Budget (5)
+        'App\\Services\\Budget\\BudgetComparisonService' => \App\Modules\Budget\Services\BudgetComparisonService::class,
+        'App\\Services\\Budget\\BudgetConsolidationService' => \App\Modules\Budget\Services\BudgetConsolidationService::class,
+        'App\\Services\\Budget\\BudgetPeriodService' => \App\Modules\Budget\Services\BudgetPeriodService::class,
+        'App\\Services\\Budget\\BudgetSubmissionService' => \App\Modules\Budget\Services\BudgetSubmissionService::class,
+        'App\\Services\\Budget\\BudgetWarningService' => \App\Modules\Budget\Services\BudgetWarningService::class,
     ];
 
     public function register(): void

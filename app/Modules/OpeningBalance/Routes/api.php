@@ -1,6 +1,6 @@
 <?php
 
-use App\Http\Controllers\Api\OpeningBalance\OpeningBalanceController;
+use App\Modules\OpeningBalance\Controllers\OpeningBalanceController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth:sanctum', 'company.access'])->prefix('opening-balance')->group(function () {

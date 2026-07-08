@@ -1,11 +1,11 @@
 <?php
 
-use App\Http\Controllers\Api\CashBank\BankReconciliationController;
-use App\Http\Controllers\Api\CashBank\BankTransferController;
-use App\Http\Controllers\Api\CashBank\CashBankAccountController;
-use App\Http\Controllers\Api\CashBank\CashBankReportController;
-use App\Http\Controllers\Api\CashBank\CashPaymentController;
-use App\Http\Controllers\Api\CashBank\CashReceiptController;
+use App\Modules\CashBank\Controllers\BankReconciliationController;
+use App\Modules\CashBank\Controllers\BankTransferController;
+use App\Modules\CashBank\Controllers\CashBankAccountController;
+use App\Modules\CashBank\Controllers\CashBankReportController;
+use App\Modules\CashBank\Controllers\CashPaymentController;
+use App\Modules\CashBank\Controllers\CashReceiptController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth:sanctum', 'company.access'])->prefix('cash-bank')->group(function () {
