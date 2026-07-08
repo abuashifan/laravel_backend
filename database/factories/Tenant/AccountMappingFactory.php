@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Database\Factories\Tenant;
 
-use App\Models\Tenant\AccountMapping;
+use App\Modules\MasterData\Models\AccountMapping;
 use App\Models\Tenant\ChartOfAccount;
 use Illuminate\Database\Eloquent\Factories\Factory;
 

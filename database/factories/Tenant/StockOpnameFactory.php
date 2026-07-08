@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Database\Factories\Tenant;
 
-use App\Models\Tenant\StockOpname;
+use App\Modules\Inventory\Models\StockOpname;
 use App\Models\Tenant\Warehouse;
 use Illuminate\Database\Eloquent\Factories\Factory;
 

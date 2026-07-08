@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Database\Factories\Tenant;
 
 use App\Models\Tenant\Contact;
-use App\Models\Tenant\GoodsReceipt;
+use App\Modules\Purchase\Models\GoodsReceipt;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
