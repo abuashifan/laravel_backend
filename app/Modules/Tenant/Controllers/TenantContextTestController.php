@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\Api\Tenant;
+namespace App\Modules\Tenant\Controllers;
 
 use App\Services\Tenant\TenantContext;
 use App\Shared\Api\ApiResponse;

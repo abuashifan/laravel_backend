@@ -1,10 +1,10 @@
 <?php
 
-namespace App\Http\Controllers\Api\Auth;
+namespace App\Modules\Auth\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\CompanyAccountingSetting;
-use App\Services\Permissions\PermissionService;
+use App\Shared\Permission\PermissionService;
 use App\Services\Tenant\TenantContext;
 use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;

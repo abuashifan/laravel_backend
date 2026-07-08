@@ -125,6 +125,10 @@ class AliasServiceProvider extends ServiceProvider
         'App\\Http\\Middleware\\EnsureCompanyAccess' => \App\Shared\Http\Middleware\EnsureCompanyAccess::class,
         'App\\Http\\Middleware\\EnsurePermission' => \App\Shared\Http\Middleware\EnsurePermission::class,
         'App\\Http\\Controllers\\Api\\HealthController' => \App\Shared\Http\Controllers\HealthController::class,
+
+        // ── Fase 1: Auth · Companies · Tenant ──
+        // Service dipakai lintas layer (Console Commands) → butuh alias.
+        'App\\Services\\Companies\\CompanyUserAssignmentService' => \App\Modules\Companies\Services\CompanyUserAssignmentService::class,
     ];
 
     public function register(): void
