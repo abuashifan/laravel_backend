@@ -1,13 +1,13 @@
 <?php
 
-use App\Http\Controllers\Api\Purchase\AccountsPayableController;
-use App\Http\Controllers\Api\Purchase\GoodsReceiptController;
-use App\Http\Controllers\Api\Purchase\PurchaseOrderController;
-use App\Http\Controllers\Api\Purchase\PurchaseRequestController;
-use App\Http\Controllers\Api\Purchase\PurchaseReturnController;
-use App\Http\Controllers\Api\Purchase\VendorBillController;
-use App\Http\Controllers\Api\Purchase\VendorDepositController;
-use App\Http\Controllers\Api\Purchase\VendorPaymentController;
+use App\Modules\Purchase\Controllers\AccountsPayableController;
+use App\Modules\Purchase\Controllers\GoodsReceiptController;
+use App\Modules\Purchase\Controllers\PurchaseOrderController;
+use App\Modules\Purchase\Controllers\PurchaseRequestController;
+use App\Modules\Purchase\Controllers\PurchaseReturnController;
+use App\Modules\Purchase\Controllers\VendorBillController;
+use App\Modules\Purchase\Controllers\VendorDepositController;
+use App\Modules\Purchase\Controllers\VendorPaymentController;
 use App\Shared\SourceDocument\SourceDocumentPickerController;
 use Illuminate\Support\Facades\Route;
 

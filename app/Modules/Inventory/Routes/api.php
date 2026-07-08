@@ -1,11 +1,11 @@
 <?php
 
-use App\Http\Controllers\Api\Inventory\InventoryReportController;
-use App\Http\Controllers\Api\Inventory\InventoryValuationController;
-use App\Http\Controllers\Api\Inventory\StockAdjustmentController;
-use App\Http\Controllers\Api\Inventory\StockBalanceController;
-use App\Http\Controllers\Api\Inventory\StockMovementController;
-use App\Http\Controllers\Api\Inventory\StockOpnameController;
+use App\Modules\Inventory\Controllers\InventoryReportController;
+use App\Modules\Inventory\Controllers\InventoryValuationController;
+use App\Modules\Inventory\Controllers\StockAdjustmentController;
+use App\Modules\Inventory\Controllers\StockBalanceController;
+use App\Modules\Inventory\Controllers\StockMovementController;
+use App\Modules\Inventory\Controllers\StockOpnameController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth:sanctum', 'company.access'])->prefix('inventory')->group(function () {

@@ -1,14 +1,14 @@
 <?php
 
-use App\Http\Controllers\Api\Sales\AccountsReceivableController;
-use App\Http\Controllers\Api\Sales\CustomerDepositController;
-use App\Http\Controllers\Api\Sales\DeliveryOrderController;
-use App\Http\Controllers\Api\Sales\ProformaInvoiceController;
-use App\Http\Controllers\Api\Sales\SalesInvoiceController;
-use App\Http\Controllers\Api\Sales\SalesOrderController;
-use App\Http\Controllers\Api\Sales\SalesQuotationController;
-use App\Http\Controllers\Api\Sales\SalesReceiptController;
-use App\Http\Controllers\Api\Sales\SalesReturnController;
+use App\Modules\Sales\Controllers\AccountsReceivableController;
+use App\Modules\Sales\Controllers\CustomerDepositController;
+use App\Modules\Sales\Controllers\DeliveryOrderController;
+use App\Modules\Sales\Controllers\ProformaInvoiceController;
+use App\Modules\Sales\Controllers\SalesInvoiceController;
+use App\Modules\Sales\Controllers\SalesOrderController;
+use App\Modules\Sales\Controllers\SalesQuotationController;
+use App\Modules\Sales\Controllers\SalesReceiptController;
+use App\Modules\Sales\Controllers\SalesReturnController;
 use App\Shared\SourceDocument\SourceDocumentPickerController;
 use Illuminate\Support\Facades\Route;
 
