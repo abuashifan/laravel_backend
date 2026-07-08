@@ -5,7 +5,9 @@ namespace App\Modules\OpeningBalance\Support;
 class OpeningBalanceType
 {
     public const STANDARD = 'standard';
+
     public const MIGRATION = 'migration';
+
     public const CORRECTION = 'correction';
 
     public static function all(): array
@@ -22,4 +24,3 @@ class OpeningBalanceType
         return in_array($type, self::all(), true);
     }
 }
-

@@ -3,9 +3,9 @@
 namespace App\Modules\MasterData\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\MasterData\Models\Project;
 use App\Modules\MasterData\Requests\StoreProjectRequest;
 use App\Modules\MasterData\Requests\UpdateProjectRequest;
-use App\Models\Tenant\Project;
 use App\Modules\MasterData\Services\ProjectService;
 use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -15,25 +15,26 @@ class ProjectController extends Controller
 {
     use ApiResponse;
 
-    public function __construct(private readonly ProjectService $service)
-    {
-    }
+    public function __construct(private readonly ProjectService $service) {}
 
     public function index(Request $request): JsonResponse
     {
         $items = $this->service->list($request->query());
+
         return $this->listResponse($items, $request, 'Projects retrieved successfully');
     }
 
     public function store(StoreProjectRequest $request): JsonResponse
     {
         $project = $this->service->create($request->validated());
+
         return $this->successResponse($project, 'Project created successfully', 201);
     }
 
     public function show(int $id): JsonResponse
     {
         $project = Project::query()->findOrFail($id);
+
         return $this->successResponse($project, 'Project retrieved successfully');
     }
 
@@ -61,4 +62,3 @@ class ProjectController extends Controller
         return $this->successResponse($project, 'Project activated successfully');
     }
 }
-

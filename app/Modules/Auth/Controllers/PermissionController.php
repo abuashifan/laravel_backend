@@ -3,10 +3,10 @@
 namespace App\Modules\Auth\Controllers;
 
 use App\Http\Controllers\Controller;
-use App\Models\CompanyAccountingSetting;
-use App\Shared\Permission\PermissionService;
-use App\Services\Tenant\TenantContext;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Models\CompanyAccountingSetting;
+use App\Shared\Permission\PermissionService;
+use App\Shared\Tenant\TenantContext;
 use Illuminate\Http\JsonResponse;
 
 class PermissionController extends Controller
@@ -16,8 +16,7 @@ class PermissionController extends Controller
     public function __construct(
         private readonly PermissionService $permissionService,
         private readonly TenantContext $tenantContext
-    ) {
-    }
+    ) {}
 
     public function index(): JsonResponse
     {
@@ -43,4 +42,3 @@ class PermissionController extends Controller
         ], 'Permissions retrieved successfully');
     }
 }
-

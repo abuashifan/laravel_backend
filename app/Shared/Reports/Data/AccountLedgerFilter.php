@@ -15,8 +15,7 @@ class AccountLedgerFilter
         public bool $includeSourceInfo = true,
         public bool $includeDimensions = true,
         public string $sortDirection = 'asc',
-    ) {
-    }
+    ) {}
 
     public static function fromArray(int $accountId, array $data): self
     {
@@ -67,4 +66,3 @@ class AccountLedgerFilter
         return (bool) $this->projectId;
     }
 }
-

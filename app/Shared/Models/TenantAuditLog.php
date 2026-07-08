@@ -2,7 +2,7 @@
 
 namespace App\Shared\Models;
 
-use App\Support\Audit\AuditResult;
+use App\Shared\Audit\AuditResult;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -69,4 +69,3 @@ class TenantAuditLog extends Model
         return $this->result === AuditResult::WARNING;
     }
 }
-

@@ -2,9 +2,6 @@
 
 namespace App\Shared\AccountMapping;
 
-use App\Shared\AccountMapping\AccountMappingKey;
-use App\Shared\AccountMapping\AccountMappingModule;
-use App\Shared\AccountMapping\AccountMappingRequirement;
 use RuntimeException;
 
 class AccountMappingService
@@ -18,6 +15,7 @@ class AccountMappingService
         foreach ((array) config('account_mappings.required_mappings', []) as $key => $cfg) {
             $req[] = AccountMappingRequirement::fromConfig((string) $key, (array) $cfg);
         }
+
         return $req;
     }
 
@@ -79,12 +77,14 @@ class AccountMappingService
     public function isRequired(string $key): bool
     {
         $all = (array) config('account_mappings.required_mappings', []);
+
         return (bool) ($all[$key]['required'] ?? false);
     }
 
     public function allowedAccountTypes(string $key): array
     {
         $all = (array) config('account_mappings.required_mappings', []);
+
         return (array) ($all[$key]['account_types'] ?? []);
     }
 

@@ -18,4 +18,3 @@ class CloseFiscalYearRequest extends FormRequest
         ];
     }
 }
-

@@ -2,15 +2,13 @@
 
 namespace App\Modules\Accounting\Services;
 
-use App\Models\Company;
-use App\Models\FiscalYear;
+use App\Shared\Models\Company;
+use App\Shared\Models\FiscalYear;
 use Carbon\Carbon;
 
 class AnnualClosingGateService
 {
-    public function __construct(private readonly FiscalYearService $fiscalYearService)
-    {
-    }
+    public function __construct(private readonly FiscalYearService $fiscalYearService) {}
 
     public function closingRequired(Company $company, ?string $currentDate = null): bool
     {
@@ -57,4 +55,3 @@ class AnnualClosingGateService
         return null;
     }
 }
-

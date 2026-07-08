@@ -2,11 +2,11 @@
 
 namespace App\Modules\FixedAssets\Services;
 
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\FixedAsset;
-use App\Models\Tenant\FixedAssetDepreciationSchedule;
-use App\Models\Tenant\FixedAssetDisposal;
-use App\Models\Tenant\JournalEntryLine;
+use App\Modules\FixedAssets\Models\FixedAsset;
+use App\Modules\FixedAssets\Models\FixedAssetDepreciationSchedule;
+use App\Modules\FixedAssets\Models\FixedAssetDisposal;
+use App\Modules\Journal\Models\JournalEntryLine;
+use App\Modules\MasterData\Models\AccountMapping;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 
@@ -26,6 +26,7 @@ class FixedAssetReportService
         if ($mode === 'yearly_summary') {
             return $query->get()->groupBy(fn ($row) => substr((string) $row->period, 0, 4).'|'.$row->fixed_asset_id)->map(function (Collection $rows): array {
                 $row = $rows->first();
+
                 return [
                     'year' => substr((string) $row->period, 0, 4),
                     'asset_number' => $row->asset?->asset_number,
@@ -53,8 +54,13 @@ class FixedAssetReportService
     public function disposals(array $filters = []): array
     {
         $query = FixedAssetDisposal::query()->with('asset');
-        if (! empty($filters['disposal_date_from'])) $query->whereDate('disposal_date', '>=', $filters['disposal_date_from']);
-        if (! empty($filters['disposal_date_to'])) $query->whereDate('disposal_date', '<=', $filters['disposal_date_to']);
+        if (! empty($filters['disposal_date_from'])) {
+            $query->whereDate('disposal_date', '>=', $filters['disposal_date_from']);
+        }
+        if (! empty($filters['disposal_date_to'])) {
+            $query->whereDate('disposal_date', '<=', $filters['disposal_date_to']);
+        }
+
         return $query->orderByDesc('disposal_date')->get()->toArray();
     }
 

@@ -2,16 +2,16 @@
 
 namespace App\Modules\Access\Controllers;
 
-use App\Exceptions\ApiException;
 use App\Http\Controllers\Controller;
 use App\Modules\Access\Requests\StoreRoleRequest;
 use App\Modules\Access\Requests\UpdateRolePermissionsRequest;
 use App\Modules\Access\Requests\UpdateRoleRequest;
-use App\Models\Permission;
-use App\Models\Role;
-use App\Services\Audit\AuditLogService;
-use App\Services\Tenant\TenantContext;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Audit\AuditLogService;
+use App\Shared\Exceptions\ApiException;
+use App\Shared\Models\Permission;
+use App\Shared\Models\Role;
+use App\Shared\Tenant\TenantContext;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -24,8 +24,7 @@ class RoleAccessController extends Controller
     public function __construct(
         private readonly TenantContext $tenantContext,
         private readonly AuditLogService $auditLogService,
-    ) {
-    }
+    ) {}
 
     public function index(): JsonResponse
     {

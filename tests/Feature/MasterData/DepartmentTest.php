@@ -2,10 +2,10 @@
 
 namespace Tests\Feature\MasterData;
 
-use App\Models\Company;
-use App\Models\CompanyUser;
-use App\Models\TenantDatabase;
-use App\Services\Tenant\TenantConnectionManager;
+use App\Shared\Models\Company;
+use App\Shared\Models\CompanyUser;
+use App\Shared\Models\TenantDatabase;
+use App\Shared\Tenant\TenantConnectionManager;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\File;
 
@@ -118,4 +118,3 @@ class DepartmentTest extends MasterDataTestCase
         $this->getJson('/api/master-data/departments/'.$deptId, $ctx1['headers'])->assertStatus(200);
     }
 }
-

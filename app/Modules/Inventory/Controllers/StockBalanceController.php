@@ -17,19 +17,21 @@ class StockBalanceController extends Controller
     public function index(Request $request): JsonResponse
     {
         $balances = $this->service->list($request->query())->get();
+
         return $this->successResponse($balances, 'Stock balances retrieved successfully');
     }
 
     public function byProduct(Request $request, int $productId): JsonResponse
     {
         $balances = $this->service->list(array_merge($request->query(), ['product_id' => $productId]))->get();
+
         return $this->successResponse($balances, 'Stock balances retrieved successfully');
     }
 
     public function byWarehouse(Request $request, int $warehouseId): JsonResponse
     {
         $balances = $this->service->list(array_merge($request->query(), ['warehouse_id' => $warehouseId]))->get();
+
         return $this->successResponse($balances, 'Stock balances retrieved successfully');
     }
 }
-

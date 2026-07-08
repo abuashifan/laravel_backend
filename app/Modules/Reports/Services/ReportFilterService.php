@@ -2,10 +2,10 @@
 
 namespace App\Modules\Reports\Services;
 
-use App\Data\Reports\ReportDateRange;
-use App\Data\Reports\ReportDimensionFilter;
-use App\Models\Tenant\Department;
-use App\Models\Tenant\Project;
+use App\Modules\MasterData\Models\Department;
+use App\Modules\MasterData\Models\Project;
+use App\Shared\Reports\Data\ReportDateRange;
+use App\Shared\Reports\Data\ReportDimensionFilter;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Schema;
 
@@ -115,4 +115,3 @@ class ReportFilterService
             && Schema::connection('tenant')->hasColumn('journal_entry_lines', 'project_id');
     }
 }
-

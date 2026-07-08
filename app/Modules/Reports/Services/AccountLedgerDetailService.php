@@ -2,8 +2,9 @@
 
 namespace App\Modules\Reports\Services;
 
-use App\Data\Reports\AccountLedgerFilter;
-use App\Data\Reports\AccountLedgerLineData;
+use App\Shared\Reports\Data\AccountLedgerFilter;
+use App\Shared\Reports\Data\AccountLedgerLineData;
+use App\Shared\Reports\Data\LedgerFilter;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
@@ -16,8 +17,7 @@ class AccountLedgerDetailService
         private readonly LedgerBalanceCalculator $calculator,
         private readonly LedgerFilterValidator $filterValidator,
         private readonly ?ReportVisibilityService $visibilityService = null,
-    ) {
-    }
+    ) {}
 
     /**
      * @return array{valid:bool,errors?:array,account?:array,filter?:array,opening_balance?:array,period_totals?:array,ending_balance?:float,lines?:array<int,array>}
@@ -33,7 +33,7 @@ class AccountLedgerDetailService
             ];
         }
 
-        $ledgerFilter = new \App\Data\Reports\LedgerFilter(
+        $ledgerFilter = new LedgerFilter(
             startDate: $filter->startDate,
             endDate: $filter->endDate,
             accountId: $accountId,
@@ -302,4 +302,3 @@ class AccountLedgerDetailService
         return $cols;
     }
 }
-

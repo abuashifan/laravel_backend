@@ -2,9 +2,9 @@
 
 namespace App\Modules\Reports\Services;
 
-use App\Data\Reports\ReportMeta;
-use App\Data\Reports\ReportResponse;
-use App\Data\Reports\ReportTotals;
+use App\Shared\Reports\Data\ReportMeta;
+use App\Shared\Reports\Data\ReportResponse;
+use App\Shared\Reports\Data\ReportTotals;
 
 class ReportResponseBuilder
 {
@@ -33,4 +33,3 @@ class ReportResponseBuilder
         return ReportMeta::make($reportName, $filters, $dimensions, $fiscalYear, $notes)->toArray();
     }
 }
-

@@ -3,11 +3,11 @@
 namespace App\Modules\Purchase\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Purchase\Models\GoodsReceipt;
+use App\Modules\Purchase\Models\PurchaseOrder;
 use App\Modules\Purchase\Requests\PurchaseRequestActionRequest;
 use App\Modules\Purchase\Requests\StoreGoodsReceiptRequest;
 use App\Modules\Purchase\Requests\UpdateGoodsReceiptRequest;
-use App\Models\Tenant\GoodsReceipt;
-use App\Models\Tenant\PurchaseOrder;
 use App\Modules\Purchase\Services\GoodsReceiptService;
 use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -19,7 +19,11 @@ class GoodsReceiptController extends Controller
 
     public function __construct(private readonly GoodsReceiptService $service) {}
 
-    public function index(Request $request): JsonResponse { return $this->listResponse($this->service->list($request->query()), $request, 'Goods receipts retrieved successfully'); }
+    public function index(Request $request): JsonResponse
+    {
+        return $this->listResponse($this->service->list($request->query()), $request, 'Goods receipts retrieved successfully');
+    }
+
     public function store(StoreGoodsReceiptRequest $request): JsonResponse
     {
         $data = $request->validated();
@@ -29,10 +33,38 @@ class GoodsReceiptController extends Controller
 
         return $this->successResponse($this->service->create($data), 'Goods receipt created successfully', 201);
     }
-    public function show(int $id): JsonResponse { return $this->successResponse($this->service->find($id), 'Goods receipt retrieved successfully'); }
-    public function update(UpdateGoodsReceiptRequest $request, int $id): JsonResponse { return $this->successResponse($this->service->update(GoodsReceipt::query()->findOrFail($id), $request->validated()), 'Goods receipt updated successfully'); }
-    public function createFromPurchaseOrder(Request $request, int $purchaseOrderId): JsonResponse { return $this->successResponse($this->service->createFromPurchaseOrder(PurchaseOrder::query()->findOrFail($purchaseOrderId), $request->all()), 'Goods receipt created from purchase order successfully', 201); }
-    public function receive(int $id): JsonResponse { return $this->successResponse($this->service->receive(GoodsReceipt::query()->findOrFail($id)), 'Goods receipt received successfully'); }
-    public function cancel(PurchaseRequestActionRequest $request, int $id): JsonResponse { $request->validated(); return $this->successResponse($this->service->cancel(GoodsReceipt::query()->findOrFail($id), $request->input('reason')), 'Goods receipt cancelled successfully'); }
-    public function void(PurchaseRequestActionRequest $request, int $id): JsonResponse { $request->validated(); return $this->successResponse($this->service->void(GoodsReceipt::query()->findOrFail($id), $request->input('reason')), 'Goods receipt voided successfully'); }
+
+    public function show(int $id): JsonResponse
+    {
+        return $this->successResponse($this->service->find($id), 'Goods receipt retrieved successfully');
+    }
+
+    public function update(UpdateGoodsReceiptRequest $request, int $id): JsonResponse
+    {
+        return $this->successResponse($this->service->update(GoodsReceipt::query()->findOrFail($id), $request->validated()), 'Goods receipt updated successfully');
+    }
+
+    public function createFromPurchaseOrder(Request $request, int $purchaseOrderId): JsonResponse
+    {
+        return $this->successResponse($this->service->createFromPurchaseOrder(PurchaseOrder::query()->findOrFail($purchaseOrderId), $request->all()), 'Goods receipt created from purchase order successfully', 201);
+    }
+
+    public function receive(int $id): JsonResponse
+    {
+        return $this->successResponse($this->service->receive(GoodsReceipt::query()->findOrFail($id)), 'Goods receipt received successfully');
+    }
+
+    public function cancel(PurchaseRequestActionRequest $request, int $id): JsonResponse
+    {
+        $request->validated();
+
+        return $this->successResponse($this->service->cancel(GoodsReceipt::query()->findOrFail($id), $request->input('reason')), 'Goods receipt cancelled successfully');
+    }
+
+    public function void(PurchaseRequestActionRequest $request, int $id): JsonResponse
+    {
+        $request->validated();
+
+        return $this->successResponse($this->service->void(GoodsReceipt::query()->findOrFail($id), $request->input('reason')), 'Goods receipt voided successfully');
+    }
 }

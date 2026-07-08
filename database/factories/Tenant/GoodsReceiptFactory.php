@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Database\Factories\Tenant;
 
-use App\Models\Tenant\Contact;
+use App\Modules\MasterData\Models\Contact;
 use App\Modules\Purchase\Models\GoodsReceipt;
 use Illuminate\Database\Eloquent\Factories\Factory;
 

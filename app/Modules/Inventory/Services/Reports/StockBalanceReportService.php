@@ -2,21 +2,23 @@
 
 namespace App\Modules\Inventory\Services\Reports;
 
-use App\Models\Tenant\StockBalance;
+use App\Modules\Inventory\Models\StockBalance;
 use App\Modules\Inventory\Services\InventoryConfigService;
 
 class StockBalanceReportService
 {
-    public function __construct(private readonly InventoryConfigService $configService)
-    {
-    }
+    public function __construct(private readonly InventoryConfigService $configService) {}
 
     public function report(array $filters = []): array
     {
         $q = StockBalance::query()->with(['product', 'warehouse']);
 
-        if (! empty($filters['product_id'])) $q->where('product_id', (int) $filters['product_id']);
-        if (! empty($filters['warehouse_id'])) $q->where('warehouse_id', (int) $filters['warehouse_id']);
+        if (! empty($filters['product_id'])) {
+            $q->where('product_id', (int) $filters['product_id']);
+        }
+        if (! empty($filters['warehouse_id'])) {
+            $q->where('warehouse_id', (int) $filters['warehouse_id']);
+        }
         if (! empty($filters['category_id'])) {
             $catId = (int) $filters['category_id'];
             $q->whereHas('product', fn ($p) => $p->where('product_category_id', $catId));
@@ -24,8 +26,12 @@ class StockBalanceReportService
 
         $includeZero = (bool) ($filters['include_zero'] ?? false);
         $includeNegative = (bool) ($filters['include_negative'] ?? false);
-        if (! $includeZero) $q->where('quantity_on_hand', '!=', 0);
-        if (! $includeNegative) $q->where('quantity_on_hand', '>=', 0);
+        if (! $includeZero) {
+            $q->where('quantity_on_hand', '!=', 0);
+        }
+        if (! $includeNegative) {
+            $q->where('quantity_on_hand', '>=', 0);
+        }
 
         $rows = $q->orderBy('product_id')->orderBy('warehouse_id')->get()->map(function (StockBalance $b) {
             return [
@@ -77,4 +83,3 @@ class StockBalanceReportService
         return $this->report(['warehouse_id' => $warehouseId]);
     }
 }
-

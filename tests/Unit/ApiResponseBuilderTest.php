@@ -2,9 +2,9 @@
 
 namespace Tests\Unit;
 
-use App\Support\Api\ApiErrorCode;
-use App\Support\Api\ApiResponseBuilder;
-use App\Support\Transaction\TransactionPolicyResult;
+use App\Shared\Api\ApiErrorCode;
+use App\Shared\Api\ApiResponseBuilder;
+use App\Shared\TransactionLifecycle\TransactionPolicyResult;
 use Tests\TestCase;
 
 class ApiResponseBuilderTest extends TestCase
@@ -89,4 +89,3 @@ class ApiResponseBuilderTest extends TestCase
         $this->assertSame('Allowed', $data['message']);
     }
 }
-

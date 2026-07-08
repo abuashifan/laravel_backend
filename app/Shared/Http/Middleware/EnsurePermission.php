@@ -2,12 +2,12 @@
 
 namespace App\Shared\Http\Middleware;
 
-use App\Shared\Audit\AuditLogService;
-use App\Shared\Permission\PermissionService;
-use App\Shared\Audit\AuditAction;
-use App\Shared\Audit\AuditEvent;
 use App\Shared\Api\ApiErrorCode;
 use App\Shared\Api\ApiResponseBuilder;
+use App\Shared\Audit\AuditAction;
+use App\Shared\Audit\AuditEvent;
+use App\Shared\Audit\AuditLogService;
+use App\Shared\Permission\PermissionService;
 use Closure;
 use Illuminate\Http\Request;
 use Throwable;
@@ -17,8 +17,7 @@ class EnsurePermission
     public function __construct(
         private readonly PermissionService $permissionService,
         private readonly AuditLogService $auditLogService,
-    ) {
-    }
+    ) {}
 
     public function handle(Request $request, Closure $next, string $permission): mixed
     {

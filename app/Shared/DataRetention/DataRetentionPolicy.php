@@ -15,8 +15,7 @@ class DataRetentionPolicy
         public readonly ?int $purgeArchivedAfterYears,
         public readonly ?int $auditLogRetentionYears,
         public readonly ?int $revisionHistoryRetentionYears,
-    ) {
-    }
+    ) {}
 
     public static function defaults(): self
     {
@@ -70,4 +69,3 @@ class DataRetentionPolicy
         return $this->autoArchiveClosedFiscalYears;
     }
 }
-

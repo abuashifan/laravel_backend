@@ -8,4 +8,3 @@ interface TransactionDateGuard
 {
     public function check(?string $transactionDate, string $action, string $module): TransactionPolicyResult;
 }
-

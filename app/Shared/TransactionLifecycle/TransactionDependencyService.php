@@ -2,14 +2,12 @@
 
 namespace App\Shared\TransactionLifecycle;
 
-use App\Shared\TransactionLifecycle\Contracts\TransactionDependencyChecker;
 use App\Shared\TransactionLifecycle\Checkers\CashBankTransactionDependencyChecker;
 use App\Shared\TransactionLifecycle\Checkers\InventoryTransactionDependencyChecker;
 use App\Shared\TransactionLifecycle\Checkers\JournalTransactionDependencyChecker;
 use App\Shared\TransactionLifecycle\Checkers\PurchaseTransactionDependencyChecker;
 use App\Shared\TransactionLifecycle\Checkers\SalesTransactionDependencyChecker;
-use App\Shared\TransactionLifecycle\DependencyCheckResult;
-use App\Shared\TransactionLifecycle\TransactionModule;
+use App\Shared\TransactionLifecycle\Contracts\TransactionDependencyChecker;
 
 class TransactionDependencyService implements TransactionDependencyChecker
 {

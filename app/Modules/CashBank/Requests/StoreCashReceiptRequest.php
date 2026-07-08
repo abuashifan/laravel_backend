@@ -6,7 +6,11 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class StoreCashReceiptRequest extends FormRequest
 {
-    public function authorize(): bool { return true; }
+    public function authorize(): bool
+    {
+        return true;
+    }
+
     public function rules(): array
     {
         return [
@@ -28,4 +32,3 @@ class StoreCashReceiptRequest extends FormRequest
         ];
     }
 }
-

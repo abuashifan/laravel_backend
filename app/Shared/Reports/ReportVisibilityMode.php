@@ -5,9 +5,13 @@ namespace App\Shared\Reports;
 class ReportVisibilityMode
 {
     public const NORMAL = 'normal';
+
     public const WITH_VOID = 'with_void';
+
     public const AUDIT = 'audit';
+
     public const REPORT = 'report';
+
     public const REVISION = 'revision';
 
     public static function all(): array
@@ -26,4 +30,3 @@ class ReportVisibilityMode
         return in_array($mode, self::all(), true);
     }
 }
-

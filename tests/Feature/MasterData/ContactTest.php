@@ -2,8 +2,8 @@
 
 namespace Tests\Feature\MasterData;
 
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\PaymentTerm;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\MasterData\Models\PaymentTerm;
 
 class ContactTest extends MasterDataTestCase
 {

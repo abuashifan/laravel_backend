@@ -77,4 +77,3 @@ class Project extends Model
         return $this->status === 'cancelled';
     }
 }
-

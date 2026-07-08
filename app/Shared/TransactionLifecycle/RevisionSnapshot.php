@@ -34,6 +34,7 @@ class RevisionSnapshot
     public static function changedFields(array $oldValues, array $newValues): array
     {
         $diff = self::diff($oldValues, $newValues);
+
         return $diff['changed_fields'];
     }
 
@@ -82,4 +83,3 @@ class RevisionSnapshot
         return [];
     }
 }
-

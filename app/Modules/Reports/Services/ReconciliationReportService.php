@@ -2,25 +2,25 @@
 
 namespace App\Modules\Reports\Services;
 
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\Contact;
-use App\Models\Tenant\CustomerDeposit;
-use App\Models\Tenant\CustomerDepositAllocation;
-use App\Models\Tenant\Product;
-use App\Models\Tenant\PurchaseReturn;
-use App\Models\Tenant\SalesInvoice;
-use App\Models\Tenant\SalesReceipt;
-use App\Models\Tenant\SalesReturn;
-use App\Models\Tenant\StockMovementLine;
-use App\Models\Tenant\VendorBill;
-use App\Models\Tenant\VendorDeposit;
-use App\Models\Tenant\VendorDepositAllocation;
-use App\Models\Tenant\VendorPayment;
+use App\Modules\Inventory\Models\StockMovementLine;
 use App\Modules\Inventory\Services\InventoryValuationService;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\MasterData\Models\Contact;
+use App\Modules\MasterData\Models\Product;
+use App\Modules\Purchase\Models\PurchaseReturn;
+use App\Modules\Purchase\Models\VendorBill;
+use App\Modules\Purchase\Models\VendorDeposit;
+use App\Modules\Purchase\Models\VendorDepositAllocation;
+use App\Modules\Purchase\Models\VendorPayment;
 use App\Modules\Purchase\Services\APSubsidiaryLedgerService;
+use App\Modules\Sales\Models\CustomerDeposit;
+use App\Modules\Sales\Models\CustomerDepositAllocation;
+use App\Modules\Sales\Models\SalesInvoice;
+use App\Modules\Sales\Models\SalesReceipt;
+use App\Modules\Sales\Models\SalesReturn;
 use App\Modules\Sales\Services\ARSubsidiaryLedgerService;
-use App\Support\AccountMapping\AccountMappingKey;
+use App\Shared\AccountMapping\AccountMappingKey;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -33,8 +33,7 @@ class ReconciliationReportService
         private readonly ARSubsidiaryLedgerService $arLedger,
         private readonly APSubsidiaryLedgerService $apLedger,
         private readonly InventoryValuationService $inventoryValuation,
-    ) {
-    }
+    ) {}
 
     public function ar(array $filters = []): array
     {
@@ -147,9 +146,15 @@ class ReconciliationReportService
             ->whereNotIn('gr.status', ['draft', 'cancelled', 'void']);
 
         $this->applyDateFilters($query, 'gr.receipt_date', $filters);
-        if (! empty($filters['vendor_id'])) $query->where('gr.vendor_id', (int) $filters['vendor_id']);
-        if (! empty($filters['product_id'])) $query->where('grl.product_id', (int) $filters['product_id']);
-        if (! empty($filters['warehouse_id'])) $query->where('grl.warehouse_id', (int) $filters['warehouse_id']);
+        if (! empty($filters['vendor_id'])) {
+            $query->where('gr.vendor_id', (int) $filters['vendor_id']);
+        }
+        if (! empty($filters['product_id'])) {
+            $query->where('grl.product_id', (int) $filters['product_id']);
+        }
+        if (! empty($filters['warehouse_id'])) {
+            $query->where('grl.warehouse_id', (int) $filters['warehouse_id']);
+        }
 
         $records = $query->select([
             'gr.id as goods_receipt_id',
@@ -215,8 +220,12 @@ class ReconciliationReportService
             ->whereIn('status', ['posted', 'partially_allocated', 'refunded']);
 
         $this->applyEloquentDateFilters($query, 'deposit_date', $filters);
-        if (! empty($filters['customer_id'])) $query->where('customer_id', (int) $filters['customer_id']);
-        if ((bool) ($filters['only_difference'] ?? false)) $query->where('remaining_amount', '!=', 0);
+        if (! empty($filters['customer_id'])) {
+            $query->where('customer_id', (int) $filters['customer_id']);
+        }
+        if ((bool) ($filters['only_difference'] ?? false)) {
+            $query->where('remaining_amount', '!=', 0);
+        }
 
         $rows = $query->orderBy('deposit_date')->get()->map(fn (CustomerDeposit $deposit): array => [
             'customer_id' => (int) $deposit->customer_id,
@@ -243,8 +252,12 @@ class ReconciliationReportService
             ->whereIn('status', ['posted', 'partially_allocated', 'refunded']);
 
         $this->applyEloquentDateFilters($query, 'deposit_date', $filters);
-        if (! empty($filters['vendor_id'])) $query->where('vendor_id', (int) $filters['vendor_id']);
-        if ((bool) ($filters['only_difference'] ?? false)) $query->where('remaining_amount', '!=', 0);
+        if (! empty($filters['vendor_id'])) {
+            $query->where('vendor_id', (int) $filters['vendor_id']);
+        }
+        if ((bool) ($filters['only_difference'] ?? false)) {
+            $query->where('remaining_amount', '!=', 0);
+        }
 
         $rows = $query->orderBy('deposit_date')->get()->map(fn (VendorDeposit $deposit): array => [
             'vendor_id' => (int) $deposit->vendor_id,
@@ -267,7 +280,9 @@ class ReconciliationReportService
     private function glArByCustomer(array $filters): Collection
     {
         $accountIds = $this->arAccountIds($filters);
-        if ($accountIds === []) return collect();
+        if ($accountIds === []) {
+            return collect();
+        }
 
         $rows = $this->journalSourceBalances($accountIds, $filters, normal: 'debit');
 
@@ -285,7 +300,9 @@ class ReconciliationReportService
     private function glApByVendor(array $filters): Collection
     {
         $accountIds = $this->apAccountIds($filters);
-        if ($accountIds === []) return collect();
+        if ($accountIds === []) {
+            return collect();
+        }
 
         $rows = $this->journalSourceBalances($accountIds, $filters, normal: 'credit');
 
@@ -316,7 +333,7 @@ class ReconciliationReportService
     }
 
     /**
-     * @param array<string, Collection> $sourceEntityMaps
+     * @param  array<string, Collection>  $sourceEntityMaps
      */
     private function balancesByEntity(Collection $rows, array $sourceEntityMaps): Collection
     {
@@ -325,7 +342,9 @@ class ReconciliationReportService
             $type = (string) $row->source_type;
             $id = (int) $row->source_id;
             $entityId = $sourceEntityMaps[$type][$id] ?? null;
-            if (! $entityId) continue;
+            if (! $entityId) {
+                continue;
+            }
 
             $amount = (float) $row->balance;
             $out[(int) $entityId] = round((float) ($out[(int) $entityId] ?? 0) + $amount, 2);
@@ -356,8 +375,12 @@ class ReconciliationReportService
         foreach ($valuationRows as $row) {
             $product = $products->get((int) ($row['product_id'] ?? 0));
             $accountId = (int) ($product?->inventory_account_id ?: $fallback);
-            if (! $accountId) continue;
-            if (! empty($filters['account_id']) && $accountId !== (int) $filters['account_id']) continue;
+            if (! $accountId) {
+                continue;
+            }
+            if (! empty($filters['account_id']) && $accountId !== (int) $filters['account_id']) {
+                continue;
+            }
 
             $out[$accountId] = round((float) ($out[$accountId] ?? 0) + (float) ($row['total_value'] ?? 0), 2);
         }
@@ -406,15 +429,21 @@ class ReconciliationReportService
             ->where('je.is_obsolete', 0);
 
         $this->applyDateFilters($query, 'je.journal_date', $filters);
-        if (! empty($filters['department_id'])) $query->where('jel.department_id', (int) $filters['department_id']);
-        if (! empty($filters['project_id'])) $query->where('jel.project_id', (int) $filters['project_id']);
+        if (! empty($filters['department_id'])) {
+            $query->where('jel.department_id', (int) $filters['department_id']);
+        }
+        if (! empty($filters['project_id'])) {
+            $query->where('jel.project_id', (int) $filters['project_id']);
+        }
 
         return $query;
     }
 
     private function glByAccount(array $accountIds, array $filters, string $normal): Collection
     {
-        if ($accountIds === []) return collect();
+        if ($accountIds === []) {
+            return collect();
+        }
 
         return $this->baseJournalLineQuery($filters)
             ->whereIn('jel.account_id', $accountIds)
@@ -432,7 +461,9 @@ class ReconciliationReportService
 
     private function arAccountIds(array $filters): array
     {
-        if (! empty($filters['account_id'])) return [(int) $filters['account_id']];
+        if (! empty($filters['account_id'])) {
+            return [(int) $filters['account_id']];
+        }
 
         return collect()
             ->push($this->mappingAccountId(AccountMappingKey::SALES_ACCOUNTS_RECEIVABLE))
@@ -446,7 +477,9 @@ class ReconciliationReportService
 
     private function apAccountIds(array $filters): array
     {
-        if (! empty($filters['account_id'])) return [(int) $filters['account_id']];
+        if (! empty($filters['account_id'])) {
+            return [(int) $filters['account_id']];
+        }
 
         return collect()
             ->push($this->mappingAccountId(AccountMappingKey::PURCHASE_ACCOUNTS_PAYABLE))
@@ -460,7 +493,9 @@ class ReconciliationReportService
 
     private function inventoryAccountIds(array $filters): array
     {
-        if (! empty($filters['account_id'])) return [(int) $filters['account_id']];
+        if (! empty($filters['account_id'])) {
+            return [(int) $filters['account_id']];
+        }
 
         return collect()
             ->push($this->mappingAccountId(AccountMappingKey::INVENTORY_ASSET))
@@ -543,13 +578,21 @@ class ReconciliationReportService
 
     private function applyDateFilters(Builder $query, string $column, array $filters): void
     {
-        if (! empty($filters['start_date'])) $query->whereDate($column, '>=', (string) $filters['start_date']);
-        if (! empty($filters['end_date'])) $query->whereDate($column, '<=', (string) $filters['end_date']);
+        if (! empty($filters['start_date'])) {
+            $query->whereDate($column, '>=', (string) $filters['start_date']);
+        }
+        if (! empty($filters['end_date'])) {
+            $query->whereDate($column, '<=', (string) $filters['end_date']);
+        }
     }
 
     private function applyEloquentDateFilters($query, string $column, array $filters): void
     {
-        if (! empty($filters['start_date'])) $query->where($column, '>=', (string) $filters['start_date']);
-        if (! empty($filters['end_date'])) $query->where($column, '<=', (string) $filters['end_date']);
+        if (! empty($filters['start_date'])) {
+            $query->where($column, '>=', (string) $filters['start_date']);
+        }
+        if (! empty($filters['end_date'])) {
+            $query->where($column, '<=', (string) $filters['end_date']);
+        }
     }
 }

@@ -22,4 +22,3 @@ class StoreWarehouseRequest extends FormRequest
         ];
     }
 }
-

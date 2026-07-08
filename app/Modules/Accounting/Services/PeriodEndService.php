@@ -2,23 +2,23 @@
 
 namespace App\Modules\Accounting\Services;
 
-use App\Exceptions\ApiException;
-use App\Models\AccountingPeriod;
-use App\Models\Company;
-use App\Models\FiscalYear;
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\FixedAssetDepreciationRun;
-use App\Models\Tenant\FixedAssetDepreciationSchedule;
-use App\Models\Tenant\FixedAssetTransaction;
-use App\Models\Tenant\PeriodEndRun;
-use App\Models\Tenant\PeriodEndRunRoutine;
+use App\Modules\Accounting\Models\PeriodEndRun;
+use App\Modules\Accounting\Models\PeriodEndRunRoutine;
+use App\Modules\FixedAssets\Models\FixedAssetDepreciationRun;
+use App\Modules\FixedAssets\Models\FixedAssetDepreciationSchedule;
+use App\Modules\FixedAssets\Models\FixedAssetTransaction;
+use App\Modules\FixedAssets\Services\FixedAssetService;
+use App\Modules\MasterData\Models\AccountMapping;
 use App\Shared\Audit\AuditLogService;
 use App\Shared\DocumentNumbering\DocumentNumberService;
-use App\Services\FixedAssets\FixedAssetService;
+use App\Shared\DocumentNumbering\DocumentType;
+use App\Shared\Exceptions\ApiException;
+use App\Shared\Models\AccountingPeriod;
+use App\Shared\Models\Company;
+use App\Shared\Models\FiscalYear;
 use App\Shared\Permission\PermissionService;
 use App\Shared\Tenant\TenantContext;
 use App\Shared\TransactionLifecycle\TransactionVoidEffectService;
-use App\Support\DocumentNumbering\DocumentType;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -35,8 +35,7 @@ class PeriodEndService
         private readonly PermissionService $permissionService,
         private readonly FixedAssetService $fixedAssetService,
         private readonly TransactionVoidEffectService $voidEffectService,
-    ) {
-    }
+    ) {}
 
     public function status(string $period): array
     {
@@ -424,6 +423,7 @@ class PeriodEndService
                 'status' => 'reversed',
                 'metadata' => array_merge((array) $routine->metadata, ['reversal_reason' => $reason]),
             ])->save();
+
             return;
         }
 
@@ -438,6 +438,7 @@ class PeriodEndService
                 'status' => 'reversed',
                 'metadata' => array_merge($metadata, ['reversal_reason' => $reason, 'reversal_note' => 'Depreciation run not found.']),
             ])->save();
+
             return;
         }
 
@@ -639,6 +640,7 @@ class PeriodEndService
                 'failed_at' => now(),
                 'metadata' => array_merge((array) $run->metadata, ['error_message' => $message]),
             ])->save();
+
             return;
         }
 

@@ -2,9 +2,9 @@
 
 namespace App\Modules\Reports\Services;
 
-use App\Data\Reports\CashFlowFilter;
-use App\Data\Reports\LedgerFilter;
-use App\Models\Tenant\ChartOfAccount;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Shared\Reports\Data\CashFlowFilter;
+use App\Shared\Reports\Data\LedgerFilter;
 use Carbon\Carbon;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
@@ -16,8 +16,7 @@ class CashFlowService
         private readonly LedgerBalanceCalculator $balanceCalculator,
         private readonly LedgerFilterValidator $filterValidator,
         private readonly ?ReportVisibilityService $visibilityService = null,
-    ) {
-    }
+    ) {}
 
     public function getCashFlow(CashFlowFilter $filter): array
     {
@@ -184,6 +183,7 @@ class CashFlowService
                 $sections['unclassified']['cash_in'] += $cashIn;
                 $sections['unclassified']['cash_out'] += $cashOut;
                 $sections['unclassified']['net'] += $cashIn - $cashOut;
+
                 continue;
             }
 
@@ -207,7 +207,7 @@ class CashFlowService
     }
 
     /**
-     * @param array<int,array{account_id:int,account_code:string,account_name:string,normal_balance:string,is_active:bool}> $cashAccounts
+     * @param  array<int,array{account_id:int,account_code:string,account_name:string,normal_balance:string,is_active:bool}>  $cashAccounts
      * @return array<int,array{debit:float,credit:float}>
      */
     public function getOpeningTotalsByCashAccount(CashFlowFilter $filter, array $cashAccounts, string $startDate): array
@@ -232,7 +232,7 @@ class CashFlowService
     }
 
     /**
-     * @param array<int,array{account_id:int,account_code:string,account_name:string,normal_balance:string,is_active:bool}> $cashAccounts
+     * @param  array<int,array{account_id:int,account_code:string,account_name:string,normal_balance:string,is_active:bool}>  $cashAccounts
      * @return array<int,array{debit:float,credit:float}>
      */
     public function getPeriodCashMovementsByAccount(CashFlowFilter $filter, array $cashAccounts, string $startDate, string $endDate): array
@@ -258,9 +258,9 @@ class CashFlowService
     }
 
     /**
-     * @param array<int,array{account_id:int,account_code:string,account_name:string,normal_balance:string,is_active:bool}> $cashAccounts
-     * @param array<int,array{debit:float,credit:float}> $opening
-     * @param array<int,array{debit:float,credit:float}> $period
+     * @param  array<int,array{account_id:int,account_code:string,account_name:string,normal_balance:string,is_active:bool}>  $cashAccounts
+     * @param  array<int,array{debit:float,credit:float}>  $opening
+     * @param  array<int,array{debit:float,credit:float}>  $period
      * @return array<int,array>
      */
     public function buildAccountRows(CashFlowFilter $filter, array $cashAccounts, array $opening, array $period): array
@@ -352,4 +352,3 @@ class CashFlowService
         return $query;
     }
 }
-

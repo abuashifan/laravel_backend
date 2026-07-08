@@ -2,21 +2,19 @@
 
 namespace App\Modules\Reports\Controllers;
 
-use App\Data\Reports\BalanceSheetFilter;
 use App\Http\Controllers\Controller;
 use App\Modules\Reports\Requests\BalanceSheetRequest;
 use App\Modules\Reports\Services\BalanceSheetService;
-use App\Support\Api\ApiResponseBuilder;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Api\ApiResponseBuilder;
+use App\Shared\Reports\Data\BalanceSheetFilter;
 use Illuminate\Http\JsonResponse;
 
 class BalanceSheetController extends Controller
 {
     use ApiResponse;
 
-    public function __construct(private readonly BalanceSheetService $service)
-    {
-    }
+    public function __construct(private readonly BalanceSheetService $service) {}
 
     public function index(BalanceSheetRequest $request): JsonResponse
     {
@@ -32,4 +30,3 @@ class BalanceSheetController extends Controller
         return $this->successResponse($result, 'Balance sheet retrieved successfully');
     }
 }
-

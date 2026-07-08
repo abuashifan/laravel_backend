@@ -2,20 +2,24 @@
 
 namespace App\Modules\Purchase\Services;
 
-use App\Exceptions\ApiException;
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\Contact;
-use App\Models\Tenant\Product;
-use App\Models\Tenant\VendorBill;
-use App\Models\Tenant\VendorBillLine;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\MasterData\Models\Contact;
+use App\Modules\MasterData\Models\Product;
+use App\Modules\Purchase\Models\VendorBill;
+use App\Modules\Purchase\Models\VendorBillLine;
+use App\Shared\Exceptions\ApiException;
 
 class PurchaseAccountResolverService
 {
     public const PAYABLE_MAPPING_MESSAGE = 'Akun Hutang Usaha belum diatur. Buka Pengaturan > Pemetaan Akun > Purchase > Hutang Usaha.';
+
     public const PURCHASE_EXPENSE_MAPPING_MESSAGE = 'Akun Pembelian/Beban belum diatur. Buka Pengaturan > Pemetaan Akun > Purchase > Beban Pembelian atau atur Akun Pembelian di master data produk.';
+
     public const INVENTORY_MAPPING_MESSAGE = 'Akun Persediaan belum diatur. Buka Pengaturan > Pemetaan Akun > Inventory > Persediaan atau atur Akun Persediaan di master data produk.';
+
     public const INVENTORY_INTERIM_MAPPING_MESSAGE = 'Akun Inventory Interim/GRNI belum diatur. Buka Pengaturan > Pemetaan Akun > Purchase > Inventory Interim sebelum menerima barang persediaan.';
+
     public const FIXED_ASSET_CLEARING_MAPPING_MESSAGE = 'Akun Fixed Asset Clearing belum diatur. Buka Pengaturan > Pemetaan Akun > Fixed Assets > Clearing.';
 
     public function resolveBillPayableAccountId(VendorBill $bill): int

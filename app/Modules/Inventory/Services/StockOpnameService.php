@@ -2,18 +2,17 @@
 
 namespace App\Modules\Inventory\Services;
 
-use App\Enums\SourceType;
-use App\Exceptions\ApiException;
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\Product;
-use App\Models\Tenant\StockBalance;
-use App\Models\Tenant\StockMovement;
-use App\Models\Tenant\StockOpname;
-use App\Models\Tenant\StockOpnameLine;
+use App\Modules\Inventory\Models\StockBalance;
+use App\Modules\Inventory\Models\StockMovement;
+use App\Modules\Inventory\Models\StockOpname;
+use App\Modules\Inventory\Models\StockOpnameLine;
+use App\Modules\MasterData\Models\AccountMapping;
 use App\Shared\Audit\AuditLogService;
 use App\Shared\DocumentNumbering\DocumentNumberService;
+use App\Shared\DocumentNumbering\DocumentType;
+use App\Shared\Enums\SourceType;
+use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
-use App\Support\DocumentNumbering\DocumentType;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -27,8 +26,7 @@ class StockOpnameService
         private readonly InventoryQuantityService $qtyService,
         private readonly StockMovementValidationService $movementValidation,
         private readonly AuditLogService $auditLogService,
-    ) {
-    }
+    ) {}
 
     public function list(array $filters = []): Collection
     {
@@ -41,7 +39,9 @@ class StockOpnameService
             }
         }
 
-        if (! empty($filters['warehouse_id'])) $q->where('warehouse_id', (int) $filters['warehouse_id']);
+        if (! empty($filters['warehouse_id'])) {
+            $q->where('warehouse_id', (int) $filters['warehouse_id']);
+        }
 
         if (! empty($filters['date_from'])) {
             $q->whereDate('opname_date', '>=', (string) $filters['date_from']);
@@ -62,7 +62,9 @@ class StockOpnameService
     public function createSession(array $data): StockOpname
     {
         $company = $this->tenantContext->company();
-        if (! $company) throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
+        if (! $company) {
+            throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
+        }
 
         $this->movementValidation->validateWarehouseExists((int) $data['warehouse_id']);
 
@@ -112,8 +114,12 @@ class StockOpnameService
             $order = 0;
             foreach ($balances as $b) {
                 $p = $b->product;
-                if (! $p) continue;
-                if (! (bool) $p->is_stock_item) continue;
+                if (! $p) {
+                    continue;
+                }
+                if (! (bool) $p->is_stock_item) {
+                    continue;
+                }
 
                 $lines[] = [
                     'product_id' => (int) $b->product_id,
@@ -241,9 +247,13 @@ class StockOpnameService
 
     public function void(StockOpname $opname, ?string $reason = null): StockOpname
     {
-        if ($opname->status === 'void') return $opname;
+        if ($opname->status === 'void') {
+            return $opname;
+        }
         $reason = trim((string) $reason);
-        if ($reason === '') throw ApiException::make('VALIDATION_ERROR', 'Void reason is required.', 422, ['reason' => ['Void reason is required.']]);
+        if ($reason === '') {
+            throw ApiException::make('VALIDATION_ERROR', 'Void reason is required.', 422, ['reason' => ['Void reason is required.']]);
+        }
         $this->movementValidation->validatePeriodNotLocked((string) $opname->opname_date);
 
         return DB::connection('tenant')->transaction(function () use ($opname, $reason) {
@@ -251,7 +261,9 @@ class StockOpnameService
                 $ids = $this->movementIdsForOpname($opname);
                 foreach ($ids as $mid) {
                     $m = StockMovement::query()->find($mid);
-                    if ($m) $this->stockMovementService->void($m, $reason);
+                    if ($m) {
+                        $this->stockMovementService->void($m, $reason);
+                    }
                 }
             }
 
@@ -286,7 +298,9 @@ class StockOpnameService
 
         foreach ($opname->lines as $ln) {
             $diff = (float) $ln->difference_quantity;
-            if (abs($diff) < 1e-9) continue;
+            if (abs($diff) < 1e-9) {
+                continue;
+            }
 
             // For outgoing, StockBalanceService will compute cost using average cost before movement.
             if ($diff > 0) {
@@ -351,7 +365,10 @@ class StockOpnameService
     {
         $meta = (array) ($opname->metadata ?? []);
         $ids = $meta['stock_movement_ids'] ?? null;
-        if (is_array($ids) && $ids !== []) return array_values(array_map('intval', $ids));
+        if (is_array($ids) && $ids !== []) {
+            return array_values(array_map('intval', $ids));
+        }
+
         return $opname->stock_movement_id ? [(int) $opname->stock_movement_id] : [];
     }
 

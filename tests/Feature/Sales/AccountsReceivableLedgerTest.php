@@ -2,12 +2,12 @@
 
 namespace Tests\Feature\Sales;
 
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\CustomerDeposit;
-use App\Models\Tenant\CustomerDepositAllocation;
-use App\Models\Tenant\JournalEntryLine;
-use App\Models\Tenant\SalesInvoice;
+use App\Modules\Journal\Models\JournalEntryLine;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\Sales\Models\CustomerDeposit;
+use App\Modules\Sales\Models\CustomerDepositAllocation;
+use App\Modules\Sales\Models\SalesInvoice;
 
 class AccountsReceivableLedgerTest extends SalesTestCase
 {

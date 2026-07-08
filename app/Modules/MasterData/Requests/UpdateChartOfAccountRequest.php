@@ -37,4 +37,3 @@ class UpdateChartOfAccountRequest extends FormRequest
         });
     }
 }
-

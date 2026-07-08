@@ -2,9 +2,9 @@
 
 namespace Tests\Feature\MasterData;
 
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\StockBalance;
-use App\Models\Tenant\Warehouse;
+use App\Modules\Inventory\Models\StockBalance;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\MasterData\Models\Warehouse;
 
 class ProductTest extends MasterDataTestCase
 {

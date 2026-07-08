@@ -11,8 +11,11 @@ class PeriodEndRun extends Model
     use HasFactory;
 
     protected $connection = 'tenant';
+
     protected $table = 'period_end_runs';
+
     protected $guarded = [];
+
     protected $casts = [
         'checklist_snapshot' => 'array',
         'started_at' => 'datetime',

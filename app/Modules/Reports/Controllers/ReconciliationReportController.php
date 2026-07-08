@@ -12,9 +12,7 @@ class ReconciliationReportController extends Controller
 {
     use ApiResponse;
 
-    public function __construct(private readonly ReconciliationReportService $service)
-    {
-    }
+    public function __construct(private readonly ReconciliationReportService $service) {}
 
     public function ar(ReconciliationReportRequest $request): JsonResponse
     {

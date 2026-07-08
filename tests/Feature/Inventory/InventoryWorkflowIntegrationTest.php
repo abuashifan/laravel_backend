@@ -2,35 +2,37 @@
 
 namespace Tests\Feature\Inventory;
 
-use App\Models\CompanyUser;
-use App\Models\TenantDatabase;
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\Contact;
-use App\Models\Tenant\DeliveryOrder;
-use App\Models\Tenant\DeliveryOrderLine;
-use App\Models\Tenant\GoodsReceipt;
-use App\Models\Tenant\GoodsReceiptLine;
-use App\Models\Tenant\JournalEntry;
-use App\Models\Tenant\Product;
-use App\Models\Tenant\PurchaseOrder;
-use App\Models\Tenant\PurchaseOrderLine;
-use App\Models\Tenant\SalesInvoice;
-use App\Models\Tenant\SalesInvoiceLine;
-use App\Models\Tenant\StockBalance;
-use App\Models\Tenant\StockMovement;
-use App\Models\Tenant\Unit;
-use App\Models\Tenant\VendorBill;
-use App\Models\Tenant\VendorBillLine;
-use App\Models\Tenant\Warehouse;
-use App\Services\Purchase\GoodsReceiptService;
-use App\Services\Purchase\PurchaseReturnService;
-use App\Services\Purchase\VendorBillService;
-use App\Services\Sales\DeliveryOrderService;
-use App\Services\Sales\SalesInvoiceService;
-use App\Services\Sales\SalesReturnService;
-use App\Services\Tenant\TenantContext;
-use App\Support\AccountMapping\AccountMappingKey;
+use App\Modules\Inventory\Models\StockBalance;
+use App\Modules\Inventory\Models\StockMovement;
+use App\Modules\Inventory\Models\StockOpnameLine;
+use App\Modules\Inventory\Services\StockMovementService;
+use App\Modules\Journal\Models\JournalEntry;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\MasterData\Models\Contact;
+use App\Modules\MasterData\Models\Product;
+use App\Modules\MasterData\Models\Unit;
+use App\Modules\MasterData\Models\Warehouse;
+use App\Modules\Purchase\Models\GoodsReceipt;
+use App\Modules\Purchase\Models\GoodsReceiptLine;
+use App\Modules\Purchase\Models\PurchaseOrder;
+use App\Modules\Purchase\Models\PurchaseOrderLine;
+use App\Modules\Purchase\Models\VendorBill;
+use App\Modules\Purchase\Models\VendorBillLine;
+use App\Modules\Purchase\Services\GoodsReceiptService;
+use App\Modules\Purchase\Services\PurchaseReturnService;
+use App\Modules\Purchase\Services\VendorBillService;
+use App\Modules\Sales\Models\DeliveryOrder;
+use App\Modules\Sales\Models\DeliveryOrderLine;
+use App\Modules\Sales\Models\SalesInvoice;
+use App\Modules\Sales\Models\SalesInvoiceLine;
+use App\Modules\Sales\Services\DeliveryOrderService;
+use App\Modules\Sales\Services\SalesInvoiceService;
+use App\Modules\Sales\Services\SalesReturnService;
+use App\Shared\AccountMapping\AccountMappingKey;
+use App\Shared\Models\CompanyUser;
+use App\Shared\Models\TenantDatabase;
+use App\Shared\Tenant\TenantContext;
 use Illuminate\Support\Facades\Config;
 use Tests\Feature\Journal\JournalTestCase;
 
@@ -134,7 +136,7 @@ class InventoryWorkflowIntegrationTest extends JournalTestCase
         $customer = Contact::query()->create(['contact_code' => 'C1', 'name' => 'Customer', 'contact_type' => 'person', 'is_customer' => true, 'is_supplier' => false, 'is_employee' => false, 'is_active' => true]);
         $p = Product::query()->create(['product_code' => 'SKU1', 'product_name' => 'Item', 'product_type' => 'goods', 'unit_id' => $unit->id, 'is_stock_item' => true, 'is_active' => true]);
 
-        app(\App\Services\Inventory\StockMovementService::class)->createAndPost([
+        app(StockMovementService::class)->createAndPost([
             'movement_date' => '2026-01-01',
             'movement_type' => 'opening_stock',
             'lines' => [
@@ -518,7 +520,7 @@ class InventoryWorkflowIntegrationTest extends JournalTestCase
         $opId = (int) $op->json('data.id');
         $this->postJson('/api/inventory/stock-opnames/'.$opId.'/generate-lines', [], $ctx['headers'])->assertStatus(200);
 
-        $line = \App\Models\Tenant\StockOpnameLine::query()->where('stock_opname_id', $opId)->firstOrFail();
+        $line = StockOpnameLine::query()->where('stock_opname_id', $opId)->firstOrFail();
         $this->patchJson('/api/inventory/stock-opnames/'.$opId.'/lines/'.$line->id, [
             'physical_quantity' => 8,
             'reason' => 'Shrinkage',

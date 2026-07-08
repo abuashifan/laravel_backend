@@ -2,11 +2,11 @@
 
 namespace Tests\Feature\Accounting;
 
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\JournalEntry;
-use App\Services\Accounting\FiscalYearService;
-use App\Support\AccountMapping\AccountMappingKey;
+use App\Modules\Accounting\Services\FiscalYearService;
+use App\Modules\Journal\Models\JournalEntry;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Shared\AccountMapping\AccountMappingKey;
 use Tests\Feature\Journal\JournalTestCase;
 
 class ClosingWizardTest extends JournalTestCase
@@ -68,4 +68,3 @@ class ClosingWizardTest extends JournalTestCase
         $close2->assertJsonPath('data.valid', true);
     }
 }
-

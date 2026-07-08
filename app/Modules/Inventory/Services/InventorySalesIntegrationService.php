@@ -2,20 +2,18 @@
 
 namespace App\Modules\Inventory\Services;
 
-use App\Exceptions\ApiException;
-use App\Models\Tenant\DeliveryOrder;
-use App\Models\Tenant\Product;
-use App\Models\Tenant\SalesInvoice;
-use App\Models\Tenant\SalesReturn;
-use App\Models\Tenant\StockMovement;
+use App\Modules\Inventory\Models\StockMovement;
+use App\Modules\MasterData\Models\Product;
+use App\Modules\Sales\Models\DeliveryOrder;
+use App\Modules\Sales\Models\SalesInvoice;
+use App\Modules\Sales\Models\SalesReturn;
 
 class InventorySalesIntegrationService
 {
     public function __construct(
         private readonly StockMovementService $stockMovementService,
         private readonly StockBalanceService $stockBalanceService,
-    ) {
-    }
+    ) {}
 
     public function createSalesOutFromDeliveryOrder(DeliveryOrder $deliveryOrder): ?StockMovement
     {
@@ -25,13 +23,19 @@ class InventorySalesIntegrationService
             ->where('source_id', (int) $deliveryOrder->id)
             ->whereIn('status', ['draft', 'posted'])
             ->first();
-        if ($existing) return $existing;
+        if ($existing) {
+            return $existing;
+        }
 
         $lines = [];
         foreach ($deliveryOrder->lines as $ln) {
-            if (! $ln->product_id || ! $ln->warehouse_id) continue;
+            if (! $ln->product_id || ! $ln->warehouse_id) {
+                continue;
+            }
             $product = Product::query()->findOrFail((int) $ln->product_id);
-            if (! (bool) $product->is_stock_item) continue;
+            if (! (bool) $product->is_stock_item) {
+                continue;
+            }
             $lines[] = [
                 'product_id' => (int) $ln->product_id,
                 'warehouse_id' => (int) $ln->warehouse_id,
@@ -46,7 +50,9 @@ class InventorySalesIntegrationService
             ];
         }
 
-        if ($lines === []) return null;
+        if ($lines === []) {
+            return null;
+        }
 
         return $this->stockMovementService->createAndPost([
             'movement_date' => (string) $deliveryOrder->delivery_date,
@@ -62,7 +68,9 @@ class InventorySalesIntegrationService
 
     public function createSalesOutFromSalesInvoice(SalesInvoice $invoice): ?StockMovement
     {
-        if (! $this->shouldCreateStockFromSalesInvoice($invoice)) return null;
+        if (! $this->shouldCreateStockFromSalesInvoice($invoice)) {
+            return null;
+        }
 
         $invoice->loadMissing('lines');
         $existing = StockMovement::query()
@@ -70,13 +78,19 @@ class InventorySalesIntegrationService
             ->where('source_id', (int) $invoice->id)
             ->whereIn('status', ['draft', 'posted'])
             ->first();
-        if ($existing) return $existing;
+        if ($existing) {
+            return $existing;
+        }
 
         $lines = [];
         foreach ($invoice->lines as $ln) {
-            if (! $ln->product_id || ! $ln->warehouse_id) continue;
+            if (! $ln->product_id || ! $ln->warehouse_id) {
+                continue;
+            }
             $product = Product::query()->findOrFail((int) $ln->product_id);
-            if (! (bool) $product->is_stock_item) continue;
+            if (! (bool) $product->is_stock_item) {
+                continue;
+            }
             $lines[] = [
                 'product_id' => (int) $ln->product_id,
                 'warehouse_id' => (int) $ln->warehouse_id,
@@ -91,7 +105,9 @@ class InventorySalesIntegrationService
             ];
         }
 
-        if ($lines === []) return null;
+        if ($lines === []) {
+            return null;
+        }
 
         return $this->stockMovementService->createAndPost([
             'movement_date' => (string) $invoice->invoice_date,
@@ -113,13 +129,19 @@ class InventorySalesIntegrationService
             ->where('source_id', (int) $return->id)
             ->whereIn('status', ['draft', 'posted'])
             ->first();
-        if ($existing) return $existing;
+        if ($existing) {
+            return $existing;
+        }
 
         $lines = [];
         foreach ($return->lines as $ln) {
-            if (! $ln->product_id || ! $ln->warehouse_id) continue;
+            if (! $ln->product_id || ! $ln->warehouse_id) {
+                continue;
+            }
             $product = Product::query()->findOrFail((int) $ln->product_id);
-            if (! (bool) $product->is_stock_item) continue;
+            if (! (bool) $product->is_stock_item) {
+                continue;
+            }
 
             $balance = $this->stockBalanceService->getOrCreateBalance((int) $ln->product_id, (int) $ln->warehouse_id);
             $unitCost = (float) $balance->average_cost;
@@ -138,7 +160,9 @@ class InventorySalesIntegrationService
             ];
         }
 
-        if ($lines === []) return null;
+        if ($lines === []) {
+            return null;
+        }
 
         return $this->stockMovementService->createAndPost([
             'movement_date' => (string) $return->return_date,
@@ -154,7 +178,10 @@ class InventorySalesIntegrationService
 
     public function shouldCreateStockFromSalesInvoice(SalesInvoice $invoice): bool
     {
-        if (! empty($invoice->delivery_order_id)) return false;
+        if (! empty($invoice->delivery_order_id)) {
+            return false;
+        }
+
         return true;
     }
 }

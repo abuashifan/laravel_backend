@@ -2,9 +2,9 @@
 
 namespace App\Modules\Reports\Services;
 
-use App\Data\Reports\LedgerFilter;
-use App\Data\Reports\ProfitLossFilter;
-use App\Models\Tenant\ChartOfAccount;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Shared\Reports\Data\LedgerFilter;
+use App\Shared\Reports\Data\ProfitLossFilter;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
@@ -15,8 +15,7 @@ class ProfitLossService
         private readonly LedgerBalanceCalculator $balanceCalculator,
         private readonly LedgerFilterValidator $filterValidator,
         private readonly ?ReportVisibilityService $visibilityService = null,
-    ) {
-    }
+    ) {}
 
     public function getProfitLoss(ProfitLossFilter $filter): array
     {
@@ -125,7 +124,7 @@ class ProfitLossService
     }
 
     /**
-     * @param array<int,array{account:array,debit:float,credit:float,amount:float}> $period
+     * @param  array<int,array{account:array,debit:float,credit:float,amount:float}>  $period
      * @return array<string,array>
      */
     public function buildSections(ProfitLossFilter $filter, array $period): array
@@ -285,4 +284,3 @@ class ProfitLossService
         return $query;
     }
 }
-

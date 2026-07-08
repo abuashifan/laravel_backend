@@ -2,9 +2,9 @@
 
 namespace Tests\Feature\Purchase;
 
-use App\Models\Tenant\GoodsReceiptLine;
-use App\Models\Tenant\PurchaseOrderLine;
-use App\Models\Tenant\StockMovement;
+use App\Modules\Inventory\Models\StockMovement;
+use App\Modules\Purchase\Models\GoodsReceiptLine;
+use App\Modules\Purchase\Models\PurchaseOrderLine;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;

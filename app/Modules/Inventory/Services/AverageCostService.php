@@ -2,8 +2,8 @@
 
 namespace App\Modules\Inventory\Services;
 
-use App\Models\Tenant\StockBalance;
-use App\Models\Tenant\StockMovementLine;
+use App\Modules\Inventory\Models\StockBalance;
+use App\Modules\Inventory\Models\StockMovementLine;
 
 class AverageCostService
 {
@@ -28,6 +28,7 @@ class AverageCostService
     public function calculateOutgoingCost(float $currentAverageCost, float $outgoingQty): array
     {
         $cost = round($outgoingQty * $currentAverageCost, (int) config('inventory.amount_precision', 2));
+
         return ['outgoing_value' => $cost];
     }
 
@@ -100,11 +101,12 @@ class AverageCostService
             $orig = StockMovementLine::query()->where('source_line_id', $sourceLineId)->orderByDesc('id')->first();
             if ($orig) {
                 $cost = (float) ($orig->average_cost_before ?? 0);
-                if ($cost > 0) return $cost;
+                if ($cost > 0) {
+                    return $cost;
+                }
             }
         }
 
         return (float) ($line->unit_cost ?? 0);
     }
 }
-

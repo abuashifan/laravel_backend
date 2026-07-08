@@ -1,10 +1,10 @@
 <?php
 
+use App\Modules\Accounting\Controllers\AccountMappingHealthController;
 use App\Modules\Accounting\Controllers\FiscalYearClosingController;
 use App\Modules\Accounting\Controllers\FiscalYearStatusController;
-use App\Modules\Accounting\Controllers\AccountMappingHealthController;
-use App\Modules\Accounting\Controllers\PeriodLockController;
 use App\Modules\Accounting\Controllers\PeriodEndController;
+use App\Modules\Accounting\Controllers\PeriodLockController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth:sanctum', 'company.access', 'permission:dashboard.view'])->group(function () {

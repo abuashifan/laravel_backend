@@ -2,20 +2,19 @@
 
 namespace App\Modules\Dashboard\Services;
 
-use App\Data\Reports\CashFlowFilter;
-use App\Data\Reports\FinancialSummaryFilter;
-use App\Models\ActivityLog;
-use App\Models\FiscalYear;
-use App\Models\Tenant\SalesInvoice;
-use App\Models\Tenant\SalesReceipt;
-use App\Models\Tenant\StockBalance;
-use App\Models\Tenant\VendorBill;
-use App\Models\Tenant\VendorPayment;
+use App\Modules\Inventory\Models\StockBalance;
+use App\Modules\Purchase\Models\VendorBill;
+use App\Modules\Purchase\Models\VendorPayment;
 use App\Modules\Reports\Services\CashFlowService;
 use App\Modules\Reports\Services\FinancialSummaryService;
+use App\Modules\Sales\Models\SalesInvoice;
+use App\Modules\Sales\Models\SalesReceipt;
+use App\Shared\Models\ActivityLog;
+use App\Shared\Models\FiscalYear;
+use App\Shared\Reports\Data\CashFlowFilter;
+use App\Shared\Reports\Data\FinancialSummaryFilter;
 use App\Shared\Tenant\TenantContext;
 use Carbon\Carbon;
-use Illuminate\Support\Collection;
 
 class DashboardService
 {
@@ -23,8 +22,7 @@ class DashboardService
         private readonly TenantContext $tenantContext,
         private readonly FinancialSummaryService $financialSummaryService,
         private readonly CashFlowService $cashFlowService,
-    ) {
-    }
+    ) {}
 
     public function summary(): array
     {

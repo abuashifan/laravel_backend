@@ -2,13 +2,13 @@
 
 namespace Tests\Feature\Accounting;
 
-use App\Models\FiscalYear;
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\JournalEntry;
-use App\Models\Tenant\TenantAuditLog;
-use App\Services\Accounting\FiscalYearService;
-use App\Support\AccountMapping\AccountMappingKey;
+use App\Modules\Accounting\Services\FiscalYearService;
+use App\Modules\Journal\Models\JournalEntry;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Shared\AccountMapping\AccountMappingKey;
+use App\Shared\Models\FiscalYear;
+use App\Shared\Models\TenantAuditLog;
 use Tests\Feature\Journal\JournalTestCase;
 
 class FiscalYearClosingTest extends JournalTestCase

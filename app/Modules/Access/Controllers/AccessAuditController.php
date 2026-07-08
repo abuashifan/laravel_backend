@@ -3,10 +3,10 @@
 namespace App\Modules\Access\Controllers;
 
 use App\Http\Controllers\Controller;
-use App\Models\ActivityLog;
-use App\Models\Role;
-use App\Services\Tenant\TenantContext;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Models\ActivityLog;
+use App\Shared\Models\Role;
+use App\Shared\Tenant\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 

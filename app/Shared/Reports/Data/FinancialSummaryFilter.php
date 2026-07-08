@@ -10,8 +10,7 @@ class FinancialSummaryFilter
         public string $asOfDate,
         public ?int $departmentId = null,
         public ?int $projectId = null,
-    ) {
-    }
+    ) {}
 
     public static function fromArray(array $data): self
     {
@@ -38,4 +37,3 @@ class FinancialSummaryFilter
         ];
     }
 }
-

@@ -2,17 +2,16 @@
 
 namespace App\Modules\Inventory\Services;
 
-use App\Exceptions\ApiException;
+use App\Shared\Exceptions\ApiException;
 
 class InventoryQuantityService
 {
-    public function __construct(private readonly InventoryConfigService $config)
-    {
-    }
+    public function __construct(private readonly InventoryConfigService $config) {}
 
     public function normalizeQuantity(float|int|string $qty): float
     {
         $precision = $this->config->stockPrecision();
+
         return round((float) $qty, $precision);
     }
 
@@ -36,6 +35,7 @@ class InventoryQuantityService
     {
         $ordered = $this->normalizeQuantity($orderedQty);
         $moved = $this->normalizeQuantity($movedQty);
+
         return $this->normalizeQuantity($ordered - $moved);
     }
 
@@ -52,4 +52,3 @@ class InventoryQuantityService
         }
     }
 }
-

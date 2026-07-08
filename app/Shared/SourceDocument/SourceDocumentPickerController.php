@@ -3,9 +3,8 @@
 namespace App\Shared\SourceDocument;
 
 use App\Http\Controllers\Controller;
-use App\Shared\SourceDocument\SourceDocumentPickerService;
-use App\Shared\Api\ApiResponseBuilder;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Api\ApiResponseBuilder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 

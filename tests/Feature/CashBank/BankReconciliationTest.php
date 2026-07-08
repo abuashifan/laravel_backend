@@ -2,7 +2,7 @@
 
 namespace Tests\Feature\CashBank;
 
-use App\Models\Tenant\JournalEntry;
+use App\Modules\Journal\Models\JournalEntry;
 use Tests\Feature\Journal\JournalTestCase;
 
 class BankReconciliationTest extends JournalTestCase
@@ -39,4 +39,3 @@ class BankReconciliationTest extends JournalTestCase
         $this->assertCount(1, (array) $res->json('data.lines'));
     }
 }
-

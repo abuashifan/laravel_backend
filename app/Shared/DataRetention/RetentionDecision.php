@@ -11,8 +11,7 @@ class RetentionDecision
         public readonly string $message,
         public readonly array $reasons = [],
         public readonly array $meta = [],
-    ) {
-    }
+    ) {}
 
     public static function keep(string $message = 'Keep data.', array $meta = []): self
     {
@@ -61,4 +60,3 @@ class RetentionDecision
         return ! $this->allowed;
     }
 }
-

@@ -11,8 +11,11 @@ class StockMovementLine extends Model
     use HasFactory;
 
     protected $connection = 'tenant';
+
     protected $table = 'stock_movement_lines';
+
     protected $guarded = [];
+
     protected $casts = [
         'metadata' => 'array',
         'inventory_account_id' => 'integer',
@@ -27,11 +30,38 @@ class StockMovementLine extends Model
         'total_cost' => 'decimal:2',
     ];
 
-    public function stockMovement(): BelongsTo { return $this->belongsTo(StockMovement::class, 'stock_movement_id'); }
-    public function product(): BelongsTo { return $this->belongsTo(Product::class, 'product_id'); }
-    public function inventoryAccount(): BelongsTo { return $this->belongsTo(ChartOfAccount::class, 'inventory_account_id'); }
-    public function warehouse(): BelongsTo { return $this->belongsTo(Warehouse::class, 'warehouse_id'); }
-    public function unit(): BelongsTo { return $this->belongsTo(Unit::class, 'unit_id'); }
-    public function department(): BelongsTo { return $this->belongsTo(Department::class, 'department_id'); }
-    public function project(): BelongsTo { return $this->belongsTo(Project::class, 'project_id'); }
+    public function stockMovement(): BelongsTo
+    {
+        return $this->belongsTo(StockMovement::class, 'stock_movement_id');
+    }
+
+    public function product(): BelongsTo
+    {
+        return $this->belongsTo(Product::class, 'product_id');
+    }
+
+    public function inventoryAccount(): BelongsTo
+    {
+        return $this->belongsTo(ChartOfAccount::class, 'inventory_account_id');
+    }
+
+    public function warehouse(): BelongsTo
+    {
+        return $this->belongsTo(Warehouse::class, 'warehouse_id');
+    }
+
+    public function unit(): BelongsTo
+    {
+        return $this->belongsTo(Unit::class, 'unit_id');
+    }
+
+    public function department(): BelongsTo
+    {
+        return $this->belongsTo(Department::class, 'department_id');
+    }
+
+    public function project(): BelongsTo
+    {
+        return $this->belongsTo(Project::class, 'project_id');
+    }
 }

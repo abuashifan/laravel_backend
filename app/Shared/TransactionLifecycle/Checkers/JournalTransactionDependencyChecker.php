@@ -18,4 +18,3 @@ class JournalTransactionDependencyChecker extends BaseTransactionDependencyCheck
         return [];
     }
 }
-

@@ -2,11 +2,10 @@
 
 namespace Tests\Feature\Sales;
 
-use App\Models\Tenant\SalesOrder;
-use App\Models\Tenant\SalesOrderLine;
-use App\Models\Tenant\StockMovement;
+use App\Modules\Inventory\Models\StockMovement;
+use App\Modules\Sales\Models\SalesOrder;
+use App\Modules\Sales\Models\SalesOrderLine;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 
 class DeliveryOrderTest extends SalesTestCase
 {

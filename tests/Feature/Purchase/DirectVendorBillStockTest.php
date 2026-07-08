@@ -4,16 +4,16 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Purchase;
 
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\Contact;
-use App\Models\Tenant\JournalEntry;
-use App\Models\Tenant\Product;
-use App\Models\Tenant\StockBalance;
-use App\Models\Tenant\StockMovement;
-use App\Models\Tenant\Unit;
-use App\Models\Tenant\Warehouse;
-use App\Support\AccountMapping\AccountMappingKey;
+use App\Modules\Inventory\Models\StockBalance;
+use App\Modules\Inventory\Models\StockMovement;
+use App\Modules\Journal\Models\JournalEntry;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\MasterData\Models\Contact;
+use App\Modules\MasterData\Models\Product;
+use App\Modules\MasterData\Models\Unit;
+use App\Modules\MasterData\Models\Warehouse;
+use App\Shared\AccountMapping\AccountMappingKey;
 use Tests\TenantTestCase;
 
 class DirectVendorBillStockTest extends TenantTestCase
@@ -225,7 +225,7 @@ class DirectVendorBillStockTest extends TenantTestCase
     }
 
     /**
-     * @param array<int, array<string, mixed>> $lines
+     * @param  array<int, array<string, mixed>>  $lines
      * @return array<string, mixed>
      */
     private function createVendorBill(Contact $vendor, array $lines, bool $taxable): array

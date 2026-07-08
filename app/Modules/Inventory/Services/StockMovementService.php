@@ -2,14 +2,14 @@
 
 namespace App\Modules\Inventory\Services;
 
-use App\Exceptions\ApiException;
-use App\Models\Tenant\JournalEntry;
-use App\Models\Tenant\Product;
-use App\Models\Tenant\StockMovement;
+use App\Modules\Inventory\Models\StockMovement;
+use App\Modules\Journal\Models\JournalEntry;
+use App\Modules\MasterData\Models\Product;
 use App\Shared\Audit\AuditLogService;
 use App\Shared\DocumentNumbering\DocumentNumberService;
+use App\Shared\DocumentNumbering\DocumentType;
+use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
-use App\Support\DocumentNumbering\DocumentType;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -25,8 +25,7 @@ class StockMovementService
         private readonly StockMovementJournalService $journalService,
         private readonly StockBalanceService $stockBalanceService,
         private readonly AuditLogService $auditLogService,
-    ) {
-    }
+    ) {}
 
     public function list(array $filters = []): Collection
     {
@@ -78,7 +77,9 @@ class StockMovementService
     public function createDraft(array $data): StockMovement
     {
         $company = $this->tenantContext->company();
-        if (! $company) throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
+        if (! $company) {
+            throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
+        }
 
         $this->validation->validateMovementType((string) $data['movement_type']);
         $this->validation->validateLines((array) $data['lines']);
@@ -224,6 +225,7 @@ class StockMovementService
                 'record_number' => $movement->movement_number,
                 'metadata' => ['reason' => $reason],
             ], tenant: true);
+
             return $movement->refresh();
         }
 
@@ -265,13 +267,16 @@ class StockMovementService
     public function createAndPost(array $data): StockMovement
     {
         $draft = $this->createDraft($data);
+
         return $this->post($draft);
     }
 
     public function createReversal(StockMovement $movement, ?string $reason = null): StockMovement
     {
         $company = $this->tenantContext->company();
-        if (! $company) throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
+        if (! $company) {
+            throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
+        }
 
         $movement->loadMissing('lines');
         $movementType = $this->reversalMovementTypeFor((string) $movement->movement_type);

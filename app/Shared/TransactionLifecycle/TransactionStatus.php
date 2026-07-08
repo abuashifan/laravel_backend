@@ -5,8 +5,11 @@ namespace App\Shared\TransactionLifecycle;
 class TransactionStatus
 {
     public const DRAFT = 'draft';
+
     public const APPROVED = 'approved';
+
     public const POSTED = 'posted';
+
     public const VOID = 'void';
 
     // Effect/system-only status (not a main transaction status)
@@ -32,4 +35,3 @@ class TransactionStatus
         ]);
     }
 }
-

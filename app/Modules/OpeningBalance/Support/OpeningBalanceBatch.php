@@ -2,12 +2,10 @@
 
 namespace App\Modules\OpeningBalance\Support;
 
-use Carbon\Carbon;
-
 class OpeningBalanceBatch
 {
     /**
-     * @param array<int, OpeningBalanceLine> $lines
+     * @param  array<int, OpeningBalanceLine>  $lines
      */
     public function __construct(
         public ?string $documentNumber,
@@ -17,12 +15,12 @@ class OpeningBalanceBatch
         private array $lines = [],
         public ?string $description = null,
         public array $metadata = [],
-    ) {
-    }
+    ) {}
 
     public function addLine(OpeningBalanceLine $line): self
     {
         $this->lines[] = $line;
+
         return $this;
     }
 
@@ -67,4 +65,3 @@ class OpeningBalanceBatch
         ];
     }
 }
-

@@ -2,21 +2,19 @@
 
 namespace App\Modules\Reports\Controllers;
 
-use App\Data\Reports\LedgerFilter;
 use App\Http\Controllers\Controller;
 use App\Modules\Reports\Requests\GeneralLedgerRequest;
 use App\Modules\Reports\Services\GeneralLedgerQueryService;
-use App\Support\Api\ApiResponseBuilder;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Api\ApiResponseBuilder;
+use App\Shared\Reports\Data\LedgerFilter;
 use Illuminate\Http\JsonResponse;
 
 class GeneralLedgerController extends Controller
 {
     use ApiResponse;
 
-    public function __construct(private readonly GeneralLedgerQueryService $service)
-    {
-    }
+    public function __construct(private readonly GeneralLedgerQueryService $service) {}
 
     public function index(GeneralLedgerRequest $request): JsonResponse
     {

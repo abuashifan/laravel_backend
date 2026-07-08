@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Tests;
 
-use App\Models\Company;
-use App\Models\User;
+use App\Shared\Models\Company;
+use App\Shared\Models\User;
 use Tests\Feature\Journal\JournalTestCase;
 
 abstract class TenantTestCase extends JournalTestCase

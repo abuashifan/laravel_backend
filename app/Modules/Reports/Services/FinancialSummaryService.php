@@ -2,10 +2,10 @@
 
 namespace App\Modules\Reports\Services;
 
-use App\Data\Reports\BalanceSheetFilter;
-use App\Data\Reports\CashFlowFilter;
-use App\Data\Reports\FinancialSummaryFilter;
-use App\Data\Reports\ProfitLossFilter;
+use App\Shared\Reports\Data\BalanceSheetFilter;
+use App\Shared\Reports\Data\CashFlowFilter;
+use App\Shared\Reports\Data\FinancialSummaryFilter;
+use App\Shared\Reports\Data\ProfitLossFilter;
 
 class FinancialSummaryService
 {
@@ -13,8 +13,7 @@ class FinancialSummaryService
         private readonly ProfitLossService $profitLossService,
         private readonly BalanceSheetService $balanceSheetService,
         private readonly CashFlowService $cashFlowService,
-    ) {
-    }
+    ) {}
 
     public function getSummary(FinancialSummaryFilter $filter): array
     {
@@ -79,4 +78,3 @@ class FinancialSummaryService
         ];
     }
 }
-

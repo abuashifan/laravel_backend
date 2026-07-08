@@ -3,11 +3,11 @@
 namespace App\Modules\FixedAssets\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\FixedAssets\Models\FixedAsset;
 use App\Modules\FixedAssets\Requests\CapitalizeFixedAssetRequest;
 use App\Modules\FixedAssets\Requests\DisposeFixedAssetRequest;
 use App\Modules\FixedAssets\Requests\StoreFixedAssetRequest;
 use App\Modules\FixedAssets\Requests\UpdateFixedAssetRequest;
-use App\Models\Tenant\FixedAsset;
 use App\Modules\FixedAssets\Services\FixedAssetService;
 use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -17,9 +17,7 @@ class FixedAssetController extends Controller
 {
     use ApiResponse;
 
-    public function __construct(private readonly FixedAssetService $service)
-    {
-    }
+    public function __construct(private readonly FixedAssetService $service) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -39,18 +37,21 @@ class FixedAssetController extends Controller
     public function update(UpdateFixedAssetRequest $request, int $id): JsonResponse
     {
         $asset = FixedAsset::query()->findOrFail($id);
+
         return $this->successResponse($this->service->update($asset, $request->validated()), 'Fixed asset updated successfully');
     }
 
     public function capitalize(CapitalizeFixedAssetRequest $request, int $id): JsonResponse
     {
         $asset = FixedAsset::query()->with('category')->findOrFail($id);
+
         return $this->successResponse($this->service->capitalize($asset, $request->validated()), 'Fixed asset capitalized successfully');
     }
 
     public function dispose(DisposeFixedAssetRequest $request, int $id): JsonResponse
     {
         $asset = FixedAsset::query()->with('category')->findOrFail($id);
+
         return $this->successResponse($this->service->dispose($asset, $request->validated()), 'Fixed asset disposed successfully');
     }
 }

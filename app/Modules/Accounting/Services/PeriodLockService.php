@@ -2,19 +2,18 @@
 
 namespace App\Modules\Accounting\Services;
 
-use App\Models\Company;
-use App\Models\FiscalYear;
+use App\Shared\Models\Company;
+use App\Shared\Models\FiscalYear;
 use Carbon\Carbon;
 
 class PeriodLockService
 {
-    public function __construct(private readonly FiscalYearService $fiscalYearService)
-    {
-    }
+    public function __construct(private readonly FiscalYearService $fiscalYearService) {}
 
     public function isFiscalYearClosed(Company $company, string $date): bool
     {
         $fy = $this->fiscalYearService->fiscalYearForDate($company, $date);
+
         return $fy instanceof FiscalYear && ($fy->status === 'closed' || (bool) ($fy->is_closed ?? false));
     }
 

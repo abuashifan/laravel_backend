@@ -59,7 +59,7 @@ class AccountingPeriod extends Model
     public function containsDate(string|\DateTimeInterface $date): bool
     {
         $d = Carbon::parse($date)->startOfDay();
+
         return $d->betweenIncluded(Carbon::parse($this->start_date), Carbon::parse($this->end_date));
     }
 }
-

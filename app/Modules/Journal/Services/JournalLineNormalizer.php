@@ -5,7 +5,7 @@ namespace App\Modules\Journal\Services;
 class JournalLineNormalizer
 {
     /**
-     * @param array<int,array<string,mixed>> $lines
+     * @param  array<int,array<string,mixed>>  $lines
      * @return array<int,array<string,mixed>>
      */
     public function normalize(array $lines): array
@@ -25,7 +25,7 @@ class JournalLineNormalizer
     }
 
     /**
-     * @param array<string,mixed> $line
+     * @param  array<string,mixed>  $line
      * @return array<string,mixed>
      */
     public function normalizeLine(array $line, int $index): array

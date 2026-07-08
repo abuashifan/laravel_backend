@@ -2,16 +2,14 @@
 
 namespace App\Modules\MasterData\Services;
 
-use App\Exceptions\ApiException;
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\ChartOfAccount;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
 use App\Shared\AccountMapping\AccountMappingService;
+use App\Shared\Exceptions\ApiException;
 
 class AccountMappingStorageService
 {
-    public function __construct(private readonly AccountMappingService $definitionService)
-    {
-    }
+    public function __construct(private readonly AccountMappingService $definitionService) {}
 
     public function syncDefaultMappingsFromConfig(): void
     {
@@ -134,6 +132,7 @@ class AccountMappingStorageService
     public function requiredMappingsComplete(?string $module = null): bool
     {
         $missing = $this->missingRequiredMappings($module);
+
         return $missing === [];
     }
 

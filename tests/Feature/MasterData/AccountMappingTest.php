@@ -2,8 +2,8 @@
 
 namespace Tests\Feature\MasterData;
 
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\ChartOfAccount;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
 
 class AccountMappingTest extends MasterDataTestCase
 {

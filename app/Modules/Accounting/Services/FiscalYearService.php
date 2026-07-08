@@ -2,8 +2,8 @@
 
 namespace App\Modules\Accounting\Services;
 
-use App\Models\Company;
-use App\Models\FiscalYear;
+use App\Shared\Models\Company;
+use App\Shared\Models\FiscalYear;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -118,6 +118,7 @@ class FiscalYearService
     public function isDateInsideActiveFiscalYear(Company $company, string $date): bool
     {
         $active = $this->getOrCreateActiveFiscalYear($company);
+
         return $active->containsDate($date);
     }
 

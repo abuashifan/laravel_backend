@@ -2,7 +2,7 @@
 
 namespace App\Console\Commands;
 
-use App\Services\Tenant\TenantProvisioningService;
+use App\Shared\Tenant\TenantProvisioningService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Validator;
 
@@ -44,6 +44,7 @@ class CreateTenantCommand extends Command
 
         if ($validator->fails()) {
             $this->error($validator->errors()->first());
+
             return self::FAILURE;
         }
 
@@ -51,6 +52,7 @@ class CreateTenantCommand extends Command
             $result = $provisioningService->provision($name, $slug, $ownerEmail);
         } catch (\Throwable $e) {
             $this->error($e->getMessage());
+
             return self::FAILURE;
         }
 
@@ -71,4 +73,3 @@ class CreateTenantCommand extends Command
         return self::SUCCESS;
     }
 }
-

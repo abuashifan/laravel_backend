@@ -2,8 +2,8 @@
 
 namespace App\Modules\Inventory\Services;
 
-use App\Models\Tenant\StockBalance;
-use App\Models\Tenant\StockMovementLine;
+use App\Modules\Inventory\Models\StockBalance;
+use App\Modules\Inventory\Models\StockMovementLine;
 use Illuminate\Support\Facades\DB;
 
 class StockBalanceRebuildService

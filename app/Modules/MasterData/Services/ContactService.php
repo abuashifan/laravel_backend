@@ -2,8 +2,8 @@
 
 namespace App\Modules\MasterData\Services;
 
-use App\Exceptions\ApiException;
-use App\Models\Tenant\Contact;
+use App\Modules\MasterData\Models\Contact;
+use App\Shared\Exceptions\ApiException;
 
 class ContactService
 {

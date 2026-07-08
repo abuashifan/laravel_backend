@@ -21,4 +21,3 @@ class SalesTransactionDependencyChecker extends BaseTransactionDependencyChecker
         return [];
     }
 }
-

@@ -2,13 +2,13 @@
 
 namespace App\Modules\Purchase\Services;
 
-use App\Exceptions\ApiException;
-use App\Models\Tenant\PurchaseRequest;
+use App\Modules\Purchase\Models\PurchaseRequest;
+use App\Modules\Purchase\Services\Concerns\HandlesPurchaseDocuments;
 use App\Shared\Audit\AuditLogService;
 use App\Shared\DocumentNumbering\DocumentNumberService;
-use App\Modules\Purchase\Services\Concerns\HandlesPurchaseDocuments;
+use App\Shared\DocumentNumbering\DocumentType;
+use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
-use App\Support\DocumentNumbering\DocumentType;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -20,8 +20,7 @@ class PurchaseRequestService
         private readonly TenantContext $tenantContext,
         private readonly DocumentNumberService $documentNumberService,
         private readonly ?AuditLogService $auditLogService = null,
-    ) {
-    }
+    ) {}
 
     public function list(array $filters = []): Collection
     {
@@ -128,12 +127,14 @@ class PurchaseRequestService
     public function reject(PurchaseRequest $request, ?string $reason = null): PurchaseRequest
     {
         $request->reject_reason = $reason;
+
         return $this->transition($request, 'rejected', 'rejected_by', 'rejected_at', ['submitted']);
     }
 
     public function cancel(PurchaseRequest $request, ?string $reason = null): PurchaseRequest
     {
         $request->cancel_reason = $reason;
+
         return $this->transition($request, 'cancelled', 'cancelled_by', 'cancelled_at', ['draft', 'submitted', 'approved']);
     }
 

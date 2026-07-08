@@ -11,8 +11,7 @@ class ReportMeta
         public array $dimensions = [],
         public ?array $fiscalYear = null,
         public array $notes = [],
-    ) {
-    }
+    ) {}
 
     public static function make(
         string $reportName,
@@ -43,4 +42,3 @@ class ReportMeta
         ];
     }
 }
-

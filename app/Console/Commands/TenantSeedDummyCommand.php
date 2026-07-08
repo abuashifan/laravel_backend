@@ -2,9 +2,9 @@
 
 namespace App\Console\Commands;
 
-use App\Models\Company;
-use App\Models\TenantDatabase;
-use App\Services\Tenant\TenantConnectionManager;
+use App\Shared\Models\Company;
+use App\Shared\Models\TenantDatabase;
+use App\Shared\Tenant\TenantConnectionManager;
 use Database\Seeders\tenant\TenantDummyDataSeeder;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
@@ -25,12 +25,14 @@ class TenantSeedDummyCommand extends Command
     {
         if (app()->environment('production') && ! $this->option('force')) {
             $this->error('Refusing to seed dummy data in production without --force.');
+
             return self::FAILURE;
         }
 
         $period = (string) $this->option('period');
         if (! preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $period)) {
             $this->error('Period must use YYYY-MM format, for example 2026-01.');
+
             return self::FAILURE;
         }
 
@@ -41,6 +43,7 @@ class TenantSeedDummyCommand extends Command
 
         if (! $company) {
             $this->error('Target company not found. Provide a valid company_id.');
+
             return self::FAILURE;
         }
 
@@ -50,15 +53,17 @@ class TenantSeedDummyCommand extends Command
             ->first();
         if (! $tenantDatabase) {
             $this->error('Active tenant database not found for company '.$company->id.'.');
+
             return self::FAILURE;
         }
 
         try {
             $this->ensureOpenPeriod((int) $company->id, $period);
             $connections->connect($tenantDatabase);
-            $result = (new TenantDummyDataSeeder())->seed($period);
+            $result = (new TenantDummyDataSeeder)->seed($period);
         } catch (Throwable $e) {
             $this->error('Dummy tenant seed failed: '.$e->getMessage());
+
             return self::FAILURE;
         } finally {
             $connections->disconnect();
@@ -86,6 +91,7 @@ class TenantSeedDummyCommand extends Command
 
         if (! Schema::hasTable('fiscal_years') || ! Schema::hasTable('accounting_periods')) {
             $this->warn('Central fiscal_years/accounting_periods tables not present; period setup skipped.');
+
             return;
         }
 

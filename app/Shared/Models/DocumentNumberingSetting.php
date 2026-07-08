@@ -58,4 +58,3 @@ class DocumentNumberingSetting extends Model
         return (bool) $this->allow_duplicate_number;
     }
 }
-

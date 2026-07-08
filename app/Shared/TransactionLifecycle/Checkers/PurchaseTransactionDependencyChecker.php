@@ -20,4 +20,3 @@ class PurchaseTransactionDependencyChecker extends BaseTransactionDependencyChec
         return [];
     }
 }
-

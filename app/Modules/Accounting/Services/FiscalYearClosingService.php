@@ -2,18 +2,18 @@
 
 namespace App\Modules\Accounting\Services;
 
-use App\Data\Reports\ProfitLossFilter;
-use App\Data\Reports\TrialBalanceFilter;
-use App\Exceptions\ApiException;
-use App\Models\FiscalYear;
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\FiscalYearClosing;
-use App\Shared\Audit\AuditLogService;
+use App\Modules\Accounting\Models\FiscalYearClosing;
+use App\Modules\MasterData\Models\AccountMapping;
 use App\Modules\Reports\Services\ProfitLossService;
 use App\Modules\Reports\Services\TrialBalanceService;
+use App\Shared\AccountMapping\AccountMappingKey;
+use App\Shared\Api\ApiErrorCode;
+use App\Shared\Audit\AuditLogService;
+use App\Shared\Exceptions\ApiException;
+use App\Shared\Models\FiscalYear;
+use App\Shared\Reports\Data\ProfitLossFilter;
+use App\Shared\Reports\Data\TrialBalanceFilter;
 use App\Shared\Tenant\TenantContext;
-use App\Support\AccountMapping\AccountMappingKey;
-use App\Support\Api\ApiErrorCode;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Throwable;
@@ -26,8 +26,7 @@ class FiscalYearClosingService
         private readonly ProfitLossService $profitLossService,
         private readonly TrialBalanceService $trialBalanceService,
         private readonly AuditLogService $auditLogService,
-    ) {
-    }
+    ) {}
 
     public function previewClosing(int $fiscalYearId): array
     {
@@ -106,6 +105,7 @@ class FiscalYearClosingService
         $fy = FiscalYear::query()->whereKey($fiscalYearId)->where('company_id', $company->id)->first();
         if (! $fy) {
             $errors['fiscal_year_id'][] = 'Fiscal year not found.';
+
             return [
                 'can_close' => false,
                 'errors' => $errors,
@@ -200,6 +200,7 @@ class FiscalYearClosingService
         $fy = FiscalYear::query()->whereKey($fiscalYearId)->where('company_id', $company->id)->first();
         if (! $fy) {
             $errors['fiscal_year_id'][] = 'Fiscal year not found.';
+
             return ['valid' => false, 'errors' => $errors, 'warnings' => $warnings];
         }
 
@@ -371,7 +372,7 @@ class FiscalYearClosingService
 
         $userId = auth()->id();
 
-        DB::transaction(function () use ($fy, $userId, $reason) {
+        DB::transaction(function () use ($fy, $userId) {
             $fy->forceFill([
                 'status' => 'open',
                 'is_closed' => false,
@@ -463,6 +464,7 @@ class FiscalYearClosingService
         if (! $company) {
             throw ApiException::make(ApiErrorCode::COMPANY_NOT_FOUND, 'Company context not resolved.', 422);
         }
+
         return $company;
     }
 
@@ -478,6 +480,7 @@ class FiscalYearClosingService
 
         if ($result === 'failed') {
             $this->auditLogService->logFailed($data, tenant: true);
+
             return;
         }
 

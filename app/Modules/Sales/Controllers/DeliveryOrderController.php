@@ -3,11 +3,11 @@
 namespace App\Modules\Sales\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Sales\Models\DeliveryOrder;
+use App\Modules\Sales\Models\SalesOrder;
 use App\Modules\Sales\Requests\SalesActionRequest;
 use App\Modules\Sales\Requests\StoreDeliveryOrderRequest;
 use App\Modules\Sales\Requests\UpdateDeliveryOrderRequest;
-use App\Models\Tenant\DeliveryOrder;
-use App\Models\Tenant\SalesOrder;
 use App\Modules\Sales\Services\DeliveryOrderService;
 use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -16,8 +16,14 @@ use Illuminate\Http\Request;
 class DeliveryOrderController extends Controller
 {
     use ApiResponse;
+
     public function __construct(private readonly DeliveryOrderService $service) {}
-    public function index(Request $request): JsonResponse { return $this->listResponse($this->service->list($request->query()), $request, 'Delivery orders retrieved successfully'); }
+
+    public function index(Request $request): JsonResponse
+    {
+        return $this->listResponse($this->service->list($request->query()), $request, 'Delivery orders retrieved successfully');
+    }
+
     public function store(StoreDeliveryOrderRequest $request): JsonResponse
     {
         $data = $request->validated();
@@ -27,12 +33,44 @@ class DeliveryOrderController extends Controller
 
         return $this->successResponse($this->service->create($data), 'Delivery order created successfully', 201);
     }
-    public function show(int $id): JsonResponse { return $this->successResponse($this->service->find($id), 'Delivery order retrieved successfully'); }
-    public function update(UpdateDeliveryOrderRequest $request, int $id): JsonResponse { return $this->successResponse($this->service->update(DeliveryOrder::query()->findOrFail($id), $request->validated()), 'Delivery order updated successfully'); }
-    public function createFromSalesOrder(Request $request, int $salesOrderId): JsonResponse { return $this->successResponse($this->service->createFromSalesOrder(SalesOrder::query()->findOrFail($salesOrderId), $request->all()), 'Delivery order created from sales order successfully', 201); }
-    public function ready(int $id): JsonResponse { return $this->successResponse($this->service->markReady(DeliveryOrder::query()->findOrFail($id)), 'Delivery order marked ready successfully'); }
-    public function ship(int $id): JsonResponse { return $this->successResponse($this->service->ship(DeliveryOrder::query()->findOrFail($id)), 'Delivery order shipped successfully'); }
-    public function deliver(int $id): JsonResponse { return $this->successResponse($this->service->deliver(DeliveryOrder::query()->findOrFail($id)), 'Delivery order delivered successfully'); }
-    public function cancel(SalesActionRequest $request, int $id): JsonResponse { return $this->successResponse($this->service->cancel(DeliveryOrder::query()->findOrFail($id), $request->validated('reason')), 'Delivery order cancelled successfully'); }
-    public function void(SalesActionRequest $request, int $id): JsonResponse { return $this->successResponse($this->service->void(DeliveryOrder::query()->findOrFail($id), $request->validated('reason')), 'Delivery order voided successfully'); }
+
+    public function show(int $id): JsonResponse
+    {
+        return $this->successResponse($this->service->find($id), 'Delivery order retrieved successfully');
+    }
+
+    public function update(UpdateDeliveryOrderRequest $request, int $id): JsonResponse
+    {
+        return $this->successResponse($this->service->update(DeliveryOrder::query()->findOrFail($id), $request->validated()), 'Delivery order updated successfully');
+    }
+
+    public function createFromSalesOrder(Request $request, int $salesOrderId): JsonResponse
+    {
+        return $this->successResponse($this->service->createFromSalesOrder(SalesOrder::query()->findOrFail($salesOrderId), $request->all()), 'Delivery order created from sales order successfully', 201);
+    }
+
+    public function ready(int $id): JsonResponse
+    {
+        return $this->successResponse($this->service->markReady(DeliveryOrder::query()->findOrFail($id)), 'Delivery order marked ready successfully');
+    }
+
+    public function ship(int $id): JsonResponse
+    {
+        return $this->successResponse($this->service->ship(DeliveryOrder::query()->findOrFail($id)), 'Delivery order shipped successfully');
+    }
+
+    public function deliver(int $id): JsonResponse
+    {
+        return $this->successResponse($this->service->deliver(DeliveryOrder::query()->findOrFail($id)), 'Delivery order delivered successfully');
+    }
+
+    public function cancel(SalesActionRequest $request, int $id): JsonResponse
+    {
+        return $this->successResponse($this->service->cancel(DeliveryOrder::query()->findOrFail($id), $request->validated('reason')), 'Delivery order cancelled successfully');
+    }
+
+    public function void(SalesActionRequest $request, int $id): JsonResponse
+    {
+        return $this->successResponse($this->service->void(DeliveryOrder::query()->findOrFail($id), $request->validated('reason')), 'Delivery order voided successfully');
+    }
 }

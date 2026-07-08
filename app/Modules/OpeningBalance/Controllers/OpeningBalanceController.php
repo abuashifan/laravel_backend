@@ -3,11 +3,11 @@
 namespace App\Modules\OpeningBalance\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\OpeningBalance\Models\OpeningBalanceBatch;
 use App\Modules\OpeningBalance\Requests\ReopenOpeningBalanceRequest;
 use App\Modules\OpeningBalance\Requests\ReplaceOpeningBalanceLinesRequest;
 use App\Modules\OpeningBalance\Requests\StoreOpeningBalanceBatchRequest;
 use App\Modules\OpeningBalance\Requests\UpdateOpeningBalanceBatchRequest;
-use App\Models\Tenant\OpeningBalanceBatch;
 use App\Modules\OpeningBalance\Services\OpeningBalanceBatchService;
 use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -16,9 +16,7 @@ class OpeningBalanceController extends Controller
 {
     use ApiResponse;
 
-    public function __construct(private readonly OpeningBalanceBatchService $service)
-    {
-    }
+    public function __construct(private readonly OpeningBalanceBatchService $service) {}
 
     public function status(): JsonResponse
     {

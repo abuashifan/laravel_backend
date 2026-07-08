@@ -2,26 +2,26 @@
 
 namespace Tests\Feature\Reports;
 
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\Contact;
-use App\Models\Tenant\CustomerDeposit;
-use App\Models\Tenant\GoodsReceipt;
-use App\Models\Tenant\GoodsReceiptLine;
-use App\Models\Tenant\JournalEntry;
-use App\Models\Tenant\Product;
-use App\Models\Tenant\PurchaseOrder;
-use App\Models\Tenant\PurchaseOrderLine;
-use App\Models\Tenant\SalesInvoice;
-use App\Models\Tenant\SalesReceipt;
-use App\Models\Tenant\StockBalance;
-use App\Models\Tenant\StockMovement;
-use App\Models\Tenant\Unit;
-use App\Models\Tenant\VendorBill;
-use App\Models\Tenant\VendorDeposit;
-use App\Models\Tenant\VendorPayment;
-use App\Models\Tenant\Warehouse;
-use App\Support\AccountMapping\AccountMappingKey;
+use App\Modules\Inventory\Models\StockBalance;
+use App\Modules\Inventory\Models\StockMovement;
+use App\Modules\Journal\Models\JournalEntry;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\MasterData\Models\Contact;
+use App\Modules\MasterData\Models\Product;
+use App\Modules\MasterData\Models\Unit;
+use App\Modules\MasterData\Models\Warehouse;
+use App\Modules\Purchase\Models\GoodsReceipt;
+use App\Modules\Purchase\Models\GoodsReceiptLine;
+use App\Modules\Purchase\Models\PurchaseOrder;
+use App\Modules\Purchase\Models\PurchaseOrderLine;
+use App\Modules\Purchase\Models\VendorBill;
+use App\Modules\Purchase\Models\VendorDeposit;
+use App\Modules\Purchase\Models\VendorPayment;
+use App\Modules\Sales\Models\CustomerDeposit;
+use App\Modules\Sales\Models\SalesInvoice;
+use App\Modules\Sales\Models\SalesReceipt;
+use App\Shared\AccountMapping\AccountMappingKey;
 use Tests\Feature\Journal\JournalTestCase;
 
 class ReconciliationReportTest extends JournalTestCase
@@ -436,7 +436,7 @@ class ReconciliationReportTest extends JournalTestCase
     }
 
     /**
-     * @param array<int, array{0:int,1:float|int,2:float|int}> $lines
+     * @param  array<int, array{0:int,1:float|int,2:float|int}>  $lines
      */
     private function journal(string $number, string $date, string $sourceType, int $sourceId, array $lines): JournalEntry
     {

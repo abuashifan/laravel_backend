@@ -3,10 +3,10 @@
 namespace App\Modules\Sales\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Sales\Models\SalesQuotation;
 use App\Modules\Sales\Requests\SalesActionRequest;
 use App\Modules\Sales\Requests\StoreSalesQuotationRequest;
 use App\Modules\Sales\Requests\UpdateSalesQuotationRequest;
-use App\Models\Tenant\SalesQuotation;
 use App\Modules\Sales\Services\SalesQuotationService;
 use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -16,9 +16,7 @@ class SalesQuotationController extends Controller
 {
     use ApiResponse;
 
-    public function __construct(private readonly SalesQuotationService $service)
-    {
-    }
+    public function __construct(private readonly SalesQuotationService $service) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -38,6 +36,7 @@ class SalesQuotationController extends Controller
     public function update(UpdateSalesQuotationRequest $request, int $id): JsonResponse
     {
         $quotation = SalesQuotation::query()->findOrFail($id);
+
         return $this->successResponse($this->service->update($quotation, $request->validated()), 'Sales quotation updated successfully');
     }
 

@@ -2,7 +2,7 @@
 
 namespace Tests\Unit\Sales;
 
-use App\Services\Sales\SalesCalculationService;
+use App\Modules\Sales\Services\SalesCalculationService;
 use InvalidArgumentException;
 use Tests\TestCase;
 
@@ -86,6 +86,6 @@ class SalesCalculationServiceTest extends TestCase
 
     private function service(): SalesCalculationService
     {
-        return new SalesCalculationService();
+        return new SalesCalculationService;
     }
 }

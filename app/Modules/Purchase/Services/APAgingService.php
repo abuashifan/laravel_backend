@@ -6,9 +6,7 @@ use Carbon\CarbonImmutable;
 
 class APAgingService
 {
-    public function __construct(private readonly APSubsidiaryLedgerService $ledgerService)
-    {
-    }
+    public function __construct(private readonly APSubsidiaryLedgerService $ledgerService) {}
 
     public function aging(array $filters = []): array
     {

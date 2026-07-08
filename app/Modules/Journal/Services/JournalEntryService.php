@@ -2,18 +2,18 @@
 
 namespace App\Modules\Journal\Services;
 
-use App\Exceptions\ApiException;
-use App\Models\Tenant\JournalEntry;
+use App\Modules\Journal\Models\JournalEntry;
+use App\Modules\Settings\Services\CompanySettingService;
+use App\Shared\Api\ApiErrorCode;
 use App\Shared\Audit\AuditLogService;
 use App\Shared\DocumentNumbering\DocumentNumberService;
-use App\Modules\Settings\Services\CompanySettingService;
+use App\Shared\DocumentNumbering\DocumentType;
+use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
+use App\Shared\TransactionLifecycle\TransactionModule;
+use App\Shared\TransactionLifecycle\TransactionPolicyResult;
 use App\Shared\TransactionLifecycle\TransactionPolicyService;
 use App\Shared\TransactionLifecycle\TransactionRevisionService;
-use App\Support\Api\ApiErrorCode;
-use App\Support\DocumentNumbering\DocumentType;
-use App\Support\Transaction\TransactionModule;
-use App\Support\Transaction\TransactionPolicyResult;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -30,8 +30,7 @@ class JournalEntryService
         private readonly TransactionPolicyService $policyService,
         private readonly TransactionRevisionService $revisionService,
         private readonly ?AuditLogService $auditLogService = null,
-    ) {
-    }
+    ) {}
 
     /**
      * @return Collection<int,JournalEntry>
@@ -395,7 +394,7 @@ class JournalEntryService
     }
 
     /**
-     * @param array<int,array<string,mixed>> $lines
+     * @param  array<int,array<string,mixed>>  $lines
      * @return array<int,array<string,mixed>>
      */
     private function mapLinesForValidation(array $lines): array

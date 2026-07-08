@@ -2,8 +2,8 @@
 
 namespace App\Modules\Inventory\Services;
 
-use App\Exceptions\ApiException;
-use App\Models\Tenant\StockMovement;
+use App\Modules\Inventory\Models\StockMovement;
+use App\Shared\Exceptions\ApiException;
 use App\Shared\Validation\BusinessReferenceValidator;
 use Illuminate\Support\Facades\DB;
 
@@ -12,8 +12,7 @@ class OpeningStockService
     public function __construct(
         private readonly StockMovementService $stockMovementService,
         private readonly BusinessReferenceValidator $referenceValidator,
-    ) {
-    }
+    ) {}
 
     public function post(array $data): StockMovement
     {

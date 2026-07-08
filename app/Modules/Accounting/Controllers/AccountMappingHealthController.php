@@ -4,14 +4,12 @@ namespace App\Modules\Accounting\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Accounting\Services\AccountMappingHealthService;
-use App\Support\Api\ApiResponseBuilder;
+use App\Shared\Api\ApiResponseBuilder;
 use Illuminate\Http\JsonResponse;
 
 class AccountMappingHealthController extends Controller
 {
-    public function __construct(private readonly AccountMappingHealthService $service)
-    {
-    }
+    public function __construct(private readonly AccountMappingHealthService $service) {}
 
     public function index(): JsonResponse
     {

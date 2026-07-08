@@ -47,4 +47,3 @@ class Department extends Model
         return (bool) $this->is_active;
     }
 }
-

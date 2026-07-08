@@ -4,9 +4,7 @@ namespace App\Shared\Reports\Data;
 
 class ReportTotals
 {
-    public function __construct(public array $values)
-    {
-    }
+    public function __construct(public array $values) {}
 
     public static function make(array $values): self
     {
@@ -23,4 +21,3 @@ class ReportTotals
         return $this->values[$key] ?? $default;
     }
 }
-

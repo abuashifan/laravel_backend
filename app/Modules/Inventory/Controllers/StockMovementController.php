@@ -3,9 +3,9 @@
 namespace App\Modules\Inventory\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Inventory\Models\StockMovement;
 use App\Modules\Inventory\Requests\StoreStockMovementRequest;
 use App\Modules\Inventory\Requests\VoidStockMovementRequest;
-use App\Models\Tenant\StockMovement;
 use App\Modules\Inventory\Services\StockMovementService;
 use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -35,13 +35,14 @@ class StockMovementController extends Controller
     public function post(int $id): JsonResponse
     {
         $movement = StockMovement::query()->findOrFail($id);
+
         return $this->successResponse($this->service->post($movement), 'Stock movement posted successfully');
     }
 
     public function void(VoidStockMovementRequest $request, int $id): JsonResponse
     {
         $movement = StockMovement::query()->findOrFail($id);
+
         return $this->successResponse($this->service->void($movement, $request->validated('reason')), 'Stock movement voided successfully');
     }
 }
-

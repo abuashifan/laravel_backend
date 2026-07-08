@@ -12,7 +12,9 @@ class OpeningBalanceBatch extends Model
     use HasFactory;
 
     protected $connection = 'tenant';
+
     protected $table = 'opening_balance_batches';
+
     protected $guarded = [];
 
     protected $casts = [

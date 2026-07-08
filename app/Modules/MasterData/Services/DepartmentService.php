@@ -2,8 +2,8 @@
 
 namespace App\Modules\MasterData\Services;
 
-use App\Exceptions\ApiException;
-use App\Models\Tenant\Department;
+use App\Modules\MasterData\Models\Department;
+use App\Shared\Exceptions\ApiException;
 
 class DepartmentService
 {

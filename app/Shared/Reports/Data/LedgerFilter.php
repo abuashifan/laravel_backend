@@ -14,8 +14,7 @@ class LedgerFilter
         public bool $includeZeroBalance = false,
         public ?string $sortBy = 'journal_date',
         public string $sortDirection = 'asc',
-    ) {
-    }
+    ) {}
 
     public static function fromArray(array $data): self
     {
@@ -71,4 +70,3 @@ class LedgerFilter
         return (bool) $this->projectId;
     }
 }
-

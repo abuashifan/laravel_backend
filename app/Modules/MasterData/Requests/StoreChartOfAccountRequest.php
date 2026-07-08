@@ -37,4 +37,3 @@ class StoreChartOfAccountRequest extends FormRequest
         });
     }
 }
-

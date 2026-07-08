@@ -4,16 +4,16 @@ declare(strict_types=1);
 
 namespace Tests\Feature\FixedAssets;
 
-use App\Models\CompanyUser;
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\FixedAsset;
-use App\Models\Tenant\FixedAssetCategory;
-use App\Models\Tenant\FixedAssetDepreciationSchedule;
-use App\Models\Tenant\FixedAssetTransaction;
-use App\Models\TenantDatabase;
-use App\Services\FixedAssets\FixedAssetService;
-use App\Services\Tenant\TenantContext;
+use App\Modules\FixedAssets\Models\FixedAsset;
+use App\Modules\FixedAssets\Models\FixedAssetCategory;
+use App\Modules\FixedAssets\Models\FixedAssetDepreciationSchedule;
+use App\Modules\FixedAssets\Models\FixedAssetTransaction;
+use App\Modules\FixedAssets\Services\FixedAssetService;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Shared\Models\CompanyUser;
+use App\Shared\Models\TenantDatabase;
+use App\Shared\Tenant\TenantContext;
 use Tests\Feature\Journal\JournalTestCase;
 
 class FixedAssetServiceLifecycleTest extends JournalTestCase

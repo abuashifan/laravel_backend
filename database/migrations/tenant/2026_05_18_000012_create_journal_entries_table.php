@@ -64,4 +64,3 @@ return new class extends Migration
         Schema::dropIfExists('journal_entries');
     }
 };
-

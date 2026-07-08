@@ -14,9 +14,7 @@ class SetupWizardController extends Controller
 {
     use ApiResponse;
 
-    public function __construct(private readonly SetupWizardService $service)
-    {
-    }
+    public function __construct(private readonly SetupWizardService $service) {}
 
     public function status(): JsonResponse
     {

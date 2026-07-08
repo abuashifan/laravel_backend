@@ -2,16 +2,16 @@
 
 namespace Tests\Feature\Accounting;
 
-use App\Models\Company;
-use App\Models\CompanyAccountingSetting;
-use App\Models\CompanyUser;
-use App\Models\FiscalYear;
-use App\Models\TenantDatabase;
-use App\Models\User;
-use App\Services\Accounting\AnnualClosingGateService;
-use App\Services\Accounting\FiscalYearService;
-use App\Services\Transactions\TransactionPolicyService;
-use App\Services\Tenant\TenantContext;
+use App\Modules\Accounting\Services\AnnualClosingGateService;
+use App\Modules\Accounting\Services\FiscalYearService;
+use App\Shared\Models\Company;
+use App\Shared\Models\CompanyAccountingSetting;
+use App\Shared\Models\CompanyUser;
+use App\Shared\Models\FiscalYear;
+use App\Shared\Models\TenantDatabase;
+use App\Shared\Models\User;
+use App\Shared\Tenant\TenantContext;
+use App\Shared\TransactionLifecycle\TransactionPolicyService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -352,6 +352,7 @@ class FiscalYearDateGuardTest extends TestCase
         $service = $this->app->make(FiscalYearService::class);
         $fy = $service->createFiscalYear($company, $year);
         $service->createPeriodsForFiscalYear($fy);
+
         return $fy;
     }
 }

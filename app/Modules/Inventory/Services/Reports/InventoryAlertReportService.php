@@ -2,14 +2,12 @@
 
 namespace App\Modules\Inventory\Services\Reports;
 
-use App\Models\Tenant\StockBalance;
+use App\Modules\Inventory\Models\StockBalance;
 use App\Modules\Inventory\Services\InventoryConfigService;
 
 class InventoryAlertReportService
 {
-    public function __construct(private readonly InventoryConfigService $configService)
-    {
-    }
+    public function __construct(private readonly InventoryConfigService $configService) {}
 
     public function lowStock(array $filters = []): array
     {
@@ -27,6 +25,7 @@ class InventoryAlertReportService
             if ($threshold === null) {
                 return false;
             }
+
             return (float) $b->quantity_on_hand < $threshold;
         })->sortBy('quantity_on_hand')->values();
 
@@ -104,12 +103,15 @@ class InventoryAlertReportService
 
     private function applyCommonFilters($q, array $filters): void
     {
-        if (! empty($filters['product_id'])) $q->where('product_id', (int) $filters['product_id']);
-        if (! empty($filters['warehouse_id'])) $q->where('warehouse_id', (int) $filters['warehouse_id']);
+        if (! empty($filters['product_id'])) {
+            $q->where('product_id', (int) $filters['product_id']);
+        }
+        if (! empty($filters['warehouse_id'])) {
+            $q->where('warehouse_id', (int) $filters['warehouse_id']);
+        }
         if (! empty($filters['category_id'])) {
             $catId = (int) $filters['category_id'];
             $q->whereHas('product', fn ($p) => $p->where('product_category_id', $catId));
         }
     }
 }
-

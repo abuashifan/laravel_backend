@@ -2,9 +2,9 @@
 
 namespace App\Modules\Budget\Services;
 
-use App\Models\Tenant\BudgetLine;
-use App\Models\Tenant\BudgetPeriod;
-use App\Models\Tenant\BudgetSubmission;
+use App\Modules\Budget\Models\BudgetLine;
+use App\Modules\Budget\Models\BudgetPeriod;
+use App\Modules\Budget\Models\BudgetSubmission;
 use App\Shared\Tenant\TenantContext;
 use Illuminate\Support\Facades\DB;
 

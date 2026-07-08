@@ -3,12 +3,12 @@
 namespace App\Modules\Purchase\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Purchase\Models\GoodsReceipt;
+use App\Modules\Purchase\Models\PurchaseReturn;
+use App\Modules\Purchase\Models\VendorBill;
 use App\Modules\Purchase\Requests\PurchaseRequestActionRequest;
 use App\Modules\Purchase\Requests\StorePurchaseReturnRequest;
 use App\Modules\Purchase\Requests\UpdatePurchaseReturnRequest;
-use App\Models\Tenant\GoodsReceipt;
-use App\Models\Tenant\PurchaseReturn;
-use App\Models\Tenant\VendorBill;
 use App\Modules\Purchase\Services\PurchaseReturnService;
 use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -18,9 +18,7 @@ class PurchaseReturnController extends Controller
 {
     use ApiResponse;
 
-    public function __construct(private readonly PurchaseReturnService $service)
-    {
-    }
+    public function __construct(private readonly PurchaseReturnService $service) {}
 
     public function index(Request $request): JsonResponse
     {

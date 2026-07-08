@@ -5,8 +5,11 @@ namespace App\Shared\TransactionLifecycle;
 class TransactionRevisionAction
 {
     public const EDIT = 'edit';
+
     public const VOID = 'void';
+
     public const CORRECTION = 'correction';
+
     public const SYSTEM_REBUILD = 'system_rebuild';
 
     public static function all(): array
@@ -24,4 +27,3 @@ class TransactionRevisionAction
         return in_array($action, self::all(), true);
     }
 }
-

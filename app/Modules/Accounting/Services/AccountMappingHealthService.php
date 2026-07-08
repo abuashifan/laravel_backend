@@ -2,10 +2,10 @@
 
 namespace App\Modules\Accounting\Services;
 
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\ChartOfAccount;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Shared\AccountMapping\AccountMappingRequirement;
 use App\Shared\AccountMapping\AccountMappingService;
-use App\Support\AccountMapping\AccountMappingRequirement;
 
 class AccountMappingHealthService
 {
@@ -31,9 +31,7 @@ class AccountMappingHealthService
         'journal.suspense' => 'manual journal suspense workflow',
     ];
 
-    public function __construct(private readonly AccountMappingService $definitionService)
-    {
-    }
+    public function __construct(private readonly AccountMappingService $definitionService) {}
 
     /**
      * @return array{

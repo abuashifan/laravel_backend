@@ -10,8 +10,7 @@ class CashFlowFilter
         public ?int $departmentId = null,
         public ?int $projectId = null,
         public bool $includeAccountBreakdown = true,
-    ) {
-    }
+    ) {}
 
     public static function fromArray(array $data): self
     {
@@ -35,4 +34,3 @@ class CashFlowFilter
         ];
     }
 }
-

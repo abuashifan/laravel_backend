@@ -36,4 +36,3 @@ class CompanyInvitation extends Model
         return $this->belongsTo(User::class, 'invited_by');
     }
 }
-

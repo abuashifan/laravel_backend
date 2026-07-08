@@ -2,7 +2,7 @@
 
 namespace App\Modules\Budget\Services;
 
-use App\Models\Tenant\BudgetLine;
+use App\Modules\Budget\Models\BudgetLine;
 use Illuminate\Support\Facades\DB;
 
 class BudgetWarningService

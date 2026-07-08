@@ -26,4 +26,3 @@ class UpdateCompanyModuleSettingRequest extends FormRequest
         ];
     }
 }
-

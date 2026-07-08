@@ -2,19 +2,19 @@
 
 namespace App\Modules\Purchase\Services;
 
-use App\Exceptions\ApiException;
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\JournalEntry;
-use App\Models\Tenant\VendorBill;
-use App\Models\Tenant\VendorPayment;
-use App\Shared\DocumentNumbering\DocumentNumberService;
+use App\Modules\Journal\Models\JournalEntry;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\Purchase\Models\VendorBill;
+use App\Modules\Purchase\Models\VendorPayment;
 use App\Modules\Purchase\Services\Concerns\HandlesPurchaseDocuments;
+use App\Shared\Audit\AuditLogService;
+use App\Shared\DocumentNumbering\DocumentNumberService;
+use App\Shared\DocumentNumbering\DocumentType;
+use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
 use App\Shared\TransactionLifecycle\TransactionDateGuardService;
 use App\Shared\TransactionLifecycle\TransactionVoidEffectService;
-use App\Shared\Audit\AuditLogService;
 use App\Shared\Validation\BusinessReferenceValidator;
-use App\Support\DocumentNumbering\DocumentType;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -31,13 +31,15 @@ class VendorPaymentService
         private readonly VendorDepositService $depositService,
         private readonly APSubsidiaryLedgerService $ledgerService,
         private readonly ?AuditLogService $auditLogService = null,
-    ) {
-    }
+    ) {}
 
     public function list(array $filters = []): Collection
     {
         $query = VendorPayment::query()->with('vendor', 'vendorBill');
-        if (! empty($filters['status'])) $query->where('status', (string) $filters['status']);
+        if (! empty($filters['status'])) {
+            $query->where('status', (string) $filters['status']);
+        }
+
         return $query->orderByDesc('payment_date')->orderByDesc('id')->get();
     }
 
@@ -49,8 +51,11 @@ class VendorPaymentService
     public function create(array $data): VendorPayment
     {
         $company = $this->tenantContext->company();
-        if (! $company) throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
+        if (! $company) {
+            throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
+        }
         $this->ensureVendorExists((int) $data['vendor_id']);
+
         return DB::connection('tenant')->transaction(function () use ($company, $data) {
             $payment = VendorPayment::query()->create(array_merge($data, [
                 'payment_number' => $this->documentNumberService->generate($company, DocumentType::VENDOR_PAYMENT, (string) $data['payment_date']),
@@ -63,13 +68,16 @@ class VendorPaymentService
                 'description' => $data['notes'] ?? null,
             ]]);
             $payment = $payment->refresh()->load('lines.vendorBill', 'vendor', 'vendorBill');
+
             return $this->shouldAutoPostOnCreateAccountingWorkflow() ? $this->post($payment) : $payment;
         });
     }
 
     public function post(VendorPayment $payment): VendorPayment
     {
-        if ($payment->status === 'posted') throw ApiException::make('DOCUMENT_ALREADY_POSTED', 'Document has already been posted.', 422);
+        if ($payment->status === 'posted') {
+            throw ApiException::make('DOCUMENT_ALREADY_POSTED', 'Document has already been posted.', 422);
+        }
         $this->guardDate((string) $payment->payment_date);
         $allocations = $this->validatedAllocations($payment);
 
@@ -83,21 +91,27 @@ class VendorPaymentService
             foreach ($allocations as $allocation) {
                 $this->applyToBillAmount($allocation['bill'], $allocation['amount']);
             }
+
             return $payment->refresh()->load('lines.vendorBill', 'vendor', 'vendorBill');
         });
     }
 
     public function void(VendorPayment $payment, ?string $reason = null): VendorPayment
     {
-        if ($payment->status === 'void') throw ApiException::make('VENDOR_PAYMENT_ALREADY_VOID', 'Vendor payment already void.', 422);
+        if ($payment->status === 'void') {
+            throw ApiException::make('VENDOR_PAYMENT_ALREADY_VOID', 'Vendor payment already void.', 422);
+        }
         $reason = $this->voidEffectService->requireReason($reason);
         $this->guardDate((string) $payment->payment_date, 'void');
+
         return DB::connection('tenant')->transaction(function () use ($payment, $reason) {
             $journalIds = $this->voidEffectService->voidJournalsForSource('vendor_payment', (int) $payment->id, $reason);
             if ($payment->status === 'posted') {
                 $payment->loadMissing('lines');
                 foreach ($payment->lines as $line) {
-                    if (! $line->vendor_bill_id) continue;
+                    if (! $line->vendor_bill_id) {
+                        continue;
+                    }
                     $bill = VendorBill::query()->lockForUpdate()->find($line->vendor_bill_id);
                     if ($bill && $bill->status !== 'void') {
                         $amount = (float) $line->amount;
@@ -108,8 +122,13 @@ class VendorPaymentService
                     }
                 }
             }
-            $payment->status = 'void'; $payment->voided_by = auth()->id(); $payment->voided_at = now(); $payment->void_reason = $reason; $payment->save();
+            $payment->status = 'void';
+            $payment->voided_by = auth()->id();
+            $payment->voided_at = now();
+            $payment->void_reason = $reason;
+            $payment->save();
             $this->auditPurchase($this->auditLogService, 'vendor_payment.voided', $payment, 'payment_number', ['reason' => $reason, 'voided_journal_ids' => $journalIds]);
+
             return $payment->refresh()->load('lines.vendorBill', 'vendor', 'vendorBill');
         });
     }
@@ -131,6 +150,7 @@ class VendorPaymentService
     {
         $bill->status = (float) $bill->balance_due <= 0 ? 'paid' : ((float) $bill->paid_amount > 0 ? 'partially_paid' : $bill->status);
         $bill->save();
+
         return $bill->refresh();
     }
 
@@ -155,7 +175,9 @@ class VendorPaymentService
     private function journal(VendorPayment $payment, array $allocations): JournalEntry
     {
         $company = $this->tenantContext->company();
-        if (! $company) throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
+        if (! $company) {
+            throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
+        }
         $journal = JournalEntry::query()->create([
             'journal_number' => $this->documentNumberService->generate($company, DocumentType::JOURNAL_ENTRY, (string) $payment->payment_date),
             'journal_date' => $payment->payment_date,
@@ -183,13 +205,17 @@ class VendorPaymentService
         }
         $lines[] = ['account_id' => $payment->cash_bank_account_id, 'description' => 'Cash/Bank', 'debit' => 0, 'credit' => $payment->amount, 'line_order' => count($lines) + 1];
         $journal->lines()->createMany($lines);
+
         return $journal->refresh();
     }
 
     private function mapping(string $key): int
     {
         $mapping = AccountMapping::query()->where('mapping_key', $key)->where('is_active', true)->first();
-        if (! $mapping?->account_id) throw ApiException::make('ACCOUNT_MAPPING_MISSING', 'Required account mapping is missing: '.$key, 422);
+        if (! $mapping?->account_id) {
+            throw ApiException::make('ACCOUNT_MAPPING_MISSING', 'Required account mapping is missing: '.$key, 422);
+        }
+
         return (int) $mapping->account_id;
     }
 
@@ -207,23 +233,37 @@ class VendorPaymentService
         $validator = app(BusinessReferenceValidator::class);
         $validator->vendor((int) $payment->vendor_id);
         $cash = $validator->account((int) $payment->cash_bank_account_id, ['asset']);
-        if (! $cash->isCashBank()) throw ApiException::make('CASH_BANK_ACCOUNT_NOT_VALID', 'Cash/bank account must be active cash or bank account.', 422);
+        if (! $cash->isCashBank()) {
+            throw ApiException::make('CASH_BANK_ACCOUNT_NOT_VALID', 'Cash/bank account must be active cash or bank account.', 422);
+        }
 
         $payment->loadMissing('lines');
         $lines = $payment->lines;
-        if ($lines->isEmpty()) throw ApiException::make('PAYMENT_LINES_REQUIRED', 'Payment lines are required.', 422);
+        if ($lines->isEmpty()) {
+            throw ApiException::make('PAYMENT_LINES_REQUIRED', 'Payment lines are required.', 422);
+        }
 
         $total = round((float) $lines->sum('amount'), 2);
-        if (abs($total - (float) $payment->amount) > 0.0001) throw ApiException::make('PAYMENT_TOTAL_MISMATCH', 'Total line amount must match payment amount.', 422);
+        if (abs($total - (float) $payment->amount) > 0.0001) {
+            throw ApiException::make('PAYMENT_TOTAL_MISMATCH', 'Total line amount must match payment amount.', 422);
+        }
 
         $allocations = [];
         foreach ($lines as $line) {
             $amount = (float) $line->amount;
-            if ($amount <= 0) throw ApiException::make('PAYMENT_AMOUNT_INVALID', 'Payment line amount must be greater than zero.', 422);
+            if ($amount <= 0) {
+                throw ApiException::make('PAYMENT_AMOUNT_INVALID', 'Payment line amount must be greater than zero.', 422);
+            }
             $bill = VendorBill::query()->lockForUpdate()->find($line->vendor_bill_id);
-            if (! $bill || ! in_array($bill->status, ['posted', 'partially_paid'], true)) throw ApiException::make('VENDOR_BILL_NOT_PAYABLE', 'Vendor bill must be posted before payment.', 422);
-            if ((int) $bill->vendor_id !== (int) $payment->vendor_id) throw ApiException::make('PAYMENT_VENDOR_MISMATCH', 'Payment bill vendor must match payment vendor.', 422);
-            if ($amount > (float) $bill->balance_due) throw ApiException::make('OVERPAYMENT_NOT_ALLOWED', 'Payment amount exceeds bill balance.', 422);
+            if (! $bill || ! in_array($bill->status, ['posted', 'partially_paid'], true)) {
+                throw ApiException::make('VENDOR_BILL_NOT_PAYABLE', 'Vendor bill must be posted before payment.', 422);
+            }
+            if ((int) $bill->vendor_id !== (int) $payment->vendor_id) {
+                throw ApiException::make('PAYMENT_VENDOR_MISMATCH', 'Payment bill vendor must match payment vendor.', 422);
+            }
+            if ($amount > (float) $bill->balance_due) {
+                throw ApiException::make('OVERPAYMENT_NOT_ALLOWED', 'Payment amount exceeds bill balance.', 422);
+            }
             $allocations[] = ['bill' => $bill, 'amount' => $amount];
         }
 

@@ -7,10 +7,15 @@ use InvalidArgumentException;
 class TransactionModule
 {
     public const JOURNAL = 'journal';
+
     public const SALES = 'sales';
+
     public const PURCHASE = 'purchase';
+
     public const CASH_BANK = 'cash_bank';
+
     public const INVENTORY = 'inventory';
+
     public const MASTER_DATA = 'master_data';
 
     public static function all(): array
@@ -46,4 +51,3 @@ class TransactionModule
         return $module.'.'.$action;
     }
 }
-

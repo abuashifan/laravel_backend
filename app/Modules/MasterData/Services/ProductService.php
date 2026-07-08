@@ -2,12 +2,12 @@
 
 namespace App\Modules\MasterData\Services;
 
-use App\Exceptions\ApiException;
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\Product;
-use App\Models\Tenant\ProductCategory;
-use App\Models\Tenant\StockBalance;
-use App\Models\Tenant\Unit;
+use App\Modules\Inventory\Models\StockBalance;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\MasterData\Models\Product;
+use App\Modules\MasterData\Models\ProductCategory;
+use App\Modules\MasterData\Models\Unit;
+use App\Shared\Exceptions\ApiException;
 
 class ProductService
 {
@@ -118,7 +118,9 @@ class ProductService
                     'inventory_account_id' => 'asset',
                     default => null,
                 };
-                if ($type !== null) $query->where('account_type', $type);
+                if ($type !== null) {
+                    $query->where('account_type', $type);
+                }
                 if (! $query->exists()) {
                     throw ApiException::make('ACCOUNT_NOT_FOUND', $key.' not found.', 422);
                 }

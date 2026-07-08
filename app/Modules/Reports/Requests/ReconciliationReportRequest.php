@@ -75,8 +75,12 @@ class ReconciliationReportRequest extends FormRequest
 
         if (is_string($value)) {
             $normalized = strtolower(trim($value));
-            if ($normalized === 'true') return true;
-            if ($normalized === 'false') return false;
+            if ($normalized === 'true') {
+                return true;
+            }
+            if ($normalized === 'false') {
+                return false;
+            }
         }
 
         return $value;

@@ -2,22 +2,22 @@
 
 namespace App\Modules\Sales\Services;
 
-use App\Exceptions\ApiException;
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\CustomerDeposit;
-use App\Models\Tenant\CustomerDepositAllocation;
-use App\Models\Tenant\JournalEntry;
-use App\Models\Tenant\SalesInvoice;
-use App\Models\Tenant\SalesOrder;
+use App\Modules\Journal\Models\JournalEntry;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Services\AccountMappingStorageService;
+use App\Modules\Sales\Models\CustomerDeposit;
+use App\Modules\Sales\Models\CustomerDepositAllocation;
+use App\Modules\Sales\Models\SalesInvoice;
+use App\Modules\Sales\Models\SalesOrder;
+use App\Modules\Sales\Services\Concerns\HandlesSalesDocuments;
 use App\Shared\Audit\AuditLogService;
 use App\Shared\DocumentNumbering\DocumentNumberService;
-use App\Modules\MasterData\Services\AccountMappingStorageService;
-use App\Modules\Sales\Services\Concerns\HandlesSalesDocuments;
+use App\Shared\DocumentNumbering\DocumentType;
+use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
 use App\Shared\TransactionLifecycle\TransactionDateGuardService;
 use App\Shared\TransactionLifecycle\TransactionVoidEffectService;
 use App\Shared\Validation\BusinessReferenceValidator;
-use App\Support\DocumentNumbering\DocumentType;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -32,13 +32,15 @@ class CustomerDepositService
         private readonly TransactionVoidEffectService $voidEffectService,
         private readonly SalesAccountResolverService $accountResolver,
         private readonly ?AuditLogService $auditLogService = null,
-    ) {
-    }
+    ) {}
 
     public function list(array $filters = []): Collection
     {
         $query = CustomerDeposit::query()->with('customer', 'salesOrder', 'cashBankAccount');
-        if (! empty($filters['status'])) $query->where('status', (string) $filters['status']);
+        if (! empty($filters['status'])) {
+            $query->where('status', (string) $filters['status']);
+        }
+
         return $query->orderByDesc('deposit_date')->orderByDesc('id')->get();
     }
 
@@ -99,9 +101,13 @@ class CustomerDepositService
     public function create(array $data): CustomerDeposit
     {
         $company = $this->tenantContext->company();
-        if (! $company) throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
+        if (! $company) {
+            throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
+        }
         $amount = (float) $data['amount'];
-        if ($amount <= 0) throw ApiException::make('AMOUNT_INVALID', 'Amount must be greater than zero.', 422);
+        if ($amount <= 0) {
+            throw ApiException::make('AMOUNT_INVALID', 'Amount must be greater than zero.', 422);
+        }
         $this->ensureCustomerExists((int) $data['customer_id']);
         $this->ensureCashBankAccount((int) $data['cash_bank_account_id']);
         $deposit = CustomerDeposit::query()->create(array_merge($data, [
@@ -133,9 +139,12 @@ class CustomerDepositService
 
     public function post(CustomerDeposit $deposit): CustomerDeposit
     {
-        if ($deposit->status === 'posted') throw ApiException::make('DOCUMENT_ALREADY_POSTED', 'Document has already been posted.', 422);
+        if ($deposit->status === 'posted') {
+            throw ApiException::make('DOCUMENT_ALREADY_POSTED', 'Document has already been posted.', 422);
+        }
         $this->guardDate((string) $deposit->deposit_date);
         $this->ensureCashBankAccount((int) $deposit->cash_bank_account_id);
+
         return DB::connection('tenant')->transaction(function () use ($deposit) {
             $journal = $this->journal($deposit, 'Customer deposit '.$deposit->deposit_number, [
                 ['account_id' => $deposit->cash_bank_account_id, 'description' => 'Cash/Bank', 'debit' => $deposit->amount, 'credit' => 0, 'line_order' => 1],
@@ -147,15 +156,19 @@ class CustomerDepositService
             $deposit->posted_at = now();
             $deposit->remaining_amount = $deposit->amount;
             $deposit->save();
+
             return $deposit->refresh()->load('customer', 'salesOrder', 'cashBankAccount');
         });
     }
 
     public function void(CustomerDeposit $deposit, ?string $reason = null): CustomerDeposit
     {
-        if ($deposit->status === 'void') throw ApiException::make('CUSTOMER_DEPOSIT_ALREADY_VOID', 'Customer deposit already void.', 422);
+        if ($deposit->status === 'void') {
+            throw ApiException::make('CUSTOMER_DEPOSIT_ALREADY_VOID', 'Customer deposit already void.', 422);
+        }
         $reason = $this->voidEffectService->requireReason($reason);
         $this->guardDate((string) $deposit->deposit_date, 'void');
+
         return DB::connection('tenant')->transaction(function () use ($deposit, $reason) {
             $journalIds = $this->voidEffectService->voidJournalsForSource('customer_deposit', (int) $deposit->id, $reason);
             $allocations = CustomerDepositAllocation::query()->where('customer_deposit_id', $deposit->id)->where('status', 'posted')->get();
@@ -168,19 +181,33 @@ class CustomerDepositService
                     $invoice->save();
                 }
                 $journalId = $this->voidEffectService->voidJournalById((int) $allocation->journal_entry_id, $reason);
-                if ($journalId) $journalIds[] = $journalId;
-                $allocation->status = 'void'; $allocation->voided_by = auth()->id(); $allocation->voided_at = now(); $allocation->void_reason = $reason; $allocation->save();
+                if ($journalId) {
+                    $journalIds[] = $journalId;
+                }
+                $allocation->status = 'void';
+                $allocation->voided_by = auth()->id();
+                $allocation->voided_at = now();
+                $allocation->void_reason = $reason;
+                $allocation->save();
             }
-            $deposit->status = 'void'; $deposit->voided_by = auth()->id(); $deposit->voided_at = now(); $deposit->void_reason = $reason; $deposit->save();
+            $deposit->status = 'void';
+            $deposit->voided_by = auth()->id();
+            $deposit->voided_at = now();
+            $deposit->void_reason = $reason;
+            $deposit->save();
             $this->auditSales($this->auditLogService, 'customer_deposit.voided', 'sales', $deposit, 'deposit_number', ['reason' => $reason, 'voided_journal_ids' => array_values(array_unique($journalIds)), 'voided_allocation_ids' => $allocations->pluck('id')->all()]);
+
             return $deposit->refresh()->load('customer', 'salesOrder', 'cashBankAccount');
         });
     }
 
     public function refund(CustomerDeposit $deposit, float $amount, ?string $reason = null): CustomerDeposit
     {
-        if ($amount > (float) $deposit->remaining_amount) throw ApiException::make('REFUND_EXCEEDS_REMAINING_DEPOSIT', 'Refund exceeds remaining deposit.', 422);
+        if ($amount > (float) $deposit->remaining_amount) {
+            throw ApiException::make('REFUND_EXCEEDS_REMAINING_DEPOSIT', 'Refund exceeds remaining deposit.', 422);
+        }
         $this->guardDate((string) $deposit->deposit_date);
+
         return DB::connection('tenant')->transaction(function () use ($deposit, $amount, $reason) {
             $journal = $this->journal($deposit, 'Refund customer deposit '.$deposit->deposit_number, [
                 ['account_id' => $this->mapping('sales.customer_deposit'), 'description' => 'Customer Deposit', 'debit' => $amount, 'credit' => 0, 'line_order' => 1],
@@ -189,18 +216,32 @@ class CustomerDepositService
             $deposit->remaining_amount = (float) $deposit->remaining_amount - $amount;
             $deposit->refund_journal_entry_id = $journal->id;
             $deposit->status = $deposit->remaining_amount <= 0 ? 'refunded' : 'partially_allocated';
-            $deposit->refunded_by = auth()->id(); $deposit->refunded_at = now(); $deposit->refund_reason = $reason; $deposit->save();
+            $deposit->refunded_by = auth()->id();
+            $deposit->refunded_at = now();
+            $deposit->refund_reason = $reason;
+            $deposit->save();
+
             return $deposit->refresh()->load('customer', 'salesOrder', 'cashBankAccount');
         });
     }
 
     public function allocateToInvoice(CustomerDeposit $deposit, SalesInvoice $invoice, float $amount, array $options = []): CustomerDepositAllocation
     {
-        if ($deposit->customer_id !== $invoice->customer_id) throw ApiException::make('CUSTOMER_MISMATCH', 'Deposit and invoice customer mismatch.', 422);
-        if (! in_array($deposit->status, ['posted', 'partially_allocated'], true)) throw ApiException::make('CUSTOMER_DEPOSIT_NOT_AVAILABLE', 'Customer deposit is not available for allocation.', 422);
-        if (! in_array($invoice->status, ['posted', 'partially_paid'], true) || ! $invoice->posted_at) throw ApiException::make('SALES_INVOICE_NOT_PAYABLE', 'Sales invoice must be posted before deposit allocation.', 422);
-        if ($amount > (float) $deposit->remaining_amount) throw ApiException::make('CUSTOMER_DEPOSIT_INSUFFICIENT', 'Cannot allocate more than remaining deposit.', 422);
-        if ($amount > (float) $invoice->balance_due) throw ApiException::make('CUSTOMER_DEPOSIT_ALLOCATION_EXCEEDS_INVOICE_BALANCE', 'Cannot allocate more than invoice balance due.', 422);
+        if ($deposit->customer_id !== $invoice->customer_id) {
+            throw ApiException::make('CUSTOMER_MISMATCH', 'Deposit and invoice customer mismatch.', 422);
+        }
+        if (! in_array($deposit->status, ['posted', 'partially_allocated'], true)) {
+            throw ApiException::make('CUSTOMER_DEPOSIT_NOT_AVAILABLE', 'Customer deposit is not available for allocation.', 422);
+        }
+        if (! in_array($invoice->status, ['posted', 'partially_paid'], true) || ! $invoice->posted_at) {
+            throw ApiException::make('SALES_INVOICE_NOT_PAYABLE', 'Sales invoice must be posted before deposit allocation.', 422);
+        }
+        if ($amount > (float) $deposit->remaining_amount) {
+            throw ApiException::make('CUSTOMER_DEPOSIT_INSUFFICIENT', 'Cannot allocate more than remaining deposit.', 422);
+        }
+        if ($amount > (float) $invoice->balance_due) {
+            throw ApiException::make('CUSTOMER_DEPOSIT_ALLOCATION_EXCEEDS_INVOICE_BALANCE', 'Cannot allocate more than invoice balance due.', 422);
+        }
         $allocationDate = (string) ($options['allocation_date'] ?? $invoice->invoice_date);
         $this->guardDate($allocationDate);
 
@@ -208,11 +249,21 @@ class CustomerDepositService
             $lockedDeposit = CustomerDeposit::query()->lockForUpdate()->findOrFail($deposit->id);
             $lockedInvoice = SalesInvoice::query()->lockForUpdate()->findOrFail($invoice->id);
 
-            if ($lockedDeposit->customer_id !== $lockedInvoice->customer_id) throw ApiException::make('CUSTOMER_MISMATCH', 'Deposit and invoice customer mismatch.', 422);
-            if (! in_array($lockedDeposit->status, ['posted', 'partially_allocated'], true)) throw ApiException::make('CUSTOMER_DEPOSIT_NOT_AVAILABLE', 'Customer deposit is not available for allocation.', 422);
-            if (! in_array($lockedInvoice->status, ['posted', 'partially_paid'], true) || ! $lockedInvoice->posted_at) throw ApiException::make('SALES_INVOICE_NOT_PAYABLE', 'Sales invoice must be posted before deposit allocation.', 422);
-            if ($amount > (float) $lockedDeposit->remaining_amount) throw ApiException::make('CUSTOMER_DEPOSIT_INSUFFICIENT', 'Cannot allocate more than remaining deposit.', 422);
-            if ($amount > (float) $lockedInvoice->balance_due) throw ApiException::make('CUSTOMER_DEPOSIT_ALLOCATION_EXCEEDS_INVOICE_BALANCE', 'Cannot allocate more than invoice balance due.', 422);
+            if ($lockedDeposit->customer_id !== $lockedInvoice->customer_id) {
+                throw ApiException::make('CUSTOMER_MISMATCH', 'Deposit and invoice customer mismatch.', 422);
+            }
+            if (! in_array($lockedDeposit->status, ['posted', 'partially_allocated'], true)) {
+                throw ApiException::make('CUSTOMER_DEPOSIT_NOT_AVAILABLE', 'Customer deposit is not available for allocation.', 422);
+            }
+            if (! in_array($lockedInvoice->status, ['posted', 'partially_paid'], true) || ! $lockedInvoice->posted_at) {
+                throw ApiException::make('SALES_INVOICE_NOT_PAYABLE', 'Sales invoice must be posted before deposit allocation.', 422);
+            }
+            if ($amount > (float) $lockedDeposit->remaining_amount) {
+                throw ApiException::make('CUSTOMER_DEPOSIT_INSUFFICIENT', 'Cannot allocate more than remaining deposit.', 422);
+            }
+            if ($amount > (float) $lockedInvoice->balance_due) {
+                throw ApiException::make('CUSTOMER_DEPOSIT_ALLOCATION_EXCEEDS_INVOICE_BALANCE', 'Cannot allocate more than invoice balance due.', 422);
+            }
 
             $journal = $this->journal($deposit, 'Apply customer deposit '.$invoice->invoice_number, [
                 ['account_id' => $this->mapping('sales.customer_deposit'), 'description' => 'Customer Deposit', 'debit' => $amount, 'credit' => 0, 'line_order' => 1],
@@ -237,8 +288,14 @@ class CustomerDepositService
             $journal->source_id = $allocation->id;
             $journal->save();
 
-            $lockedDeposit->allocated_amount = (float) $lockedDeposit->allocated_amount + $amount; $lockedDeposit->remaining_amount = (float) $lockedDeposit->remaining_amount - $amount; $lockedDeposit->status = $lockedDeposit->remaining_amount <= 0 ? 'fully_allocated' : 'partially_allocated'; $lockedDeposit->save();
-            $lockedInvoice->paid_amount = (float) $lockedInvoice->paid_amount + $amount; $lockedInvoice->balance_due = max(0, (float) $lockedInvoice->balance_due - $amount); $lockedInvoice->status = $lockedInvoice->balance_due <= 0 ? 'paid' : 'partially_paid'; $lockedInvoice->save();
+            $lockedDeposit->allocated_amount = (float) $lockedDeposit->allocated_amount + $amount;
+            $lockedDeposit->remaining_amount = (float) $lockedDeposit->remaining_amount - $amount;
+            $lockedDeposit->status = $lockedDeposit->remaining_amount <= 0 ? 'fully_allocated' : 'partially_allocated';
+            $lockedDeposit->save();
+            $lockedInvoice->paid_amount = (float) $lockedInvoice->paid_amount + $amount;
+            $lockedInvoice->balance_due = max(0, (float) $lockedInvoice->balance_due - $amount);
+            $lockedInvoice->status = $lockedInvoice->balance_due <= 0 ? 'paid' : 'partially_paid';
+            $lockedInvoice->save();
             $this->auditSales($this->auditLogService, 'customer_deposit.allocated', 'sales', $lockedDeposit, 'deposit_number', ['allocation_id' => $allocation->id, 'sales_invoice_id' => $lockedInvoice->id, 'amount' => $amount, 'source_context' => $options['source_context'] ?? null]);
 
             return $allocation->refresh()->load('customerDeposit', 'salesInvoice');
@@ -247,7 +304,9 @@ class CustomerDepositService
 
     public function voidAllocation(CustomerDepositAllocation $allocation, ?string $reason = null): CustomerDepositAllocation
     {
-        if ($allocation->status === 'void') throw ApiException::make('CUSTOMER_DEPOSIT_ALLOCATION_ALREADY_VOID', 'Customer deposit allocation already void.', 422);
+        if ($allocation->status === 'void') {
+            throw ApiException::make('CUSTOMER_DEPOSIT_ALLOCATION_ALREADY_VOID', 'Customer deposit allocation already void.', 422);
+        }
         $reason = $this->voidEffectService->requireReason($reason);
         $this->guardDate((string) $allocation->allocation_date, 'void');
 
@@ -280,13 +339,49 @@ class CustomerDepositService
         });
     }
 
-    public function calculateAvailableForSalesOrder(SalesOrder $order): float { return (float) CustomerDeposit::query()->where('sales_order_id', $order->id)->whereIn('status', ['posted', 'partially_allocated'])->sum('remaining_amount'); }
-    public function calculateAvailableForCustomer(int $customerId): float { return (float) CustomerDeposit::query()->where('customer_id', $customerId)->whereIn('status', ['posted', 'partially_allocated'])->sum('remaining_amount'); }
-    public function calculateReceivedForSalesOrder(SalesOrder $order): float { return (float) $order->deposits()->where('status', '!=', 'void')->sum('amount'); }
+    public function calculateAvailableForSalesOrder(SalesOrder $order): float
+    {
+        return (float) CustomerDeposit::query()->where('sales_order_id', $order->id)->whereIn('status', ['posted', 'partially_allocated'])->sum('remaining_amount');
+    }
 
-    private function mapping(string $key): int { app(AccountMappingStorageService::class)->syncDefaultMappingsFromConfig(); $mapping = AccountMapping::query()->where('mapping_key', $key)->where('is_active', true)->first(); if (! $mapping?->account_id) throw ApiException::make('ACCOUNT_MAPPING_MISSING', $key === 'sales.customer_deposit' ? 'Mapping akun Uang Muka Pelanggan belum diatur. Silakan atur sales.customer_deposit di Pemetaan Akun.' : 'Required account mapping is missing: '.$key, 422); app(BusinessReferenceValidator::class)->account((int) $mapping->account_id, $key === 'sales.customer_deposit' ? ['liability'] : null); return (int) $mapping->account_id; }
-    private function guardDate(string $date, string $action = 'post'): void { $check = $this->dateGuardService->check($date, $action, 'sales'); if ($check->denied()) { $arr = $check->toArray(); throw ApiException::make((string) $arr['code'], (string) $arr['message'], 422, (array) $arr['reasons'], (array) $arr['meta']); } }
-    private function ensureCashBankAccount(int $accountId): void { $account = app(BusinessReferenceValidator::class)->account($accountId, ['asset']); if (! $account->isCashBank()) throw ApiException::make('CASH_BANK_ACCOUNT_NOT_VALID', 'Cash/bank account must be active cash or bank account.', 422); }
+    public function calculateAvailableForCustomer(int $customerId): float
+    {
+        return (float) CustomerDeposit::query()->where('customer_id', $customerId)->whereIn('status', ['posted', 'partially_allocated'])->sum('remaining_amount');
+    }
+
+    public function calculateReceivedForSalesOrder(SalesOrder $order): float
+    {
+        return (float) $order->deposits()->where('status', '!=', 'void')->sum('amount');
+    }
+
+    private function mapping(string $key): int
+    {
+        app(AccountMappingStorageService::class)->syncDefaultMappingsFromConfig();
+        $mapping = AccountMapping::query()->where('mapping_key', $key)->where('is_active', true)->first();
+        if (! $mapping?->account_id) {
+            throw ApiException::make('ACCOUNT_MAPPING_MISSING', $key === 'sales.customer_deposit' ? 'Mapping akun Uang Muka Pelanggan belum diatur. Silakan atur sales.customer_deposit di Pemetaan Akun.' : 'Required account mapping is missing: '.$key, 422);
+        } app(BusinessReferenceValidator::class)->account((int) $mapping->account_id, $key === 'sales.customer_deposit' ? ['liability'] : null);
+
+        return (int) $mapping->account_id;
+    }
+
+    private function guardDate(string $date, string $action = 'post'): void
+    {
+        $check = $this->dateGuardService->check($date, $action, 'sales');
+        if ($check->denied()) {
+            $arr = $check->toArray();
+            throw ApiException::make((string) $arr['code'], (string) $arr['message'], 422, (array) $arr['reasons'], (array) $arr['meta']);
+        }
+    }
+
+    private function ensureCashBankAccount(int $accountId): void
+    {
+        $account = app(BusinessReferenceValidator::class)->account($accountId, ['asset']);
+        if (! $account->isCashBank()) {
+            throw ApiException::make('CASH_BANK_ACCOUNT_NOT_VALID', 'Cash/bank account must be active cash or bank account.', 422);
+        }
+    }
+
     private function availableDepositRow(CustomerDeposit $deposit, ?int $salesOrderId = null): array
     {
         $matchesSalesOrder = $salesOrderId !== null && (int) $deposit->sales_order_id === $salesOrderId;
@@ -304,5 +399,16 @@ class CustomerDepositService
             'match_strength' => $matchesSalesOrder ? 'sales_order' : 'customer_only',
         ];
     }
-    private function journal(CustomerDeposit $deposit, string $description, array $lines, ?SalesInvoice $invoice = null, ?string $journalDate = null): JournalEntry { $company = $this->tenantContext->company(); if (! $company) throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422); $date = $journalDate ?? (string) ($invoice?->invoice_date ?? $deposit->deposit_date); $journal = JournalEntry::query()->create(['journal_number' => $this->documentNumberService->generate($company, DocumentType::JOURNAL_ENTRY, $date), 'journal_date' => $date, 'description' => $description, 'status' => 'posted', 'revision_no' => 1, 'source_type' => $invoice ? 'customer_deposit_allocation' : 'customer_deposit', 'source_id' => $invoice?->id ?? $deposit->id, 'source_number' => $invoice?->invoice_number ?? $deposit->deposit_number, 'source_revision' => $invoice?->revision_no ?? 1, 'source_module' => 'sales', 'is_system_generated' => true, 'created_by' => auth()->id(), 'posted_by' => auth()->id(), 'posted_at' => now()]); $journal->lines()->createMany($lines); return $journal->refresh(); }
+
+    private function journal(CustomerDeposit $deposit, string $description, array $lines, ?SalesInvoice $invoice = null, ?string $journalDate = null): JournalEntry
+    {
+        $company = $this->tenantContext->company();
+        if (! $company) {
+            throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
+        } $date = $journalDate ?? (string) ($invoice?->invoice_date ?? $deposit->deposit_date);
+        $journal = JournalEntry::query()->create(['journal_number' => $this->documentNumberService->generate($company, DocumentType::JOURNAL_ENTRY, $date), 'journal_date' => $date, 'description' => $description, 'status' => 'posted', 'revision_no' => 1, 'source_type' => $invoice ? 'customer_deposit_allocation' : 'customer_deposit', 'source_id' => $invoice?->id ?? $deposit->id, 'source_number' => $invoice?->invoice_number ?? $deposit->deposit_number, 'source_revision' => $invoice?->revision_no ?? 1, 'source_module' => 'sales', 'is_system_generated' => true, 'created_by' => auth()->id(), 'posted_by' => auth()->id(), 'posted_at' => now()]);
+        $journal->lines()->createMany($lines);
+
+        return $journal->refresh();
+    }
 }

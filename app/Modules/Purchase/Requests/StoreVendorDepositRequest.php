@@ -6,7 +6,11 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class StoreVendorDepositRequest extends FormRequest
 {
-    public function authorize(): bool { return true; }
+    public function authorize(): bool
+    {
+        return true;
+    }
+
     public function rules(): array
     {
         return [

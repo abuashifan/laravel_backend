@@ -25,6 +25,7 @@ class InventoryValuationController extends Controller
     public function asOf(Request $request): JsonResponse
     {
         $asOf = $request->query('as_of_date');
+
         return $this->successResponse(
             $this->service->valuationAsOf($asOf ? (string) $asOf : null, $request->query()),
             'Inventory valuation retrieved successfully'
@@ -47,4 +48,3 @@ class InventoryValuationController extends Controller
         );
     }
 }
-

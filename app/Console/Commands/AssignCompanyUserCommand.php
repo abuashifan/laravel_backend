@@ -2,7 +2,7 @@
 
 namespace App\Console\Commands;
 
-use App\Services\Companies\CompanyUserAssignmentService;
+use App\Modules\Companies\Services\CompanyUserAssignmentService;
 use Illuminate\Console\Command;
 
 class AssignCompanyUserCommand extends Command
@@ -40,6 +40,7 @@ class AssignCompanyUserCommand extends Command
             ]);
         } catch (\Throwable $e) {
             $this->error($e->getMessage());
+
             return self::FAILURE;
         }
 

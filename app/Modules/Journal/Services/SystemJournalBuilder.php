@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace App\Modules\Journal\Services;
 
-use App\Exceptions\ApiException;
-use App\Models\Tenant\JournalEntry;
+use App\Modules\Journal\Models\JournalEntry;
 use App\Shared\DocumentNumbering\DocumentNumberService;
+use App\Shared\DocumentNumbering\DocumentType;
+use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
-use App\Support\DocumentNumbering\DocumentType;
 use Illuminate\Support\Facades\DB;
 
 class SystemJournalBuilder
@@ -20,8 +20,8 @@ class SystemJournalBuilder
     ) {}
 
     /**
-     * @param array{source_type:string,source_id:int|string,journal_date:string,description:string,source_number?:string,source_revision?:int,source_module?:string} $data
-     * @param array<array{account_id:int,debit:float,credit:float,description?:string,line_order?:int}> $lines
+     * @param  array{source_type:string,source_id:int|string,journal_date:string,description:string,source_number?:string,source_revision?:int,source_module?:string}  $data
+     * @param  array<array{account_id:int,debit:float,credit:float,description?:string,line_order?:int}>  $lines
      */
     public function create(array $data, array $lines): JournalEntry
     {
@@ -53,20 +53,20 @@ class SystemJournalBuilder
 
         return DB::connection('tenant')->transaction(function () use ($company, $data, $lines) {
             $journal = JournalEntry::query()->create([
-                'journal_number'   => $this->documentNumberService->generate($company, DocumentType::JOURNAL_ENTRY, (string) $data['journal_date']),
-                'journal_date'     => $data['journal_date'],
-                'description'      => $data['description'],
-                'status'           => 'posted',
-                'revision_no'      => $data['revision_no'] ?? 1,
-                'source_type'      => $data['source_type'],
-                'source_id'        => $data['source_id'],
-                'source_number'    => $data['source_number'] ?? null,
-                'source_revision'  => $data['source_revision'] ?? 1,
-                'source_module'    => $data['source_module'] ?? null,
+                'journal_number' => $this->documentNumberService->generate($company, DocumentType::JOURNAL_ENTRY, (string) $data['journal_date']),
+                'journal_date' => $data['journal_date'],
+                'description' => $data['description'],
+                'status' => 'posted',
+                'revision_no' => $data['revision_no'] ?? 1,
+                'source_type' => $data['source_type'],
+                'source_id' => $data['source_id'],
+                'source_number' => $data['source_number'] ?? null,
+                'source_revision' => $data['source_revision'] ?? 1,
+                'source_module' => $data['source_module'] ?? null,
                 'is_system_generated' => true,
-                'created_by'       => auth()->id(),
-                'posted_by'        => auth()->id(),
-                'posted_at'        => now(),
+                'created_by' => auth()->id(),
+                'posted_by' => auth()->id(),
+                'posted_at' => now(),
             ]);
 
             $journal->lines()->createMany($lines);

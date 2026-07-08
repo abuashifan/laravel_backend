@@ -19,4 +19,3 @@ class UpdatePeriodLockRequest extends FormRequest
         ];
     }
 }
-

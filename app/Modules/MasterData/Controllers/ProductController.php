@@ -3,9 +3,9 @@
 namespace App\Modules\MasterData\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\MasterData\Models\Product;
 use App\Modules\MasterData\Requests\StoreProductRequest;
 use App\Modules\MasterData\Requests\UpdateProductRequest;
-use App\Models\Tenant\Product;
 use App\Modules\MasterData\Services\ProductService;
 use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -15,25 +15,26 @@ class ProductController extends Controller
 {
     use ApiResponse;
 
-    public function __construct(private readonly ProductService $service)
-    {
-    }
+    public function __construct(private readonly ProductService $service) {}
 
     public function index(Request $request): JsonResponse
     {
         $items = $this->service->list($request->query());
+
         return $this->listResponse($items, $request, 'Products retrieved successfully');
     }
 
     public function store(StoreProductRequest $request): JsonResponse
     {
         $product = $this->service->create($request->validated());
+
         return $this->successResponse($product, 'Product created successfully', 201);
     }
 
     public function show(int $id): JsonResponse
     {
         $product = Product::query()->findOrFail($id);
+
         return $this->successResponse($product, 'Product retrieved successfully');
     }
 
@@ -61,4 +62,3 @@ class ProductController extends Controller
         return $this->successResponse($product, 'Product activated successfully');
     }
 }
-

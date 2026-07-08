@@ -2,10 +2,10 @@
 
 namespace App\Shared\Tenant;
 
-use App\Models\Company;
-use App\Models\CompanyUser;
-use App\Models\TenantDatabase;
-use App\Models\User;
+use App\Shared\Models\Company;
+use App\Shared\Models\CompanyUser;
+use App\Shared\Models\TenantDatabase;
+use App\Shared\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
@@ -44,12 +44,12 @@ class TenantProvisioningService
             throw new InvalidArgumentException('Owner email wajib diisi.');
         }
 
-        if (!filter_var($ownerEmail, FILTER_VALIDATE_EMAIL)) {
+        if (! filter_var($ownerEmail, FILTER_VALIDATE_EMAIL)) {
             throw new InvalidArgumentException('Owner email tidak valid.');
         }
 
         $owner = User::query()->where('email', $ownerEmail)->first();
-        if (!$owner) {
+        if (! $owner) {
             throw new InvalidArgumentException('Owner email tidak ditemukan di tabel users.');
         }
 
@@ -58,15 +58,15 @@ class TenantProvisioningService
         }
 
         $tenantDirectory = config('tenant.database_path');
-        if (!is_string($tenantDirectory) || $tenantDirectory === '') {
+        if (! is_string($tenantDirectory) || $tenantDirectory === '') {
             throw new RuntimeException('Konfigurasi tenant.database_path tidak valid.');
         }
 
-        if (!File::isDirectory($tenantDirectory)) {
+        if (! File::isDirectory($tenantDirectory)) {
             throw new RuntimeException("Folder tenant database tidak ditemukan: {$tenantDirectory}");
         }
 
-        if (!is_writable($tenantDirectory)) {
+        if (! is_writable($tenantDirectory)) {
             throw new RuntimeException("Folder tenant database tidak writable: {$tenantDirectory}");
         }
 
@@ -144,4 +144,3 @@ class TenantProvisioningService
         return $prefix.str_pad((string) $companyId, 6, '0', STR_PAD_LEFT).$extension;
     }
 }
-

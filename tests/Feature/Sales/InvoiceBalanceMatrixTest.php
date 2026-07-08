@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Sales;
 
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\Contact;
-use App\Models\Tenant\SalesInvoice;
-use App\Support\AccountMapping\AccountMappingKey;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\MasterData\Models\Contact;
+use App\Modules\Sales\Models\SalesInvoice;
+use App\Shared\AccountMapping\AccountMappingKey;
 use Tests\TenantTestCase;
 
 class InvoiceBalanceMatrixTest extends TenantTestCase
@@ -335,34 +335,34 @@ class InvoiceBalanceMatrixTest extends TenantTestCase
     private function seedSalesMappings(): array
     {
         // Reuse accounts pre-seeded oleh JournalTestCase
-        $cashAccount    = ChartOfAccount::query()->where('account_code', '1000')->firstOrFail();
+        $cashAccount = ChartOfAccount::query()->where('account_code', '1000')->firstOrFail();
         $revenueAccount = ChartOfAccount::query()->where('account_code', '4000')->firstOrFail();
 
         // Buat accounts tambahan dengan kode yang belum ada
         $accounts = [
-            'ar'         => ChartOfAccount::factory()->asset()->create(['account_code' => '1200', 'account_name' => 'Accounts Receivable'])->id,
-            'revenue'    => (int) $revenueAccount->id,
-            'deposit'    => ChartOfAccount::factory()->liability()->create(['account_code' => '2200', 'account_name' => 'Customer Deposit'])->id,
-            'return'     => ChartOfAccount::factory()->expense()->create(['account_code' => '4900', 'account_name' => 'Sales Return'])->id,
+            'ar' => ChartOfAccount::factory()->asset()->create(['account_code' => '1200', 'account_name' => 'Accounts Receivable'])->id,
+            'revenue' => (int) $revenueAccount->id,
+            'deposit' => ChartOfAccount::factory()->liability()->create(['account_code' => '2200', 'account_name' => 'Customer Deposit'])->id,
+            'return' => ChartOfAccount::factory()->expense()->create(['account_code' => '4900', 'account_name' => 'Sales Return'])->id,
             'tax_output' => ChartOfAccount::factory()->liability()->create(['account_code' => '2300', 'account_name' => 'Tax Output'])->id,
-            'cash'       => (int) $cashAccount->id,
+            'cash' => (int) $cashAccount->id,
         ];
 
         $mappings = [
             AccountMappingKey::SALES_ACCOUNTS_RECEIVABLE => ['sales', $accounts['ar']],
-            AccountMappingKey::SALES_REVENUE             => ['sales', $accounts['revenue']],
-            AccountMappingKey::SALES_CUSTOMER_DEPOSIT    => ['sales', $accounts['deposit']],
-            AccountMappingKey::SALES_RETURN              => ['sales', $accounts['return']],
-            AccountMappingKey::SALES_TAX_OUTPUT          => ['sales', $accounts['tax_output']],
+            AccountMappingKey::SALES_REVENUE => ['sales', $accounts['revenue']],
+            AccountMappingKey::SALES_CUSTOMER_DEPOSIT => ['sales', $accounts['deposit']],
+            AccountMappingKey::SALES_RETURN => ['sales', $accounts['return']],
+            AccountMappingKey::SALES_TAX_OUTPUT => ['sales', $accounts['tax_output']],
         ];
 
         foreach ($mappings as $key => [$module, $accountId]) {
             AccountMapping::factory()->create([
                 'mapping_key' => $key,
-                'module'      => $module,
-                'account_id'  => $accountId,
+                'module' => $module,
+                'account_id' => $accountId,
                 'is_required' => true,
-                'is_active'   => true,
+                'is_active' => true,
             ]);
         }
 

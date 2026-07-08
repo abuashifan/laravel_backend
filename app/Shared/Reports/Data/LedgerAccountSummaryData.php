@@ -9,8 +9,7 @@ class LedgerAccountSummaryData
         public array $openingBalance,
         public array $periodTotals,
         public float $endingBalance,
-    ) {
-    }
+    ) {}
 
     public function toArray(): array
     {
@@ -22,4 +21,3 @@ class LedgerAccountSummaryData
         ];
     }
 }
-

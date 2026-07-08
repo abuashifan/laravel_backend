@@ -2,8 +2,8 @@
 
 namespace App\Modules\MasterData\Services;
 
-use App\Exceptions\ApiException;
-use App\Models\Tenant\PaymentTerm;
+use App\Modules\MasterData\Models\PaymentTerm;
+use App\Shared\Exceptions\ApiException;
 
 class PaymentTermService
 {

@@ -2,10 +2,10 @@
 
 namespace Tests\Feature\Purchase;
 
-use App\Models\Tenant\GoodsReceipt;
-use App\Models\Tenant\PurchaseOrder;
-use App\Models\Tenant\PurchaseOrderLine;
-use App\Models\Tenant\StockMovement;
+use App\Modules\Inventory\Models\StockMovement;
+use App\Modules\Purchase\Models\GoodsReceipt;
+use App\Modules\Purchase\Models\PurchaseOrder;
+use App\Modules\Purchase\Models\PurchaseOrderLine;
 use Illuminate\Support\Facades\DB;
 
 class GoodsReceiptTest extends PurchaseTestCase

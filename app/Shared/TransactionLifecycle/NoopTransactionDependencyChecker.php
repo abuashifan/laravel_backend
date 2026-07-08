@@ -3,7 +3,6 @@
 namespace App\Shared\TransactionLifecycle;
 
 use App\Shared\TransactionLifecycle\Contracts\TransactionDependencyChecker;
-use App\Shared\TransactionLifecycle\DependencyCheckResult;
 
 class NoopTransactionDependencyChecker implements TransactionDependencyChecker
 {
@@ -22,4 +21,3 @@ class NoopTransactionDependencyChecker implements TransactionDependencyChecker
         return [];
     }
 }
-

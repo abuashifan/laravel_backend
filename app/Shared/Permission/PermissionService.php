@@ -9,9 +9,7 @@ class PermissionService
     public function __construct(
         private readonly TenantContext $tenantContext,
         private readonly EffectivePermissionService $effectivePermissionService,
-    )
-    {
-    }
+    ) {}
 
     public function allPermissions(): array
     {

@@ -2,12 +2,12 @@
 
 namespace Tests\Feature\Sales;
 
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\CustomerDeposit;
-use App\Models\Tenant\JournalEntry;
-use App\Models\Tenant\SalesInvoice;
-use App\Models\Tenant\SalesReceipt;
+use App\Modules\Journal\Models\JournalEntry;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\Sales\Models\CustomerDeposit;
+use App\Modules\Sales\Models\SalesInvoice;
+use App\Modules\Sales\Models\SalesReceipt;
 
 class SalesReceiptTest extends SalesTestCase
 {
@@ -110,6 +110,7 @@ class SalesReceiptTest extends SalesTestCase
     {
         $invoice = $this->postJson('/api/sales/invoices', ['customer_id' => $this->createCustomer(), 'invoice_date' => '2026-05-20', 'lines' => [['description' => 'Service', 'quantity' => 1, 'unit_price' => 100]]], $ctx['headers'])->assertStatus(201)->json('data');
         $this->patchJson('/api/sales/invoices/'.$invoice['id'].'/post', [], $ctx['headers'])->assertStatus(200);
+
         return SalesInvoice::query()->find($invoice['id'])->toArray();
     }
 
@@ -119,7 +120,10 @@ class SalesReceiptTest extends SalesTestCase
         $ar = $this->account('1100', 'AR', 'asset', 'debit');
         $revenue = $this->account('4100', 'Revenue', 'revenue', 'credit');
         $deposit = $this->account('2200', 'Customer Deposit', 'liability', 'credit');
-        foreach (['sales.accounts_receivable' => $ar, 'sales.revenue' => $revenue, 'sales.customer_deposit' => $deposit] as $key => $id) AccountMapping::query()->create(['mapping_key' => $key, 'module' => 'sales', 'account_id' => $id, 'is_required' => true, 'is_active' => true]);
+        foreach (['sales.accounts_receivable' => $ar, 'sales.revenue' => $revenue, 'sales.customer_deposit' => $deposit] as $key => $id) {
+            AccountMapping::query()->create(['mapping_key' => $key, 'module' => 'sales', 'account_id' => $id, 'is_required' => true, 'is_active' => true]);
+        }
+
         return $cash;
     }
 

@@ -9,8 +9,7 @@ class DependencyCheckResult
         private readonly array $reasons = [],
         private readonly array $dependencies = [],
         private readonly array $meta = [],
-    ) {
-    }
+    ) {}
 
     public static function clear(array $meta = []): self
     {

@@ -2,29 +2,30 @@
 
 namespace Tests\Feature\Inventory;
 
-use App\Exceptions\ApiException;
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\Contact;
-use App\Models\Tenant\DeliveryOrder;
-use App\Models\Tenant\DeliveryOrderLine;
-use App\Models\Tenant\Product;
-use App\Models\Tenant\SalesInvoice;
-use App\Models\Tenant\SalesInvoiceLine;
-use App\Models\Tenant\SalesReturn;
-use App\Models\Tenant\SalesReturnLine;
-use App\Models\Tenant\StockBalance;
-use App\Models\Tenant\StockMovement;
-use App\Models\Tenant\Unit;
-use App\Models\Tenant\Warehouse;
-use App\Services\Sales\DeliveryOrderService;
-use App\Services\Sales\SalesInvoiceService;
-use App\Services\Sales\SalesReturnService;
-use App\Support\AccountMapping\AccountMappingKey;
+use App\Modules\Inventory\Models\StockBalance;
+use App\Modules\Inventory\Models\StockMovement;
+use App\Modules\Inventory\Services\StockMovementService;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\MasterData\Models\Contact;
+use App\Modules\MasterData\Models\Product;
+use App\Modules\MasterData\Models\Unit;
+use App\Modules\MasterData\Models\Warehouse;
+use App\Modules\Sales\Models\DeliveryOrder;
+use App\Modules\Sales\Models\DeliveryOrderLine;
+use App\Modules\Sales\Models\SalesInvoice;
+use App\Modules\Sales\Models\SalesInvoiceLine;
+use App\Modules\Sales\Models\SalesReturn;
+use App\Modules\Sales\Models\SalesReturnLine;
+use App\Modules\Sales\Services\DeliveryOrderService;
+use App\Modules\Sales\Services\SalesInvoiceService;
+use App\Modules\Sales\Services\SalesReturnService;
+use App\Shared\AccountMapping\AccountMappingKey;
+use App\Shared\Exceptions\ApiException;
+use App\Shared\Models\CompanyUser;
+use App\Shared\Models\TenantDatabase;
+use App\Shared\Tenant\TenantContext;
 use Illuminate\Support\Facades\Config;
-use App\Models\CompanyUser;
-use App\Models\TenantDatabase;
-use App\Services\Tenant\TenantContext;
 use Tests\Feature\Journal\JournalTestCase;
 
 class InventorySalesIntegrationTest extends JournalTestCase
@@ -44,7 +45,7 @@ class InventorySalesIntegrationTest extends JournalTestCase
         $p = Product::query()->create(['product_code' => 'SKU1', 'product_name' => 'Item', 'product_type' => 'goods', 'unit_id' => $unit->id, 'is_stock_item' => true, 'is_active' => true]);
 
         // opening stock
-        $open = app(\App\Services\Inventory\StockMovementService::class)->createAndPost([
+        $open = app(StockMovementService::class)->createAndPost([
             'movement_date' => '2026-01-01',
             'movement_type' => 'opening_stock',
             'lines' => [
@@ -153,7 +154,7 @@ class InventorySalesIntegrationTest extends JournalTestCase
         $customer = Contact::query()->create(['contact_code' => 'C1', 'name' => 'Customer', 'contact_type' => 'person', 'is_customer' => true, 'is_supplier' => false, 'is_employee' => false, 'is_active' => true]);
         $p = Product::query()->create(['product_code' => 'SKU1', 'product_name' => 'Item', 'product_type' => 'goods', 'unit_id' => $unit->id, 'is_stock_item' => true, 'is_active' => true]);
 
-        app(\App\Services\Inventory\StockMovementService::class)->createAndPost([
+        app(StockMovementService::class)->createAndPost([
             'movement_date' => '2026-01-01',
             'movement_type' => 'opening_stock',
             'lines' => [

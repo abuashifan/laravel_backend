@@ -53,4 +53,3 @@ class ProductCategory extends Model
         return $query->where('is_active', false);
     }
 }
-

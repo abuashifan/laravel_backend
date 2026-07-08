@@ -2,13 +2,11 @@
 
 namespace App\Shared\DocumentNumbering;
 
-use App\Models\Company;
-use App\Models\DocumentNumberingSetting;
-use App\Models\DocumentNumberSequence;
-use App\Models\FiscalYear;
-use App\Services\Accounting\FiscalYearService;
-use App\Shared\DocumentNumbering\DocumentNumberFormat;
-use App\Shared\DocumentNumbering\DocumentType;
+use App\Modules\Accounting\Services\FiscalYearService;
+use App\Shared\Models\Company;
+use App\Shared\Models\DocumentNumberingSetting;
+use App\Shared\Models\DocumentNumberSequence;
+use App\Shared\Models\FiscalYear;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -17,9 +15,7 @@ use RuntimeException;
 
 class DocumentNumberService
 {
-    public function __construct(private readonly ?FiscalYearService $fiscalYearService = null)
-    {
-    }
+    public function __construct(private readonly ?FiscalYearService $fiscalYearService = null) {}
 
     public function ensureDefaultSettings(Company $company): void
     {

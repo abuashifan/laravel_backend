@@ -20,4 +20,3 @@ class DocumentNumberFormat
         return str_pad((string) $number, max(0, $padding), '0', STR_PAD_LEFT);
     }
 }
-

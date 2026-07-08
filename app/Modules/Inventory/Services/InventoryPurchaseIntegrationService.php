@@ -2,13 +2,12 @@
 
 namespace App\Modules\Inventory\Services;
 
-use App\Exceptions\ApiException;
-use App\Models\Tenant\GoodsReceipt;
-use App\Models\Tenant\Product;
-use App\Models\Tenant\PurchaseOrderLine;
-use App\Models\Tenant\PurchaseReturn;
-use App\Models\Tenant\StockMovement;
-use App\Models\Tenant\VendorBill;
+use App\Modules\Inventory\Models\StockMovement;
+use App\Modules\MasterData\Models\Product;
+use App\Modules\Purchase\Models\GoodsReceipt;
+use App\Modules\Purchase\Models\PurchaseOrderLine;
+use App\Modules\Purchase\Models\PurchaseReturn;
+use App\Modules\Purchase\Models\VendorBill;
 use App\Modules\Purchase\Services\PurchaseAccountResolverService;
 
 class InventoryPurchaseIntegrationService
@@ -26,18 +25,26 @@ class InventoryPurchaseIntegrationService
             ->where('source_id', (int) $goodsReceipt->id)
             ->whereIn('status', ['draft', 'posted'])
             ->first();
-        if ($existing) return $existing;
+        if ($existing) {
+            return $existing;
+        }
 
         $lines = [];
         foreach ($goodsReceipt->lines as $ln) {
-            if (! $ln->product_id || ! $ln->warehouse_id) continue;
+            if (! $ln->product_id || ! $ln->warehouse_id) {
+                continue;
+            }
             $product = Product::query()->findOrFail((int) $ln->product_id);
-            if (! (bool) $product->is_stock_item) continue;
+            if (! (bool) $product->is_stock_item) {
+                continue;
+            }
 
             $unitCost = 0.0;
             if ($ln->purchase_order_line_id) {
                 $poLine = PurchaseOrderLine::query()->find($ln->purchase_order_line_id);
-                if ($poLine) $unitCost = (float) $poLine->unit_price;
+                if ($poLine) {
+                    $unitCost = (float) $poLine->unit_price;
+                }
             }
 
             $lines[] = [
@@ -55,7 +62,9 @@ class InventoryPurchaseIntegrationService
             ];
         }
 
-        if ($lines === []) return null;
+        if ($lines === []) {
+            return null;
+        }
 
         return $this->stockMovementService->createAndPost([
             'movement_date' => (string) $goodsReceipt->receipt_date,
@@ -71,7 +80,9 @@ class InventoryPurchaseIntegrationService
 
     public function createPurchaseInFromVendorBill(VendorBill $bill): ?StockMovement
     {
-        if (! $this->shouldCreateStockFromVendorBill($bill)) return null;
+        if (! $this->shouldCreateStockFromVendorBill($bill)) {
+            return null;
+        }
 
         $bill->loadMissing('lines');
         $existing = StockMovement::query()
@@ -79,13 +90,19 @@ class InventoryPurchaseIntegrationService
             ->where('source_id', (int) $bill->id)
             ->whereIn('status', ['draft', 'posted'])
             ->first();
-        if ($existing) return $existing;
+        if ($existing) {
+            return $existing;
+        }
 
         $lines = [];
         foreach ($bill->lines as $ln) {
-            if (! $ln->product_id || ! $ln->warehouse_id) continue;
+            if (! $ln->product_id || ! $ln->warehouse_id) {
+                continue;
+            }
             $product = Product::query()->findOrFail((int) $ln->product_id);
-            if (! (bool) $product->is_stock_item) continue;
+            if (! (bool) $product->is_stock_item) {
+                continue;
+            }
             $lines[] = [
                 'product_id' => (int) $ln->product_id,
                 'inventory_account_id' => $this->accountResolver->getInventoryAccountIdForLine($ln),
@@ -101,7 +118,9 @@ class InventoryPurchaseIntegrationService
             ];
         }
 
-        if ($lines === []) return null;
+        if ($lines === []) {
+            return null;
+        }
 
         return $this->stockMovementService->createAndPost([
             'movement_date' => (string) $bill->bill_date,
@@ -123,13 +142,19 @@ class InventoryPurchaseIntegrationService
             ->where('source_id', (int) $return->id)
             ->whereIn('status', ['draft', 'posted'])
             ->first();
-        if ($existing) return $existing;
+        if ($existing) {
+            return $existing;
+        }
 
         $lines = [];
         foreach ($return->lines as $ln) {
-            if (! $ln->product_id || ! $ln->warehouse_id) continue;
+            if (! $ln->product_id || ! $ln->warehouse_id) {
+                continue;
+            }
             $product = Product::query()->findOrFail((int) $ln->product_id);
-            if (! (bool) $product->is_stock_item) continue;
+            if (! (bool) $product->is_stock_item) {
+                continue;
+            }
             $lines[] = [
                 'product_id' => (int) $ln->product_id,
                 'inventory_account_id' => $this->accountResolver->getInventoryAccountIdForLine(['product_id' => $ln->product_id]),
@@ -145,7 +170,9 @@ class InventoryPurchaseIntegrationService
             ];
         }
 
-        if ($lines === []) return null;
+        if ($lines === []) {
+            return null;
+        }
 
         return $this->stockMovementService->createAndPost([
             'movement_date' => (string) $return->return_date,
@@ -161,8 +188,13 @@ class InventoryPurchaseIntegrationService
 
     public function shouldCreateStockFromVendorBill(VendorBill $bill): bool
     {
-        if (! (bool) config('inventory.allow_vendor_bill_direct_stock_receipt', true)) return false;
-        if (! empty($bill->goods_receipt_id)) return false;
+        if (! (bool) config('inventory.allow_vendor_bill_direct_stock_receipt', true)) {
+            return false;
+        }
+        if (! empty($bill->goods_receipt_id)) {
+            return false;
+        }
+
         return true;
     }
 }

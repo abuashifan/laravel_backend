@@ -2,11 +2,11 @@
 
 namespace App\Modules\Purchase\Services;
 
-use App\Models\Tenant\PurchaseReturn;
-use App\Models\Tenant\VendorBill;
-use App\Models\Tenant\VendorDeposit;
-use App\Models\Tenant\VendorDepositAllocation;
-use App\Models\Tenant\VendorPayment;
+use App\Modules\Purchase\Models\PurchaseReturn;
+use App\Modules\Purchase\Models\VendorBill;
+use App\Modules\Purchase\Models\VendorDeposit;
+use App\Modules\Purchase\Models\VendorDepositAllocation;
+use App\Modules\Purchase\Models\VendorPayment;
 use Illuminate\Support\Collection;
 
 class APSubsidiaryLedgerService
@@ -291,7 +291,7 @@ class APSubsidiaryLedgerService
     }
 
     /**
-     * @param array<int,int> $vendorIds
+     * @param  array<int,int>  $vendorIds
      * @return array<int,float>
      */
     private function unappliedDepositTotals(array $vendorIds): array

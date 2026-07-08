@@ -3,10 +3,10 @@
 namespace App\Modules\CashBank\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\CashBank\Models\BankReconciliation;
 use App\Modules\CashBank\Requests\MarkBankReconciliationLinesRequest;
 use App\Modules\CashBank\Requests\StoreBankReconciliationRequest;
 use App\Modules\CashBank\Requests\UpdateBankReconciliationRequest;
-use App\Models\Tenant\BankReconciliation;
 use App\Modules\CashBank\Services\BankReconciliationService;
 use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -36,12 +36,14 @@ class BankReconciliationController extends Controller
     public function update(UpdateBankReconciliationRequest $request, int $id): JsonResponse
     {
         $rec = BankReconciliation::query()->findOrFail($id);
+
         return $this->successResponse($this->service->update($rec, $request->validated()), 'Bank reconciliation updated successfully');
     }
 
     public function refreshLines(int $id): JsonResponse
     {
         $rec = BankReconciliation::query()->findOrFail($id);
+
         return $this->successResponse($this->service->refreshLines($rec), 'Bank reconciliation lines refreshed successfully');
     }
 
@@ -49,10 +51,10 @@ class BankReconciliationController extends Controller
     {
         $rec = BankReconciliation::query()->findOrFail($id);
         $data = $request->validated();
+
         return $this->successResponse(
             $this->service->markLines($rec, (array) $data['line_ids'], (bool) $data['cleared'], $data['cleared_date'] ?? null),
             'Bank reconciliation lines updated successfully'
         );
     }
 }
-

@@ -2,15 +2,15 @@
 
 namespace Tests\Feature\Purchase;
 
-use App\Models\CompanyAccountingSetting;
-use App\Models\Tenant\GoodsReceiptLine;
-use App\Models\Tenant\Product;
-use App\Models\Tenant\PurchaseOrder;
-use App\Models\Tenant\PurchaseOrderLine;
-use App\Models\Tenant\StockMovement;
-use App\Models\Tenant\Unit;
-use App\Models\Tenant\Warehouse;
-use App\Services\Tenant\TenantConnectionManager;
+use App\Modules\Inventory\Models\StockMovement;
+use App\Modules\MasterData\Models\Product;
+use App\Modules\MasterData\Models\Unit;
+use App\Modules\MasterData\Models\Warehouse;
+use App\Modules\Purchase\Models\GoodsReceiptLine;
+use App\Modules\Purchase\Models\PurchaseOrder;
+use App\Modules\Purchase\Models\PurchaseOrderLine;
+use App\Shared\Models\CompanyAccountingSetting;
+use App\Shared\Tenant\TenantConnectionManager;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 

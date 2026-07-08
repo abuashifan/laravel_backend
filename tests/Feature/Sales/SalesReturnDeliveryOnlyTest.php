@@ -2,22 +2,25 @@
 
 namespace Tests\Feature\Sales;
 
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\DeliveryOrder;
-use App\Models\Tenant\DeliveryOrderLine;
-use App\Models\Tenant\JournalEntry;
-use App\Models\Tenant\Product;
-use App\Models\Tenant\StockMovement;
-use App\Models\Tenant\Unit;
-use App\Models\Tenant\Warehouse;
-use App\Support\AccountMapping\AccountMappingKey;
+use App\Modules\Inventory\Models\StockMovement;
+use App\Modules\Journal\Models\JournalEntry;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\MasterData\Models\Product;
+use App\Modules\MasterData\Models\Unit;
+use App\Modules\MasterData\Models\Warehouse;
+use App\Modules\Sales\Models\DeliveryOrder;
+use App\Modules\Sales\Models\DeliveryOrderLine;
+use App\Shared\AccountMapping\AccountMappingKey;
 
 class SalesReturnDeliveryOnlyTest extends SalesTestCase
 {
     private int $arAccountId;
+
     private Unit $unit;
+
     private Warehouse $warehouse;
+
     private Product $product;
 
     protected function setUp(): void

@@ -13,8 +13,7 @@ class OpeningBalanceLine
         public readonly float|int|string $credit,
         public readonly ?string $description,
         public readonly array $metadata,
-    ) {
-    }
+    ) {}
 
     public static function make(
         int|string|null $accountId,
@@ -82,4 +81,3 @@ class OpeningBalanceLine
         return $this->debitAmount() > 0 && $this->creditAmount() > 0;
     }
 }
-

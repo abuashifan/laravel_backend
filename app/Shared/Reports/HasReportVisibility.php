@@ -2,7 +2,7 @@
 
 namespace App\Shared\Reports;
 
-use App\Services\Reports\ReportVisibilityService;
+use App\Modules\Reports\Services\ReportVisibilityService;
 
 trait HasReportVisibility
 {
@@ -71,6 +71,7 @@ trait HasReportVisibility
     public function isReportableTransaction(): bool
     {
         $service = $this->reportVisibilityService();
+
         return $service ? $service->isTransactionReportable((string) ($this->status ?? null)) : ((string) ($this->status ?? '') === 'posted');
     }
 
@@ -92,13 +93,14 @@ trait HasReportVisibility
     public function isAuditVisible(): bool
     {
         $service = $this->reportVisibilityService();
+
         return $service ? $service->isVisibleInAudit((string) ($this->status ?? null), (bool) ($this->is_obsolete ?? false)) : isset($this->status);
     }
 
     public function isRevisionVisible(): bool
     {
         $service = $this->reportVisibilityService();
+
         return $service ? $service->isVisibleInRevision((string) ($this->status ?? null), (bool) ($this->is_obsolete ?? false)) : isset($this->status);
     }
 }
-

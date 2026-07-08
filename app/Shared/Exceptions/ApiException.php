@@ -33,4 +33,3 @@ class ApiException extends Exception
         return ApiResponseBuilder::error($this->codeName, $this->getMessage(), $this->errors, $this->status, $this->meta);
     }
 }
-

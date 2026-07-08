@@ -4,12 +4,10 @@ namespace App\Modules\Accounting\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Accounting\Requests\UpdatePeriodLockRequest;
-use App\Models\FiscalYear;
 use App\Modules\Accounting\Services\FiscalYearService;
+use App\Shared\Api\ApiResponse;
 use App\Shared\Audit\AuditLogService;
 use App\Shared\Tenant\TenantContext;
-use App\Support\Api\ApiResponseBuilder;
-use App\Shared\Api\ApiResponse;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 
@@ -21,8 +19,7 @@ class PeriodLockController extends Controller
         private readonly TenantContext $tenantContext,
         private readonly FiscalYearService $fiscalYearService,
         private readonly AuditLogService $auditLogService,
-    ) {
-    }
+    ) {}
 
     public function status(): JsonResponse
     {
@@ -85,4 +82,3 @@ class PeriodLockController extends Controller
         ], 'Period lock updated successfully');
     }
 }
-

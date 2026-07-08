@@ -11,9 +11,13 @@ class VendorDeposit extends Model
     use HasFactory;
 
     protected $connection = 'tenant';
+
     protected $table = 'vendor_deposits';
+
     protected $guarded = [];
+
     protected $appends = ['vendor_number', 'vendor_name', 'cash_bank_account_name'];
+
     protected $casts = [
         'deposit_date' => 'date',
         'metadata' => 'array',
@@ -22,9 +26,20 @@ class VendorDeposit extends Model
         'refunded_at' => 'datetime',
     ];
 
-    public function purchaseOrder(): BelongsTo { return $this->belongsTo(PurchaseOrder::class, 'purchase_order_id'); }
-    public function vendor(): BelongsTo { return $this->belongsTo(Contact::class, 'vendor_id'); }
-    public function cashBankAccount(): BelongsTo { return $this->belongsTo(ChartOfAccount::class, 'cash_bank_account_id'); }
+    public function purchaseOrder(): BelongsTo
+    {
+        return $this->belongsTo(PurchaseOrder::class, 'purchase_order_id');
+    }
+
+    public function vendor(): BelongsTo
+    {
+        return $this->belongsTo(Contact::class, 'vendor_id');
+    }
+
+    public function cashBankAccount(): BelongsTo
+    {
+        return $this->belongsTo(ChartOfAccount::class, 'cash_bank_account_id');
+    }
 
     public function getVendorNumberAttribute(): ?string
     {

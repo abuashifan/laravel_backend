@@ -2,31 +2,31 @@
 
 namespace Tests\Feature\Inventory;
 
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\Contact;
-use App\Models\Tenant\GoodsReceipt;
-use App\Models\Tenant\GoodsReceiptLine;
-use App\Models\Tenant\Product;
-use App\Models\Tenant\PurchaseOrder;
-use App\Models\Tenant\PurchaseOrderLine;
-use App\Models\Tenant\PurchaseReturn;
-use App\Models\Tenant\PurchaseReturnLine;
-use App\Models\Tenant\StockBalance;
-use App\Models\Tenant\StockMovement;
-use App\Models\Tenant\Unit;
-use App\Models\Tenant\VendorBill;
-use App\Models\Tenant\VendorBillLine;
-use App\Models\Tenant\Warehouse;
-use App\Services\Purchase\GoodsReceiptService;
-use App\Services\Purchase\PurchaseReturnService;
-use App\Services\Purchase\VendorBillService;
-use App\Support\AccountMapping\AccountMappingKey;
+use App\Modules\Inventory\Models\StockBalance;
+use App\Modules\Inventory\Models\StockMovement;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\MasterData\Models\Contact;
+use App\Modules\MasterData\Models\Product;
+use App\Modules\MasterData\Models\Unit;
+use App\Modules\MasterData\Models\Warehouse;
+use App\Modules\Purchase\Models\GoodsReceipt;
+use App\Modules\Purchase\Models\GoodsReceiptLine;
+use App\Modules\Purchase\Models\PurchaseOrder;
+use App\Modules\Purchase\Models\PurchaseOrderLine;
+use App\Modules\Purchase\Models\PurchaseReturn;
+use App\Modules\Purchase\Models\PurchaseReturnLine;
+use App\Modules\Purchase\Models\VendorBill;
+use App\Modules\Purchase\Models\VendorBillLine;
+use App\Modules\Purchase\Services\GoodsReceiptService;
+use App\Modules\Purchase\Services\PurchaseReturnService;
+use App\Modules\Purchase\Services\VendorBillService;
+use App\Shared\AccountMapping\AccountMappingKey;
+use App\Shared\Models\CompanyUser;
+use App\Shared\Models\TenantDatabase;
+use App\Shared\Tenant\TenantContext;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
-use App\Models\CompanyUser;
-use App\Models\TenantDatabase;
-use App\Services\Tenant\TenantContext;
 use Tests\Feature\Journal\JournalTestCase;
 
 class InventoryPurchaseIntegrationTest extends JournalTestCase

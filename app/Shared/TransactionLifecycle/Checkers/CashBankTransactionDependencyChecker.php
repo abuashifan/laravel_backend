@@ -19,4 +19,3 @@ class CashBankTransactionDependencyChecker extends BaseTransactionDependencyChec
         return [];
     }
 }
-

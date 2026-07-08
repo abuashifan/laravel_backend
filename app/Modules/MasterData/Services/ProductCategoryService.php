@@ -2,8 +2,8 @@
 
 namespace App\Modules\MasterData\Services;
 
-use App\Exceptions\ApiException;
-use App\Models\Tenant\ProductCategory;
+use App\Modules\MasterData\Models\ProductCategory;
+use App\Shared\Exceptions\ApiException;
 
 class ProductCategoryService
 {
@@ -61,4 +61,3 @@ class ProductCategoryService
         return $category->refresh();
     }
 }
-

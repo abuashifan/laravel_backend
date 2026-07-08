@@ -2,16 +2,14 @@
 
 namespace App\Modules\Reports\Services;
 
-use App\Data\Reports\ReportDateRange;
-use App\Data\Reports\ReportDimensionFilter;
+use App\Shared\Reports\Data\ReportDateRange;
+use App\Shared\Reports\Data\ReportDimensionFilter;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 
 class ReportQueryService
 {
-    public function __construct(private readonly ?ReportVisibilityService $visibilityService = null)
-    {
-    }
+    public function __construct(private readonly ?ReportVisibilityService $visibilityService = null) {}
 
     public function reportableJournalLinesQuery(): Builder
     {
@@ -35,6 +33,7 @@ class ReportQueryService
             if ($range->startDate) {
                 return $query->whereDate('je.journal_date', '<', $range->startDate);
             }
+
             return $query;
         }
 
@@ -65,6 +64,7 @@ class ReportQueryService
         if ($accountId) {
             $query->where('jel.account_id', '=', $accountId);
         }
+
         return $query;
     }
 
@@ -74,6 +74,7 @@ class ReportQueryService
             $query->join('chart_of_accounts as coa', 'coa.id', '=', 'jel.account_id')
                 ->where('coa.account_type', '=', $accountType);
         }
+
         return $query;
     }
 }

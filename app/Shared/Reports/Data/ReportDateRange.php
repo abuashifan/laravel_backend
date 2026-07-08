@@ -9,8 +9,7 @@ class ReportDateRange
     public function __construct(
         public ?string $startDate = null,
         public ?string $endDate = null,
-    ) {
-    }
+    ) {}
 
     public static function fromArray(array $data): self
     {
@@ -73,4 +72,3 @@ class ReportDateRange
         return new self($start, $end);
     }
 }
-

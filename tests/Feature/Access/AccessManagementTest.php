@@ -2,12 +2,12 @@
 
 namespace Tests\Feature\Access;
 
-use App\Models\ActivityLog;
-use App\Models\Company;
-use App\Models\CompanyUser;
-use App\Models\Role;
-use App\Models\TenantDatabase;
-use App\Models\User;
+use App\Shared\Models\ActivityLog;
+use App\Shared\Models\Company;
+use App\Shared\Models\CompanyUser;
+use App\Shared\Models\Role;
+use App\Shared\Models\TenantDatabase;
+use App\Shared\Models\User;
 use Database\Seeders\PermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;

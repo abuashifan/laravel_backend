@@ -2,18 +2,18 @@
 
 namespace App\Modules\Journal\Services;
 
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\Department;
-use App\Models\Tenant\JournalEntry;
-use App\Models\Tenant\Project;
+use App\Modules\Journal\Models\JournalEntry;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\MasterData\Models\Department;
+use App\Modules\MasterData\Models\Project;
 
 class JournalValidationService
 {
     private const TOLERANCE = 0.0001;
 
     /**
-     * @param array<int,array<string,mixed>> $lines
+     * @param  array<int,array<string,mixed>>  $lines
      * @return array{valid:bool,errors:array,warnings:array,totals:array{debit:string,credit:string,difference:string}}
      */
     public function validateLines(array $lines, bool $requireActiveAccounts = true): array
@@ -23,6 +23,7 @@ class JournalValidationService
 
         if (count($lines) < 2) {
             $errors['lines'][] = 'Minimal 2 lines required.';
+
             return $this->result(false, $errors, $warnings, $lines);
         }
 
@@ -76,7 +77,7 @@ class JournalValidationService
     }
 
     /**
-     * @param array<int,array<string,mixed>> $lines
+     * @param  array<int,array<string,mixed>>  $lines
      * @return array{valid:bool,errors:array,warnings:array}
      */
     public function validateDimensions(array $lines): array
@@ -141,7 +142,7 @@ class JournalValidationService
     }
 
     /**
-     * @param array<int,array<string,mixed>> $lines
+     * @param  array<int,array<string,mixed>>  $lines
      * @return array{valid:bool,errors:array,warnings:array}
      */
     public function validateBalanced(array $lines): array
@@ -165,7 +166,7 @@ class JournalValidationService
     }
 
     /**
-     * @param array<int,array<string,mixed>> $lines
+     * @param  array<int,array<string,mixed>>  $lines
      * @return array{valid:bool,errors:array,warnings:array}
      */
     public function validateAccounts(array $lines, bool $requireActive = true): array
@@ -183,6 +184,7 @@ class JournalValidationService
         $ids = array_values(array_unique($ids));
         if (empty($ids)) {
             $errors['accounts'][] = 'account_id is required.';
+
             return ['valid' => false, 'errors' => $errors, 'warnings' => $warnings];
         }
 
@@ -195,6 +197,7 @@ class JournalValidationService
             $acc = $accounts->get($id);
             if (! $acc) {
                 $errors['accounts'][] = "Account not found: $id";
+
                 continue;
             }
             if ($requireActive && ! (bool) $acc->is_active) {
@@ -206,7 +209,7 @@ class JournalValidationService
     }
 
     /**
-     * @param array<int,array<string,mixed>> $lines
+     * @param  array<int,array<string,mixed>>  $lines
      */
     public function totalDebit(array $lines): string
     {
@@ -214,11 +217,12 @@ class JournalValidationService
         foreach ($lines as $line) {
             $sum = $this->moneyAdd($sum, (string) ($line['debit'] ?? '0'));
         }
+
         return $sum;
     }
 
     /**
-     * @param array<int,array<string,mixed>> $lines
+     * @param  array<int,array<string,mixed>>  $lines
      */
     public function totalCredit(array $lines): string
     {
@@ -226,6 +230,7 @@ class JournalValidationService
         foreach ($lines as $line) {
             $sum = $this->moneyAdd($sum, (string) ($line['credit'] ?? '0'));
         }
+
         return $sum;
     }
 
@@ -252,7 +257,7 @@ class JournalValidationService
     }
 
     /**
-     * @param array<int,array<string,mixed>> $lines
+     * @param  array<int,array<string,mixed>>  $lines
      * @return array{valid:bool,errors:array,warnings:array}
      */
     public function validateNoControlAccounts(array $lines): array
@@ -291,7 +296,7 @@ class JournalValidationService
     }
 
     /**
-     * @param array<int,array<string,mixed>> $lines
+     * @param  array<int,array<string,mixed>>  $lines
      * @return array{valid:bool,errors:array,warnings:array,totals:array{debit:string,credit:string,difference:string}}
      */
     private function result(bool $valid, array $errors, array $warnings, array $lines): array
@@ -317,6 +322,7 @@ class JournalValidationService
         if (function_exists('bcadd')) {
             return bcadd($a, $b, 2);
         }
+
         return number_format(((float) $a) + ((float) $b), 2, '.', '');
     }
 
@@ -325,6 +331,7 @@ class JournalValidationService
         if (function_exists('bcsub')) {
             return bcsub($a, $b, 2);
         }
+
         return number_format(((float) $a) - ((float) $b), 2, '.', '');
     }
 }

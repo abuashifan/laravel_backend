@@ -18,8 +18,7 @@ class AccountsReceivableController extends Controller
         private readonly ARSubsidiaryLedgerService $ledgerService,
         private readonly ARAgingService $agingService,
         private readonly ARReconciliationService $reconciliationService,
-    ) {
-    }
+    ) {}
 
     public function customerSummary(Request $request): JsonResponse
     {

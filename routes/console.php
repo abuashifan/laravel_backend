@@ -2,7 +2,7 @@
 
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
-use App\Services\Inventory\StockBalanceRebuildService;
+use App\Modules\Inventory\Services\StockBalanceRebuildService;
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());

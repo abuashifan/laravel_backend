@@ -2,21 +2,19 @@
 
 namespace App\Modules\Reports\Controllers;
 
-use App\Data\Reports\FinancialSummaryFilter;
 use App\Http\Controllers\Controller;
 use App\Modules\Reports\Requests\FinancialSummaryRequest;
 use App\Modules\Reports\Services\FinancialSummaryService;
-use App\Support\Api\ApiResponseBuilder;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Api\ApiResponseBuilder;
+use App\Shared\Reports\Data\FinancialSummaryFilter;
 use Illuminate\Http\JsonResponse;
 
 class FinancialSummaryController extends Controller
 {
     use ApiResponse;
 
-    public function __construct(private readonly FinancialSummaryService $service)
-    {
-    }
+    public function __construct(private readonly FinancialSummaryService $service) {}
 
     public function index(FinancialSummaryRequest $request): JsonResponse
     {
@@ -32,4 +30,3 @@ class FinancialSummaryController extends Controller
         return $this->successResponse($result, 'Financial summary retrieved successfully');
     }
 }
-

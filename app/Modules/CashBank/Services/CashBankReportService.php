@@ -2,10 +2,10 @@
 
 namespace App\Modules\CashBank\Services;
 
-use App\Exceptions\ApiException;
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\JournalEntryLine;
+use App\Modules\Journal\Models\JournalEntryLine;
+use App\Modules\MasterData\Models\ChartOfAccount;
 use App\Modules\Reports\Services\LedgerBalanceCalculator;
+use App\Shared\Exceptions\ApiException;
 use Carbon\Carbon;
 
 class CashBankReportService
@@ -13,8 +13,7 @@ class CashBankReportService
     public function __construct(
         private readonly CashBankAccountService $cashBankAccountService,
         private readonly LedgerBalanceCalculator $balanceCalculator,
-    ) {
-    }
+    ) {}
 
     public function accountStatement(int $cashBankAccountId, ?string $startDate = null, ?string $endDate = null): array
     {
@@ -37,8 +36,12 @@ class CashBankReportService
         }
 
         $q = $this->baseCashBankJournalQuery($cashBankAccountId);
-        if ($startDate) $q->whereDate('journal_entries.journal_date', '>=', Carbon::parse($startDate)->toDateString());
-        if ($endDate) $q->whereDate('journal_entries.journal_date', '<=', Carbon::parse($endDate)->toDateString());
+        if ($startDate) {
+            $q->whereDate('journal_entries.journal_date', '>=', Carbon::parse($startDate)->toDateString());
+        }
+        if ($endDate) {
+            $q->whereDate('journal_entries.journal_date', '<=', Carbon::parse($endDate)->toDateString());
+        }
 
         $rows = $q->select([
             'journal_entry_lines.id as journal_entry_line_id',
@@ -118,4 +121,3 @@ class CashBankReportService
             ->where('journal_entry_lines.account_id', $cashBankAccountId);
     }
 }
-

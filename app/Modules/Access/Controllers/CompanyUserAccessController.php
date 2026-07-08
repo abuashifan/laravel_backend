@@ -6,15 +6,15 @@ use App\Http\Controllers\Controller;
 use App\Modules\Access\Requests\CopyAccessRequest;
 use App\Modules\Access\Requests\UpdateCompanyUserPermissionRequest;
 use App\Modules\Access\Requests\UpdateCompanyUserRoleRequest;
-use App\Exceptions\ApiException;
-use App\Models\CompanyUser;
-use App\Models\CompanyUserPermissionOverride;
-use App\Models\Permission;
-use App\Models\Role;
-use App\Services\Audit\AuditLogService;
-use App\Services\Permissions\EffectivePermissionService;
-use App\Services\Tenant\TenantContext;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Audit\AuditLogService;
+use App\Shared\Exceptions\ApiException;
+use App\Shared\Models\CompanyUser;
+use App\Shared\Models\CompanyUserPermissionOverride;
+use App\Shared\Models\Permission;
+use App\Shared\Models\Role;
+use App\Shared\Permission\EffectivePermissionService;
+use App\Shared\Tenant\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -27,8 +27,7 @@ class CompanyUserAccessController extends Controller
         private readonly TenantContext $tenantContext,
         private readonly EffectivePermissionService $effectivePermissionService,
         private readonly AuditLogService $auditLogService,
-    ) {
-    }
+    ) {}
 
     public function index(): JsonResponse
     {

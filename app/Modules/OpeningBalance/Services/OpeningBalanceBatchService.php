@@ -2,20 +2,20 @@
 
 namespace App\Modules\OpeningBalance\Services;
 
-use App\Exceptions\ApiException;
-use App\Models\CompanyModuleSetting;
-use App\Models\FiscalYear;
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\JournalEntry;
-use App\Models\Tenant\OpeningBalanceBatch as OpeningBalanceBatchModel;
-use App\Shared\Audit\AuditLogService;
-use App\Shared\DocumentNumbering\DocumentNumberService;
-use App\Shared\Tenant\TenantContext;
-use App\Shared\TransactionLifecycle\TransactionVoidEffectService;
-use App\Support\DocumentNumbering\DocumentType;
+use App\Modules\Journal\Models\JournalEntry;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\OpeningBalance\Models\OpeningBalanceBatch as OpeningBalanceBatchModel;
 use App\Modules\OpeningBalance\Support\OpeningBalanceBatch as OpeningBalanceBatchDto;
 use App\Modules\OpeningBalance\Support\OpeningBalanceLine as OpeningBalanceLineDto;
+use App\Shared\Audit\AuditLogService;
+use App\Shared\DocumentNumbering\DocumentNumberService;
+use App\Shared\DocumentNumbering\DocumentType;
+use App\Shared\Exceptions\ApiException;
+use App\Shared\Models\CompanyModuleSetting;
+use App\Shared\Models\FiscalYear;
+use App\Shared\Tenant\TenantContext;
+use App\Shared\TransactionLifecycle\TransactionVoidEffectService;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -29,8 +29,7 @@ class OpeningBalanceBatchService
         private readonly AuditLogService $auditLogService,
         private readonly OpeningBalanceService $openingBalanceService,
         private readonly TransactionVoidEffectService $voidEffectService,
-    ) {
-    }
+    ) {}
 
     public function status(): array
     {
@@ -582,7 +581,9 @@ class OpeningBalanceBatchService
     private function operationalTransactionBlockers(string $openingDate): array
     {
         $checks = [
-            ['journal_entries', 'journal_date', fn ($query) => $query->where('status', '!=', 'void')->where(function ($q) { $q->whereNull('source_type')->orWhere('source_type', '!=', 'opening_balance'); })],
+            ['journal_entries', 'journal_date', fn ($query) => $query->where('status', '!=', 'void')->where(function ($q) {
+                $q->whereNull('source_type')->orWhere('source_type', '!=', 'opening_balance');
+            })],
             ['sales_invoices', 'invoice_date', fn ($query) => $query->where('status', '!=', 'void')],
             ['sales_receipts', 'receipt_date', fn ($query) => $query->where('status', '!=', 'void')],
             ['vendor_bills', 'bill_date', fn ($query) => $query->where('status', '!=', 'void')],
@@ -590,8 +591,12 @@ class OpeningBalanceBatchService
             ['cash_receipts', 'receipt_date', fn ($query) => $query->where('status', '!=', 'void')],
             ['cash_payments', 'payment_date', fn ($query) => $query->where('status', '!=', 'void')],
             ['bank_transfers', 'transfer_date', fn ($query) => $query->where('status', '!=', 'void')],
-            ['stock_movements', 'movement_date', fn ($query) => $query->where('status', '!=', 'void')->where(function ($q) { $q->whereNull('movement_type')->orWhere('movement_type', '!=', 'opening_stock'); })],
-            ['fixed_asset_transactions', 'transaction_date', fn ($query) => $query->where(function ($q) { $q->whereNull('source_type')->orWhere('source_type', '!=', 'opening_import'); })],
+            ['stock_movements', 'movement_date', fn ($query) => $query->where('status', '!=', 'void')->where(function ($q) {
+                $q->whereNull('movement_type')->orWhere('movement_type', '!=', 'opening_stock');
+            })],
+            ['fixed_asset_transactions', 'transaction_date', fn ($query) => $query->where(function ($q) {
+                $q->whereNull('source_type')->orWhere('source_type', '!=', 'opening_import');
+            })],
             ['period_end_runs', 'period', fn ($query) => $query->whereIn('status', ['completed'])],
         ];
 
@@ -632,6 +637,7 @@ class OpeningBalanceBatchService
     private function fixedAssetsEnabled(): bool
     {
         $company = $this->company();
+
         return (bool) CompanyModuleSetting::query()->where('company_id', $company->id)->value('fixed_asset_enabled');
     }
 

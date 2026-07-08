@@ -12,8 +12,11 @@ class VendorPayment extends Model
     use HasFactory;
 
     protected $connection = 'tenant';
+
     protected $table = 'vendor_payments';
+
     protected $guarded = [];
+
     protected $casts = [
         'payment_date' => 'date',
         'posted_at' => 'datetime',
@@ -21,7 +24,18 @@ class VendorPayment extends Model
         'metadata' => 'array',
     ];
 
-    public function lines(): HasMany { return $this->hasMany(VendorPaymentLine::class, 'vendor_payment_id'); }
-    public function vendor(): BelongsTo { return $this->belongsTo(Contact::class, 'vendor_id'); }
-    public function vendorBill(): BelongsTo { return $this->belongsTo(VendorBill::class, 'vendor_bill_id'); }
+    public function lines(): HasMany
+    {
+        return $this->hasMany(VendorPaymentLine::class, 'vendor_payment_id');
+    }
+
+    public function vendor(): BelongsTo
+    {
+        return $this->belongsTo(Contact::class, 'vendor_id');
+    }
+
+    public function vendorBill(): BelongsTo
+    {
+        return $this->belongsTo(VendorBill::class, 'vendor_bill_id');
+    }
 }

@@ -2,9 +2,9 @@
 
 namespace App\Shared\Permission;
 
-use App\Models\Permission;
-use Illuminate\Support\Str;
+use App\Shared\Models\Permission;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 
 class PermissionCatalogService
 {
@@ -29,6 +29,7 @@ class PermissionCatalogService
 
             if ($isSpecial) {
                 $modules[$module]['special_permissions'][] = $permission;
+
                 continue;
             }
 

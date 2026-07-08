@@ -11,8 +11,7 @@ class ReportPeriodResolver
     public function __construct(
         private readonly TenantContext $tenantContext,
         private readonly ?FiscalYearService $fiscalYearService = null,
-    ) {
-    }
+    ) {}
 
     public function fiscalYearForRange(?string $startDate, ?string $endDate): ?array
     {
@@ -93,7 +92,7 @@ class ReportPeriodResolver
         if ($end) {
             return 'until '.$end;
         }
+
         return 'all time';
     }
 }
-

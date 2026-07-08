@@ -2,30 +2,30 @@
 
 namespace App\Modules\Sales\Services;
 
-use App\Exceptions\ApiException;
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\CustomerDeposit;
-use App\Models\Tenant\CustomerDepositAllocation;
-use App\Models\Tenant\DeliveryOrder;
-use App\Models\Tenant\DeliveryOrderLine;
-use App\Models\Tenant\JournalEntry;
-use App\Models\Tenant\ProformaInvoice;
-use App\Models\Tenant\ProformaInvoiceLine;
-use App\Models\Tenant\SalesInvoice;
-use App\Models\Tenant\SalesOrder;
-use App\Models\Tenant\SalesOrderLine;
-use App\Models\Tenant\SalesReceipt;
-use App\Models\Tenant\SalesReturn;
+use App\Modules\Inventory\Services\InventorySalesIntegrationService;
+use App\Modules\Journal\Models\JournalEntry;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\Sales\Models\CustomerDeposit;
+use App\Modules\Sales\Models\CustomerDepositAllocation;
+use App\Modules\Sales\Models\DeliveryOrder;
+use App\Modules\Sales\Models\DeliveryOrderLine;
+use App\Modules\Sales\Models\ProformaInvoice;
+use App\Modules\Sales\Models\ProformaInvoiceLine;
+use App\Modules\Sales\Models\SalesInvoice;
+use App\Modules\Sales\Models\SalesOrder;
+use App\Modules\Sales\Models\SalesOrderLine;
+use App\Modules\Sales\Models\SalesReceipt;
+use App\Modules\Sales\Models\SalesReturn;
+use App\Modules\Sales\Services\Concerns\HandlesSalesDocuments;
 use App\Shared\Audit\AuditLogService;
 use App\Shared\DocumentNumbering\DocumentNumberService;
-use App\Modules\Inventory\Services\InventorySalesIntegrationService;
-use App\Modules\Sales\Services\Concerns\HandlesSalesDocuments;
+use App\Shared\DocumentNumbering\DocumentType;
+use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
 use App\Shared\TransactionLifecycle\PaymentTermDueDateService;
 use App\Shared\TransactionLifecycle\TransactionDateGuardService;
 use App\Shared\TransactionLifecycle\TransactionVoidEffectService;
 use App\Shared\Validation\BusinessReferenceValidator;
-use App\Support\DocumentNumbering\DocumentType;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -44,8 +44,7 @@ class SalesInvoiceService
         private readonly SalesAccountResolverService $accountResolver,
         private readonly CustomerDepositService $depositService,
         private readonly ?AuditLogService $auditLogService = null,
-    ) {
-    }
+    ) {}
 
     public function list(array $filters = []): Collection
     {
@@ -185,6 +184,7 @@ class SalesInvoiceService
         }
         $deliveryOrder->loadMissing('lines');
         $lines = $this->deliveryOrderInvoiceLines($deliveryOrder, (array) ($overrides['lines'] ?? []));
+
         return $this->create(array_merge([
             'invoice_date' => now()->toDateString(),
             'customer_id' => $deliveryOrder->customer_id,
@@ -205,6 +205,7 @@ class SalesInvoiceService
             throw ApiException::make('PROFORMA_NOT_CONVERTIBLE', 'Proforma invoice is not available for conversion.', 422);
         }
         $proforma->loadMissing('lines');
+
         return $this->create(array_merge([
             'invoice_date' => now()->toDateString(),
             'customer_id' => $proforma->customer_id,
@@ -402,7 +403,7 @@ class SalesInvoiceService
     }
 
     /**
-     * @param array<int,array<string,mixed>> $lines
+     * @param  array<int,array<string,mixed>>  $lines
      * @return array<int,array<string,mixed>>
      */
     private function withDraftRevenueSnapshots(array $lines): array
@@ -437,6 +438,7 @@ class SalesInvoiceService
             foreach ($grouped as $accountId => $amount) {
                 if ($accountId === $lastAccountId) {
                     $grouped[$accountId] = round($targetTotal - $allocated, 2);
+
                     continue;
                 }
                 $scaled = round($amount * ($targetTotal / $baseTotal), 2);
@@ -446,6 +448,7 @@ class SalesInvoiceService
         }
 
         $order = 2;
+
         return array_map(function (int $accountId, float $amount) use (&$order): array {
             return [
                 'account_id' => $accountId,

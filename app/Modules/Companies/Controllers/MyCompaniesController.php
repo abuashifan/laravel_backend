@@ -3,8 +3,8 @@
 namespace App\Modules\Companies\Controllers;
 
 use App\Http\Controllers\Controller;
-use App\Models\User;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Models\User;
 use Illuminate\Http\JsonResponse;
 
 class MyCompaniesController extends Controller
@@ -42,4 +42,3 @@ class MyCompaniesController extends Controller
         return $this->successResponse($companies, 'Companies retrieved successfully');
     }
 }
-

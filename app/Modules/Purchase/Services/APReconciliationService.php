@@ -2,16 +2,14 @@
 
 namespace App\Modules\Purchase\Services;
 
-use App\Exceptions\ApiException;
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\JournalEntryLine;
-use App\Models\Tenant\VendorBill;
+use App\Modules\Journal\Models\JournalEntryLine;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\Purchase\Models\VendorBill;
+use App\Shared\Exceptions\ApiException;
 
 class APReconciliationService
 {
-    public function __construct(private readonly APSubsidiaryLedgerService $ledgerService)
-    {
-    }
+    public function __construct(private readonly APSubsidiaryLedgerService $ledgerService) {}
 
     public function compareSubsidiaryToGL(array $filters = []): array
     {

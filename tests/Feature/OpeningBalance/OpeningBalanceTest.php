@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace Tests\Feature\OpeningBalance;
 
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\JournalEntry;
-use App\Models\Tenant\OpeningBalanceBatch;
-use App\Services\Settings\CompanySettingService;
+use App\Modules\Journal\Models\JournalEntry;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\OpeningBalance\Models\OpeningBalanceBatch;
+use App\Modules\Settings\Services\CompanySettingService;
 use Illuminate\Support\Facades\DB;
 use Tests\Feature\Journal\JournalTestCase;
 

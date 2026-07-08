@@ -11,8 +11,11 @@ class SalesInvoiceLine extends Model
     use HasFactory;
 
     protected $connection = 'tenant';
+
     protected $table = 'sales_invoice_lines';
+
     protected $guarded = [];
+
     protected $casts = ['metadata' => 'array'];
 
     public function invoice(): BelongsTo

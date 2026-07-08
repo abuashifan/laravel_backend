@@ -2,10 +2,9 @@
 
 namespace Tests\Feature\Purchase;
 
-use App\Models\Tenant\PurchaseRequest;
-use App\Models\Tenant\StockMovement;
+use App\Modules\Inventory\Models\StockMovement;
+use App\Modules\Purchase\Models\PurchaseRequest;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 
 class PurchaseRequestTest extends PurchaseTestCase
 {

@@ -2,9 +2,9 @@
 
 namespace Tests\Feature\Accounting;
 
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\ChartOfAccount;
-use App\Support\AccountMapping\AccountMappingKey;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Shared\AccountMapping\AccountMappingKey;
 use Tests\TenantTestCase;
 
 class AccountMappingHealthTest extends TenantTestCase

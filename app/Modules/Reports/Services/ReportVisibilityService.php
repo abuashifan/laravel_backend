@@ -2,8 +2,6 @@
 
 namespace App\Modules\Reports\Services;
 
-use App\Models\CompanyAccountingSetting;
-
 class ReportVisibilityService
 {
     public function isTransactionVisible(?string $status, bool $includeVoid = false): bool
@@ -92,4 +90,3 @@ class ReportVisibilityService
         return (bool) config('report_visibility.closed_fiscal_year_read_only', true);
     }
 }
-

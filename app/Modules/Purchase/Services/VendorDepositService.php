@@ -2,22 +2,22 @@
 
 namespace App\Modules\Purchase\Services;
 
-use App\Exceptions\ApiException;
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\JournalEntry;
-use App\Models\Tenant\PurchaseOrder;
-use App\Models\Tenant\VendorBill;
-use App\Models\Tenant\VendorDeposit;
-use App\Models\Tenant\VendorDepositAllocation;
-use App\Shared\DocumentNumbering\DocumentNumberService;
+use App\Modules\Journal\Models\JournalEntry;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Services\AccountMappingStorageService;
+use App\Modules\Purchase\Models\PurchaseOrder;
+use App\Modules\Purchase\Models\VendorBill;
+use App\Modules\Purchase\Models\VendorDeposit;
+use App\Modules\Purchase\Models\VendorDepositAllocation;
 use App\Modules\Purchase\Services\Concerns\HandlesPurchaseDocuments;
+use App\Shared\Audit\AuditLogService;
+use App\Shared\DocumentNumbering\DocumentNumberService;
+use App\Shared\DocumentNumbering\DocumentType;
+use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
 use App\Shared\TransactionLifecycle\TransactionDateGuardService;
 use App\Shared\TransactionLifecycle\TransactionVoidEffectService;
 use App\Shared\Validation\BusinessReferenceValidator;
-use App\Shared\Audit\AuditLogService;
-use App\Support\DocumentNumbering\DocumentType;
-use App\Modules\MasterData\Services\AccountMappingStorageService;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -32,14 +32,18 @@ class VendorDepositService
         private readonly PurchaseAccountResolverService $accountResolver,
         private readonly TransactionVoidEffectService $voidEffectService,
         private readonly ?AuditLogService $auditLogService = null,
-    ) {
-    }
+    ) {}
 
     public function list(array $filters = []): Collection
     {
         $query = VendorDeposit::query()->with('vendor', 'purchaseOrder', 'cashBankAccount');
-        if (! empty($filters['status'])) $query->where('status', (string) $filters['status']);
-        if (! empty($filters['vendor_id'])) $query->where('vendor_id', (int) $filters['vendor_id']);
+        if (! empty($filters['status'])) {
+            $query->where('status', (string) $filters['status']);
+        }
+        if (! empty($filters['vendor_id'])) {
+            $query->where('vendor_id', (int) $filters['vendor_id']);
+        }
+
         return $query->orderByDesc('deposit_date')->orderByDesc('id')->get();
     }
 
@@ -105,7 +109,9 @@ class VendorDepositService
         }
 
         $amount = (float) $data['amount'];
-        if ($amount <= 0) throw ApiException::make('AMOUNT_INVALID', 'Amount must be greater than zero.', 422);
+        if ($amount <= 0) {
+            throw ApiException::make('AMOUNT_INVALID', 'Amount must be greater than zero.', 422);
+        }
         $this->ensureVendorExists((int) $data['vendor_id']);
         $this->ensureCashBankAccount((int) $data['cash_bank_account_id']);
 
@@ -141,7 +147,9 @@ class VendorDepositService
 
     public function post(VendorDeposit $deposit): VendorDeposit
     {
-        if ($deposit->status === 'posted') throw ApiException::make('DOCUMENT_ALREADY_POSTED', 'Document has already been posted.', 422);
+        if ($deposit->status === 'posted') {
+            throw ApiException::make('DOCUMENT_ALREADY_POSTED', 'Document has already been posted.', 422);
+        }
         $this->guardDate((string) $deposit->deposit_date);
         $this->ensureCashBankAccount((int) $deposit->cash_bank_account_id);
 
@@ -163,9 +171,12 @@ class VendorDepositService
 
     public function void(VendorDeposit $deposit, ?string $reason = null): VendorDeposit
     {
-        if ($deposit->status === 'void') throw ApiException::make('VENDOR_DEPOSIT_ALREADY_VOID', 'Vendor deposit already void.', 422);
+        if ($deposit->status === 'void') {
+            throw ApiException::make('VENDOR_DEPOSIT_ALREADY_VOID', 'Vendor deposit already void.', 422);
+        }
         $reason = $this->voidEffectService->requireReason($reason);
         $this->guardDate((string) $deposit->deposit_date, 'void');
+
         return DB::connection('tenant')->transaction(function () use ($deposit, $reason) {
             $journalIds = $this->voidEffectService->voidJournalsForSource('vendor_deposit', (int) $deposit->id, $reason);
             $allocations = VendorDepositAllocation::query()->where('vendor_deposit_id', $deposit->id)->where('status', 'posted')->get();
@@ -179,18 +190,31 @@ class VendorDepositService
                     $bill->save();
                 }
                 $journalId = $this->voidEffectService->voidJournalById((int) $allocation->journal_entry_id, $reason);
-                if ($journalId) $journalIds[] = $journalId;
-                $allocation->status = 'void'; $allocation->voided_by = auth()->id(); $allocation->voided_at = now(); $allocation->void_reason = $reason; $allocation->save();
+                if ($journalId) {
+                    $journalIds[] = $journalId;
+                }
+                $allocation->status = 'void';
+                $allocation->voided_by = auth()->id();
+                $allocation->voided_at = now();
+                $allocation->void_reason = $reason;
+                $allocation->save();
             }
-            $deposit->status = 'void'; $deposit->voided_by = auth()->id(); $deposit->voided_at = now(); $deposit->void_reason = $reason; $deposit->save();
+            $deposit->status = 'void';
+            $deposit->voided_by = auth()->id();
+            $deposit->voided_at = now();
+            $deposit->void_reason = $reason;
+            $deposit->save();
             $this->auditPurchase($this->auditLogService, 'vendor_deposit.voided', $deposit, 'deposit_number', ['reason' => $reason, 'voided_journal_ids' => array_values(array_unique($journalIds)), 'voided_allocation_ids' => $allocations->pluck('id')->all()]);
+
             return $deposit->refresh()->load('vendor', 'purchaseOrder', 'cashBankAccount');
         });
     }
 
     public function refund(VendorDeposit $deposit, float $amount, ?string $reason = null): VendorDeposit
     {
-        if ($amount > (float) $deposit->remaining_amount) throw ApiException::make('REFUND_EXCEEDS_REMAINING_DEPOSIT', 'Refund exceeds remaining deposit.', 422);
+        if ($amount > (float) $deposit->remaining_amount) {
+            throw ApiException::make('REFUND_EXCEEDS_REMAINING_DEPOSIT', 'Refund exceeds remaining deposit.', 422);
+        }
         $this->guardDate((string) $deposit->deposit_date);
 
         return DB::connection('tenant')->transaction(function () use ($deposit, $amount, $reason) {
@@ -205,17 +229,28 @@ class VendorDepositService
             $deposit->refunded_at = now();
             $deposit->refund_reason = $reason;
             $deposit->save();
+
             return $deposit->refresh()->load('vendor', 'purchaseOrder', 'cashBankAccount');
         });
     }
 
     public function allocateToBill(VendorDeposit $deposit, VendorBill $bill, float $amount, array $options = []): VendorDepositAllocation
     {
-        if ($deposit->vendor_id !== $bill->vendor_id) throw ApiException::make('VENDOR_MISMATCH', 'Deposit and bill vendor mismatch.', 422);
-        if (! in_array($deposit->status, ['posted', 'partially_allocated'], true)) throw ApiException::make('VENDOR_DEPOSIT_NOT_AVAILABLE', 'Vendor deposit is not available for allocation.', 422);
-        if (! in_array($bill->status, ['posted', 'partially_paid'], true) || ! $bill->posted_at) throw ApiException::make('VENDOR_BILL_NOT_PAYABLE', 'Vendor bill must be posted before deposit allocation.', 422);
-        if ($amount > (float) $deposit->remaining_amount) throw ApiException::make('VENDOR_DEPOSIT_INSUFFICIENT', 'Cannot allocate more than remaining deposit.', 422);
-        if ($amount > (float) $bill->balance_due) throw ApiException::make('VENDOR_DEPOSIT_ALLOCATION_EXCEEDS_BILL', 'Allocation exceeds bill balance.', 422);
+        if ($deposit->vendor_id !== $bill->vendor_id) {
+            throw ApiException::make('VENDOR_MISMATCH', 'Deposit and bill vendor mismatch.', 422);
+        }
+        if (! in_array($deposit->status, ['posted', 'partially_allocated'], true)) {
+            throw ApiException::make('VENDOR_DEPOSIT_NOT_AVAILABLE', 'Vendor deposit is not available for allocation.', 422);
+        }
+        if (! in_array($bill->status, ['posted', 'partially_paid'], true) || ! $bill->posted_at) {
+            throw ApiException::make('VENDOR_BILL_NOT_PAYABLE', 'Vendor bill must be posted before deposit allocation.', 422);
+        }
+        if ($amount > (float) $deposit->remaining_amount) {
+            throw ApiException::make('VENDOR_DEPOSIT_INSUFFICIENT', 'Cannot allocate more than remaining deposit.', 422);
+        }
+        if ($amount > (float) $bill->balance_due) {
+            throw ApiException::make('VENDOR_DEPOSIT_ALLOCATION_EXCEEDS_BILL', 'Allocation exceeds bill balance.', 422);
+        }
         $allocationDate = (string) ($options['allocation_date'] ?? $bill->bill_date);
         $this->guardDate($allocationDate);
 
@@ -223,11 +258,21 @@ class VendorDepositService
             $lockedDeposit = VendorDeposit::query()->lockForUpdate()->findOrFail($deposit->id);
             $lockedBill = VendorBill::query()->lockForUpdate()->findOrFail($bill->id);
 
-            if ($lockedDeposit->vendor_id !== $lockedBill->vendor_id) throw ApiException::make('VENDOR_MISMATCH', 'Deposit and bill vendor mismatch.', 422);
-            if (! in_array($lockedDeposit->status, ['posted', 'partially_allocated'], true)) throw ApiException::make('VENDOR_DEPOSIT_NOT_AVAILABLE', 'Vendor deposit is not available for allocation.', 422);
-            if (! in_array($lockedBill->status, ['posted', 'partially_paid'], true) || ! $lockedBill->posted_at) throw ApiException::make('VENDOR_BILL_NOT_PAYABLE', 'Vendor bill must be posted before deposit allocation.', 422);
-            if ($amount > (float) $lockedDeposit->remaining_amount) throw ApiException::make('VENDOR_DEPOSIT_INSUFFICIENT', 'Cannot allocate more than remaining deposit.', 422);
-            if ($amount > (float) $lockedBill->balance_due) throw ApiException::make('VENDOR_DEPOSIT_ALLOCATION_EXCEEDS_BILL', 'Allocation exceeds bill balance.', 422);
+            if ($lockedDeposit->vendor_id !== $lockedBill->vendor_id) {
+                throw ApiException::make('VENDOR_MISMATCH', 'Deposit and bill vendor mismatch.', 422);
+            }
+            if (! in_array($lockedDeposit->status, ['posted', 'partially_allocated'], true)) {
+                throw ApiException::make('VENDOR_DEPOSIT_NOT_AVAILABLE', 'Vendor deposit is not available for allocation.', 422);
+            }
+            if (! in_array($lockedBill->status, ['posted', 'partially_paid'], true) || ! $lockedBill->posted_at) {
+                throw ApiException::make('VENDOR_BILL_NOT_PAYABLE', 'Vendor bill must be posted before deposit allocation.', 422);
+            }
+            if ($amount > (float) $lockedDeposit->remaining_amount) {
+                throw ApiException::make('VENDOR_DEPOSIT_INSUFFICIENT', 'Cannot allocate more than remaining deposit.', 422);
+            }
+            if ($amount > (float) $lockedBill->balance_due) {
+                throw ApiException::make('VENDOR_DEPOSIT_ALLOCATION_EXCEEDS_BILL', 'Allocation exceeds bill balance.', 422);
+            }
 
             $journal = $this->journal($lockedDeposit, 'Apply vendor deposit '.$lockedBill->bill_number, [
                 ['account_id' => $this->accountResolver->resolveBillPayableAccountId($lockedBill), 'description' => 'Accounts Payable', 'debit' => $amount, 'credit' => 0, 'line_order' => 1],
@@ -271,7 +316,9 @@ class VendorDepositService
 
     public function voidAllocation(VendorDepositAllocation $allocation, ?string $reason = null): VendorDepositAllocation
     {
-        if ($allocation->status === 'void') throw ApiException::make('VENDOR_DEPOSIT_ALLOCATION_ALREADY_VOID', 'Vendor deposit allocation already void.', 422);
+        if ($allocation->status === 'void') {
+            throw ApiException::make('VENDOR_DEPOSIT_ALLOCATION_ALREADY_VOID', 'Vendor deposit allocation already void.', 422);
+        }
         $reason = $this->voidEffectService->requireReason($reason);
         $this->guardDate((string) $allocation->allocation_date, 'void');
 
@@ -329,6 +376,7 @@ class VendorDepositService
             );
         }
         app(BusinessReferenceValidator::class)->account((int) $mapping->account_id, $key === 'purchase.vendor_deposit' ? ['asset'] : null);
+
         return (int) $mapping->account_id;
     }
 
@@ -370,7 +418,9 @@ class VendorDepositService
     private function journal(VendorDeposit $deposit, string $description, array $lines, ?VendorBill $bill = null, ?string $journalDate = null): JournalEntry
     {
         $company = $this->tenantContext->company();
-        if (! $company) throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
+        if (! $company) {
+            throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
+        }
         $date = $journalDate ?? (string) ($bill?->bill_date ?? $deposit->deposit_date);
         $journal = JournalEntry::query()->create([
             'journal_number' => $this->documentNumberService->generate($company, DocumentType::JOURNAL_ENTRY, $date),
@@ -389,6 +439,7 @@ class VendorDepositService
             'posted_at' => now(),
         ]);
         $journal->lines()->createMany($lines);
+
         return $journal->refresh();
     }
 }

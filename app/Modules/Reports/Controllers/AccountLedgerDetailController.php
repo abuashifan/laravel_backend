@@ -2,21 +2,19 @@
 
 namespace App\Modules\Reports\Controllers;
 
-use App\Data\Reports\AccountLedgerFilter;
 use App\Http\Controllers\Controller;
 use App\Modules\Reports\Requests\AccountLedgerDetailRequest;
 use App\Modules\Reports\Services\AccountLedgerDetailService;
-use App\Support\Api\ApiResponseBuilder;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Api\ApiResponseBuilder;
+use App\Shared\Reports\Data\AccountLedgerFilter;
 use Illuminate\Http\JsonResponse;
 
 class AccountLedgerDetailController extends Controller
 {
     use ApiResponse;
 
-    public function __construct(private readonly AccountLedgerDetailService $service)
-    {
-    }
+    public function __construct(private readonly AccountLedgerDetailService $service) {}
 
     public function show(AccountLedgerDetailRequest $request, int|string $account): JsonResponse
     {
@@ -46,4 +44,3 @@ class AccountLedgerDetailController extends Controller
         return $this->successResponse($result, 'Account ledger retrieved successfully');
     }
 }
-

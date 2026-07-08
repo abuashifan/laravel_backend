@@ -2,17 +2,17 @@
 
 namespace Tests\Feature\Inventory;
 
-use App\Models\CompanyAccountingSetting;
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\Product;
-use App\Models\Tenant\StockAdjustment;
-use App\Models\Tenant\StockBalance;
-use App\Models\Tenant\StockMovement;
-use App\Models\Tenant\Unit;
-use App\Models\Tenant\Warehouse;
-use App\Services\Accounting\FiscalYearService;
-use App\Support\AccountMapping\AccountMappingKey;
+use App\Modules\Accounting\Services\FiscalYearService;
+use App\Modules\Inventory\Models\StockAdjustment;
+use App\Modules\Inventory\Models\StockBalance;
+use App\Modules\Inventory\Models\StockMovement;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\MasterData\Models\Product;
+use App\Modules\MasterData\Models\Unit;
+use App\Modules\MasterData\Models\Warehouse;
+use App\Shared\AccountMapping\AccountMappingKey;
+use App\Shared\Models\CompanyAccountingSetting;
 use Illuminate\Support\Facades\Config;
 use Tests\Feature\Journal\JournalTestCase;
 

@@ -2,14 +2,14 @@
 
 namespace App\Shared\SourceDocument;
 
+use App\Modules\Purchase\Models\GoodsReceipt;
+use App\Modules\Purchase\Models\PurchaseOrder;
+use App\Modules\Purchase\Models\PurchaseRequest;
+use App\Modules\Sales\Models\DeliveryOrder;
+use App\Modules\Sales\Models\ProformaInvoice;
+use App\Modules\Sales\Models\SalesOrder;
+use App\Modules\Sales\Models\SalesQuotation;
 use App\Shared\Exceptions\ApiException;
-use App\Models\Tenant\DeliveryOrder;
-use App\Models\Tenant\GoodsReceipt;
-use App\Models\Tenant\ProformaInvoice;
-use App\Models\Tenant\PurchaseOrder;
-use App\Models\Tenant\PurchaseRequest;
-use App\Models\Tenant\SalesOrder;
-use App\Models\Tenant\SalesQuotation;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;

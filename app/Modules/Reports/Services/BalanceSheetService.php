@@ -2,9 +2,9 @@
 
 namespace App\Modules\Reports\Services;
 
-use App\Data\Reports\BalanceSheetFilter;
-use App\Data\Reports\LedgerFilter;
-use App\Models\Tenant\ChartOfAccount;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Shared\Reports\Data\BalanceSheetFilter;
+use App\Shared\Reports\Data\LedgerFilter;
 use Carbon\Carbon;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
@@ -16,8 +16,7 @@ class BalanceSheetService
         private readonly LedgerBalanceCalculator $balanceCalculator,
         private readonly LedgerFilterValidator $filterValidator,
         private readonly ?ReportVisibilityService $visibilityService = null,
-    ) {
-    }
+    ) {}
 
     public function getBalanceSheet(BalanceSheetFilter $filter): array
     {
@@ -165,7 +164,7 @@ class BalanceSheetService
     }
 
     /**
-     * @param array<int,array{account:array,debit:float,credit:float,amount:float}> $totalsByAccount
+     * @param  array<int,array{account:array,debit:float,credit:float,amount:float}>  $totalsByAccount
      * @return array<string,array>
      */
     public function buildSections(BalanceSheetFilter $filter, array $totalsByAccount, float $currentYearProfitLoss): array
@@ -332,4 +331,3 @@ class BalanceSheetService
         return $query;
     }
 }
-

@@ -2,16 +2,11 @@
 
 namespace App\Shared\TransactionLifecycle;
 
+use App\Modules\Settings\Services\CompanySettingService;
+use App\Shared\Permission\PermissionService;
+use App\Shared\Tenant\TenantContext;
 use App\Shared\TransactionLifecycle\Contracts\TransactionDateGuard;
 use App\Shared\TransactionLifecycle\Contracts\TransactionDependencyChecker;
-use App\Shared\Permission\PermissionService;
-use App\Services\Settings\CompanySettingService;
-use App\Shared\Tenant\TenantContext;
-use App\Shared\TransactionLifecycle\TransactionAction;
-use App\Shared\TransactionLifecycle\TransactionLifecycle;
-use App\Shared\TransactionLifecycle\TransactionModule;
-use App\Shared\TransactionLifecycle\TransactionPolicyResult;
-use App\Shared\TransactionLifecycle\TransactionStatus;
 
 class TransactionPolicyService
 {
@@ -21,8 +16,7 @@ class TransactionPolicyService
         private readonly PermissionService $permissionService,
         private readonly TransactionDependencyChecker $dependencyChecker,
         private readonly TransactionDateGuard $dateGuard,
-    ) {
-    }
+    ) {}
 
     public function canView(string $module, mixed $transaction = null): TransactionPolicyResult
     {
@@ -128,6 +122,7 @@ class TransactionPolicyService
 
             if ($this->dependencyChecker->hasBlockingDependencies($transaction, $action, $module)) {
                 $reasons = $this->dependencyChecker->blockingReasons($transaction, $action, $module);
+
                 return TransactionPolicyResult::deny(
                     'TRANSACTION_HAS_DEPENDENCY',
                     'Transaction has related records and cannot be modified.',
@@ -180,6 +175,7 @@ class TransactionPolicyService
             }
             if (method_exists($transaction, 'getAttribute')) {
                 $value = $transaction->getAttribute('status');
+
                 return $value !== null ? (string) $value : null;
             }
         }
@@ -203,6 +199,7 @@ class TransactionPolicyService
             }
             if (method_exists($transaction, 'getAttribute')) {
                 $value = $transaction->getAttribute('transaction_date');
+
                 return $value !== null ? (string) $value : null;
             }
         }

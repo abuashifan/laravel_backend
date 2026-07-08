@@ -12,8 +12,11 @@ class PurchaseOrder extends Model
     use HasFactory;
 
     protected $connection = 'tenant';
+
     protected $table = 'purchase_orders';
+
     protected $guarded = [];
+
     protected $casts = [
         'order_date' => 'date',
         'expected_date' => 'date',
@@ -27,8 +30,23 @@ class PurchaseOrder extends Model
         'closed_at' => 'datetime',
     ];
 
-    public function lines(): HasMany { return $this->hasMany(PurchaseOrderLine::class, 'purchase_order_id')->orderBy('sort_order'); }
-    public function vendor(): BelongsTo { return $this->belongsTo(Contact::class, 'vendor_id'); }
-    public function purchaseRequest(): BelongsTo { return $this->belongsTo(PurchaseRequest::class, 'purchase_request_id'); }
-    public function deposits(): HasMany { return $this->hasMany(VendorDeposit::class, 'purchase_order_id'); }
+    public function lines(): HasMany
+    {
+        return $this->hasMany(PurchaseOrderLine::class, 'purchase_order_id')->orderBy('sort_order');
+    }
+
+    public function vendor(): BelongsTo
+    {
+        return $this->belongsTo(Contact::class, 'vendor_id');
+    }
+
+    public function purchaseRequest(): BelongsTo
+    {
+        return $this->belongsTo(PurchaseRequest::class, 'purchase_request_id');
+    }
+
+    public function deposits(): HasMany
+    {
+        return $this->hasMany(VendorDeposit::class, 'purchase_order_id');
+    }
 }

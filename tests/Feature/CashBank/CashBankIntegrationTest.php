@@ -2,7 +2,7 @@
 
 namespace Tests\Feature\CashBank;
 
-use App\Models\Tenant\ChartOfAccount;
+use App\Modules\MasterData\Models\ChartOfAccount;
 use Tests\Feature\Journal\JournalTestCase;
 
 class CashBankIntegrationTest extends JournalTestCase
@@ -99,4 +99,3 @@ class CashBankIntegrationTest extends JournalTestCase
         $this->assertCount(3, (array) $rec->json('data.lines'));
     }
 }
-

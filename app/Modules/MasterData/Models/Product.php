@@ -2,8 +2,8 @@
 
 namespace App\Modules\MasterData\Models;
 
+use Database\Factories\Tenant\ProductFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -13,7 +13,7 @@ class Product extends Model
 
     protected static function newFactory()
     {
-        return \Database\Factories\Tenant\ProductFactory::new();
+        return ProductFactory::new();
     }
 
     protected $connection = 'tenant';

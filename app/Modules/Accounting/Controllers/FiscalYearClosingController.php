@@ -6,17 +6,15 @@ use App\Http\Controllers\Controller;
 use App\Modules\Accounting\Requests\CloseFiscalYearRequest;
 use App\Modules\Accounting\Requests\ReopenFiscalYearRequest;
 use App\Modules\Accounting\Services\FiscalYearClosingService;
-use App\Support\Api\ApiResponseBuilder;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Api\ApiResponseBuilder;
 use Illuminate\Http\JsonResponse;
 
 class FiscalYearClosingController extends Controller
 {
     use ApiResponse;
 
-    public function __construct(private readonly FiscalYearClosingService $service)
-    {
-    }
+    public function __construct(private readonly FiscalYearClosingService $service) {}
 
     public function preview(int|string $id): JsonResponse
     {

@@ -2,8 +2,8 @@
 
 namespace App\Modules\MasterData\Models;
 
+use Database\Factories\Tenant\WarehouseFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-
 use Illuminate\Database\Eloquent\Model;
 
 class Warehouse extends Model
@@ -12,7 +12,7 @@ class Warehouse extends Model
 
     protected static function newFactory()
     {
-        return \Database\Factories\Tenant\WarehouseFactory::new();
+        return WarehouseFactory::new();
     }
 
     protected $connection = 'tenant';
@@ -54,4 +54,3 @@ class Warehouse extends Model
         return (bool) $this->is_active;
     }
 }
-

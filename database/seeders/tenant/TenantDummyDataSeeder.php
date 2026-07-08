@@ -311,7 +311,9 @@ class TenantDummyDataSeeder extends Seeder
             'subtotal_after_discount' => 35000000, 'line_total' => 35000000, 'warehouse_id' => $warehouse,
             'department_id' => $salesDept, 'project_id' => $salesProject,
         ]);
-        if ($quote) $refs['quotation'] = ['table' => 'sales_quotations', 'id' => $quote];
+        if ($quote) {
+            $refs['quotation'] = ['table' => 'sales_quotations', 'id' => $quote];
+        }
 
         $order = $this->document('sales_orders', 'order_number', $this->number('SO', 1), [
             'order_date' => $this->date('05'), 'customer_id' => $customer, 'quotation_id' => $quote,
@@ -324,7 +326,9 @@ class TenantDummyDataSeeder extends Seeder
             'unit_price' => 350000, 'gross_amount' => 35000000, 'subtotal_after_discount' => 35000000,
             'line_total' => 35000000, 'warehouse_id' => $warehouse, 'department_id' => $salesDept, 'project_id' => $salesProject,
         ]);
-        if ($order) $refs['sales_order'] = ['table' => 'sales_orders', 'id' => $order];
+        if ($order) {
+            $refs['sales_order'] = ['table' => 'sales_orders', 'id' => $order];
+        }
 
         $delivery = $this->document('delivery_orders', 'delivery_number', $this->number('DO', 1), [
             'delivery_date' => $this->date('07'), 'customer_id' => $customer, 'sales_order_id' => $order,
@@ -335,7 +339,9 @@ class TenantDummyDataSeeder extends Seeder
             'quantity' => 100, 'invoiced_quantity' => 100, 'unit_id' => $unit, 'warehouse_id' => $warehouse,
             'department_id' => $salesDept, 'project_id' => $salesProject,
         ]);
-        if ($delivery) $refs['delivery'] = ['table' => 'delivery_orders', 'id' => $delivery];
+        if ($delivery) {
+            $refs['delivery'] = ['table' => 'delivery_orders', 'id' => $delivery];
+        }
 
         $invoice1 = $this->document('sales_invoices', 'invoice_number', $this->number('SI', 1), [
             'invoice_date' => $this->date('08'), 'due_date' => $this->date('31'), 'customer_id' => $customer,
@@ -348,7 +354,9 @@ class TenantDummyDataSeeder extends Seeder
             'gross_amount' => 35000000, 'subtotal_after_discount' => 35000000, 'line_total' => 35000000,
             'warehouse_id' => $warehouse, 'department_id' => $salesDept, 'project_id' => $salesProject,
         ]);
-        if ($invoice1) $refs['sales_invoice_1'] = ['table' => 'sales_invoices', 'id' => $invoice1];
+        if ($invoice1) {
+            $refs['sales_invoice_1'] = ['table' => 'sales_invoices', 'id' => $invoice1];
+        }
 
         $invoice2 = $this->document('sales_invoices', 'invoice_number', $this->number('SI', 2), [
             'invoice_date' => $this->date('13'), 'due_date' => $this->date('31'), 'customer_id' => $customer,
@@ -361,14 +369,18 @@ class TenantDummyDataSeeder extends Seeder
             'gross_amount' => 20000000, 'subtotal_after_discount' => 20000000, 'line_total' => 20000000,
             'warehouse_id' => $warehouse, 'department_id' => $salesDept, 'project_id' => $salesProject,
         ]);
-        if ($invoice2) $refs['sales_invoice_2'] = ['table' => 'sales_invoices', 'id' => $invoice2];
+        if ($invoice2) {
+            $refs['sales_invoice_2'] = ['table' => 'sales_invoices', 'id' => $invoice2];
+        }
 
         $deposit = $this->document('customer_deposits', 'deposit_number', $this->number('CD', 1), [
             'deposit_date' => $this->date('11'), 'customer_id' => $customer, 'sales_order_id' => $order,
             'cash_bank_account_id' => $this->accounts['1110'], 'amount' => 8000000, 'allocated_amount' => 8000000,
             'remaining_amount' => 0, 'status' => 'posted', 'posted_at' => $this->at('11'),
         ]);
-        if ($deposit) $refs['customer_deposit'] = ['table' => 'customer_deposits', 'id' => $deposit];
+        if ($deposit) {
+            $refs['customer_deposit'] = ['table' => 'customer_deposits', 'id' => $deposit];
+        }
 
         $this->document('customer_deposit_allocations', 'id', null, [
             'customer_deposit_id' => $deposit, 'sales_invoice_id' => $invoice2, 'allocation_date' => $this->date('13'),
@@ -381,7 +393,9 @@ class TenantDummyDataSeeder extends Seeder
         ], 'sales_receipt_lines', 'sales_receipt_id', [
             'sales_invoice_id' => $invoice1, 'amount' => 15000000, 'description' => 'Partial customer receipt.',
         ]);
-        if ($receipt) $refs['sales_receipt'] = ['table' => 'sales_receipts', 'id' => $receipt];
+        if ($receipt) {
+            $refs['sales_receipt'] = ['table' => 'sales_receipts', 'id' => $receipt];
+        }
 
         $return = $this->document('sales_returns', 'return_number', $this->number('SRET', 1), [
             'return_date' => $this->date('18'), 'customer_id' => $customer, 'sales_invoice_id' => $invoice1,
@@ -392,7 +406,9 @@ class TenantDummyDataSeeder extends Seeder
             'description' => 'Returned LPG', 'quantity' => 6, 'unit_id' => $unit, 'unit_price' => 333333.33,
             'line_total' => 2000000, 'warehouse_id' => $warehouse, 'department_id' => $salesDept, 'project_id' => $salesProject,
         ]);
-        if ($return) $refs['sales_return'] = ['table' => 'sales_returns', 'id' => $return];
+        if ($return) {
+            $refs['sales_return'] = ['table' => 'sales_returns', 'id' => $return];
+        }
 
         $purchaseRequest = $this->document('purchase_requests', 'request_number', $this->number('PR', 1), [
             'request_date' => $this->date('02'), 'needed_date' => $this->date('03'), 'department_id' => $opsDept,
@@ -403,7 +419,9 @@ class TenantDummyDataSeeder extends Seeder
             'quantity' => 125, 'unit_id' => $unit, 'estimated_unit_price' => 200000, 'estimated_line_total' => 25000000,
             'warehouse_id' => $warehouse, 'department_id' => $opsDept, 'project_id' => $opsProject,
         ]);
-        if ($purchaseRequest) $refs['purchase_request'] = ['table' => 'purchase_requests', 'id' => $purchaseRequest];
+        if ($purchaseRequest) {
+            $refs['purchase_request'] = ['table' => 'purchase_requests', 'id' => $purchaseRequest];
+        }
 
         $po = $this->document('purchase_orders', 'order_number', $this->number('PO', 1), [
             'order_date' => $this->date('02'), 'expected_date' => $this->date('03'), 'vendor_id' => $vendor,
@@ -418,7 +436,9 @@ class TenantDummyDataSeeder extends Seeder
             'line_total' => 25000000, 'warehouse_id' => $warehouse, 'department_id' => $opsDept,
             'project_id' => $opsProject, 'expense_account_id' => $this->accounts['1130'],
         ]);
-        if ($po) $refs['purchase_order'] = ['table' => 'purchase_orders', 'id' => $po];
+        if ($po) {
+            $refs['purchase_order'] = ['table' => 'purchase_orders', 'id' => $po];
+        }
 
         $goods = $this->document('goods_receipts', 'receipt_number', $this->number('GR', 1), [
             'receipt_date' => $this->date('03'), 'vendor_id' => $vendor, 'purchase_order_id' => $po,
@@ -429,7 +449,9 @@ class TenantDummyDataSeeder extends Seeder
             'quantity' => 125, 'billed_quantity' => 125, 'unit_id' => $unit, 'warehouse_id' => $warehouse,
             'department_id' => $opsDept, 'project_id' => $opsProject, 'expense_account_id' => $this->accounts['1130'],
         ]);
-        if ($goods) $refs['goods_receipt'] = ['table' => 'goods_receipts', 'id' => $goods];
+        if ($goods) {
+            $refs['goods_receipt'] = ['table' => 'goods_receipts', 'id' => $goods];
+        }
 
         $bill = $this->document('vendor_bills', 'bill_number', $this->number('BILL', 1), [
             'bill_date' => $this->date('03'), 'due_date' => $this->date('31'), 'vendor_id' => $vendor,
@@ -443,7 +465,9 @@ class TenantDummyDataSeeder extends Seeder
             'warehouse_id' => $warehouse, 'department_id' => $opsDept, 'project_id' => $opsProject,
             'expense_account_id' => $this->accounts['1130'],
         ]);
-        if ($bill) $refs['vendor_bill'] = ['table' => 'vendor_bills', 'id' => $bill];
+        if ($bill) {
+            $refs['vendor_bill'] = ['table' => 'vendor_bills', 'id' => $bill];
+        }
 
         $billTwo = $this->document('vendor_bills', 'bill_number', $this->number('BILL', 2), [
             'bill_date' => $this->date('22'), 'due_date' => $this->date('31'), 'vendor_id' => $vendor,
@@ -455,14 +479,18 @@ class TenantDummyDataSeeder extends Seeder
             'gross_amount' => 1000000, 'subtotal_after_discount' => 1000000, 'line_total' => 1000000,
             'department_id' => $opsDept, 'project_id' => $opsProject, 'expense_account_id' => $this->accounts['6160'],
         ]);
-        if ($billTwo) $refs['vendor_bill_2'] = ['table' => 'vendor_bills', 'id' => $billTwo];
+        if ($billTwo) {
+            $refs['vendor_bill_2'] = ['table' => 'vendor_bills', 'id' => $billTwo];
+        }
 
         $vendorDeposit = $this->document('vendor_deposits', 'deposit_number', $this->number('VD', 1), [
             'deposit_date' => $this->date('06'), 'vendor_id' => $vendor, 'purchase_order_id' => $po,
             'cash_bank_account_id' => $this->accounts['1110'], 'amount' => 5000000, 'remaining_amount' => 5000000,
             'status' => 'posted', 'posted_at' => $this->at('06'),
         ]);
-        if ($vendorDeposit) $refs['vendor_deposit'] = ['table' => 'vendor_deposits', 'id' => $vendorDeposit];
+        if ($vendorDeposit) {
+            $refs['vendor_deposit'] = ['table' => 'vendor_deposits', 'id' => $vendorDeposit];
+        }
 
         $payment = $this->document('vendor_payments', 'payment_number', $this->number('VP', 1), [
             'payment_date' => $this->date('05'), 'vendor_id' => $vendor, 'vendor_bill_id' => $bill,
@@ -470,7 +498,9 @@ class TenantDummyDataSeeder extends Seeder
         ], 'vendor_payment_lines', 'vendor_payment_id', [
             'vendor_bill_id' => $bill, 'amount' => 10000000, 'description' => 'Partial payment vendor bill.',
         ]);
-        if ($payment) $refs['vendor_payment'] = ['table' => 'vendor_payments', 'id' => $payment];
+        if ($payment) {
+            $refs['vendor_payment'] = ['table' => 'vendor_payments', 'id' => $payment];
+        }
 
         $returnPurchase = $this->document('purchase_returns', 'return_number', $this->number('PRET', 1), [
             'return_date' => $this->date('20'), 'vendor_id' => $vendor, 'vendor_bill_id' => $bill, 'goods_receipt_id' => $goods,
@@ -482,7 +512,9 @@ class TenantDummyDataSeeder extends Seeder
             'warehouse_id' => $warehouse, 'department_id' => $opsDept, 'project_id' => $opsProject,
             'expense_account_id' => $this->accounts['1130'],
         ]);
-        if ($returnPurchase) $refs['purchase_return'] = ['table' => 'purchase_returns', 'id' => $returnPurchase];
+        if ($returnPurchase) {
+            $refs['purchase_return'] = ['table' => 'purchase_returns', 'id' => $returnPurchase];
+        }
 
         $this->seedCashBankDocuments($refs);
         $this->seedInventoryDocuments($refs);
@@ -504,7 +536,9 @@ class TenantDummyDataSeeder extends Seeder
         ], 'cash_receipt_lines', 'cash_receipt_id', [
             'account_id' => $this->accounts['3100'], 'amount' => 100000000, 'description' => 'Owner capital',
         ]);
-        if ($receipt) $refs['cash_receipt_opening'] = ['table' => 'cash_receipts', 'id' => $receipt];
+        if ($receipt) {
+            $refs['cash_receipt_opening'] = ['table' => 'cash_receipts', 'id' => $receipt];
+        }
 
         $receiptCustomer = $this->document('cash_receipts', 'receipt_number', $this->number('CR', 2), [
             'receipt_date' => $this->date('24'), 'cash_bank_account_id' => $bank, 'contact_id' => $customer,
@@ -512,7 +546,9 @@ class TenantDummyDataSeeder extends Seeder
         ], 'cash_receipt_lines', 'cash_receipt_id', [
             'account_id' => $this->accounts['1120'], 'amount' => 25000000, 'description' => 'Customer receivable settlement',
         ]);
-        if ($receiptCustomer) $refs['cash_receipt_ar'] = ['table' => 'cash_receipts', 'id' => $receiptCustomer];
+        if ($receiptCustomer) {
+            $refs['cash_receipt_ar'] = ['table' => 'cash_receipts', 'id' => $receiptCustomer];
+        }
 
         $payment = $this->document('cash_payments', 'payment_number', $this->number('CP', 1), [
             'payment_date' => $this->date('26'), 'cash_bank_account_id' => $bank, 'contact_id' => $vendor,
@@ -520,20 +556,26 @@ class TenantDummyDataSeeder extends Seeder
         ], 'cash_payment_lines', 'cash_payment_id', [
             'account_id' => $this->accounts['2100'], 'amount' => 8000000, 'description' => 'Vendor payable settlement',
         ]);
-        if ($payment) $refs['cash_payment_ap'] = ['table' => 'cash_payments', 'id' => $payment];
+        if ($payment) {
+            $refs['cash_payment_ap'] = ['table' => 'cash_payments', 'id' => $payment];
+        }
 
         $transfer = $this->document('bank_transfers', 'transfer_number', $this->number('BT', 1), [
             'transfer_date' => $this->date('14'), 'from_cash_bank_account_id' => $bank, 'to_cash_bank_account_id' => $cash,
             'amount' => 2000000, 'status' => 'posted', 'posted_at' => $this->at('14'), 'notes' => 'Petty cash replenishment.',
         ]);
-        if ($transfer) $refs['bank_transfer'] = ['table' => 'bank_transfers', 'id' => $transfer];
+        if ($transfer) {
+            $refs['bank_transfer'] = ['table' => 'bank_transfers', 'id' => $transfer];
+        }
 
         $recon = $this->document('bank_reconciliations', 'reconciliation_number', $this->number('BR', 1), [
             'cash_bank_account_id' => $bank, 'statement_start_date' => $this->date('01'), 'statement_end_date' => $this->date('31'),
             'statement_opening_balance' => 0, 'statement_ending_balance' => 88850000, 'status' => 'draft',
             'notes' => 'January demo bank reconciliation sample.',
         ]);
-        if ($recon) $refs['bank_reconciliation'] = ['table' => 'bank_reconciliations', 'id' => $recon];
+        if ($recon) {
+            $refs['bank_reconciliation'] = ['table' => 'bank_reconciliations', 'id' => $recon];
+        }
     }
 
     /** @param array<string, array{table:string,id:int}> $refs */
@@ -542,7 +584,9 @@ class TenantDummyDataSeeder extends Seeder
         $product = $this->products['PRD-DMY-001'] ?? null;
         $warehouse = $this->warehouses['WH-DMY-01'] ?? null;
         $unit = $this->units['TAB'] ?? null;
-        if (! $product || ! $warehouse) return;
+        if (! $product || ! $warehouse) {
+            return;
+        }
 
         foreach ([
             ['SM-DMY-OPEN', '01', 'opening', 'in', 50, 200000, null],
@@ -562,7 +606,9 @@ class TenantDummyDataSeeder extends Seeder
                 'warehouse_id' => $warehouse, 'unit_id' => $unit, 'quantity' => $qty, 'unit_cost' => $cost,
                 'total_cost' => $qty * $cost,
             ]);
-            if ($movement) $refs[$no] = ['table' => 'stock_movements', 'id' => $movement];
+            if ($movement) {
+                $refs[$no] = ['table' => 'stock_movements', 'id' => $movement];
+            }
         }
 
         $adjustment = $this->document('stock_adjustments', 'adjustment_number', $this->number('SA', 1), [
@@ -573,7 +619,9 @@ class TenantDummyDataSeeder extends Seeder
             'product_id' => $product, 'warehouse_id' => $warehouse, 'unit_id' => $unit, 'adjustment_type' => 'decrease',
             'quantity' => 1, 'unit_cost' => 200000, 'total_cost' => 200000, 'reason' => 'Damaged cylinder.',
         ]);
-        if ($adjustment) $refs['stock_adjustment'] = ['table' => 'stock_adjustments', 'id' => $adjustment];
+        if ($adjustment) {
+            $refs['stock_adjustment'] = ['table' => 'stock_adjustments', 'id' => $adjustment];
+        }
 
         $opname = $this->document('stock_opnames', 'opname_number', $this->number('OPN', 1), [
             'opname_date' => $this->date('31'), 'warehouse_id' => $warehouse, 'status' => 'finalized',
@@ -583,7 +631,9 @@ class TenantDummyDataSeeder extends Seeder
             'physical_quantity' => 65, 'difference_quantity' => 0, 'average_cost' => 200000, 'difference_value' => 0,
             'counted_at' => $this->at('31'),
         ]);
-        if ($opname) $refs['stock_opname'] = ['table' => 'stock_opnames', 'id' => $opname];
+        if ($opname) {
+            $refs['stock_opname'] = ['table' => 'stock_opnames', 'id' => $opname];
+        }
     }
 
     private function seedJournalCycle(): void
@@ -673,18 +723,26 @@ class TenantDummyDataSeeder extends Seeder
             'purchase_return' => 18, 'vendor_bill_2' => 27, 'cash_receipt_opening' => 1, 'cash_receipt_ar' => 23,
             'cash_payment_ap' => 24, 'bank_transfer' => 12,
         ] as $document => $journalSequence) {
-            if (! isset($documents[$document])) continue;
+            if (! isset($documents[$document])) {
+                continue;
+            }
             $journalId = $this->journals[$this->number('JRN', $journalSequence)] ?? null;
-            if (! $journalId) continue;
+            if (! $journalId) {
+                continue;
+            }
             $table = $documents[$document]['table'];
-            if (! Schema::connection('tenant')->hasColumn($table, 'journal_entry_id')) continue;
+            if (! Schema::connection('tenant')->hasColumn($table, 'journal_entry_id')) {
+                continue;
+            }
             DB::connection('tenant')->table($table)->where('id', $documents[$document]['id'])->update(['journal_entry_id' => $journalId]);
         }
     }
 
     private function seedInventoryBalances(): void
     {
-        if (! $this->has('stock_balances') || ! isset($this->products['PRD-DMY-001'], $this->warehouses['WH-DMY-01'])) return;
+        if (! $this->has('stock_balances') || ! isset($this->products['PRD-DMY-001'], $this->warehouses['WH-DMY-01'])) {
+            return;
+        }
         $lastMovementId = $this->has('stock_movements')
             ? (int) DB::connection('tenant')->table('stock_movements')->where('movement_number', 'like', 'SM-DMY-%-'.$this->period)->max('id')
             : null;
@@ -705,17 +763,25 @@ class TenantDummyDataSeeder extends Seeder
 
     private function seedBankReconciliationLines(): void
     {
-        if (! $this->has('bank_reconciliation_lines') || ! $this->has('bank_reconciliations')) return;
+        if (! $this->has('bank_reconciliation_lines') || ! $this->has('bank_reconciliations')) {
+            return;
+        }
         $reconciliationId = DB::connection('tenant')->table('bank_reconciliations')
             ->where('reconciliation_number', $this->number('BR', 1))->value('id');
-        if (! $reconciliationId) return;
+        if (! $reconciliationId) {
+            return;
+        }
         DB::connection('tenant')->table('bank_reconciliation_lines')->where('bank_reconciliation_id', $reconciliationId)->delete();
         foreach ([$this->number('JRN', 1), $this->number('JRN', 3), $this->number('JRN', 23)] as $order => $number) {
             $journalId = $this->journals[$number] ?? null;
-            if (! $journalId) continue;
+            if (! $journalId) {
+                continue;
+            }
             $line = DB::connection('tenant')->table('journal_entry_lines')->where('journal_entry_id', $journalId)
                 ->where('account_id', $this->accounts['1110'])->first();
-            if (! $line) continue;
+            if (! $line) {
+                continue;
+            }
             DB::connection('tenant')->table('bank_reconciliation_lines')->insert($this->filter('bank_reconciliation_lines', [
                 'bank_reconciliation_id' => $reconciliationId, 'journal_entry_id' => $journalId, 'journal_entry_line_id' => $line->id,
                 'journal_date' => DB::connection('tenant')->table('journal_entries')->where('id', $journalId)->value('journal_date'),
@@ -728,12 +794,14 @@ class TenantDummyDataSeeder extends Seeder
     }
 
     /**
-     * @param array<int, array{0:string,1:array<string,mixed>}> $rows
-     * @param array<string, int> $ids
+     * @param  array<int, array{0:string,1:array<string,mixed>}>  $rows
+     * @param  array<string, int>  $ids
      */
     private function seedRows(string $table, string $key, array $rows, array &$ids): void
     {
-        if (! $this->has($table)) return;
+        if (! $this->has($table)) {
+            return;
+        }
         foreach ($rows as [$value, $data]) {
             $ids[$value] = $this->upsert($table, $key, $value, array_merge(['is_active' => true, 'metadata' => $this->metadata()], $data));
         }
@@ -749,7 +817,9 @@ class TenantDummyDataSeeder extends Seeder
         array $line = [],
         array $composite = [],
     ): ?int {
-        if (! $this->has($table)) return null;
+        if (! $this->has($table)) {
+            return null;
+        }
         $payload = array_merge($header, ['metadata' => $this->metadata()]);
         $id = $composite !== []
             ? $this->upsertComposite($table, $composite, $payload)
@@ -760,12 +830,14 @@ class TenantDummyDataSeeder extends Seeder
                 $foreignKey => $id, 'sort_order' => 1, 'metadata' => $this->metadata(), 'created_at' => now(), 'updated_at' => now(),
             ])));
         }
+
         return $id;
     }
 
     private function upsert(string $table, string $key, string|int|null $value, array $payload): int
     {
         $match = [$key => $value];
+
         return $this->upsertComposite($table, $match, $payload);
     }
 
@@ -776,9 +848,11 @@ class TenantDummyDataSeeder extends Seeder
         $exists = DB::connection('tenant')->table($table)->where($match)->first();
         if ($exists) {
             DB::connection('tenant')->table($table)->where('id', $exists->id)->update($payload);
+
             return (int) $exists->id;
         }
         $insert = $this->filter($table, array_merge($match, $payload, ['created_at' => now()]));
+
         return (int) DB::connection('tenant')->table($table)->insertGetId($insert);
     }
 
@@ -786,9 +860,11 @@ class TenantDummyDataSeeder extends Seeder
     {
         if (Schema::connection('tenant')->hasTable($table)) {
             $this->seededTables[] = $table;
+
             return true;
         }
         $this->skip($table);
+
         return false;
     }
 

@@ -2,10 +2,9 @@
 
 namespace Tests\Feature\Sales;
 
-use App\Models\Tenant\SalesQuotation;
-use App\Models\Tenant\StockMovement;
+use App\Modules\Inventory\Models\StockMovement;
+use App\Modules\Sales\Models\SalesQuotation;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 
 class SalesQuotationTest extends SalesTestCase
 {

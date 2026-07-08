@@ -2,7 +2,7 @@
 
 namespace Tests\Feature\CashBank;
 
-use App\Models\Tenant\JournalEntry;
+use App\Modules\Journal\Models\JournalEntry;
 use Tests\Feature\Journal\JournalTestCase;
 
 class CashBankAccountStatementTest extends JournalTestCase

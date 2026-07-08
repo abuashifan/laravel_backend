@@ -5,10 +5,15 @@ namespace App\Shared\TransactionLifecycle;
 class TransactionAction
 {
     public const CREATE = 'create';
+
     public const EDIT = 'edit';
+
     public const VOID = 'void';
+
     public const APPROVE = 'approve';
+
     public const POST = 'post';
+
     public const VIEW = 'view';
 
     public static function all(): array
@@ -23,4 +28,3 @@ class TransactionAction
         ];
     }
 }
-

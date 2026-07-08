@@ -2,9 +2,10 @@
 
 namespace App\Modules\Inventory\Services;
 
-use App\Models\Tenant\Product;
-use App\Models\Tenant\StockBalance;
-use App\Models\Tenant\StockMovementLine;
+use App\Modules\Inventory\Models\StockBalance;
+use App\Modules\Inventory\Models\StockMovementLine;
+use App\Modules\MasterData\Models\Product;
+use App\Modules\MasterData\Models\Warehouse;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
@@ -43,8 +44,12 @@ class InventoryValuationService
             $linesQ->whereDate('stock_movements.movement_date', '<=', $asOf);
         }
 
-        if (! empty($filters['product_id'])) $linesQ->where('stock_movement_lines.product_id', (int) $filters['product_id']);
-        if (! empty($filters['warehouse_id'])) $linesQ->where('stock_movement_lines.warehouse_id', (int) $filters['warehouse_id']);
+        if (! empty($filters['product_id'])) {
+            $linesQ->where('stock_movement_lines.product_id', (int) $filters['product_id']);
+        }
+        if (! empty($filters['warehouse_id'])) {
+            $linesQ->where('stock_movement_lines.warehouse_id', (int) $filters['warehouse_id']);
+        }
 
         if (! empty($filters['category_id'])) {
             $catId = (int) $filters['category_id'];
@@ -92,18 +97,24 @@ class InventoryValuationService
         $whIds = $state->pluck('warehouse_id')->unique()->values()->all();
 
         $products = Product::query()->whereIn('id', $productIds)->get()->keyBy('id');
-        $warehouses = \App\Models\Tenant\Warehouse::query()->whereIn('id', $whIds)->get()->keyBy('id');
+        $warehouses = Warehouse::query()->whereIn('id', $whIds)->get()->keyBy('id');
 
         $includeZero = (bool) ($filters['include_zero'] ?? false);
         $includeNegative = (bool) ($filters['include_negative'] ?? false);
 
         $rows = $state->values()->filter(function (array $r) use ($includeZero, $includeNegative) {
-            if (! $includeNegative && $r['quantity_on_hand'] < 0) return false;
-            if (! $includeZero && abs((float) $r['quantity_on_hand']) < 1e-9) return false;
+            if (! $includeNegative && $r['quantity_on_hand'] < 0) {
+                return false;
+            }
+            if (! $includeZero && abs((float) $r['quantity_on_hand']) < 1e-9) {
+                return false;
+            }
+
             return true;
         })->map(function (array $r) use ($products, $warehouses) {
             $p = $products->get($r['product_id']);
             $w = $warehouses->get($r['warehouse_id']);
+
             return [
                 'product_id' => (int) $r['product_id'],
                 'product_code' => $p?->product_code,
@@ -128,19 +139,25 @@ class InventoryValuationService
     public function valuationByProduct(int $productId, array $filters = []): array
     {
         $filters['product_id'] = $productId;
+
         return $this->currentValuation($filters);
     }
 
     public function valuationByWarehouse(int $warehouseId, array $filters = []): array
     {
         $filters['warehouse_id'] = $warehouseId;
+
         return $this->currentValuation($filters);
     }
 
     private function applyBalanceFilters(Builder $query, array $filters): void
     {
-        if (! empty($filters['product_id'])) $query->where('product_id', (int) $filters['product_id']);
-        if (! empty($filters['warehouse_id'])) $query->where('warehouse_id', (int) $filters['warehouse_id']);
+        if (! empty($filters['product_id'])) {
+            $query->where('product_id', (int) $filters['product_id']);
+        }
+        if (! empty($filters['warehouse_id'])) {
+            $query->where('warehouse_id', (int) $filters['warehouse_id']);
+        }
         if (! empty($filters['category_id'])) {
             $catId = (int) $filters['category_id'];
             $query->whereHas('product', fn ($q) => $q->where('category_id', $catId));

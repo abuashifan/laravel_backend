@@ -2,21 +2,19 @@
 
 namespace App\Modules\Reports\Controllers;
 
-use App\Data\Reports\ProfitLossFilter;
 use App\Http\Controllers\Controller;
 use App\Modules\Reports\Requests\ProfitLossRequest;
 use App\Modules\Reports\Services\ProfitLossService;
-use App\Support\Api\ApiResponseBuilder;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Api\ApiResponseBuilder;
+use App\Shared\Reports\Data\ProfitLossFilter;
 use Illuminate\Http\JsonResponse;
 
 class ProfitLossController extends Controller
 {
     use ApiResponse;
 
-    public function __construct(private readonly ProfitLossService $service)
-    {
-    }
+    public function __construct(private readonly ProfitLossService $service) {}
 
     public function index(ProfitLossRequest $request): JsonResponse
     {
@@ -32,4 +30,3 @@ class ProfitLossController extends Controller
         return $this->successResponse($result, 'Profit and loss statement retrieved successfully');
     }
 }
-

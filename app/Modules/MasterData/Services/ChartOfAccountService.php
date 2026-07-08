@@ -2,8 +2,8 @@
 
 namespace App\Modules\MasterData\Services;
 
-use App\Exceptions\ApiException;
-use App\Models\Tenant\ChartOfAccount;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Shared\Exceptions\ApiException;
 
 class ChartOfAccountService
 {

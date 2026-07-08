@@ -2,20 +2,20 @@
 
 namespace App\Modules\FixedAssets\Services;
 
-use App\Exceptions\ApiException;
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\FixedAsset;
-use App\Models\Tenant\FixedAssetCategory;
-use App\Models\Tenant\FixedAssetDepreciationRun;
-use App\Models\Tenant\FixedAssetDepreciationSchedule;
-use App\Models\Tenant\FixedAssetDisposal;
-use App\Models\Tenant\JournalEntry;
-use App\Models\Tenant\VendorBillLine;
+use App\Modules\FixedAssets\Models\FixedAsset;
+use App\Modules\FixedAssets\Models\FixedAssetCategory;
+use App\Modules\FixedAssets\Models\FixedAssetDepreciationRun;
+use App\Modules\FixedAssets\Models\FixedAssetDepreciationSchedule;
+use App\Modules\Journal\Models\JournalEntry;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\Purchase\Models\VendorBillLine;
 use App\Shared\Audit\AuditLogService;
 use App\Shared\DocumentNumbering\DocumentNumberService;
+use App\Shared\DocumentNumbering\DocumentType;
+use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
 use App\Shared\TransactionLifecycle\TransactionDateGuardService;
-use App\Support\DocumentNumbering\DocumentType;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -27,8 +27,7 @@ class FixedAssetService
         private readonly DocumentNumberService $documentNumberService,
         private readonly AuditLogService $auditLogService,
         private readonly TransactionDateGuardService $dateGuardService,
-    ) {
-    }
+    ) {}
 
     public function categories(array $filters = []): Collection
     {
@@ -46,6 +45,7 @@ class FixedAssetService
         if (! empty($filters['asset_class'])) {
             $query->where('asset_class', (string) $filters['asset_class']);
         }
+
         return $query->orderBy('name')->get();
     }
 
@@ -66,6 +66,7 @@ class FixedAssetService
     public function updateCategory(FixedAssetCategory $category, array $data): FixedAssetCategory
     {
         $category->fill($data)->save();
+
         return $category->refresh()->load([
             'assetAccount',
             'accumulatedDepreciationAccount',
@@ -79,9 +80,16 @@ class FixedAssetService
     public function list(array $filters = []): Collection
     {
         $query = FixedAsset::query()->with('category', 'department', 'project');
-        if (! empty($filters['status'])) $query->where('status', (string) $filters['status']);
-        if (! empty($filters['category_id'])) $query->where('fixed_asset_category_id', (int) $filters['category_id']);
-        if (! empty($filters['asset_class'])) $query->where('asset_class', (string) $filters['asset_class']);
+        if (! empty($filters['status'])) {
+            $query->where('status', (string) $filters['status']);
+        }
+        if (! empty($filters['category_id'])) {
+            $query->where('fixed_asset_category_id', (int) $filters['category_id']);
+        }
+        if (! empty($filters['asset_class'])) {
+            $query->where('asset_class', (string) $filters['asset_class']);
+        }
+
         return $query->orderBy('asset_number')->orderByDesc('id')->get();
     }
 
@@ -112,6 +120,7 @@ class FixedAssetService
                 'source_id' => $asset->source_id,
             ]);
             $this->audit('fixed_asset.created', $asset, 'Fixed asset draft created.');
+
             return $asset->refresh()->load('category');
         });
     }
@@ -138,6 +147,7 @@ class FixedAssetService
                 $this->generateSchedules($asset->refresh());
             }
             $this->audit('fixed_asset.updated', $asset, 'Fixed asset updated.');
+
             return $asset->refresh()->load('category');
         });
     }
@@ -149,7 +159,9 @@ class FixedAssetService
         }
 
         $company = $this->tenantContext->company();
-        if (! $company) throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
+        if (! $company) {
+            throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
+        }
 
         $date = (string) ($data['capitalization_date'] ?? $asset->acquisition_date?->toDateString());
         $this->guardDate($date, 'post');
@@ -201,6 +213,7 @@ class FixedAssetService
             ]);
             $this->generateSchedules($asset->refresh());
             $this->audit('fixed_asset.capitalized', $asset, 'Fixed asset capitalized.', ['journal_entry_id' => $journal->id]);
+
             return $asset->refresh()->load('category', 'schedules');
         });
     }
@@ -223,7 +236,9 @@ class FixedAssetService
         }
 
         $company = $this->tenantContext->company();
-        if (! $company) throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
+        if (! $company) {
+            throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
+        }
 
         $this->guardDate((string) $data['disposal_date'], 'post');
 
@@ -298,6 +313,7 @@ class FixedAssetService
                 'period' => $period,
             ]);
             $this->audit('fixed_asset.disposed', $asset, 'Fixed asset disposed.', ['disposal_id' => $disposal->id, 'journal_entry_id' => $journal->id]);
+
             return $asset->refresh()->load('category', 'disposals');
         });
     }
@@ -305,7 +321,9 @@ class FixedAssetService
     public function postDepreciationPeriod(int $year, int $month): FixedAssetDepreciationRun
     {
         $company = $this->tenantContext->company();
-        if (! $company) throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
+        if (! $company) {
+            throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
+        }
 
         $period = sprintf('%04d-%02d', $year, $month);
         $existing = FixedAssetDepreciationRun::query()->where('period', $period)->where('status', 'posted')->first();
@@ -335,7 +353,9 @@ class FixedAssetService
                 $grouped = [];
                 foreach ($schedules as $schedule) {
                     $asset = $schedule->asset;
-                    if (! $asset) continue;
+                    if (! $asset) {
+                        continue;
+                    }
                     $expense = $this->expenseAccount($asset);
                     $accumulated = $this->accumulatedAccount($asset);
                     $grouped['dr_'.$expense] = ($grouped['dr_'.$expense] ?? 0) + (float) $schedule->depreciation_amount;
@@ -359,7 +379,9 @@ class FixedAssetService
 
             foreach ($schedules as $schedule) {
                 $asset = $schedule->asset;
-                if (! $asset) continue;
+                if (! $asset) {
+                    continue;
+                }
 
                 if ($this->isDisposedBeforeOrInPeriod($asset, $period)) {
                     continue;
@@ -601,7 +623,9 @@ class FixedAssetService
     private function journal(string $date, string $description, string $sourceType, int $sourceId, string $sourceNumber, array $lines): JournalEntry
     {
         $company = $this->tenantContext->company();
-        if (! $company) throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
+        if (! $company) {
+            throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
+        }
 
         $journal = JournalEntry::query()->create([
             'journal_number' => $this->documentNumberService->generate($company, DocumentType::JOURNAL_ENTRY, $date),
@@ -620,6 +644,7 @@ class FixedAssetService
             'posted_at' => now(),
         ]);
         $journal->lines()->createMany($lines);
+
         return $journal->refresh();
     }
 
@@ -636,12 +661,14 @@ class FixedAssetService
     private function accumulatedAccount(FixedAsset $asset): int
     {
         $key = $asset->depreciation_type === 'amortization' ? 'fixed_assets.accumulated_amortization' : 'fixed_assets.accumulated_depreciation';
+
         return (int) ($asset->category?->accumulated_depreciation_account_id ?: $this->mapping($key, ['asset']));
     }
 
     private function expenseAccount(FixedAsset $asset): int
     {
         $key = $asset->depreciation_type === 'amortization' ? 'fixed_assets.amortization_expense' : 'fixed_assets.depreciation_expense';
+
         return (int) ($asset->category?->depreciation_expense_account_id ?: $this->mapping($key, ['expense']));
     }
 
@@ -661,7 +688,7 @@ class FixedAssetService
         if (! $mapping?->account_id) {
             throw ApiException::make('ACCOUNT_MAPPING_MISSING', "Account mapping [{$key}] is required.", 422);
         }
-        $account = \App\Models\Tenant\ChartOfAccount::query()
+        $account = ChartOfAccount::query()
             ->whereKey((int) $mapping->account_id)
             ->whereIn('account_type', $types)
             ->where('is_active', true)
@@ -669,6 +696,7 @@ class FixedAssetService
         if (! $account) {
             throw ApiException::make('ACCOUNT_MAPPING_INVALID', "Account mapping [{$key}] is invalid.", 422);
         }
+
         return (int) $account->id;
     }
 

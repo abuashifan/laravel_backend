@@ -2,9 +2,9 @@
 
 namespace App\Modules\Settings\Services;
 
-use App\Models\Company;
-use App\Models\CompanyAccountingSetting;
-use App\Models\CompanyModuleSetting;
+use App\Shared\Models\Company;
+use App\Shared\Models\CompanyAccountingSetting;
+use App\Shared\Models\CompanyModuleSetting;
 
 class CompanySettingService
 {

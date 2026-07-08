@@ -15,8 +15,7 @@ class AccountMappingRequirement
         public readonly bool $visibleInSettings,
         public readonly ?string $settingsSection,
         public readonly int $settingsOrder,
-    ) {
-    }
+    ) {}
 
     public static function fromConfig(string $key, array $config): self
     {

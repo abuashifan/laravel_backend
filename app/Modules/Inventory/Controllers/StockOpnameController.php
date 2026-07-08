@@ -3,12 +3,12 @@
 namespace App\Modules\Inventory\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Inventory\Models\StockOpname;
+use App\Modules\Inventory\Models\StockOpnameLine;
 use App\Modules\Inventory\Requests\StockOpnameActionRequest;
 use App\Modules\Inventory\Requests\StoreStockOpnameRequest;
 use App\Modules\Inventory\Requests\UpdateStockOpnameLineRequest;
 use App\Modules\Inventory\Requests\VoidStockOpnameRequest;
-use App\Models\Tenant\StockOpname;
-use App\Models\Tenant\StockOpnameLine;
 use App\Modules\Inventory\Services\StockOpnameService;
 use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -38,31 +38,35 @@ class StockOpnameController extends Controller
     public function generateLines(StockOpnameActionRequest $request, int $id): JsonResponse
     {
         $opname = StockOpname::query()->findOrFail($id);
+
         return $this->successResponse($this->service->generateLinesFromStockBalance($opname), 'Stock opname lines generated successfully');
     }
 
     public function updateLine(UpdateStockOpnameLineRequest $request, int $id, int $lineId): JsonResponse
     {
         $line = StockOpnameLine::query()->where('stock_opname_id', $id)->findOrFail($lineId);
+
         return $this->successResponse($this->service->updateLineCount($line, $request->validated()), 'Stock opname line updated successfully');
     }
 
     public function markCounted(StockOpnameActionRequest $request, int $id): JsonResponse
     {
         $opname = StockOpname::query()->findOrFail($id);
+
         return $this->successResponse($this->service->markCounted($opname), 'Stock opname marked counted successfully');
     }
 
     public function finalize(StockOpnameActionRequest $request, int $id): JsonResponse
     {
         $opname = StockOpname::query()->findOrFail($id);
+
         return $this->successResponse($this->service->finalize($opname), 'Stock opname finalized successfully');
     }
 
     public function void(VoidStockOpnameRequest $request, int $id): JsonResponse
     {
         $opname = StockOpname::query()->findOrFail($id);
+
         return $this->successResponse($this->service->void($opname, $request->validated('reason')), 'Stock opname voided successfully');
     }
 }
-

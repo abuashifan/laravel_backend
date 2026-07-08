@@ -38,4 +38,3 @@ class FiscalYearClosing extends Model
         'metadata' => 'array',
     ];
 }
-

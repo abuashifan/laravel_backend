@@ -2,14 +2,14 @@
 
 namespace Tests\Feature\Sales;
 
-use App\Models\FiscalYear;
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\CustomerDeposit;
-use App\Models\Tenant\CustomerDepositAllocation;
-use App\Models\Tenant\JournalEntry;
-use App\Models\Tenant\JournalEntryLine;
-use App\Models\Tenant\SalesInvoice;
+use App\Modules\Journal\Models\JournalEntry;
+use App\Modules\Journal\Models\JournalEntryLine;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\Sales\Models\CustomerDeposit;
+use App\Modules\Sales\Models\CustomerDepositAllocation;
+use App\Modules\Sales\Models\SalesInvoice;
+use App\Shared\Models\FiscalYear;
 
 class CustomerDepositTest extends SalesTestCase
 {
@@ -202,6 +202,7 @@ class CustomerDepositTest extends SalesTestCase
     {
         $invoice = $this->postJson('/api/sales/invoices', ['customer_id' => $this->createCustomer(), 'invoice_date' => '2026-05-20', 'lines' => [['description' => 'Service', 'quantity' => 1, 'unit_price' => 100]]], $ctx['headers'])->assertStatus(201)->json('data');
         $this->patchJson('/api/sales/invoices/'.$invoice['id'].'/post', [], $ctx['headers'])->assertStatus(200);
+
         return SalesInvoice::query()->find($invoice['id'])->toArray();
     }
 
@@ -215,7 +216,10 @@ class CustomerDepositTest extends SalesTestCase
         if ($includeDeposit) {
             $mappings['sales.customer_deposit'] = $deposit;
         }
-        foreach ($mappings as $key => $id) AccountMapping::query()->create(['mapping_key' => $key, 'module' => 'sales', 'account_id' => $id, 'is_required' => true, 'is_active' => true]);
+        foreach ($mappings as $key => $id) {
+            AccountMapping::query()->create(['mapping_key' => $key, 'module' => 'sales', 'account_id' => $id, 'is_required' => true, 'is_active' => true]);
+        }
+
         return $cash;
     }
 

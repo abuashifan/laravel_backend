@@ -2,9 +2,9 @@
 
 namespace App\Modules\Inventory\Services;
 
-use App\Exceptions\ApiException;
-use App\Models\Tenant\StockBalance;
-use App\Models\Tenant\StockMovementLine;
+use App\Modules\Inventory\Models\StockBalance;
+use App\Modules\Inventory\Models\StockMovementLine;
+use App\Shared\Exceptions\ApiException;
 use Illuminate\Database\Eloquent\Builder;
 
 class StockBalanceService

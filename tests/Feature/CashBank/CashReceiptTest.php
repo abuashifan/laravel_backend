@@ -2,8 +2,8 @@
 
 namespace Tests\Feature\CashBank;
 
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\JournalEntry;
+use App\Modules\Journal\Models\JournalEntry;
+use App\Modules\MasterData\Models\ChartOfAccount;
 use Tests\Feature\Journal\JournalTestCase;
 
 class CashReceiptTest extends JournalTestCase
@@ -117,4 +117,3 @@ class CashReceiptTest extends JournalTestCase
         $res->assertJsonPath('code', 'CASH_BANK_ACCOUNT_REQUIRED');
     }
 }
-

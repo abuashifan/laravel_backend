@@ -2,8 +2,8 @@
 
 namespace App\Modules\MasterData\Services;
 
-use App\Exceptions\ApiException;
-use App\Models\Tenant\Project;
+use App\Modules\MasterData\Models\Project;
+use App\Shared\Exceptions\ApiException;
 
 class ProjectService
 {

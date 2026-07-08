@@ -29,4 +29,3 @@ class InventoryConfigService
         return (int) config('inventory.amount_precision', 2);
     }
 }
-

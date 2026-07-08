@@ -2,9 +2,9 @@
 
 namespace App\Modules\Reports\Services;
 
-use App\Data\Reports\LedgerFilter;
-use App\Data\Reports\TrialBalanceAccountData;
-use App\Data\Reports\TrialBalanceFilter;
+use App\Shared\Reports\Data\LedgerFilter;
+use App\Shared\Reports\Data\TrialBalanceAccountData;
+use App\Shared\Reports\Data\TrialBalanceFilter;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
@@ -15,8 +15,7 @@ class TrialBalanceService
         private readonly TrialBalanceCalculator $calculator,
         private readonly LedgerFilterValidator $filterValidator,
         private readonly ?ReportVisibilityService $visibilityService = null,
-    ) {
-    }
+    ) {}
 
     public function getTrialBalance(TrialBalanceFilter $filter): array
     {
@@ -104,8 +103,8 @@ class TrialBalanceService
     }
 
     /**
-     * @param array<int,array{debit:float,credit:float}> $opening
-     * @param array<int,array{debit:float,credit:float}> $period
+     * @param  array<int,array{debit:float,credit:float}>  $opening
+     * @param  array<int,array{debit:float,credit:float}>  $period
      * @return array<int,array>
      */
     public function buildAccountRows(TrialBalanceFilter $filter, array $opening, array $period): array

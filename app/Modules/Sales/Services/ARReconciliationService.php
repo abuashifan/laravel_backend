@@ -2,16 +2,14 @@
 
 namespace App\Modules\Sales\Services;
 
-use App\Exceptions\ApiException;
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\JournalEntryLine;
-use App\Models\Tenant\SalesInvoice;
+use App\Modules\Journal\Models\JournalEntryLine;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\Sales\Models\SalesInvoice;
+use App\Shared\Exceptions\ApiException;
 
 class ARReconciliationService
 {
-    public function __construct(private readonly ARSubsidiaryLedgerService $ledgerService)
-    {
-    }
+    public function __construct(private readonly ARSubsidiaryLedgerService $ledgerService) {}
 
     public function compareSubsidiaryToGL(array $filters = []): array
     {

@@ -2,8 +2,7 @@
 
 namespace Tests\Unit;
 
-use App\Services\Reports\ReportVisibilityService;
-use PHPUnit\Framework\Attributes\DataProvider;
+use App\Modules\Reports\Services\ReportVisibilityService;
 use Tests\TestCase;
 
 class ReportVisibilityServiceTest extends TestCase
@@ -137,4 +136,3 @@ class ReportVisibilityServiceTest extends TestCase
         $this->assertFalse($service->isTransactionReportable('unknown'));
     }
 }
-

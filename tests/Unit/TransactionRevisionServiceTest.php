@@ -2,11 +2,9 @@
 
 namespace Tests\Unit;
 
-use App\Models\Company;
-use App\Models\User;
-use App\Services\Transactions\TransactionRevisionService;
-use App\Support\Revision\RevisionSnapshot;
-use App\Support\Revision\TransactionRevisionAction;
+use App\Shared\TransactionLifecycle\RevisionSnapshot;
+use App\Shared\TransactionLifecycle\TransactionRevisionAction;
+use App\Shared\TransactionLifecycle\TransactionRevisionService;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Config;
 use Tests\TestCase;
@@ -92,4 +90,3 @@ class TransactionRevisionServiceTest extends TestCase
         $this->assertSame(['status' => 'posted'], $rev->old_values);
     }
 }
-

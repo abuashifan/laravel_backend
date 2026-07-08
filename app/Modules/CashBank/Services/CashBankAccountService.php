@@ -2,7 +2,7 @@
 
 namespace App\Modules\CashBank\Services;
 
-use App\Models\Tenant\ChartOfAccount;
+use App\Modules\MasterData\Models\ChartOfAccount;
 use Illuminate\Database\Eloquent\Collection;
 
 class CashBankAccountService
@@ -30,4 +30,3 @@ class CashBankAccountService
             ->exists();
     }
 }
-

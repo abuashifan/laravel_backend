@@ -2,11 +2,9 @@
 
 namespace App\Modules\Sales\Services\Concerns;
 
-use App\Exceptions\ApiException;
-use App\Models\Tenant\Contact;
-use App\Models\Tenant\Product;
-use App\Shared\Audit\AuditLogService;
+use App\Modules\MasterData\Models\Product;
 use App\Modules\Settings\Services\CompanySettingService;
+use App\Shared\Audit\AuditLogService;
 use App\Shared\Validation\BusinessReferenceValidator;
 use Illuminate\Database\Eloquent\Model;
 
@@ -18,7 +16,7 @@ trait HandlesSalesDocuments
     }
 
     /**
-     * @param array<int,array<string,mixed>> $lines
+     * @param  array<int,array<string,mixed>>  $lines
      * @return array<int,array<string,mixed>>
      */
     private function normalizeLines(array $lines, ?callable $sourceMap = null): array

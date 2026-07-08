@@ -14,8 +14,7 @@ class TrialBalanceFilter
         public ?string $accountType = null,
         public string $sortBy = 'account_code',
         public string $sortDirection = 'asc',
-    ) {
-    }
+    ) {}
 
     public static function fromArray(array $data): self
     {
@@ -69,4 +68,3 @@ class TrialBalanceFilter
         return (bool) $this->accountType;
     }
 }
-

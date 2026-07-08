@@ -2,9 +2,9 @@
 
 namespace Tests\Unit;
 
-use App\Services\AccountMapping\AccountMappingService;
-use App\Services\AccountMapping\AccountMappingValidator;
-use App\Support\AccountMapping\AccountMappingKey;
+use App\Shared\AccountMapping\AccountMappingKey;
+use App\Shared\AccountMapping\AccountMappingService;
+use App\Shared\AccountMapping\AccountMappingValidator;
 use Illuminate\Support\Facades\Config;
 use RuntimeException;
 use Tests\TestCase;

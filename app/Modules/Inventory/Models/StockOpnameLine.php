@@ -11,8 +11,11 @@ class StockOpnameLine extends Model
     use HasFactory;
 
     protected $connection = 'tenant';
+
     protected $table = 'stock_opname_lines';
+
     protected $guarded = [];
+
     protected $casts = [
         'metadata' => 'array',
         'system_quantity' => 'decimal:4',
@@ -23,9 +26,23 @@ class StockOpnameLine extends Model
         'counted_at' => 'datetime',
     ];
 
-    public function opname(): BelongsTo { return $this->belongsTo(StockOpname::class, 'stock_opname_id'); }
-    public function product(): BelongsTo { return $this->belongsTo(Product::class, 'product_id'); }
-    public function warehouse(): BelongsTo { return $this->belongsTo(Warehouse::class, 'warehouse_id'); }
-    public function unit(): BelongsTo { return $this->belongsTo(Unit::class, 'unit_id'); }
-}
+    public function opname(): BelongsTo
+    {
+        return $this->belongsTo(StockOpname::class, 'stock_opname_id');
+    }
 
+    public function product(): BelongsTo
+    {
+        return $this->belongsTo(Product::class, 'product_id');
+    }
+
+    public function warehouse(): BelongsTo
+    {
+        return $this->belongsTo(Warehouse::class, 'warehouse_id');
+    }
+
+    public function unit(): BelongsTo
+    {
+        return $this->belongsTo(Unit::class, 'unit_id');
+    }
+}

@@ -2,16 +2,16 @@
 
 namespace Tests\Feature\Inventory;
 
-use App\Models\CompanyUser;
-use App\Models\TenantDatabase;
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\Product;
-use App\Models\Tenant\StockBalance;
-use App\Models\Tenant\Unit;
-use App\Models\Tenant\Warehouse;
-use App\Services\Tenant\TenantContext;
-use App\Support\AccountMapping\AccountMappingKey;
+use App\Modules\Inventory\Models\StockBalance;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\MasterData\Models\Product;
+use App\Modules\MasterData\Models\Unit;
+use App\Modules\MasterData\Models\Warehouse;
+use App\Shared\AccountMapping\AccountMappingKey;
+use App\Shared\Models\CompanyUser;
+use App\Shared\Models\TenantDatabase;
+use App\Shared\Tenant\TenantContext;
 use Illuminate\Support\Facades\Artisan;
 use Tests\Feature\Journal\JournalTestCase;
 

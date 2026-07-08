@@ -12,8 +12,11 @@ class FixedAssetCategory extends Model
     use HasFactory;
 
     protected $connection = 'tenant';
+
     protected $table = 'fixed_asset_categories';
+
     protected $guarded = [];
+
     protected $casts = [
         'default_useful_life_years' => 'integer',
         'is_active' => 'boolean',

@@ -2,13 +2,17 @@
 
 namespace App\Modules\Purchase\Requests;
 
-use App\Models\Tenant\ChartOfAccount;
+use App\Modules\MasterData\Models\ChartOfAccount;
 use Closure;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StoreVendorBillRequest extends FormRequest
 {
-    public function authorize(): bool { return true; }
+    public function authorize(): bool
+    {
+        return true;
+    }
+
     public function rules(): array
     {
         return [

@@ -13,13 +13,12 @@ class FixedAssetReportController extends Controller
 {
     use ApiResponse;
 
-    public function __construct(private readonly FixedAssetReportService $service)
-    {
-    }
+    public function __construct(private readonly FixedAssetReportService $service) {}
 
     public function register(Request $request): JsonResponse
     {
         $request->validate(['as_of_period' => ['required', 'date_format:Y-m']]);
+
         return $this->successResponse($this->service->register((string) $request->query('as_of_period')), 'Fixed asset register report retrieved successfully');
     }
 
@@ -66,6 +65,7 @@ class FixedAssetReportController extends Controller
     public function reconciliation(Request $request): JsonResponse
     {
         $request->validate(['as_of_period' => ['required', 'date_format:Y-m']]);
+
         return $this->successResponse($this->service->reconciliation((string) $request->query('as_of_period')), 'Fixed asset reconciliation report retrieved successfully');
     }
 }

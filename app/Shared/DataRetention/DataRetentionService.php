@@ -2,8 +2,6 @@
 
 namespace App\Shared\DataRetention;
 
-use App\Shared\DataRetention\DataRetentionPolicy;
-use App\Shared\DataRetention\RetentionDecision;
 use Carbon\Carbon;
 
 class DataRetentionService
@@ -11,6 +9,7 @@ class DataRetentionService
     public function policy(array $override = []): DataRetentionPolicy
     {
         $base = (array) config('data_retention.default_policy', []);
+
         return DataRetentionPolicy::fromArray(array_merge($base, $override));
     }
 
@@ -137,4 +136,3 @@ class DataRetentionService
         return null;
     }
 }
-

@@ -2,14 +2,16 @@
 
 namespace App\Shared\Tenant;
 
-use App\Models\Company;
-use App\Models\CompanyUser;
-use App\Models\TenantDatabase;
+use App\Shared\Models\Company;
+use App\Shared\Models\CompanyUser;
+use App\Shared\Models\TenantDatabase;
 
 class TenantContext
 {
     protected ?Company $company = null;
+
     protected ?CompanyUser $companyUser = null;
+
     protected ?TenantDatabase $tenantDatabase = null;
 
     public function set(Company $company, CompanyUser $companyUser, TenantDatabase $tenantDatabase): void
@@ -54,4 +56,3 @@ class TenantContext
         return $this->tenantDatabase?->database_path;
     }
 }
-

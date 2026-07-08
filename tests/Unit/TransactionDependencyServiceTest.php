@@ -2,11 +2,11 @@
 
 namespace Tests\Unit;
 
-use App\Contracts\Transactions\TransactionDependencyChecker;
-use App\Services\Transactions\NoopTransactionDependencyChecker;
-use App\Services\Transactions\TransactionDependencyService;
-use App\Support\Transaction\DependencyCheckResult;
-use App\Support\Transaction\TransactionModule;
+use App\Shared\TransactionLifecycle\Contracts\TransactionDependencyChecker;
+use App\Shared\TransactionLifecycle\DependencyCheckResult;
+use App\Shared\TransactionLifecycle\NoopTransactionDependencyChecker;
+use App\Shared\TransactionLifecycle\TransactionDependencyService;
+use App\Shared\TransactionLifecycle\TransactionModule;
 use Tests\TestCase;
 
 class TransactionDependencyServiceTest extends TestCase
@@ -37,7 +37,8 @@ class TransactionDependencyServiceTest extends TestCase
     {
         $service = $this->app->make(TransactionDependencyService::class);
 
-        $blocking = new class extends NoopTransactionDependencyChecker implements TransactionDependencyChecker {
+        $blocking = new class extends NoopTransactionDependencyChecker implements TransactionDependencyChecker
+        {
             public function check(mixed $transaction, string $action, string $module): DependencyCheckResult
             {
                 return DependencyCheckResult::blocked(

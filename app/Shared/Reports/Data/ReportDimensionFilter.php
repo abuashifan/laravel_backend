@@ -7,8 +7,7 @@ class ReportDimensionFilter
     public function __construct(
         public ?int $departmentId = null,
         public ?int $projectId = null,
-    ) {
-    }
+    ) {}
 
     public static function fromArray(array $data): self
     {
@@ -41,4 +40,3 @@ class ReportDimensionFilter
         return $this->hasDepartment() || $this->hasProject();
     }
 }
-

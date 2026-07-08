@@ -2,16 +2,16 @@
 
 namespace App\Shared\Validation;
 
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\MasterData\Models\Contact;
+use App\Modules\MasterData\Models\Department;
+use App\Modules\MasterData\Models\PaymentTerm;
+use App\Modules\MasterData\Models\Product;
+use App\Modules\MasterData\Models\Project;
+use App\Modules\MasterData\Models\Unit;
+use App\Modules\MasterData\Models\Warehouse;
 use App\Shared\Exceptions\ApiException;
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\Contact;
-use App\Models\Tenant\Department;
-use App\Models\Tenant\PaymentTerm;
-use App\Models\Tenant\Product;
-use App\Models\Tenant\Project;
-use App\Models\Tenant\Unit;
-use App\Models\Tenant\Warehouse;
 
 class BusinessReferenceValidator
 {

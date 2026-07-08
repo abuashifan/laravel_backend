@@ -2,14 +2,14 @@
 
 namespace Tests\Feature\Sales;
 
-use App\Models\FiscalYear;
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\JournalEntry;
-use App\Models\Tenant\SalesInvoice;
-use App\Models\Tenant\SalesReturn;
-use App\Models\Tenant\StockBalance;
-use App\Models\Tenant\StockMovement;
+use App\Modules\Inventory\Models\StockBalance;
+use App\Modules\Inventory\Models\StockMovement;
+use App\Modules\Journal\Models\JournalEntry;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\Sales\Models\SalesInvoice;
+use App\Modules\Sales\Models\SalesReturn;
+use App\Shared\Models\FiscalYear;
 
 class SalesReturnTest extends SalesTestCase
 {
@@ -110,6 +110,7 @@ class SalesReturnTest extends SalesTestCase
     {
         $invoice = $this->postJson('/api/sales/invoices', ['customer_id' => $this->createCustomer(), 'invoice_date' => '2026-05-20', 'lines' => [['description' => 'Service', 'quantity' => 1, 'unit_price' => 100]]], $ctx['headers'])->assertStatus(201)->json('data');
         $this->patchJson('/api/sales/invoices/'.$invoice['id'].'/post', [], $ctx['headers'])->assertStatus(200);
+
         return SalesInvoice::query()->with('lines')->find($invoice['id'])->toArray();
     }
 
@@ -118,7 +119,9 @@ class SalesReturnTest extends SalesTestCase
         $ar = $this->account('1100', 'AR', 'asset', 'debit');
         $revenue = $this->account('4100', 'Revenue', 'revenue', 'credit');
         $salesReturn = $this->account('4200', 'Sales Return', 'revenue', 'debit');
-        foreach (['sales.accounts_receivable' => $ar, 'sales.revenue' => $revenue, 'sales.return' => $salesReturn] as $key => $id) AccountMapping::query()->create(['mapping_key' => $key, 'module' => 'sales', 'account_id' => $id, 'is_required' => true, 'is_active' => true]);
+        foreach (['sales.accounts_receivable' => $ar, 'sales.revenue' => $revenue, 'sales.return' => $salesReturn] as $key => $id) {
+            AccountMapping::query()->create(['mapping_key' => $key, 'module' => 'sales', 'account_id' => $id, 'is_required' => true, 'is_active' => true]);
+        }
     }
 
     private function account(string $code, string $name, string $type, string $normal): int

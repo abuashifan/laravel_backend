@@ -2,7 +2,7 @@
 
 namespace App\Modules\Sales\Requests;
 
-use App\Models\Tenant\ChartOfAccount;
+use App\Modules\MasterData\Models\ChartOfAccount;
 use Closure;
 use Illuminate\Foundation\Http\FormRequest;
 

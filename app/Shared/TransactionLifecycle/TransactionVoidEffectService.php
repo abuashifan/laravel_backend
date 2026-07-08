@@ -2,20 +2,18 @@
 
 namespace App\Shared\TransactionLifecycle;
 
-use App\Shared\Exceptions\ApiException;
-use App\Models\Tenant\JournalEntry;
-use App\Models\Tenant\StockMovement;
-use App\Services\Inventory\StockMovementService;
+use App\Modules\Inventory\Models\StockMovement;
+use App\Modules\Inventory\Services\StockMovementService;
+use App\Modules\Journal\Models\JournalEntry;
 use App\Shared\Audit\AuditLogService;
+use App\Shared\Exceptions\ApiException;
 
 class TransactionVoidEffectService
 {
     public function __construct(
         private readonly StockMovementService $stockMovementService,
         private readonly ?AuditLogService $auditLogService = null,
-    )
-    {
-    }
+    ) {}
 
     public function requireReason(?string $reason): string
     {

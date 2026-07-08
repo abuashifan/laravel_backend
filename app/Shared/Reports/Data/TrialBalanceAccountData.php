@@ -18,8 +18,7 @@ class TrialBalanceAccountData
         public float $endingDebit,
         public float $endingCredit,
         public float $endingBalance,
-    ) {
-    }
+    ) {}
 
     public static function fromArray(array $data): self
     {
@@ -59,4 +58,3 @@ class TrialBalanceAccountData
         ];
     }
 }
-

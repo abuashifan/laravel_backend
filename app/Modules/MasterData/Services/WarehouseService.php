@@ -2,8 +2,8 @@
 
 namespace App\Modules\MasterData\Services;
 
-use App\Exceptions\ApiException;
-use App\Models\Tenant\Warehouse;
+use App\Modules\MasterData\Models\Warehouse;
+use App\Shared\Exceptions\ApiException;
 
 class WarehouseService
 {

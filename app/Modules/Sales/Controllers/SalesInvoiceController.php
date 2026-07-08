@@ -3,14 +3,14 @@
 namespace App\Modules\Sales\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Sales\Models\DeliveryOrder;
+use App\Modules\Sales\Models\ProformaInvoice;
+use App\Modules\Sales\Models\SalesInvoice;
+use App\Modules\Sales\Models\SalesOrder;
 use App\Modules\Sales\Requests\PostSalesInvoiceRequest;
 use App\Modules\Sales\Requests\SalesActionRequest;
 use App\Modules\Sales\Requests\StoreSalesInvoiceRequest;
 use App\Modules\Sales\Requests\UpdateSalesInvoiceRequest;
-use App\Models\Tenant\DeliveryOrder;
-use App\Models\Tenant\ProformaInvoice;
-use App\Models\Tenant\SalesInvoice;
-use App\Models\Tenant\SalesOrder;
 use App\Modules\Sales\Services\SalesInvoiceService;
 use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -20,9 +20,7 @@ class SalesInvoiceController extends Controller
 {
     use ApiResponse;
 
-    public function __construct(private readonly SalesInvoiceService $service)
-    {
-    }
+    public function __construct(private readonly SalesInvoiceService $service) {}
 
     public function index(Request $request): JsonResponse
     {

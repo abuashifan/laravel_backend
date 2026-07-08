@@ -2,30 +2,30 @@
 
 namespace App\Modules\Purchase\Services;
 
-use App\Exceptions\ApiException;
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\GoodsReceipt;
-use App\Models\Tenant\GoodsReceiptLine;
-use App\Models\Tenant\JournalEntry;
-use App\Models\Tenant\Product;
-use App\Models\Tenant\PurchaseOrder;
-use App\Models\Tenant\PurchaseOrderLine;
-use App\Models\Tenant\VendorBill;
-use App\Models\Tenant\VendorBillLine;
-use App\Models\Tenant\VendorDeposit;
-use App\Models\Tenant\VendorDepositAllocation;
-use App\Models\Tenant\VendorPayment;
-use App\Models\Tenant\PurchaseReturn;
+use App\Modules\Inventory\Services\InventoryPurchaseIntegrationService;
+use App\Modules\Journal\Models\JournalEntry;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\Product;
+use App\Modules\Purchase\Models\GoodsReceipt;
+use App\Modules\Purchase\Models\GoodsReceiptLine;
+use App\Modules\Purchase\Models\PurchaseOrder;
+use App\Modules\Purchase\Models\PurchaseOrderLine;
+use App\Modules\Purchase\Models\PurchaseReturn;
+use App\Modules\Purchase\Models\VendorBill;
+use App\Modules\Purchase\Models\VendorBillLine;
+use App\Modules\Purchase\Models\VendorDeposit;
+use App\Modules\Purchase\Models\VendorDepositAllocation;
+use App\Modules\Purchase\Models\VendorPayment;
+use App\Modules\Purchase\Services\Concerns\HandlesPurchaseDocuments;
 use App\Shared\Audit\AuditLogService;
 use App\Shared\DocumentNumbering\DocumentNumberService;
-use App\Modules\Inventory\Services\InventoryPurchaseIntegrationService;
-use App\Modules\Purchase\Services\Concerns\HandlesPurchaseDocuments;
+use App\Shared\DocumentNumbering\DocumentType;
+use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
 use App\Shared\TransactionLifecycle\PaymentTermDueDateService;
 use App\Shared\TransactionLifecycle\TransactionDateGuardService;
 use App\Shared\TransactionLifecycle\TransactionVoidEffectService;
 use App\Shared\Validation\BusinessReferenceValidator;
-use App\Support\DocumentNumbering\DocumentType;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -44,14 +44,16 @@ class VendorBillService
         private readonly PurchaseAccountResolverService $accountResolver,
         private readonly TransactionVoidEffectService $voidEffectService,
         private readonly ?AuditLogService $auditLogService = null,
-    ) {
-    }
+    ) {}
 
     public function list(array $filters = []): Collection
     {
         // Status difilter oleh listResponse (mendukung multi-status comma-separated); vendor_id difilter di query.
         $query = VendorBill::query()->with('vendor', 'paymentTerm');
-        if (! empty($filters['vendor_id'])) $query->where('vendor_id', (int) $filters['vendor_id']);
+        if (! empty($filters['vendor_id'])) {
+            $query->where('vendor_id', (int) $filters['vendor_id']);
+        }
+
         return $query->orderByDesc('bill_date')->orderByDesc('id')->get();
     }
 
@@ -63,7 +65,9 @@ class VendorBillService
     public function create(array $data): VendorBill
     {
         $company = $this->tenantContext->company();
-        if (! $company) throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
+        if (! $company) {
+            throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
+        }
         $this->ensureVendorExists((int) $data['vendor_id']);
         app(BusinessReferenceValidator::class)->paymentTerm(isset($data['payment_term_id']) ? (int) $data['payment_term_id'] : null);
         $data = $this->paymentTermDueDateService->apply($data, 'bill_date', (int) $data['vendor_id']);
@@ -76,7 +80,8 @@ class VendorBillService
             $this->validateFixedAssetLines($lines);
             $lines = $this->withDraftPurchaseExpenseSnapshots($lines);
             $totals = $this->calculationService->calculateDocument($lines, $data);
-            $headerTotals = $totals; unset($headerTotals['lines']);
+            $headerTotals = $totals;
+            unset($headerTotals['lines']);
             $appliedDeposit = min((float) ($data['applied_vendor_deposit_amount'] ?? 0), (float) $headerTotals['grand_total']);
 
             $bill = VendorBill::query()->create(array_merge($this->guardedPurchaseHeader($data), $headerTotals, [
@@ -101,7 +106,9 @@ class VendorBillService
 
     public function update(VendorBill $bill, array $data): VendorBill
     {
-        if ($bill->status !== 'draft') throw ApiException::make('VENDOR_BILL_NOT_EDITABLE', 'Vendor bill status is not editable.', 422);
+        if ($bill->status !== 'draft') {
+            throw ApiException::make('VENDOR_BILL_NOT_EDITABLE', 'Vendor bill status is not editable.', 422);
+        }
         $data = $this->paymentTermDueDateService->apply(
             array_merge(['bill_date' => $bill->bill_date?->toDateString()], $data),
             'bill_date',
@@ -117,7 +124,8 @@ class VendorBillService
             $this->validateFixedAssetLines($lines);
             $lines = $this->withDraftPurchaseExpenseSnapshots($lines);
             $totals = $this->calculationService->calculateDocument($lines, array_merge($bill->toArray(), $data));
-            $headerTotals = $totals; unset($headerTotals['lines']);
+            $headerTotals = $totals;
+            unset($headerTotals['lines']);
             $appliedDeposit = min((float) ($data['applied_vendor_deposit_amount'] ?? $bill->applied_vendor_deposit_amount), (float) $headerTotals['grand_total']);
             $bill->fill(array_merge($this->guardedPurchaseHeader($data), $headerTotals, [
                 'applied_vendor_deposit_amount' => $appliedDeposit,
@@ -129,6 +137,7 @@ class VendorBillService
             $bill->lines()->createMany($totals['lines']);
             $bill = $bill->refresh()->load('lines', 'vendor', 'paymentTerm');
             $this->auditPurchase($this->auditLogService, 'vendor_bill.updated', $bill, 'bill_number');
+
             return $this->withAvailableDepositSummary($bill);
         });
     }
@@ -170,6 +179,7 @@ class VendorBillService
         }
         $goodsReceipt->loadMissing('lines');
         $lines = $this->goodsReceiptBillLines($goodsReceipt, (array) ($overrides['lines'] ?? []));
+
         return $this->create(array_merge([
             'bill_date' => now()->toDateString(),
             'vendor_id' => $goodsReceipt->vendor_id,
@@ -185,14 +195,22 @@ class VendorBillService
 
     public function approve(VendorBill $bill): VendorBill
     {
-        if ($bill->status !== 'draft') throw ApiException::make('INVALID_VENDOR_BILL_STATUS', 'Invalid vendor bill status transition.', 422);
-        $bill->status = 'approved'; $bill->approved_by = auth()->id(); $bill->approved_at = now(); $bill->save();
+        if ($bill->status !== 'draft') {
+            throw ApiException::make('INVALID_VENDOR_BILL_STATUS', 'Invalid vendor bill status transition.', 422);
+        }
+        $bill->status = 'approved';
+        $bill->approved_by = auth()->id();
+        $bill->approved_at = now();
+        $bill->save();
+
         return $bill->refresh()->load('lines', 'vendor');
     }
 
     public function post(VendorBill $bill, ?float $appliedVendorDepositAmount = null): VendorBill
     {
-        if (! in_array($bill->status, ['draft', 'approved'], true)) throw ApiException::make('INVALID_VENDOR_BILL_STATUS', 'Vendor bill cannot be posted from current status.', 422);
+        if (! in_array($bill->status, ['draft', 'approved'], true)) {
+            throw ApiException::make('INVALID_VENDOR_BILL_STATUS', 'Vendor bill cannot be posted from current status.', 422);
+        }
         $this->guardDate((string) $bill->bill_date);
 
         if ((float) $bill->tax_total > 0) {
@@ -226,13 +244,16 @@ class VendorBillService
 
             $bill = $this->withAvailableDepositSummary($bill->refresh()->load('lines', 'vendor'));
             $this->auditPurchase($this->auditLogService, 'vendor_bill.posted', $bill, 'bill_number');
+
             return $bill;
         });
     }
 
     public function void(VendorBill $bill, ?string $reason = null): VendorBill
     {
-        if ($bill->status === 'void') throw ApiException::make('VENDOR_BILL_ALREADY_VOID', 'Vendor bill already void.', 422);
+        if ($bill->status === 'void') {
+            throw ApiException::make('VENDOR_BILL_ALREADY_VOID', 'Vendor bill already void.', 422);
+        }
         $reason = $this->voidEffectService->requireReason($reason);
         $this->guardDate((string) $bill->bill_date, 'void');
         if (VendorPayment::query()->where('vendor_bill_id', $bill->id)->where('status', 'posted')->exists()) {
@@ -244,6 +265,7 @@ class VendorBillService
         if ($bill->lines()->where('capitalized_amount', '>', 0)->exists()) {
             throw ApiException::make('VENDOR_BILL_HAS_CAPITALIZED_FIXED_ASSET', 'Vendor bill has capitalized fixed asset lines and cannot be voided directly.', 422);
         }
+
         return DB::connection('tenant')->transaction(function () use ($bill, $reason) {
             $bill->load('lines');
             $journalIds = $this->voidEffectService->voidJournalsForSource('vendor_bill', (int) $bill->id, $reason);
@@ -258,7 +280,11 @@ class VendorBillService
                     $deposit->save();
                 }
                 $this->voidEffectService->voidJournalById((int) $allocation->journal_entry_id, $reason);
-                $allocation->status = 'void'; $allocation->voided_by = auth()->id(); $allocation->voided_at = now(); $allocation->void_reason = $reason; $allocation->save();
+                $allocation->status = 'void';
+                $allocation->voided_by = auth()->id();
+                $allocation->voided_at = now();
+                $allocation->void_reason = $reason;
+                $allocation->save();
             }
             foreach ($bill->lines as $line) {
                 if ($line->purchase_order_line_id && ($orderLine = PurchaseOrderLine::query()->lockForUpdate()->find($line->purchase_order_line_id))) {
@@ -271,24 +297,36 @@ class VendorBillService
                 }
             }
             $this->refreshBillingSourceStatuses($bill);
-            $bill->status = 'void'; $bill->voided_by = auth()->id(); $bill->voided_at = now(); $bill->void_reason = $reason; $bill->save();
+            $bill->status = 'void';
+            $bill->voided_by = auth()->id();
+            $bill->voided_at = now();
+            $bill->void_reason = $reason;
+            $bill->save();
             $this->auditPurchase($this->auditLogService, 'vendor_bill.voided', $bill, 'bill_number', ['reason' => $reason, 'voided_journal_ids' => $journalIds, 'reversed_stock_movement_ids' => $movementIds, 'voided_allocation_ids' => $allocations->pluck('id')->all()]);
+
             return $bill->refresh()->load('lines', 'vendor');
         });
     }
 
     public function applyAvailableVendorDeposit(VendorBill $bill): VendorBill
     {
-        if (! $bill->purchase_order_id || (float) $bill->applied_vendor_deposit_amount <= 0) return $bill;
+        if (! $bill->purchase_order_id || (float) $bill->applied_vendor_deposit_amount <= 0) {
+            return $bill;
+        }
         $remaining = (float) $bill->applied_vendor_deposit_amount;
         $deposits = VendorDeposit::query()->where('purchase_order_id', $bill->purchase_order_id)->whereIn('status', ['posted', 'partially_allocated'])->where('remaining_amount', '>', 0)->orderBy('deposit_date')->get();
         foreach ($deposits as $deposit) {
-            if ($remaining <= 0) break;
+            if ($remaining <= 0) {
+                break;
+            }
             $amount = min($remaining, (float) $deposit->remaining_amount, (float) $bill->balance_due);
             $this->depositService->allocateToBill($deposit, $bill->refresh(), $amount);
             $remaining -= $amount;
         }
-        if ($remaining > 0.0001) throw ApiException::make('VENDOR_DEPOSIT_INSUFFICIENT', 'Available vendor deposit is insufficient.', 422);
+        if ($remaining > 0.0001) {
+            throw ApiException::make('VENDOR_DEPOSIT_INSUFFICIENT', 'Available vendor deposit is insufficient.', 422);
+        }
+
         return $bill->refresh();
     }
 
@@ -301,13 +339,17 @@ class VendorBillService
         }
         $lines[] = ['account_id' => $this->accountResolver->resolveBillPayableAccountId($bill), 'description' => 'Accounts Payable', 'debit' => 0, 'credit' => $bill->grand_total, 'line_order' => count($lines) + 1];
         $journal->lines()->createMany($lines);
+
         return $journal->refresh();
     }
 
     private function createJournal(VendorBill $bill, string $description): JournalEntry
     {
         $company = $this->tenantContext->company();
-        if (! $company) throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
+        if (! $company) {
+            throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
+        }
+
         return JournalEntry::query()->create([
             'journal_number' => $this->documentNumberService->generate($company, DocumentType::JOURNAL_ENTRY, (string) $bill->bill_date),
             'journal_date' => $bill->bill_date,
@@ -364,6 +406,7 @@ class VendorBillService
         return array_map(function (array $line): array {
             if (($line['line_classification'] ?? null) === 'fixed_asset') {
                 $line['expense_account_id'] = null;
+
                 return $line;
             }
             if (! $this->lineReceivesStock($line)) {
@@ -474,6 +517,7 @@ class VendorBillService
     private function previewGrandTotal(array $data): float
     {
         $lines = $this->normalizePurchaseLines((array) $data['lines']);
+
         return (float) $this->calculationService->calculateDocument($lines, $data)['grand_total'];
     }
 
@@ -490,7 +534,7 @@ class VendorBillService
                 throw ApiException::make('BILL_QUANTITY_EXCEEDS_REMAINING', 'Bill quantity exceeds remaining purchase order quantity.', 422);
             }
 
-            return array_merge($line->only(['product_id','product_code','description','unit_id','unit_price','discount_type','discount_value','tax_id','tax_rate','warehouse_id','department_id','project_id','expense_account_id','sort_order','metadata']), [
+            return array_merge($line->only(['product_id', 'product_code', 'description', 'unit_id', 'unit_price', 'discount_type', 'discount_value', 'tax_id', 'tax_rate', 'warehouse_id', 'department_id', 'project_id', 'expense_account_id', 'sort_order', 'metadata']), [
                 'quantity' => $quantity,
                 'purchase_order_line_id' => $line->id,
                 'source_line_type' => 'purchase_order_line',

@@ -3,29 +3,55 @@
 namespace App\Modules\Purchase\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Purchase\Models\VendorBill;
+use App\Modules\Purchase\Models\VendorDeposit;
 use App\Modules\Purchase\Requests\AllocateVendorDepositRequest;
 use App\Modules\Purchase\Requests\PurchaseRequestActionRequest;
 use App\Modules\Purchase\Requests\RefundVendorDepositRequest;
 use App\Modules\Purchase\Requests\StoreVendorDepositRequest;
-use App\Models\Tenant\VendorBill;
-use App\Models\Tenant\VendorDeposit;
-use App\Shared\Permission\PermissionService;
 use App\Modules\Purchase\Services\VendorDepositService;
-use App\Support\Api\ApiErrorCode;
+use App\Shared\Api\ApiErrorCode;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Permission\PermissionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class VendorDepositController extends Controller
 {
     use ApiResponse;
+
     public function __construct(private readonly VendorDepositService $service, private readonly PermissionService $permissionService) {}
-    public function index(Request $request): JsonResponse { return $this->listResponse($this->service->list($request->query()), $request, 'Vendor deposits retrieved successfully'); }
-    public function store(StoreVendorDepositRequest $request): JsonResponse { return $this->successResponse($this->service->create($request->validated()), 'Vendor deposit created successfully', 201); }
-    public function show(int $id): JsonResponse { return $this->successResponse($this->service->find($id), 'Vendor deposit retrieved successfully'); }
-    public function post(int $id): JsonResponse { return $this->successResponse($this->service->post(VendorDeposit::query()->findOrFail($id)), 'Vendor deposit posted successfully'); }
-    public function void(PurchaseRequestActionRequest $request, int $id): JsonResponse { return $this->successResponse($this->service->void(VendorDeposit::query()->findOrFail($id), $request->validated('reason')), 'Vendor deposit voided successfully'); }
-    public function refund(RefundVendorDepositRequest $request, int $id): JsonResponse { return $this->successResponse($this->service->refund(VendorDeposit::query()->findOrFail($id), (float) $request->validated('amount'), $request->validated('reason')), 'Vendor deposit refunded successfully'); }
+
+    public function index(Request $request): JsonResponse
+    {
+        return $this->listResponse($this->service->list($request->query()), $request, 'Vendor deposits retrieved successfully');
+    }
+
+    public function store(StoreVendorDepositRequest $request): JsonResponse
+    {
+        return $this->successResponse($this->service->create($request->validated()), 'Vendor deposit created successfully', 201);
+    }
+
+    public function show(int $id): JsonResponse
+    {
+        return $this->successResponse($this->service->find($id), 'Vendor deposit retrieved successfully');
+    }
+
+    public function post(int $id): JsonResponse
+    {
+        return $this->successResponse($this->service->post(VendorDeposit::query()->findOrFail($id)), 'Vendor deposit posted successfully');
+    }
+
+    public function void(PurchaseRequestActionRequest $request, int $id): JsonResponse
+    {
+        return $this->successResponse($this->service->void(VendorDeposit::query()->findOrFail($id), $request->validated('reason')), 'Vendor deposit voided successfully');
+    }
+
+    public function refund(RefundVendorDepositRequest $request, int $id): JsonResponse
+    {
+        return $this->successResponse($this->service->refund(VendorDeposit::query()->findOrFail($id), (float) $request->validated('amount'), $request->validated('reason')), 'Vendor deposit refunded successfully');
+    }
+
     public function available(Request $request): JsonResponse
     {
         if (! $this->canAny(['purchase.deposits.view', 'purchase.payments.view'])) {

@@ -2,11 +2,11 @@
 
 namespace Database\Seeders;
 
-use App\Models\Company;
-use App\Models\Plan;
-use App\Models\Subscription;
-use App\Models\TenantDatabase;
-use App\Models\User;
+use App\Shared\Models\Company;
+use App\Shared\Models\Plan;
+use App\Shared\Models\Subscription;
+use App\Shared\Models\TenantDatabase;
+use App\Shared\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Hash;
@@ -80,7 +80,7 @@ class DemoCentralSeeder extends Seeder
         ]);
 
         $tenantsDir = database_path('tenants');
-        if (!File::isDirectory($tenantsDir)) {
+        if (! File::isDirectory($tenantsDir)) {
             File::makeDirectory($tenantsDir, 0755, true);
         }
 
@@ -150,4 +150,3 @@ class DemoCentralSeeder extends Seeder
         File::put($path, '');
     }
 }
-

@@ -1,6 +1,6 @@
 <?php
 
-use App\Services\Permissions\PermissionCatalogService;
+use App\Shared\Permission\PermissionCatalogService;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;

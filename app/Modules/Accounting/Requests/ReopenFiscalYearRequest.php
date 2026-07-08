@@ -18,4 +18,3 @@ class ReopenFiscalYearRequest extends FormRequest
         ];
     }
 }
-

@@ -2,11 +2,11 @@
 
 namespace Tests\Feature\Purchase;
 
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\PurchaseOrder;
-use App\Models\Tenant\PurchaseRequest;
-use App\Models\Tenant\VendorDeposit;
-use App\Models\Tenant\StockMovement;
+use App\Modules\Inventory\Models\StockMovement;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\Purchase\Models\PurchaseOrder;
+use App\Modules\Purchase\Models\PurchaseRequest;
+use App\Modules\Purchase\Models\VendorDeposit;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 

@@ -2,8 +2,8 @@
 
 namespace App\Modules\Inventory\Models;
 
+use Database\Factories\Tenant\StockBalanceFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -13,12 +13,15 @@ class StockBalance extends Model
 
     protected static function newFactory()
     {
-        return \Database\Factories\Tenant\StockBalanceFactory::new();
+        return StockBalanceFactory::new();
     }
 
     protected $connection = 'tenant';
+
     protected $table = 'stock_balances';
+
     protected $guarded = [];
+
     protected $casts = [
         'metadata' => 'array',
         'quantity_on_hand' => 'decimal:4',
@@ -29,9 +32,20 @@ class StockBalance extends Model
         'last_movement_at' => 'datetime',
     ];
 
-    public function product(): BelongsTo { return $this->belongsTo(Product::class, 'product_id'); }
-    public function warehouse(): BelongsTo { return $this->belongsTo(Warehouse::class, 'warehouse_id'); }
-    public function lastMovement(): BelongsTo { return $this->belongsTo(StockMovement::class, 'last_movement_id'); }
+    public function product(): BelongsTo
+    {
+        return $this->belongsTo(Product::class, 'product_id');
+    }
+
+    public function warehouse(): BelongsTo
+    {
+        return $this->belongsTo(Warehouse::class, 'warehouse_id');
+    }
+
+    public function lastMovement(): BelongsTo
+    {
+        return $this->belongsTo(StockMovement::class, 'last_movement_id');
+    }
 
     public function recalculateAvailable(): void
     {
@@ -48,4 +62,3 @@ class StockBalance extends Model
         return (float) $this->quantity_on_hand > 0;
     }
 }
-

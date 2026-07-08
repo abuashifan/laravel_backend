@@ -2,8 +2,6 @@
 
 namespace App\Shared\SourceDocument;
 
-use App\Shared\SourceDocument\SourceLink;
-
 trait HasSourceLink
 {
     public function scopeForSource($query, string $sourceType, int|string $sourceId)
@@ -74,6 +72,7 @@ trait HasSourceLink
     public function markAsObsolete(): bool
     {
         $this->is_obsolete = true;
+
         return (bool) $this->save();
     }
 
@@ -82,4 +81,3 @@ trait HasSourceLink
         return ($this->source_type ?? null) === $sourceType && ($this->source_id ?? null) === $sourceId;
     }
 }
-

@@ -2,46 +2,45 @@
 
 namespace App\Shared\Http\Middleware;
 
-use App\Models\Company;
-use App\Models\CompanyUser;
-use App\Models\TenantDatabase;
-use App\Shared\Tenant\TenantContext;
-use App\Shared\Tenant\TenantConnectionManager;
 use App\Shared\Api\ApiErrorCode;
 use App\Shared\Api\ApiResponseBuilder;
+use App\Shared\Models\Company;
+use App\Shared\Models\CompanyUser;
+use App\Shared\Models\TenantDatabase;
+use App\Shared\Tenant\TenantConnectionManager;
+use App\Shared\Tenant\TenantContext;
 use Closure;
-use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Throwable;
 
 class EnsureCompanyAccess
 {
-    public function __construct(private readonly TenantConnectionManager $connectionManager)
-    {
-    }
+    public function __construct(private readonly TenantConnectionManager $connectionManager) {}
 
     /**
      * Handle an incoming request.
      *
-     * @param  \Closure(\Illuminate\Http\Request): (\Illuminate\Http\Response|\Illuminate\Http\RedirectResponse)  $next
+     * @param  Closure(Request): (Response|RedirectResponse)  $next
      */
     public function handle(Request $request, Closure $next): mixed
     {
         $user = $request->user();
 
-        if (!$user) {
+        if (! $user) {
             return ApiResponseBuilder::error(ApiErrorCode::UNAUTHENTICATED, null, [], 401);
         }
 
         $companyId = $request->header('X-Company-ID');
 
-        if (!$companyId) {
+        if (! $companyId) {
             return ApiResponseBuilder::error(ApiErrorCode::X_COMPANY_ID_REQUIRED, null, [], 422);
         }
 
         $company = Company::find($companyId);
 
-        if (!$company) {
+        if (! $company) {
             return ApiResponseBuilder::error(ApiErrorCode::COMPANY_NOT_FOUND, null, [], 404);
         }
 
@@ -51,7 +50,7 @@ class EnsureCompanyAccess
             ->where('status', 'active')
             ->first();
 
-        if (!$companyUser) {
+        if (! $companyUser) {
             return ApiResponseBuilder::error(ApiErrorCode::COMPANY_ACCESS_DENIED, null, [], 403);
         }
 
@@ -60,7 +59,7 @@ class EnsureCompanyAccess
             ->where('status', 'active')
             ->first();
 
-        if (!$tenantDatabase) {
+        if (! $tenantDatabase) {
             return ApiResponseBuilder::error(ApiErrorCode::TENANT_DATABASE_NOT_ACTIVE, null, [], 422);
         }
 

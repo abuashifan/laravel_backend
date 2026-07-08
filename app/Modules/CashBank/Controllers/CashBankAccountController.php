@@ -12,9 +12,7 @@ class CashBankAccountController extends Controller
 {
     use ApiResponse;
 
-    public function __construct(private readonly CashBankAccountService $service)
-    {
-    }
+    public function __construct(private readonly CashBankAccountService $service) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -36,4 +34,3 @@ class CashBankAccountController extends Controller
         ], 'Cash/bank accounts retrieved successfully');
     }
 }
-

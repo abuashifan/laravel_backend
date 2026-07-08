@@ -12,8 +12,11 @@ class SalesInvoice extends Model
     use HasFactory;
 
     protected $connection = 'tenant';
+
     protected $table = 'sales_invoices';
+
     protected $guarded = [];
+
     protected $casts = [
         'invoice_date' => 'date',
         'due_date' => 'date',

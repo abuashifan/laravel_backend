@@ -2,12 +2,11 @@
 
 namespace Tests\Feature\Purchase;
 
-use App\Models\Tenant\GoodsReceiptLine;
-use App\Models\Tenant\StockMovement;
-use App\Models\Tenant\VendorBill;
-use App\Models\Tenant\VendorBillLine;
+use App\Modules\Inventory\Models\StockMovement;
+use App\Modules\Purchase\Models\GoodsReceiptLine;
+use App\Modules\Purchase\Models\VendorBill;
+use App\Modules\Purchase\Models\VendorBillLine;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 
 class PurchaseReturnTest extends PurchaseTestCase
 {

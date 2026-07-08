@@ -43,4 +43,3 @@ class TransactionLifecycle
         return in_array($status, (array) config('transaction_lifecycle.reportable_journal_statuses', []), true);
     }
 }
-

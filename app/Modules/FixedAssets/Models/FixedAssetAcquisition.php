@@ -11,8 +11,11 @@ class FixedAssetAcquisition extends Model
     use HasFactory;
 
     protected $connection = 'tenant';
+
     protected $table = 'fixed_asset_acquisitions';
+
     protected $guarded = [];
+
     protected $casts = [
         'acquisition_date' => 'date',
         'metadata' => 'array',

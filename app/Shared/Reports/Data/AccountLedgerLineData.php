@@ -24,8 +24,7 @@ class AccountLedgerLineData
         public ?string $departmentName = null,
         public ?int $projectId = null,
         public ?string $projectName = null,
-    ) {
-    }
+    ) {}
 
     public static function fromRow(object $row, float $runningBalance): self
     {
@@ -77,4 +76,3 @@ class AccountLedgerLineData
         ];
     }
 }
-

@@ -37,4 +37,3 @@ class LedgerBalanceCalculator
         return $currentBalance + $this->signedAmount($debit, $credit, $normalBalance);
     }
 }
-

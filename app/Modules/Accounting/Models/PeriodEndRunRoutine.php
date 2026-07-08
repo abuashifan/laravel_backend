@@ -11,8 +11,11 @@ class PeriodEndRunRoutine extends Model
     use HasFactory;
 
     protected $connection = 'tenant';
+
     protected $table = 'period_end_run_routines';
+
     protected $guarded = [];
+
     protected $casts = [
         'started_at' => 'datetime',
         'completed_at' => 'datetime',

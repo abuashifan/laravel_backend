@@ -23,6 +23,7 @@ class DataRetentionValidator
 
             if (! is_int($data[$key]) && ! ctype_digit((string) $data[$key])) {
                 $errors[] = $key.':INVALID_INTEGER';
+
                 continue;
             }
 
@@ -76,4 +77,3 @@ class DataRetentionValidator
         ];
     }
 }
-

@@ -25,4 +25,3 @@ class BalanceSheetRequest extends FormRequest
         ];
     }
 }
-

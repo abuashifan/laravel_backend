@@ -2,12 +2,15 @@
 
 namespace Tests\Feature\Purchase;
 
-use App\Models\Company;
-use App\Models\CompanyAccountingSetting;
-use App\Models\CompanyUser;
-use App\Models\TenantDatabase;
-use App\Models\User;
-use App\Services\Tenant\TenantConnectionManager;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\MasterData\Models\Contact;
+use App\Shared\Models\Company;
+use App\Shared\Models\CompanyAccountingSetting;
+use App\Shared\Models\CompanyUser;
+use App\Shared\Models\TenantDatabase;
+use App\Shared\Models\User;
+use App\Shared\Tenant\TenantConnectionManager;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\File;
@@ -93,7 +96,7 @@ abstract class PurchaseTestCase extends TestCase
 
     protected function createVendor(array $attributes = []): int
     {
-        return (int) \App\Models\Tenant\Contact::query()->create(array_merge([
+        return (int) Contact::query()->create(array_merge([
             'name' => 'Vendor A',
             'contact_type' => 'supplier',
             'is_supplier' => true,
@@ -136,7 +139,7 @@ abstract class PurchaseTestCase extends TestCase
 
     protected function createAccount(string $type, string $code, bool $cashBank = false): int
     {
-        return (int) \App\Models\Tenant\ChartOfAccount::query()->create([
+        return (int) ChartOfAccount::query()->create([
             'account_code' => $code,
             'account_name' => $code,
             'account_type' => $type,
@@ -165,7 +168,7 @@ abstract class PurchaseTestCase extends TestCase
             + ($legacyPayable ? ['purchase.payable' => $ap] : [])
             + ($expenseAccount !== null ? ['purchase.expense' => $expenseAccount] : [])
             + ($interimAccount !== null ? ['purchase.inventory_interim' => $interimAccount] : []) as $key => $id) {
-            \App\Models\Tenant\AccountMapping::query()->updateOrCreate(
+            AccountMapping::query()->updateOrCreate(
                 ['mapping_key' => $key],
                 ['module' => 'purchase', 'account_id' => $id, 'is_required' => true, 'is_active' => true]
             );

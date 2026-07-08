@@ -28,4 +28,3 @@ class InventorySourceService
         // This method is kept as a placeholder so Phase 12B can enforce no double stock movement.
     }
 }
-

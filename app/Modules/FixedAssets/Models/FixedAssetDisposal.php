@@ -11,8 +11,11 @@ class FixedAssetDisposal extends Model
     use HasFactory;
 
     protected $connection = 'tenant';
+
     protected $table = 'fixed_asset_disposals';
+
     protected $guarded = [];
+
     protected $casts = [
         'disposal_date' => 'date',
         'posted_at' => 'datetime',

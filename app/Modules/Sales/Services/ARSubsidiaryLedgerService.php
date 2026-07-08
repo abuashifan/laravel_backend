@@ -2,11 +2,11 @@
 
 namespace App\Modules\Sales\Services;
 
-use App\Models\Tenant\CustomerDepositAllocation;
-use App\Models\Tenant\CustomerDeposit;
-use App\Models\Tenant\SalesInvoice;
-use App\Models\Tenant\SalesReceipt;
-use App\Models\Tenant\SalesReturn;
+use App\Modules\Sales\Models\CustomerDeposit;
+use App\Modules\Sales\Models\CustomerDepositAllocation;
+use App\Modules\Sales\Models\SalesInvoice;
+use App\Modules\Sales\Models\SalesReceipt;
+use App\Modules\Sales\Models\SalesReturn;
 use Illuminate\Support\Collection;
 
 class ARSubsidiaryLedgerService
@@ -300,7 +300,7 @@ class ARSubsidiaryLedgerService
     }
 
     /**
-     * @param array<int,int> $customerIds
+     * @param  array<int,int>  $customerIds
      * @return array<int,float>
      */
     private function unappliedDepositTotals(array $customerIds): array

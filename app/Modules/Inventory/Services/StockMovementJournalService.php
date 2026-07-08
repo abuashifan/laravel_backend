@@ -2,18 +2,17 @@
 
 namespace App\Modules\Inventory\Services;
 
-use App\Exceptions\ApiException;
-use App\Models\Tenant\JournalEntry;
-use App\Models\Tenant\StockMovement;
+use App\Modules\Inventory\Models\StockMovement;
+use App\Modules\Journal\Models\JournalEntry;
 use App\Modules\Journal\Services\SystemJournalBuilder;
+use App\Shared\Exceptions\ApiException;
 
 class StockMovementJournalService
 {
     public function __construct(
         private readonly InventoryAccountMappingService $mappingService,
         private readonly SystemJournalBuilder $journalBuilder,
-    ) {
-    }
+    ) {}
 
     public function createInventoryJournalForMovement(StockMovement $movement): ?JournalEntry
     {
@@ -106,6 +105,7 @@ class StockMovementJournalService
                 $message = $this->mappingService->missingMappingMessage('inventory.adjustment_gain');
                 throw ApiException::make('ACCOUNT_MAPPING_MISSING', $message, 422, ['account_mapping' => [$message]]);
             }
+
             return $this->createSimpleJournal($movement, [
                 ['account_id' => $inventory, 'description' => 'Inventory', 'debit' => (float) $movement->total_value, 'credit' => 0, 'line_order' => 1],
                 ['account_id' => $gain, 'description' => 'Stock Adjustment Gain', 'debit' => 0, 'credit' => (float) $movement->total_value, 'line_order' => 2],
@@ -117,6 +117,7 @@ class StockMovementJournalService
             $message = $this->mappingService->missingMappingMessage('inventory.adjustment_loss');
             throw ApiException::make('ACCOUNT_MAPPING_MISSING', $message, 422, ['account_mapping' => [$message]]);
         }
+
         return $this->createSimpleJournal($movement, [
             ['account_id' => $loss, 'description' => 'Stock Adjustment Loss', 'debit' => (float) $movement->total_value, 'credit' => 0, 'line_order' => 1],
             ['account_id' => $inventory, 'description' => 'Inventory', 'debit' => 0, 'credit' => (float) $movement->total_value, 'line_order' => 2],
@@ -187,13 +188,13 @@ class StockMovementJournalService
     private function createSimpleJournal(StockMovement $movement, array $lines, string $desc): JournalEntry
     {
         return $this->journalBuilder->create([
-            'source_type'     => 'stock_movement',
-            'source_id'       => $movement->id,
-            'source_number'   => $movement->movement_number,
+            'source_type' => 'stock_movement',
+            'source_id' => $movement->id,
+            'source_number' => $movement->movement_number,
             'source_revision' => 1,
-            'source_module'   => 'inventory',
-            'journal_date'    => (string) $movement->movement_date,
-            'description'     => $desc.' '.$movement->movement_number,
+            'source_module' => 'inventory',
+            'journal_date' => (string) $movement->movement_date,
+            'description' => $desc.' '.$movement->movement_number,
         ], $lines);
     }
 

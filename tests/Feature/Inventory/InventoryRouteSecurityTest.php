@@ -43,4 +43,3 @@ class InventoryRouteSecurityTest extends JournalTestCase
         $this->getJson('/api/inventory/reports/stock-balances', $ctx['headers'])->assertStatus(403);
     }
 }
-

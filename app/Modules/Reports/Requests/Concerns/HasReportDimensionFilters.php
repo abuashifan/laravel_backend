@@ -12,4 +12,3 @@ trait HasReportDimensionFilters
         ];
     }
 }
-

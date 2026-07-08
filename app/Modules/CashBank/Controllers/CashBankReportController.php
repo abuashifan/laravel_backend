@@ -27,4 +27,3 @@ class CashBankReportController extends Controller
         return $this->successResponse($result, 'Cash/bank account statement retrieved successfully');
     }
 }
-

@@ -2,25 +2,24 @@
 
 namespace Tests\Feature\Sales;
 
-use App\Models\FiscalYear;
-use App\Models\CompanyAccountingSetting;
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\Contact;
-use App\Models\Tenant\CustomerDeposit;
-use App\Models\Tenant\CustomerDepositAllocation;
-use App\Models\Tenant\DeliveryOrderLine;
-use App\Models\Tenant\JournalEntry;
-use App\Models\Tenant\Product;
-use App\Models\Tenant\SalesInvoice;
-use App\Models\Tenant\SalesOrder;
-use App\Models\Tenant\SalesOrderLine;
-use App\Models\Tenant\StockMovement;
-use App\Models\Tenant\Unit;
-use App\Services\Tenant\TenantConnectionManager;
-use Illuminate\Support\Facades\DB;
+use App\Modules\Inventory\Models\StockMovement;
+use App\Modules\Journal\Models\JournalEntry;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\MasterData\Models\Contact;
+use App\Modules\MasterData\Models\Product;
+use App\Modules\MasterData\Models\Unit;
+use App\Modules\Sales\Models\CustomerDeposit;
+use App\Modules\Sales\Models\CustomerDepositAllocation;
+use App\Modules\Sales\Models\DeliveryOrderLine;
+use App\Modules\Sales\Models\SalesInvoice;
+use App\Modules\Sales\Models\SalesOrder;
+use App\Modules\Sales\Models\SalesOrderLine;
+use App\Shared\Models\CompanyAccountingSetting;
+use App\Shared\Models\FiscalYear;
+use App\Shared\Tenant\TenantConnectionManager;
 use Illuminate\Support\Facades\Artisan;
-use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 
 class SalesInvoiceTest extends SalesTestCase
 {

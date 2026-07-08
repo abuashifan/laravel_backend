@@ -2,16 +2,16 @@
 
 namespace App\Modules\Setup\Services;
 
-use App\Exceptions\ApiException;
-use App\Models\Company;
-use App\Models\CompanyAccountingSetting;
-use App\Models\CompanyModuleSetting;
-use App\Models\CompanySetupState;
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\ChartOfAccount;
-use App\Services\Audit\AuditLogService;
-use App\Services\OpeningBalance\OpeningBalanceBatchService;
-use App\Services\Tenant\TenantContext;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\OpeningBalance\Services\OpeningBalanceBatchService;
+use App\Shared\Audit\AuditLogService;
+use App\Shared\Exceptions\ApiException;
+use App\Shared\Models\Company;
+use App\Shared\Models\CompanyAccountingSetting;
+use App\Shared\Models\CompanyModuleSetting;
+use App\Shared\Models\CompanySetupState;
+use App\Shared\Tenant\TenantContext;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -19,9 +19,13 @@ use Illuminate\Support\Facades\Schema;
 class SetupWizardService
 {
     private const STATUS_NOT_STARTED = 'not_started';
+
     private const STATUS_IN_PROGRESS = 'in_progress';
+
     private const STATUS_READY = 'ready_to_finalize';
+
     private const STATUS_FINALIZED = 'finalized';
+
     private const STATUS_REOPENED = 'reopened';
 
     /** @var array<int, string> */
@@ -41,8 +45,7 @@ class SetupWizardService
         private readonly TenantContext $tenantContext,
         private readonly AuditLogService $auditLogService,
         private readonly OpeningBalanceBatchService $openingBalanceBatchService,
-    ) {
-    }
+    ) {}
 
     public function status(): array
     {
@@ -482,6 +485,7 @@ class SetupWizardService
         $warnings = [];
         if (! Schema::connection('tenant')->hasTable('opening_balance_batches')) {
             $blocking[] = $this->error('OPENING_BALANCE_MODULE_NOT_IMPLEMENTED', 'Opening Balance persistence is not implemented yet.');
+
             return [
                 'state' => $this->serializeState($state),
                 'implemented' => false,
@@ -497,6 +501,7 @@ class SetupWizardService
         $batch = $this->openingBalanceBatchService->latestActiveBatch();
         if (! $batch) {
             $blocking[] = $this->error('OPENING_BALANCE_BATCH_REQUIRED', 'Opening balance batch is required.');
+
             return [
                 'state' => $this->serializeState($state),
                 'implemented' => true,
@@ -589,7 +594,9 @@ class SetupWizardService
     private function operationalTransactionBlockers(string $openingDate): array
     {
         $checks = [
-            ['journal_entries', 'journal_date', fn ($query) => $query->where('status', '!=', 'void')->where(function ($q) { $q->whereNull('source_type')->orWhere('source_type', '!=', 'opening_balance'); })],
+            ['journal_entries', 'journal_date', fn ($query) => $query->where('status', '!=', 'void')->where(function ($q) {
+                $q->whereNull('source_type')->orWhere('source_type', '!=', 'opening_balance');
+            })],
             ['sales_invoices', 'invoice_date', fn ($query) => $query->where('status', '!=', 'void')],
             ['sales_receipts', 'receipt_date', fn ($query) => $query->where('status', '!=', 'void')],
             ['vendor_bills', 'bill_date', fn ($query) => $query->where('status', '!=', 'void')],
@@ -597,8 +604,12 @@ class SetupWizardService
             ['cash_receipts', 'receipt_date', fn ($query) => $query->where('status', '!=', 'void')],
             ['cash_payments', 'payment_date', fn ($query) => $query->where('status', '!=', 'void')],
             ['bank_transfers', 'transfer_date', fn ($query) => $query->where('status', '!=', 'void')],
-            ['stock_movements', 'movement_date', fn ($query) => $query->where('status', '!=', 'void')->where(function ($q) { $q->whereNull('movement_type')->orWhere('movement_type', '!=', 'opening_stock'); })],
-            ['fixed_asset_transactions', 'transaction_date', fn ($query) => $query->where(function ($q) { $q->whereNull('source_type')->orWhere('source_type', '!=', 'opening_import'); })],
+            ['stock_movements', 'movement_date', fn ($query) => $query->where('status', '!=', 'void')->where(function ($q) {
+                $q->whereNull('movement_type')->orWhere('movement_type', '!=', 'opening_stock');
+            })],
+            ['fixed_asset_transactions', 'transaction_date', fn ($query) => $query->where(function ($q) {
+                $q->whereNull('source_type')->orWhere('source_type', '!=', 'opening_import');
+            })],
         ];
 
         $blocking = [];
@@ -686,11 +697,21 @@ class SetupWizardService
     {
         $flags = $this->moduleFlags();
         $modules = ['opening_balance'];
-        if ($flags['sales_enabled']) $modules[] = 'sales';
-        if ($flags['purchase_enabled']) $modules[] = 'purchase';
-        if ($flags['cash_bank_enabled']) $modules[] = 'cash_bank';
-        if ($flags['inventory_enabled']) $modules[] = 'inventory';
-        if ($flags['fixed_asset_enabled']) $modules[] = 'fixed_assets';
+        if ($flags['sales_enabled']) {
+            $modules[] = 'sales';
+        }
+        if ($flags['purchase_enabled']) {
+            $modules[] = 'purchase';
+        }
+        if ($flags['cash_bank_enabled']) {
+            $modules[] = 'cash_bank';
+        }
+        if ($flags['inventory_enabled']) {
+            $modules[] = 'inventory';
+        }
+        if ($flags['fixed_asset_enabled']) {
+            $modules[] = 'fixed_assets';
+        }
 
         return array_values(array_unique($modules));
     }

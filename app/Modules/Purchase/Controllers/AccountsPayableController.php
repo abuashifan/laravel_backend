@@ -18,8 +18,7 @@ class AccountsPayableController extends Controller
         private readonly APSubsidiaryLedgerService $ledgerService,
         private readonly APAgingService $agingService,
         private readonly APReconciliationService $reconciliationService,
-    ) {
-    }
+    ) {}
 
     public function vendorSummary(Request $request): JsonResponse
     {

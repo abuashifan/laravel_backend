@@ -11,8 +11,7 @@ class BalanceSheetFilter
         public bool $includeZeroBalance = false,
         public bool $includeInactiveAccounts = false,
         public string $groupBy = 'account_type',
-    ) {
-    }
+    ) {}
 
     public static function fromArray(array $data): self
     {
@@ -43,4 +42,3 @@ class BalanceSheetFilter
         ];
     }
 }
-

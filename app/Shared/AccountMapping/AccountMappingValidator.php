@@ -2,14 +2,9 @@
 
 namespace App\Shared\AccountMapping;
 
-use App\Shared\AccountMapping\AccountMappingKey;
-use App\Shared\AccountMapping\AccountMappingModule;
-
 class AccountMappingValidator
 {
-    public function __construct(private readonly AccountMappingService $service)
-    {
-    }
+    public function __construct(private readonly AccountMappingService $service) {}
 
     public function validateProvidedMappings(array $mappings): array
     {
@@ -46,4 +41,3 @@ class AccountMappingValidator
         return $this->service->validateAccountTypeForKey($mappingKey, $accountType);
     }
 }
-

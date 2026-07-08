@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Setup;
 
-use App\Models\CompanySetupState;
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\ChartOfAccount;
-use App\Services\Settings\CompanySettingService;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\Settings\Services\CompanySettingService;
+use App\Shared\Models\CompanySetupState;
 use Tests\Feature\Journal\JournalTestCase;
 
 class SetupWizardTest extends JournalTestCase

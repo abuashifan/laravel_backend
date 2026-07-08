@@ -2,7 +2,7 @@
 
 namespace App\Modules\Inventory\Services\Reports;
 
-use App\Models\Tenant\StockMovementLine;
+use App\Modules\Inventory\Models\StockMovementLine;
 
 class StockCardReportService
 {

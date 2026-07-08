@@ -16,8 +16,7 @@ class SourceLink
         public readonly bool $isSystemGenerated,
         public readonly bool $isObsolete,
         public readonly array $metadata,
-    ) {
-    }
+    ) {}
 
     public static function make(
         string $sourceType,
@@ -147,4 +146,3 @@ class SourceLink
         }
     }
 }
-

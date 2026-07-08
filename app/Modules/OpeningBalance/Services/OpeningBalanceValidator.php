@@ -115,7 +115,7 @@ class OpeningBalanceValidator
                 return false;
             }
         }
+
         return true;
     }
 }
-

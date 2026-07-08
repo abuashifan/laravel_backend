@@ -2,9 +2,9 @@
 
 namespace App\Console\Commands;
 
-use App\Models\Company;
-use App\Models\TenantDatabase;
-use App\Services\Tenant\TenantConnectionManager;
+use App\Shared\Models\Company;
+use App\Shared\Models\TenantDatabase;
+use App\Shared\Tenant\TenantConnectionManager;
 use Database\Seeders\tenant\TradingCompanyAccountingCycleSeeder;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
@@ -27,24 +27,28 @@ class TenantSeedDemoAccountingCycleCommand extends Command
     {
         if (app()->environment('production') && ! $this->option('force')) {
             $this->error('Refusing to seed demo data in production without --force.');
+
             return self::FAILURE;
         }
 
         $companyId = $this->option('company-id');
         if (! $companyId) {
             $this->error('The --company-id option is required.');
+
             return self::FAILURE;
         }
 
         $year = (int) $this->option('year');
         if ($year < 2000 || $year > 2100) {
             $this->error('The --year option must be between 2000 and 2100.');
+
             return self::FAILURE;
         }
 
         $company = Company::query()->find((int) $companyId);
         if (! $company) {
             $this->error('Target company not found.');
+
             return self::FAILURE;
         }
 
@@ -54,6 +58,7 @@ class TenantSeedDemoAccountingCycleCommand extends Command
             ->first();
         if (! $tenantDatabase) {
             $this->error('Active tenant database not found for company '.$company->id.'.');
+
             return self::FAILURE;
         }
 
@@ -61,7 +66,7 @@ class TenantSeedDemoAccountingCycleCommand extends Command
             $this->prepareCompanyAndFiscalPeriods($company, $year);
             $connections->connect($tenantDatabase);
 
-            $result = (new TradingCompanyAccountingCycleSeeder())->seed(
+            $result = (new TradingCompanyAccountingCycleSeeder)->seed(
                 year: $year,
                 resetDemoData: (bool) $this->option('reset-demo-data'),
             );
@@ -71,6 +76,7 @@ class TenantSeedDemoAccountingCycleCommand extends Command
             }
         } catch (Throwable $e) {
             $this->error('Demo accounting cycle seed failed: '.$e->getMessage());
+
             return self::FAILURE;
         } finally {
             $connections->disconnect();
@@ -121,6 +127,7 @@ class TenantSeedDemoAccountingCycleCommand extends Command
 
         if (! Schema::hasTable('fiscal_years') || ! Schema::hasTable('accounting_periods')) {
             $this->warn('Central fiscal_years/accounting_periods tables not present; fiscal period setup skipped.');
+
             return;
         }
 

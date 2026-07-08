@@ -6,7 +6,10 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class UpdateStockOpnameLineRequest extends FormRequest
 {
-    public function authorize(): bool { return true; }
+    public function authorize(): bool
+    {
+        return true;
+    }
 
     public function rules(): array
     {
@@ -16,4 +19,3 @@ class UpdateStockOpnameLineRequest extends FormRequest
         ];
     }
 }
-

@@ -2,8 +2,6 @@
 
 namespace App\Shared\TransactionLifecycle;
 
-use App\Shared\TransactionLifecycle\TransactionStatus;
-
 trait HasTransactionLifecycle
 {
     public function scopeVisible($query)
@@ -46,4 +44,3 @@ trait HasTransactionLifecycle
         return $this->status === TransactionStatus::VOID;
     }
 }
-

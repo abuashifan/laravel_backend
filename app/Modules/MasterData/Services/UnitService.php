@@ -2,8 +2,8 @@
 
 namespace App\Modules\MasterData\Services;
 
-use App\Exceptions\ApiException;
-use App\Models\Tenant\Unit;
+use App\Modules\MasterData\Models\Unit;
+use App\Shared\Exceptions\ApiException;
 
 class UnitService
 {

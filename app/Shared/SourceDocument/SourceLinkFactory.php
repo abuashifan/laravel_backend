@@ -59,4 +59,3 @@ class SourceLinkFactory
         return get_object_vars($source);
     }
 }
-

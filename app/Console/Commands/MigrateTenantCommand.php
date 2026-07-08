@@ -2,7 +2,7 @@
 
 namespace App\Console\Commands;
 
-use App\Services\Tenant\TenantMigrationService;
+use App\Shared\Tenant\TenantMigrationService;
 use Illuminate\Console\Command;
 
 class MigrateTenantCommand extends Command
@@ -20,11 +20,13 @@ class MigrateTenantCommand extends Command
 
         if (($companyIdOption === null || $companyIdOption === '') && ! $all) {
             $this->error('Gunakan --company-id=ID atau --all.');
+
             return self::FAILURE;
         }
 
         if (($companyIdOption !== null && $companyIdOption !== '') && $all) {
             $this->error('Tidak boleh memakai --company-id dan --all bersamaan.');
+
             return self::FAILURE;
         }
 
@@ -33,6 +35,7 @@ class MigrateTenantCommand extends Command
 
             if ($summary['total'] === 0) {
                 $this->error('Tidak ada tenant aktif untuk dimigrasi.');
+
                 return self::FAILURE;
             }
 
@@ -57,6 +60,7 @@ class MigrateTenantCommand extends Command
 
         if (! is_numeric($companyIdOption) || (int) $companyIdOption <= 0) {
             $this->error('company_id wajib numeric/integer.');
+
             return self::FAILURE;
         }
 
@@ -65,6 +69,7 @@ class MigrateTenantCommand extends Command
 
         if (! $result['success']) {
             $this->error($result['reason'] ?? 'Tenant migration failed.');
+
             return self::FAILURE;
         }
 
@@ -81,4 +86,3 @@ class MigrateTenantCommand extends Command
         return self::SUCCESS;
     }
 }
-

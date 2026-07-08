@@ -23,7 +23,7 @@ trait HasRevisionTracking
     {
         $next = $this->nextRevision();
         $this->revision_no = $next;
+
         return $next;
     }
 }
-

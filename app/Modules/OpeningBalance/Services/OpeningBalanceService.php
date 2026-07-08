@@ -3,10 +3,10 @@
 namespace App\Modules\OpeningBalance\Services;
 
 use App\Modules\Accounting\Services\FiscalYearService;
-use App\Shared\DocumentNumbering\DocumentNumberService;
 use App\Modules\OpeningBalance\Support\OpeningBalanceBatch;
 use App\Modules\OpeningBalance\Support\OpeningBalanceLine;
 use App\Modules\OpeningBalance\Support\OpeningBalanceType;
+use App\Shared\DocumentNumbering\DocumentNumberService;
 use Carbon\Carbon;
 
 class OpeningBalanceService
@@ -15,8 +15,7 @@ class OpeningBalanceService
         private readonly OpeningBalanceValidator $validator,
         private readonly ?DocumentNumberService $documentNumberService = null,
         private readonly ?FiscalYearService $fiscalYearService = null,
-    ) {
-    }
+    ) {}
 
     public function makeBatch(array $data): OpeningBalanceBatch
     {
@@ -95,4 +94,3 @@ class OpeningBalanceService
         return (string) config('opening_balance.source_type', 'opening_balance');
     }
 }
-

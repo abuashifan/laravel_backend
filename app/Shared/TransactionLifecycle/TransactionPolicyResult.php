@@ -11,8 +11,7 @@ class TransactionPolicyResult
         private readonly string $message,
         private readonly array $reasons = [],
         private readonly array $meta = [],
-    ) {
-    }
+    ) {}
 
     public static function allow(string $message = 'Allowed', array $meta = []): self
     {

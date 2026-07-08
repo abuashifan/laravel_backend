@@ -2,9 +2,9 @@
 
 namespace App\Modules\Reports\Services;
 
-use App\Data\Reports\LedgerFilter;
-use App\Models\Tenant\Department;
-use App\Models\Tenant\Project;
+use App\Modules\MasterData\Models\Department;
+use App\Modules\MasterData\Models\Project;
+use App\Shared\Reports\Data\LedgerFilter;
 use Illuminate\Support\Facades\Schema;
 
 class LedgerFilterValidator

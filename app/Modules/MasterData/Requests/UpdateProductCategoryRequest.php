@@ -20,4 +20,3 @@ class UpdateProductCategoryRequest extends FormRequest
         ];
     }
 }
-

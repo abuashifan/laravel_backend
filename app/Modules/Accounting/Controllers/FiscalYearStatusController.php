@@ -5,8 +5,8 @@ namespace App\Modules\Accounting\Controllers;
 use App\Http\Controllers\Controller;
 use App\Modules\Accounting\Services\AnnualClosingGateService;
 use App\Modules\Accounting\Services\FiscalYearService;
-use App\Shared\Tenant\TenantContext;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Tenant\TenantContext;
 use Illuminate\Http\JsonResponse;
 
 class FiscalYearStatusController extends Controller
@@ -17,8 +17,7 @@ class FiscalYearStatusController extends Controller
         private readonly TenantContext $tenantContext,
         private readonly FiscalYearService $fiscalYearService,
         private readonly AnnualClosingGateService $annualClosingGateService,
-    ) {
-    }
+    ) {}
 
     public function __invoke(): JsonResponse
     {
@@ -43,4 +42,3 @@ class FiscalYearStatusController extends Controller
         ], 'Fiscal year status retrieved successfully');
     }
 }
-

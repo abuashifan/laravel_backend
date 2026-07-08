@@ -59,4 +59,3 @@ class InventoryTransactionDependencyChecker extends BaseTransactionDependencyChe
         return in_array($status, ['posted', 'counted', 'finalized', 'void'], true);
     }
 }
-

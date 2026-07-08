@@ -34,4 +34,3 @@ class DocumentNumberSequence extends Model
         return $this->belongsTo(FiscalYear::class);
     }
 }
-

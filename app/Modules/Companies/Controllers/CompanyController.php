@@ -3,9 +3,9 @@
 namespace App\Modules\Companies\Controllers;
 
 use App\Http\Controllers\Controller;
-use App\Models\Company;
-use App\Models\CompanyUser;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Models\Company;
+use App\Shared\Models\CompanyUser;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -55,7 +55,7 @@ class CompanyController extends Controller
             ->where('status', 'active')
             ->first();
 
-        if (!$companyUser) {
+        if (! $companyUser) {
             return $this->errorResponse('Anda tidak punya akses ke company ini.', 403);
         }
 
@@ -65,7 +65,7 @@ class CompanyController extends Controller
 
         $tenantDatabase = $company->tenantDatabase;
 
-        if (!$tenantDatabase || $tenantDatabase->status !== 'active') {
+        if (! $tenantDatabase || $tenantDatabase->status !== 'active') {
             return $this->errorResponse('Tenant database company belum aktif.', 422);
         }
 
@@ -88,4 +88,3 @@ class CompanyController extends Controller
         ], 'Company selected successfully');
     }
 }
-

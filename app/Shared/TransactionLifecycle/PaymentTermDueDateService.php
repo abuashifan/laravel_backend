@@ -2,9 +2,9 @@
 
 namespace App\Shared\TransactionLifecycle;
 
-use App\Models\Tenant\Contact;
-use App\Models\Tenant\PaymentTerm;
-use App\Services\Settings\CompanySettingService;
+use App\Modules\MasterData\Models\Contact;
+use App\Modules\MasterData\Models\PaymentTerm;
+use App\Modules\Settings\Services\CompanySettingService;
 use App\Shared\Tenant\TenantContext;
 use Carbon\CarbonImmutable;
 
@@ -13,8 +13,7 @@ class PaymentTermDueDateService
     public function __construct(
         private readonly TenantContext $tenantContext,
         private readonly CompanySettingService $companySettingService,
-    ) {
-    }
+    ) {}
 
     public function apply(array $data, string $dateField, ?int $partnerId): array
     {

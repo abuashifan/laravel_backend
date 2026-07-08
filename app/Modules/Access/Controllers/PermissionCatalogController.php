@@ -3,8 +3,8 @@
 namespace App\Modules\Access\Controllers;
 
 use App\Http\Controllers\Controller;
-use App\Services\Permissions\PermissionCatalogService;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Permission\PermissionCatalogService;
 use Illuminate\Http\JsonResponse;
 
 class PermissionCatalogController extends Controller

@@ -6,12 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Modules\Settings\Requests\UpdateCompanyAccountingSettingRequest;
 use App\Modules\Settings\Requests\UpdateCompanyModuleSettingRequest;
 use App\Modules\Settings\Requests\UpdateCompanyTransactionDefaultRequest;
-use App\Services\Audit\AuditLogService;
 use App\Modules\Settings\Services\CompanySettingService;
-use App\Services\Tenant\TenantContext;
-use App\Support\Audit\AuditAction;
-use App\Support\Audit\AuditEvent;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Audit\AuditAction;
+use App\Shared\Audit\AuditEvent;
+use App\Shared\Audit\AuditLogService;
+use App\Shared\Tenant\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Throwable;
 
@@ -23,8 +23,7 @@ class CompanySettingController extends Controller
         private readonly CompanySettingService $service,
         private readonly TenantContext $tenantContext,
         private readonly AuditLogService $auditLogService,
-    ) {
-    }
+    ) {}
 
     public function show(): JsonResponse
     {

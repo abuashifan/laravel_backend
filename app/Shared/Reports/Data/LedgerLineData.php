@@ -20,8 +20,7 @@ class LedgerLineData
         public ?string $sourceType = null,
         public ?string $sourceNumber = null,
         public ?string $sourceModule = null,
-    ) {
-    }
+    ) {}
 
     public function toArray(): array
     {
@@ -44,4 +43,3 @@ class LedgerLineData
         ];
     }
 }
-

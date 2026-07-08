@@ -2,12 +2,12 @@
 
 namespace App\Modules\Inventory\Services;
 
-use App\Exceptions\ApiException;
-use App\Models\Tenant\Product;
-use App\Models\Tenant\StockMovement;
+use App\Modules\Inventory\Models\StockMovement;
+use App\Modules\Inventory\Support\InventoryMovementType;
+use App\Modules\MasterData\Models\Product;
+use App\Shared\Exceptions\ApiException;
 use App\Shared\TransactionLifecycle\TransactionDateGuardService;
 use App\Shared\Validation\BusinessReferenceValidator;
-use App\Modules\Inventory\Support\InventoryMovementType;
 
 class StockMovementValidationService
 {
@@ -28,8 +28,7 @@ class StockMovementValidationService
         private readonly TransactionDateGuardService $dateGuardService,
         private readonly InventorySourceService $sourceService,
         private readonly BusinessReferenceValidator $referenceValidator,
-    ) {
-    }
+    ) {}
 
     public function validateMovementType(string $type): void
     {
@@ -49,8 +48,13 @@ class StockMovementValidationService
     {
         $in = ['purchase_in', 'sales_return_in', 'adjustment_in', 'opname_in', 'opening_stock'];
         $out = ['sales_out', 'purchase_return_out', 'adjustment_out', 'opname_out'];
-        if (in_array($type, $in, true)) return 'in';
-        if (in_array($type, $out, true)) return 'out';
+        if (in_array($type, $in, true)) {
+            return 'in';
+        }
+        if (in_array($type, $out, true)) {
+            return 'out';
+        }
+
         return 'in';
     }
 

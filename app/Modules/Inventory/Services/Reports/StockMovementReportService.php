@@ -2,7 +2,7 @@
 
 namespace App\Modules\Inventory\Services\Reports;
 
-use App\Models\Tenant\StockMovementLine;
+use App\Modules\Inventory\Models\StockMovementLine;
 
 class StockMovementReportService
 {
@@ -20,21 +20,30 @@ class StockMovementReportService
             $q->where('stock_movements.status', 'posted');
         }
 
-        if (! empty($filters['product_id'])) $q->where('stock_movement_lines.product_id', (int) $filters['product_id']);
-        if (! empty($filters['warehouse_id'])) $q->where('stock_movement_lines.warehouse_id', (int) $filters['warehouse_id']);
+        if (! empty($filters['product_id'])) {
+            $q->where('stock_movement_lines.product_id', (int) $filters['product_id']);
+        }
+        if (! empty($filters['warehouse_id'])) {
+            $q->where('stock_movement_lines.warehouse_id', (int) $filters['warehouse_id']);
+        }
         if (! empty($filters['category_id'])) {
             $catId = (int) $filters['category_id'];
             $q->join('products', 'products.id', '=', 'stock_movement_lines.product_id')
                 ->where('products.product_category_id', $catId);
         }
 
-        if (! empty($filters['start_date'])) $q->whereDate('stock_movements.movement_date', '>=', (string) $filters['start_date']);
-        if (! empty($filters['end_date'])) $q->whereDate('stock_movements.movement_date', '<=', (string) $filters['end_date']);
+        if (! empty($filters['start_date'])) {
+            $q->whereDate('stock_movements.movement_date', '>=', (string) $filters['start_date']);
+        }
+        if (! empty($filters['end_date'])) {
+            $q->whereDate('stock_movements.movement_date', '<=', (string) $filters['end_date']);
+        }
 
         $q->orderBy('stock_movements.movement_date')->orderBy('stock_movements.movement_number')->orderBy('stock_movement_lines.sort_order')->orderBy('stock_movement_lines.id');
 
         $rows = $q->get()->map(function ($ln) {
             $dir = (string) $ln->direction;
+
             return [
                 'movement_date' => optional($ln->movement_date)->toDateString() ?: (string) $ln->movement_date,
                 'movement_number' => (string) $ln->movement_number,
@@ -82,10 +91,18 @@ class StockMovementReportService
             $q->where('stock_movements.status', 'posted');
         }
 
-        if (! empty($filters['product_id'])) $q->where('stock_movement_lines.product_id', (int) $filters['product_id']);
-        if (! empty($filters['warehouse_id'])) $q->where('stock_movement_lines.warehouse_id', (int) $filters['warehouse_id']);
-        if (! empty($filters['start_date'])) $q->whereDate('stock_movements.movement_date', '>=', (string) $filters['start_date']);
-        if (! empty($filters['end_date'])) $q->whereDate('stock_movements.movement_date', '<=', (string) $filters['end_date']);
+        if (! empty($filters['product_id'])) {
+            $q->where('stock_movement_lines.product_id', (int) $filters['product_id']);
+        }
+        if (! empty($filters['warehouse_id'])) {
+            $q->where('stock_movement_lines.warehouse_id', (int) $filters['warehouse_id']);
+        }
+        if (! empty($filters['start_date'])) {
+            $q->whereDate('stock_movements.movement_date', '>=', (string) $filters['start_date']);
+        }
+        if (! empty($filters['end_date'])) {
+            $q->whereDate('stock_movements.movement_date', '<=', (string) $filters['end_date']);
+        }
 
         $row = $q->first();
 
@@ -97,4 +114,3 @@ class StockMovementReportService
         ];
     }
 }
-

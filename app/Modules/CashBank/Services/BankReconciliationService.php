@@ -2,13 +2,13 @@
 
 namespace App\Modules\CashBank\Services;
 
-use App\Exceptions\ApiException;
-use App\Models\Tenant\BankReconciliation;
-use App\Models\Tenant\BankReconciliationLine;
-use App\Models\Tenant\JournalEntryLine;
+use App\Modules\CashBank\Models\BankReconciliation;
+use App\Modules\CashBank\Models\BankReconciliationLine;
+use App\Modules\Journal\Models\JournalEntryLine;
 use App\Shared\DocumentNumbering\DocumentNumberService;
+use App\Shared\DocumentNumbering\DocumentType;
+use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
-use App\Support\DocumentNumbering\DocumentType;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -19,14 +19,18 @@ class BankReconciliationService
         private readonly TenantContext $tenantContext,
         private readonly DocumentNumberService $documentNumberService,
         private readonly CashBankAccountService $cashBankAccountService,
-    ) {
-    }
+    ) {}
 
     public function list(array $filters = []): Collection
     {
         $query = BankReconciliation::query()->with('cashBankAccount');
-        if (! empty($filters['status'])) $query->where('status', (string) $filters['status']);
-        if (! empty($filters['cash_bank_account_id'])) $query->where('cash_bank_account_id', (int) $filters['cash_bank_account_id']);
+        if (! empty($filters['status'])) {
+            $query->where('status', (string) $filters['status']);
+        }
+        if (! empty($filters['cash_bank_account_id'])) {
+            $query->where('cash_bank_account_id', (int) $filters['cash_bank_account_id']);
+        }
+
         return $query->orderByDesc('statement_end_date')->orderByDesc('id')->get();
     }
 
@@ -38,7 +42,9 @@ class BankReconciliationService
     public function create(array $data): BankReconciliation
     {
         $company = $this->tenantContext->company();
-        if (! $company) throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
+        if (! $company) {
+            throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
+        }
 
         $cashAccountId = (int) $data['cash_bank_account_id'];
         if (! $this->cashBankAccountService->isCashBankAccount($cashAccountId)) {
@@ -152,4 +158,3 @@ class BankReconciliationService
         return $rec->refresh()->load('lines', 'cashBankAccount');
     }
 }
-

@@ -2,8 +2,8 @@
 
 namespace App\Modules\Tenant\Controllers;
 
-use App\Services\Tenant\TenantContext;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Tenant\TenantContext;
 use Illuminate\Http\JsonResponse;
 
 class TenantContextTestController
@@ -21,4 +21,3 @@ class TenantContextTestController
         ], 'Tenant context retrieved successfully');
     }
 }
-

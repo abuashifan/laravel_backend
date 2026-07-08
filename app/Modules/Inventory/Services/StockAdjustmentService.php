@@ -2,18 +2,17 @@
 
 namespace App\Modules\Inventory\Services;
 
-use App\Enums\SourceType;
-use App\Exceptions\ApiException;
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\Product;
-use App\Models\Tenant\StockAdjustment;
-use App\Models\Tenant\StockAdjustmentLine;
-use App\Models\Tenant\StockMovement;
+use App\Modules\Inventory\Models\StockAdjustment;
+use App\Modules\Inventory\Models\StockMovement;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\Product;
+use App\Modules\Settings\Services\CompanySettingService;
 use App\Shared\Audit\AuditLogService;
 use App\Shared\DocumentNumbering\DocumentNumberService;
-use App\Modules\Settings\Services\CompanySettingService;
+use App\Shared\DocumentNumbering\DocumentType;
+use App\Shared\Enums\SourceType;
+use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
-use App\Support\DocumentNumbering\DocumentType;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -28,8 +27,7 @@ class StockAdjustmentService
         private readonly StockMovementValidationService $movementValidation,
         private readonly AuditLogService $auditLogService,
         private readonly CompanySettingService $companySettingService,
-    ) {
-    }
+    ) {}
 
     public function list(array $filters = []): Collection
     {
@@ -42,7 +40,9 @@ class StockAdjustmentService
             }
         }
 
-        if (! empty($filters['warehouse_id'])) $q->where('warehouse_id', (int) $filters['warehouse_id']);
+        if (! empty($filters['warehouse_id'])) {
+            $q->where('warehouse_id', (int) $filters['warehouse_id']);
+        }
 
         if (! empty($filters['date_from'])) {
             $q->whereDate('adjustment_date', '>=', (string) $filters['date_from']);
@@ -63,7 +63,9 @@ class StockAdjustmentService
     public function create(array $data): StockAdjustment
     {
         $company = $this->tenantContext->company();
-        if (! $company) throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
+        if (! $company) {
+            throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
+        }
 
         $date = (string) $data['adjustment_date'];
         $lines = (array) $data['lines'];
@@ -216,7 +218,9 @@ class StockAdjustmentService
     private function approvalRequired(): bool
     {
         $company = $this->tenantContext->company();
-        if (! $company) return true;
+        if (! $company) {
+            return true;
+        }
 
         $workflow = $this->companySettingService->getOrCreateAccountingSetting($company);
 
@@ -225,7 +229,9 @@ class StockAdjustmentService
 
     private function shouldAutoPostOnCreate(object $workflow): bool
     {
-        if ((bool) $workflow->approval_enabled) return false;
+        if ((bool) $workflow->approval_enabled) {
+            return false;
+        }
 
         return $workflow->transaction_workflow_mode === 'simple_auto_post'
             && (bool) $workflow->auto_post_transactions;
@@ -234,7 +240,9 @@ class StockAdjustmentService
     private function shouldAutoPostAfterApproval(): bool
     {
         $company = $this->tenantContext->company();
-        if (! $company) return false;
+        if (! $company) {
+            return false;
+        }
 
         $workflow = $this->companySettingService->getOrCreateAccountingSetting($company);
 
@@ -249,7 +257,9 @@ class StockAdjustmentService
         }
 
         $reason = trim((string) $reason);
-        if ($reason === '') throw ApiException::make('VALIDATION_ERROR', 'Void reason is required.', 422, ['reason' => ['Void reason is required.']]);
+        if ($reason === '') {
+            throw ApiException::make('VALIDATION_ERROR', 'Void reason is required.', 422, ['reason' => ['Void reason is required.']]);
+        }
         $this->movementValidation->validatePeriodNotLocked((string) $adjustment->adjustment_date);
 
         return DB::connection('tenant')->transaction(function () use ($adjustment, $reason) {
@@ -411,7 +421,10 @@ class StockAdjustmentService
     {
         $meta = (array) ($adjustment->metadata ?? []);
         $ids = $meta['stock_movement_ids'] ?? null;
-        if (is_array($ids) && $ids !== []) return array_values(array_map('intval', $ids));
+        if (is_array($ids) && $ids !== []) {
+            return array_values(array_map('intval', $ids));
+        }
+
         return $adjustment->stock_movement_id ? [(int) $adjustment->stock_movement_id] : [];
     }
 

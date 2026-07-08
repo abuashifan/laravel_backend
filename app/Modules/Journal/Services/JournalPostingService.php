@@ -2,16 +2,14 @@
 
 namespace App\Modules\Journal\Services;
 
-use App\Exceptions\ApiException;
-use App\Models\Tenant\JournalEntry;
-use App\Support\Api\ApiErrorCode;
+use App\Modules\Journal\Models\JournalEntry;
+use App\Shared\Api\ApiErrorCode;
+use App\Shared\Exceptions\ApiException;
 use Illuminate\Support\Facades\DB;
 
 class JournalPostingService
 {
-    public function __construct(private readonly JournalValidationService $validator)
-    {
-    }
+    public function __construct(private readonly JournalValidationService $validator) {}
 
     public function assertCanPost(JournalEntry $journal): void
     {
@@ -42,7 +40,7 @@ class JournalPostingService
     }
 
     /**
-     * @param array<int,array<string,mixed>> $lines
+     * @param  array<int,array<string,mixed>>  $lines
      * @return array<int,array<string,mixed>>
      */
     private function mapLinesForValidation(array $lines): array
@@ -59,4 +57,3 @@ class JournalPostingService
         }, $lines);
     }
 }
-

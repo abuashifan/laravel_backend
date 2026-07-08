@@ -5,20 +5,35 @@ namespace App\Shared\Audit;
 class AuditAction
 {
     public const VIEW = 'view';
+
     public const CREATE = 'create';
+
     public const UPDATE = 'update';
+
     public const EDIT = 'edit';
+
     public const VOID = 'void';
+
     public const APPROVE = 'approve';
+
     public const POST = 'post';
+
     public const LOGIN = 'login';
+
     public const LOGOUT = 'logout';
+
     public const SWITCH = 'switch';
+
     public const EXPORT = 'export';
+
     public const IMPORT = 'import';
+
     public const CLOSE = 'close';
+
     public const REOPEN = 'reopen';
+
     public const DENY = 'deny';
+
     public const SYSTEM = 'system';
 
     public static function all(): array
@@ -48,4 +63,3 @@ class AuditAction
         return in_array($action, self::all(), true);
     }
 }
-

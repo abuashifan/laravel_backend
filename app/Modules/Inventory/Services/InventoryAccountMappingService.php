@@ -2,17 +2,15 @@
 
 namespace App\Modules\Inventory\Services;
 
-use App\Exceptions\ApiException;
-use App\Models\Tenant\AccountMapping;
+use App\Modules\MasterData\Models\AccountMapping;
 use App\Modules\Purchase\Services\PurchaseAccountResolverService;
+use App\Shared\AccountMapping\AccountMappingKey;
+use App\Shared\Exceptions\ApiException;
 use App\Shared\Validation\BusinessReferenceValidator;
-use App\Support\AccountMapping\AccountMappingKey;
 
 class InventoryAccountMappingService
 {
-    public function __construct(private readonly BusinessReferenceValidator $referenceValidator)
-    {
-    }
+    public function __construct(private readonly BusinessReferenceValidator $referenceValidator) {}
 
     public function getInventoryAccount(): int
     {

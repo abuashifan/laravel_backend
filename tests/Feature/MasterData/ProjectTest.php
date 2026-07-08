@@ -2,7 +2,7 @@
 
 namespace Tests\Feature\MasterData;
 
-use App\Models\Tenant\Project;
+use App\Modules\MasterData\Models\Project;
 
 class ProjectTest extends MasterDataTestCase
 {
@@ -91,4 +91,3 @@ class ProjectTest extends MasterDataTestCase
         $res->assertJsonPath('code', 'PERMISSION_DENIED');
     }
 }
-

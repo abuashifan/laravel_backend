@@ -2,40 +2,41 @@
 
 namespace App\Shared\Audit;
 
-use App\Models\ActivityLog;
-use App\Models\Tenant\TenantAuditLog;
+use App\Shared\Models\ActivityLog;
+use App\Shared\Models\TenantAuditLog;
 use App\Shared\Tenant\TenantContext;
-use App\Shared\Audit\AuditResult;
 use Illuminate\Http\Request;
 use Throwable;
 
 class AuditLogService
 {
-    public function __construct(private readonly TenantContext $tenantContext)
-    {
-    }
+    public function __construct(private readonly TenantContext $tenantContext) {}
 
     public function logSuccess(array $data, bool $tenant = true): mixed
     {
         $data['result'] = AuditResult::SUCCESS;
+
         return $tenant ? $this->logTenant($data) : $this->logCentral($data);
     }
 
     public function logFailed(array $data, bool $tenant = true): mixed
     {
         $data['result'] = AuditResult::FAILED;
+
         return $tenant ? $this->logTenant($data) : $this->logCentral($data);
     }
 
     public function logDenied(array $data, bool $tenant = true): mixed
     {
         $data['result'] = AuditResult::DENIED;
+
         return $tenant ? $this->logTenant($data) : $this->logCentral($data);
     }
 
     public function logWarning(array $data, bool $tenant = true): mixed
     {
         $data['result'] = AuditResult::WARNING;
+
         return $tenant ? $this->logTenant($data) : $this->logCentral($data);
     }
 

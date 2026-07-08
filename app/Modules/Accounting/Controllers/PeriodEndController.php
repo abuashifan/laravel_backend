@@ -13,9 +13,7 @@ class PeriodEndController extends Controller
 {
     use ApiResponse;
 
-    public function __construct(private readonly PeriodEndService $service)
-    {
-    }
+    public function __construct(private readonly PeriodEndService $service) {}
 
     public function status(PeriodEndPeriodRequest $request): JsonResponse
     {

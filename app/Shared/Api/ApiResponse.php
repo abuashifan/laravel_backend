@@ -2,8 +2,6 @@
 
 namespace App\Shared\Api;
 
-use App\Shared\Api\ApiErrorCode;
-use App\Shared\Api\ApiResponseBuilder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 

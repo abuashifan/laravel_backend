@@ -2,9 +2,7 @@
 
 namespace App\Shared\TransactionLifecycle;
 
-use App\Models\Tenant\TransactionRevision;
-use App\Shared\TransactionLifecycle\RevisionSnapshot;
-use App\Shared\TransactionLifecycle\TransactionRevisionAction;
+use App\Shared\Models\TransactionRevision;
 use InvalidArgumentException;
 
 class TransactionRevisionService
@@ -25,6 +23,7 @@ class TransactionRevisionService
             }
             if (method_exists($transaction, 'getAttribute')) {
                 $val = $transaction->getAttribute('revision_no');
+
                 return $val !== null ? max(1, (int) $val) : 1;
             }
         }
@@ -136,4 +135,3 @@ class TransactionRevisionService
         ]);
     }
 }
-

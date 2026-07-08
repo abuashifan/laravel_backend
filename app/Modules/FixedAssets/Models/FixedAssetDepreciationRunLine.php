@@ -11,8 +11,11 @@ class FixedAssetDepreciationRunLine extends Model
     use HasFactory;
 
     protected $connection = 'tenant';
+
     protected $table = 'fixed_asset_depreciation_run_lines';
+
     protected $guarded = [];
+
     protected $casts = [
         'metadata' => 'array',
     ];

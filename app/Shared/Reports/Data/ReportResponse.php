@@ -8,8 +8,7 @@ class ReportResponse
         public ReportMeta $meta,
         public array $data,
         public ?ReportTotals $totals = null,
-    ) {
-    }
+    ) {}
 
     public static function make(ReportMeta $meta, array $data, ?ReportTotals $totals = null): self
     {
@@ -25,4 +24,3 @@ class ReportResponse
         ];
     }
 }
-

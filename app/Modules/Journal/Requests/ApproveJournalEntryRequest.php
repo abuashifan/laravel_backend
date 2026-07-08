@@ -16,4 +16,3 @@ class ApproveJournalEntryRequest extends FormRequest
         return [];
     }
 }
-

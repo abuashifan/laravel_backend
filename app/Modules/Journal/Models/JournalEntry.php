@@ -3,8 +3,8 @@
 namespace App\Modules\Journal\Models;
 
 use App\Shared\Reports\HasReportVisibility;
-use App\Shared\TransactionLifecycle\HasRevisionTracking;
 use App\Shared\SourceDocument\HasSourceLink;
+use App\Shared\TransactionLifecycle\HasRevisionTracking;
 use App\Shared\TransactionLifecycle\HasTransactionLifecycle;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -13,12 +13,12 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class JournalEntry extends Model
 {
     use HasFactory;
-    use HasTransactionLifecycle;
-    use HasRevisionTracking;
-    use HasSourceLink, HasReportVisibility {
+    use HasReportVisibility, HasSourceLink {
         HasSourceLink::scopeNotObsolete insteadof HasReportVisibility;
         HasSourceLink::scopeObsolete insteadof HasReportVisibility;
     }
+    use HasRevisionTracking;
+    use HasTransactionLifecycle;
 
     protected $connection = 'tenant';
 
@@ -74,6 +74,7 @@ class JournalEntry extends Model
     public function getTransactionDateAttribute(): ?string
     {
         $val = $this->journal_date;
+
         return $val ? (string) $val : null;
     }
 

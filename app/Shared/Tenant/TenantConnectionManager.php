@@ -2,7 +2,7 @@
 
 namespace App\Shared\Tenant;
 
-use App\Models\TenantDatabase;
+use App\Shared\Models\TenantDatabase;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;

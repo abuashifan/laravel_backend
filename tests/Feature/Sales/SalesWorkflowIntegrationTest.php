@@ -2,15 +2,15 @@
 
 namespace Tests\Feature\Sales;
 
-use App\Models\FiscalYear;
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\CustomerDeposit;
-use App\Models\Tenant\CustomerDepositAllocation;
-use App\Models\Tenant\JournalEntry;
-use App\Models\Tenant\SalesInvoice;
-use App\Models\Tenant\SalesOrderLine;
-use App\Models\Tenant\StockMovement;
+use App\Modules\Inventory\Models\StockMovement;
+use App\Modules\Journal\Models\JournalEntry;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\Sales\Models\CustomerDeposit;
+use App\Modules\Sales\Models\CustomerDepositAllocation;
+use App\Modules\Sales\Models\SalesInvoice;
+use App\Modules\Sales\Models\SalesOrderLine;
+use App\Shared\Models\FiscalYear;
 use Illuminate\Support\Facades\Route;
 
 class SalesWorkflowIntegrationTest extends SalesTestCase

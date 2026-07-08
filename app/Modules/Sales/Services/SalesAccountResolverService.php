@@ -2,17 +2,18 @@
 
 namespace App\Modules\Sales\Services;
 
-use App\Exceptions\ApiException;
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\Contact;
-use App\Models\Tenant\Product;
-use App\Models\Tenant\SalesInvoice;
-use App\Models\Tenant\SalesInvoiceLine;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\MasterData\Models\Contact;
+use App\Modules\MasterData\Models\Product;
+use App\Modules\Sales\Models\SalesInvoice;
+use App\Modules\Sales\Models\SalesInvoiceLine;
+use App\Shared\Exceptions\ApiException;
 
 class SalesAccountResolverService
 {
     public const RECEIVABLE_MAPPING_MESSAGE = 'Akun Piutang Usaha belum diatur. Buka Pengaturan > Pemetaan Akun > Sales > Piutang Usaha.';
+
     public const REVENUE_MAPPING_MESSAGE = 'Akun Pendapatan Penjualan belum diatur. Buka Pengaturan > Pemetaan Akun > Sales > Pendapatan Penjualan atau atur Akun Penjualan di master data produk.';
 
     /**

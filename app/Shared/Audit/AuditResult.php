@@ -5,8 +5,11 @@ namespace App\Shared\Audit;
 class AuditResult
 {
     public const SUCCESS = 'success';
+
     public const FAILED = 'failed';
+
     public const DENIED = 'denied';
+
     public const WARNING = 'warning';
 
     public static function all(): array
@@ -24,4 +27,3 @@ class AuditResult
         return in_array($result, self::all(), true);
     }
 }
-

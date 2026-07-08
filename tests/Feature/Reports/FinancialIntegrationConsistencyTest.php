@@ -2,10 +2,10 @@
 
 namespace Tests\Feature\Reports;
 
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\Department;
-use App\Models\Tenant\JournalEntry;
-use App\Models\Tenant\Project;
+use App\Modules\Journal\Models\JournalEntry;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\MasterData\Models\Department;
+use App\Modules\MasterData\Models\Project;
 use Illuminate\Support\Facades\DB;
 use Tests\Feature\Journal\JournalTestCase;
 

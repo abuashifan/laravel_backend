@@ -16,4 +16,3 @@ class PostJournalEntryRequest extends FormRequest
         return [];
     }
 }
-

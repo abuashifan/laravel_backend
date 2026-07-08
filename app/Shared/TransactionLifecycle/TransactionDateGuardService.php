@@ -2,14 +2,13 @@
 
 namespace App\Shared\TransactionLifecycle;
 
-use App\Shared\TransactionLifecycle\Contracts\TransactionDateGuard;
-use App\Models\Company;
-use App\Services\Accounting\AnnualClosingGateService;
-use App\Services\Accounting\FiscalYearService;
-use App\Services\Accounting\PeriodLockService;
-use App\Services\Settings\CompanySettingService;
+use App\Modules\Accounting\Services\AnnualClosingGateService;
+use App\Modules\Accounting\Services\FiscalYearService;
+use App\Modules\Accounting\Services\PeriodLockService;
+use App\Modules\Settings\Services\CompanySettingService;
+use App\Shared\Models\Company;
 use App\Shared\Tenant\TenantContext;
-use App\Shared\TransactionLifecycle\TransactionPolicyResult;
+use App\Shared\TransactionLifecycle\Contracts\TransactionDateGuard;
 use Carbon\Carbon;
 use Throwable;
 
@@ -21,8 +20,7 @@ class TransactionDateGuardService implements TransactionDateGuard
         private readonly FiscalYearService $fiscalYearService,
         private readonly PeriodLockService $periodLockService,
         private readonly AnnualClosingGateService $annualClosingGateService,
-    ) {
-    }
+    ) {}
 
     public function check(?string $transactionDate, string $action, string $module): TransactionPolicyResult
     {

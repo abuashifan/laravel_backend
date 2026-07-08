@@ -14,6 +14,7 @@ class UpdateFixedAssetCategoryRequest extends StoreFixedAssetCategoryRequest
         $rules['name'] = ['sometimes', 'string', 'max:255'];
         $rules['asset_class'] = ['sometimes', 'in:tangible,intangible'];
         $rules['depreciation_type'] = ['sometimes', 'in:depreciation,amortization,none,impairment_only'];
+
         return $rules;
     }
 }

@@ -11,7 +11,9 @@ class OpeningBalanceLine extends Model
     use HasFactory;
 
     protected $connection = 'tenant';
+
     protected $table = 'opening_balance_lines';
+
     protected $guarded = [];
 
     protected $casts = [

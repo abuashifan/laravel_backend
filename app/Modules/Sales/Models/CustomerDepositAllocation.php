@@ -11,8 +11,11 @@ class CustomerDepositAllocation extends Model
     use HasFactory;
 
     protected $connection = 'tenant';
+
     protected $table = 'customer_deposit_allocations';
+
     protected $guarded = [];
+
     protected $casts = [
         'allocation_date' => 'date',
         'voided_at' => 'datetime',

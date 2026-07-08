@@ -2,11 +2,11 @@
 
 namespace Tests\Feature\Permissions;
 
-use App\Models\Company;
-use App\Models\CompanyAccountingSetting;
-use App\Models\CompanyUser;
-use App\Models\TenantDatabase;
-use App\Models\User;
+use App\Shared\Models\Company;
+use App\Shared\Models\CompanyAccountingSetting;
+use App\Shared\Models\CompanyUser;
+use App\Shared\Models\TenantDatabase;
+use App\Shared\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
 use Laravel\Sanctum\Sanctum;

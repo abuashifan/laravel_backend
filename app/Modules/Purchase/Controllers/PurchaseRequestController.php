@@ -3,10 +3,10 @@
 namespace App\Modules\Purchase\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Purchase\Models\PurchaseRequest;
 use App\Modules\Purchase\Requests\PurchaseRequestActionRequest;
 use App\Modules\Purchase\Requests\StorePurchaseRequestRequest;
 use App\Modules\Purchase\Requests\UpdatePurchaseRequestRequest;
-use App\Models\Tenant\PurchaseRequest;
 use App\Modules\Purchase\Services\PurchaseRequestService;
 use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -16,9 +16,7 @@ class PurchaseRequestController extends Controller
 {
     use ApiResponse;
 
-    public function __construct(private readonly PurchaseRequestService $service)
-    {
-    }
+    public function __construct(private readonly PurchaseRequestService $service) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -38,6 +36,7 @@ class PurchaseRequestController extends Controller
     public function update(UpdatePurchaseRequestRequest $request, int $id): JsonResponse
     {
         $purchaseRequest = PurchaseRequest::query()->findOrFail($id);
+
         return $this->successResponse($this->service->update($purchaseRequest, $request->validated()), 'Purchase request updated successfully');
     }
 

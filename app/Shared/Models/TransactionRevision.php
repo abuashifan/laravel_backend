@@ -2,7 +2,7 @@
 
 namespace App\Shared\Models;
 
-use App\Support\Revision\TransactionRevisionAction;
+use App\Shared\TransactionLifecycle\TransactionRevisionAction;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -60,7 +60,7 @@ class TransactionRevision extends Model
     public function hasChangedField(string $field): bool
     {
         $changed = (array) ($this->changed_fields ?? []);
+
         return array_key_exists($field, $changed);
     }
 }
-

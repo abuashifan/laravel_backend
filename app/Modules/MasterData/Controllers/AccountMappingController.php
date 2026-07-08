@@ -12,9 +12,7 @@ class AccountMappingController extends Controller
 {
     use ApiResponse;
 
-    public function __construct(private readonly AccountMappingStorageService $service)
-    {
-    }
+    public function __construct(private readonly AccountMappingStorageService $service) {}
 
     public function index(): JsonResponse
     {
@@ -31,4 +29,3 @@ class AccountMappingController extends Controller
         return $this->successResponse($mapping, 'Account mapping updated successfully');
     }
 }
-

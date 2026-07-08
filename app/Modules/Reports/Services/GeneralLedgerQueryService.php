@@ -2,10 +2,10 @@
 
 namespace App\Modules\Reports\Services;
 
-use App\Data\Reports\LedgerAccountSummaryData;
-use App\Data\Reports\LedgerFilter;
-use App\Data\Reports\LedgerLineData;
-use App\Models\Tenant\ChartOfAccount;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Shared\Reports\Data\LedgerAccountSummaryData;
+use App\Shared\Reports\Data\LedgerFilter;
+use App\Shared\Reports\Data\LedgerLineData;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 
@@ -15,8 +15,7 @@ class GeneralLedgerQueryService
         private readonly LedgerBalanceCalculator $calculator,
         private readonly LedgerFilterValidator $validator,
         private readonly ?ReportVisibilityService $visibilityService = null,
-    ) {
-    }
+    ) {}
 
     public function getLedger(LedgerFilter $filter): array
     {
@@ -113,7 +112,7 @@ class GeneralLedgerQueryService
             ];
         }
 
-        $account = new ChartOfAccount();
+        $account = new ChartOfAccount;
         $account->id = (int) $accRow->id;
         $account->account_code = (string) $accRow->account_code;
         $account->account_name = (string) $accRow->account_name;

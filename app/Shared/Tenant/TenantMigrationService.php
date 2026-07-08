@@ -2,17 +2,15 @@
 
 namespace App\Shared\Tenant;
 
-use App\Models\Company;
-use App\Models\TenantDatabase;
+use App\Shared\Models\Company;
+use App\Shared\Models\TenantDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\File;
 use Throwable;
 
 class TenantMigrationService
 {
-    public function __construct(private readonly TenantConnectionManager $connectionManager)
-    {
-    }
+    public function __construct(private readonly TenantConnectionManager $connectionManager) {}
 
     /**
      * @return array{
@@ -82,6 +80,7 @@ class TenantMigrationService
                     'success' => false,
                     'reason' => 'Company tidak ditemukan.',
                 ];
+
                 continue;
             }
 
@@ -93,6 +92,7 @@ class TenantMigrationService
                     'success' => false,
                     'reason' => 'Company tidak aktif.',
                 ];
+
                 continue;
             }
 
@@ -104,6 +104,7 @@ class TenantMigrationService
                     'success' => false,
                     'reason' => 'Tenant database belum aktif.',
                 ];
+
                 continue;
             }
 

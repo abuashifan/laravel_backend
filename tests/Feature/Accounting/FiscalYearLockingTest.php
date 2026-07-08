@@ -2,16 +2,15 @@
 
 namespace Tests\Feature\Accounting;
 
-use App\Models\Company;
-use App\Models\CompanyUser;
-use App\Models\FiscalYear;
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\JournalEntry;
-use App\Models\TenantDatabase;
-use App\Services\Accounting\FiscalYearService;
-use App\Services\Tenant\TenantConnectionManager;
-use App\Support\AccountMapping\AccountMappingKey;
+use App\Modules\Accounting\Services\FiscalYearService;
+use App\Modules\Journal\Models\JournalEntry;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Shared\AccountMapping\AccountMappingKey;
+use App\Shared\Models\Company;
+use App\Shared\Models\CompanyUser;
+use App\Shared\Models\TenantDatabase;
+use App\Shared\Tenant\TenantConnectionManager;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\File;
 use Tests\Feature\Journal\JournalTestCase;

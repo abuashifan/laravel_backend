@@ -2,8 +2,8 @@
 
 namespace App\Console\Commands;
 
-use App\Models\TenantDatabase;
-use App\Services\Tenant\TenantConnectionManager;
+use App\Shared\Models\TenantDatabase;
+use App\Shared\Tenant\TenantConnectionManager;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -21,11 +21,13 @@ class CheckTenantStorageCommand extends Command
 
         if (! is_dir($path)) {
             $this->error("Tenant directory does not exist: {$path}");
+
             return self::FAILURE;
         }
 
         if (! is_writable($path)) {
             $this->error("Tenant directory is not writable: {$path}");
+
             return self::FAILURE;
         }
 
@@ -38,6 +40,7 @@ class CheckTenantStorageCommand extends Command
 
         if ($tenantDatabases->isEmpty()) {
             $this->warn('No active tenant database records found.');
+
             return self::SUCCESS;
         }
 
@@ -56,6 +59,7 @@ class CheckTenantStorageCommand extends Command
             } catch (Throwable $e) {
                 $failed = true;
                 $this->error('Tenant database unavailable: '.$e->getMessage());
+
                 continue;
             }
 
@@ -64,6 +68,7 @@ class CheckTenantStorageCommand extends Command
                     if (! Schema::connection('tenant')->hasTable($table)) {
                         $failed = true;
                         $this->error("[MISSING] {$table}");
+
                         continue;
                     }
 

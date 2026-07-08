@@ -3,9 +3,9 @@
 namespace App\Modules\MasterData\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\MasterData\Models\PaymentTerm;
 use App\Modules\MasterData\Requests\StorePaymentTermRequest;
 use App\Modules\MasterData\Requests\UpdatePaymentTermRequest;
-use App\Models\Tenant\PaymentTerm;
 use App\Modules\MasterData\Services\PaymentTermService;
 use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -15,9 +15,7 @@ class PaymentTermController extends Controller
 {
     use ApiResponse;
 
-    public function __construct(private readonly PaymentTermService $service)
-    {
-    }
+    public function __construct(private readonly PaymentTermService $service) {}
 
     public function index(Request $request): JsonResponse
     {

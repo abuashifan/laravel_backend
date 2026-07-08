@@ -2,9 +2,9 @@
 
 namespace App\Modules\Journal\Services;
 
-use App\Exceptions\ApiException;
-use App\Models\Tenant\JournalEntry;
-use App\Support\Api\ApiErrorCode;
+use App\Modules\Journal\Models\JournalEntry;
+use App\Shared\Api\ApiErrorCode;
+use App\Shared\Exceptions\ApiException;
 use Illuminate\Support\Facades\DB;
 
 class JournalVoidService

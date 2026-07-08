@@ -3,9 +3,9 @@
 namespace App\Modules\MasterData\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\MasterData\Models\ProductCategory;
 use App\Modules\MasterData\Requests\StoreProductCategoryRequest;
 use App\Modules\MasterData\Requests\UpdateProductCategoryRequest;
-use App\Models\Tenant\ProductCategory;
 use App\Modules\MasterData\Services\ProductCategoryService;
 use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -15,25 +15,26 @@ class ProductCategoryController extends Controller
 {
     use ApiResponse;
 
-    public function __construct(private readonly ProductCategoryService $service)
-    {
-    }
+    public function __construct(private readonly ProductCategoryService $service) {}
 
     public function index(Request $request): JsonResponse
     {
         $items = $this->service->list($request->query());
+
         return $this->listResponse($items, $request, 'Product categories retrieved successfully');
     }
 
     public function store(StoreProductCategoryRequest $request): JsonResponse
     {
         $category = $this->service->create($request->validated());
+
         return $this->successResponse($category, 'Product category created successfully', 201);
     }
 
     public function show(int $id): JsonResponse
     {
         $category = ProductCategory::query()->findOrFail($id);
+
         return $this->successResponse($category, 'Product category retrieved successfully');
     }
 
@@ -61,4 +62,3 @@ class ProductCategoryController extends Controller
         return $this->successResponse($category, 'Product category activated successfully');
     }
 }
-

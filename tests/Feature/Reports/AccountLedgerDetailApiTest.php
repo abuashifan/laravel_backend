@@ -2,10 +2,10 @@
 
 namespace Tests\Feature\Reports;
 
-use App\Models\Company;
-use App\Models\CompanyUser;
-use App\Models\TenantDatabase;
-use App\Services\Tenant\TenantConnectionManager;
+use App\Shared\Models\Company;
+use App\Shared\Models\CompanyUser;
+use App\Shared\Models\TenantDatabase;
+use App\Shared\Tenant\TenantConnectionManager;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\File;
 use Tests\Feature\Journal\JournalTestCase;
@@ -133,4 +133,3 @@ class AccountLedgerDetailApiTest extends JournalTestCase
         $res->assertStatus(404);
     }
 }
-

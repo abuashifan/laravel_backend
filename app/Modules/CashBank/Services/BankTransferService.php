@@ -2,15 +2,15 @@
 
 namespace App\Modules\CashBank\Services;
 
-use App\Exceptions\ApiException;
-use App\Models\Tenant\BankTransfer;
-use App\Models\Tenant\JournalEntry;
+use App\Modules\CashBank\Models\BankTransfer;
+use App\Modules\Journal\Models\JournalEntry;
+use App\Shared\Audit\AuditLogService;
 use App\Shared\DocumentNumbering\DocumentNumberService;
+use App\Shared\DocumentNumbering\DocumentType;
+use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
 use App\Shared\TransactionLifecycle\TransactionDateGuardService;
 use App\Shared\TransactionLifecycle\TransactionVoidEffectService;
-use App\Shared\Audit\AuditLogService;
-use App\Support\DocumentNumbering\DocumentType;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -23,13 +23,15 @@ class BankTransferService
         private readonly CashBankAccountService $cashBankAccountService,
         private readonly TransactionVoidEffectService $voidEffectService,
         private readonly ?AuditLogService $auditLogService = null,
-    ) {
-    }
+    ) {}
 
     public function list(array $filters = []): Collection
     {
         $query = BankTransfer::query()->with('fromCashBankAccount', 'toCashBankAccount');
-        if (! empty($filters['status'])) $query->where('status', (string) $filters['status']);
+        if (! empty($filters['status'])) {
+            $query->where('status', (string) $filters['status']);
+        }
+
         return $query->orderByDesc('transfer_date')->orderByDesc('id')->get();
     }
 
@@ -41,7 +43,9 @@ class BankTransferService
     public function create(array $data): BankTransfer
     {
         $company = $this->tenantContext->company();
-        if (! $company) throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
+        if (! $company) {
+            throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
+        }
 
         $fromId = (int) $data['from_cash_bank_account_id'];
         $toId = (int) $data['to_cash_bank_account_id'];
@@ -66,7 +70,9 @@ class BankTransferService
 
     public function post(BankTransfer $transfer): BankTransfer
     {
-        if ($transfer->status === 'posted') return $transfer;
+        if ($transfer->status === 'posted') {
+            return $transfer;
+        }
         $this->guardDate((string) $transfer->transfer_date);
 
         $fromId = (int) $transfer->from_cash_bank_account_id;
@@ -93,13 +99,21 @@ class BankTransferService
 
     public function void(BankTransfer $transfer, ?string $reason = null): BankTransfer
     {
-        if ($transfer->status === 'void') throw ApiException::make('BANK_TRANSFER_ALREADY_VOID', 'Bank transfer already void.', 422);
+        if ($transfer->status === 'void') {
+            throw ApiException::make('BANK_TRANSFER_ALREADY_VOID', 'Bank transfer already void.', 422);
+        }
         $reason = $this->voidEffectService->requireReason($reason);
         $this->guardDate((string) $transfer->transfer_date, 'void');
+
         return DB::connection('tenant')->transaction(function () use ($transfer, $reason) {
             $journalIds = $this->voidEffectService->voidJournalsForSource('bank_transfer', (int) $transfer->id, $reason);
-            $transfer->status = 'void'; $transfer->voided_by = auth()->id(); $transfer->voided_at = now(); $transfer->void_reason = $reason; $transfer->save();
+            $transfer->status = 'void';
+            $transfer->voided_by = auth()->id();
+            $transfer->voided_at = now();
+            $transfer->void_reason = $reason;
+            $transfer->save();
             $this->auditLogService?->logSuccess(['event' => 'cash_bank.bank_transfer_voided', 'module' => 'cash_bank', 'record_type' => 'bank_transfer', 'record_id' => $transfer->id, 'record_number' => $transfer->transfer_number, 'user_id' => auth()->id(), 'metadata' => ['reason' => $reason, 'voided_journal_ids' => $journalIds]], tenant: true);
+
             return $transfer->refresh();
         });
     }
@@ -107,7 +121,9 @@ class BankTransferService
     private function journal(BankTransfer $transfer): JournalEntry
     {
         $company = $this->tenantContext->company();
-        if (! $company) throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
+        if (! $company) {
+            throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
+        }
 
         $journal = JournalEntry::query()->create([
             'journal_number' => $this->documentNumberService->generate($company, DocumentType::JOURNAL_ENTRY, (string) $transfer->transfer_date),

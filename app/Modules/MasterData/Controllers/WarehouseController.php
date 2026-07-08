@@ -3,9 +3,9 @@
 namespace App\Modules\MasterData\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\MasterData\Models\Warehouse;
 use App\Modules\MasterData\Requests\StoreWarehouseRequest;
 use App\Modules\MasterData\Requests\UpdateWarehouseRequest;
-use App\Models\Tenant\Warehouse;
 use App\Modules\MasterData\Services\WarehouseService;
 use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -15,25 +15,26 @@ class WarehouseController extends Controller
 {
     use ApiResponse;
 
-    public function __construct(private readonly WarehouseService $service)
-    {
-    }
+    public function __construct(private readonly WarehouseService $service) {}
 
     public function index(Request $request): JsonResponse
     {
         $items = $this->service->list($request->query());
+
         return $this->listResponse($items, $request, 'Warehouses retrieved successfully');
     }
 
     public function store(StoreWarehouseRequest $request): JsonResponse
     {
         $warehouse = $this->service->create($request->validated());
+
         return $this->successResponse($warehouse, 'Warehouse created successfully', 201);
     }
 
     public function show(int $id): JsonResponse
     {
         $warehouse = Warehouse::query()->findOrFail($id);
+
         return $this->successResponse($warehouse, 'Warehouse retrieved successfully');
     }
 
@@ -61,4 +62,3 @@ class WarehouseController extends Controller
         return $this->successResponse($warehouse, 'Warehouse activated successfully');
     }
 }
-

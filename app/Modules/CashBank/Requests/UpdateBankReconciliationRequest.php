@@ -6,7 +6,10 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class UpdateBankReconciliationRequest extends FormRequest
 {
-    public function authorize(): bool { return true; }
+    public function authorize(): bool
+    {
+        return true;
+    }
 
     public function rules(): array
     {
@@ -18,4 +21,3 @@ class UpdateBankReconciliationRequest extends FormRequest
         ];
     }
 }
-

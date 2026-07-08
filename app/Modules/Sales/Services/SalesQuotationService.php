@@ -2,13 +2,13 @@
 
 namespace App\Modules\Sales\Services;
 
-use App\Exceptions\ApiException;
-use App\Models\Tenant\SalesQuotation;
+use App\Modules\Sales\Models\SalesQuotation;
+use App\Modules\Sales\Services\Concerns\HandlesSalesDocuments;
 use App\Shared\Audit\AuditLogService;
 use App\Shared\DocumentNumbering\DocumentNumberService;
-use App\Modules\Sales\Services\Concerns\HandlesSalesDocuments;
+use App\Shared\DocumentNumbering\DocumentType;
+use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
-use App\Support\DocumentNumbering\DocumentType;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -21,8 +21,7 @@ class SalesQuotationService
         private readonly DocumentNumberService $documentNumberService,
         private readonly SalesCalculationService $calculationService,
         private readonly ?AuditLogService $auditLogService = null,
-    ) {
-    }
+    ) {}
 
     public function list(array $filters = []): Collection
     {
@@ -131,6 +130,7 @@ class SalesQuotationService
     public function cancel(SalesQuotation $quotation, ?string $reason = null): SalesQuotation
     {
         $quotation->cancel_reason = $reason;
+
         return $this->transition($quotation, 'cancelled', 'cancelled_by', 'cancelled_at', ['draft', 'sent', 'approved', 'accepted']);
     }
 

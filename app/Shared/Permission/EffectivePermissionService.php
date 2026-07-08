@@ -2,9 +2,9 @@
 
 namespace App\Shared\Permission;
 
-use App\Models\CompanyUser;
-use App\Models\Permission;
-use App\Models\Role;
+use App\Shared\Models\CompanyUser;
+use App\Shared\Models\Permission;
+use App\Shared\Models\Role;
 use Illuminate\Support\Facades\Schema;
 
 class EffectivePermissionService
