@@ -2,6 +2,8 @@
 
 namespace App\Modules\Inventory\Models;
 
+use App\Modules\Journal\Models\JournalEntry;
+use App\Modules\MasterData\Models\Warehouse;
 use Database\Factories\Tenant\StockMovementFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;

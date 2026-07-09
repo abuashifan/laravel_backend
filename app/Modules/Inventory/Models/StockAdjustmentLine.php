@@ -2,6 +2,11 @@
 
 namespace App\Modules\Inventory\Models;
 
+use App\Modules\MasterData\Models\Department;
+use App\Modules\MasterData\Models\Product;
+use App\Modules\MasterData\Models\Project;
+use App\Modules\MasterData\Models\Unit;
+use App\Modules\MasterData\Models\Warehouse;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;

@@ -3,6 +3,8 @@
 namespace App\Modules\Inventory\Models;
 
 use Database\Factories\Tenant\StockBalanceFactory;
+use App\Modules\MasterData\Models\Product;
+use App\Modules\MasterData\Models\Warehouse;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
