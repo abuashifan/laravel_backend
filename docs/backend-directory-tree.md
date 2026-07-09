@@ -110,11 +110,17 @@ Excluded intentionally: `.git`, `vendor`, `node_modules`, `storage`, `bootstrap/
 │   │   │       └── Concerns
 │   │   ├── Reports
 │   │   │   ├── Controllers
+│   │   │   │   ├── Purchase
+│   │   │   │   └── Sales
 │   │   │   ├── Providers
 │   │   │   ├── Requests
-│   │   │   │   └── Concerns
+│   │   │   │   ├── Concerns
+│   │   │   │   ├── Purchase
+│   │   │   │   └── Sales
 │   │   │   ├── Routes
 │   │   │   └── Services
+│   │   │       ├── Purchase
+│   │   │       └── Sales
 │   │   ├── Sales
 │   │   │   ├── Controllers
 │   │   │   ├── Models

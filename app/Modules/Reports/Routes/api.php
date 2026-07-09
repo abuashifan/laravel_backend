@@ -6,6 +6,7 @@ use App\Modules\Reports\Controllers\CashFlowController;
 use App\Modules\Reports\Controllers\FinancialSummaryController;
 use App\Modules\Reports\Controllers\GeneralLedgerController;
 use App\Modules\Reports\Controllers\ProfitLossController;
+use App\Modules\Reports\Controllers\Purchase\PurchaseReportController;
 use App\Modules\Reports\Controllers\ReconciliationReportController;
 use App\Modules\Reports\Controllers\Sales\SalesReportController;
 use App\Modules\Reports\Controllers\TrialBalanceController;
@@ -30,5 +31,11 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('reports')->group(
         Route::get('/summary', [SalesReportController::class, 'summary']);
         Route::get('/by-customer', [SalesReportController::class, 'byCustomer']);
         Route::get('/by-product', [SalesReportController::class, 'byProduct']);
+    });
+
+    Route::prefix('purchase')->middleware('permission:reports.view')->group(function () {
+        Route::get('/summary', [PurchaseReportController::class, 'summary']);
+        Route::get('/by-vendor', [PurchaseReportController::class, 'byVendor']);
+        Route::get('/by-product', [PurchaseReportController::class, 'byProduct']);
     });
 });
