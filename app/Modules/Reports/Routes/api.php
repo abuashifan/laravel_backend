@@ -7,6 +7,7 @@ use App\Modules\Reports\Controllers\FinancialSummaryController;
 use App\Modules\Reports\Controllers\GeneralLedgerController;
 use App\Modules\Reports\Controllers\ProfitLossController;
 use App\Modules\Reports\Controllers\ReconciliationReportController;
+use App\Modules\Reports\Controllers\Sales\SalesReportController;
 use App\Modules\Reports\Controllers\TrialBalanceController;
 use Illuminate\Support\Facades\Route;
 
@@ -24,4 +25,10 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('reports')->group(
     Route::get('/reconciliation/grni', [ReconciliationReportController::class, 'grni'])->middleware('permission:reports.view');
     Route::get('/reconciliation/customer-deposits', [ReconciliationReportController::class, 'customerDeposits'])->middleware('permission:reports.view');
     Route::get('/reconciliation/vendor-deposits', [ReconciliationReportController::class, 'vendorDeposits'])->middleware('permission:reports.view');
+
+    Route::prefix('sales')->middleware('permission:reports.view')->group(function () {
+        Route::get('/summary', [SalesReportController::class, 'summary']);
+        Route::get('/by-customer', [SalesReportController::class, 'byCustomer']);
+        Route::get('/by-product', [SalesReportController::class, 'byProduct']);
+    });
 });
