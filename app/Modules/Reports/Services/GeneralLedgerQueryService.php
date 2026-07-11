@@ -31,6 +31,10 @@ class GeneralLedgerQueryService
             return $this->getAccountLedger($filter->accountId, $filter);
         }
 
+        if ($filter->mode === 'detail') {
+            return $this->getLedgerDetail($filter);
+        }
+
         $accounts = ChartOfAccount::query()
             ->orderBy('account_code')
             ->get(['id', 'account_code', 'account_name', 'account_type', 'normal_balance'])
@@ -75,6 +79,72 @@ class GeneralLedgerQueryService
         return [
             'valid' => true,
             'filter' => $filter->toArray(),
+            'mode' => 'summary',
+            'accounts' => $rows,
+        ];
+    }
+
+    /**
+     * Buku Besar - Rincian (Fase 7 T7.1): daftar baris jurnal per akun untuk semua akun sekaligus.
+     * Sama seperti mode ringkasan tetapi tiap akun turut membawa `lines`-nya. Akun tanpa mutasi
+     * di-skip kecuali include_zero_balance aktif (konsisten dengan mode ringkasan).
+     */
+    public function getLedgerDetail(LedgerFilter $filter): array
+    {
+        $accounts = ChartOfAccount::query()
+            ->orderBy('account_code')
+            ->get(['id', 'account_code', 'account_name', 'account_type', 'normal_balance'])
+            ->values();
+
+        $rows = [];
+
+        foreach ($accounts as $acc) {
+            $accountId = (int) $acc->id;
+            $normalBalance = (string) $acc->normal_balance;
+
+            $opening = $filter->includeOpeningBalance
+                ? $this->getOpeningBalance($accountId, $filter)
+                : ['debit' => 0.0, 'credit' => 0.0, 'balance' => 0.0];
+
+            $period = $this->getPeriodMovements($accountId, $filter);
+
+            $hasMovement = abs((float) ($period['debit'] ?? 0)) >= 0.0000001
+                || abs((float) ($period['credit'] ?? 0)) >= 0.0000001;
+
+            $ending = $this->calculator->endingBalance(
+                (float) ($opening['balance'] ?? 0),
+                (float) ($period['debit'] ?? 0),
+                (float) ($period['credit'] ?? 0),
+                $normalBalance
+            );
+
+            if (! $filter->includeZeroBalance && ! $hasMovement && abs($ending) < 0.0000001) {
+                continue;
+            }
+
+            $lines = $hasMovement
+                ? $this->getLedgerLines($accountId, $filter, (float) ($opening['balance'] ?? 0), $normalBalance)
+                : [];
+
+            $rows[] = [
+                'account' => [
+                    'id' => $accountId,
+                    'account_code' => (string) $acc->account_code,
+                    'account_name' => (string) $acc->account_name,
+                    'account_type' => (string) $acc->account_type,
+                    'normal_balance' => $normalBalance,
+                ],
+                'opening_balance' => $opening,
+                'period_totals' => $period,
+                'ending_balance' => $ending,
+                'lines' => array_map(fn (LedgerLineData $l) => $l->toArray(), $lines),
+            ];
+        }
+
+        return [
+            'valid' => true,
+            'filter' => $filter->toArray(),
+            'mode' => 'detail',
             'accounts' => $rows,
         ];
     }

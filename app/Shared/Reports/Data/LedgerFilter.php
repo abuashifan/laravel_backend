@@ -14,6 +14,8 @@ class LedgerFilter
         public bool $includeZeroBalance = false,
         public ?string $sortBy = 'journal_date',
         public string $sortDirection = 'asc',
+        // 'summary' = saldo per akun (default); 'detail' = baris jurnal per akun (Buku Besar Rincian, Fase 7).
+        public string $mode = 'summary',
     ) {}
 
     public static function fromArray(array $data): self
@@ -32,6 +34,7 @@ class LedgerFilter
                 : ((bool) ($data['includeZeroBalance'] ?? false)),
             sortBy: $data['sort_by'] ?? $data['sortBy'] ?? 'journal_date',
             sortDirection: strtolower((string) ($data['sort_direction'] ?? $data['sortDirection'] ?? 'asc')) === 'desc' ? 'desc' : 'asc',
+            mode: strtolower((string) ($data['mode'] ?? 'summary')) === 'detail' ? 'detail' : 'summary',
         );
     }
 
@@ -47,6 +50,7 @@ class LedgerFilter
             'include_zero_balance' => $this->includeZeroBalance,
             'sort_by' => $this->sortBy,
             'sort_direction' => $this->sortDirection,
+            'mode' => $this->mode,
         ];
     }
 

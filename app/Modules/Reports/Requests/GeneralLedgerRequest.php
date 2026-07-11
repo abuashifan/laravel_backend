@@ -40,6 +40,7 @@ class GeneralLedgerRequest extends FormRequest
             'include_zero_balance' => ['nullable', 'boolean'],
             'sort_by' => ['nullable', 'in:journal_date,journal_number,account_code'],
             'sort_direction' => ['nullable', 'in:asc,desc'],
+            'mode' => ['nullable', 'in:summary,detail'],
         ];
     }
 
