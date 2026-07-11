@@ -182,7 +182,7 @@ class TransactionPolicyServiceTest extends TestCase
 
     public function test_inventory_edit_is_blocked_when_generated_stock_movements_exist(): void
     {
-        $service = $this->makeService(['inventory.manage']);
+        $service = $this->makeService(['inventory.manage'], [], true);
         $result = $service->canEdit('inventory', [
             'status' => 'draft',
             'transaction_date' => '2026-05-17',

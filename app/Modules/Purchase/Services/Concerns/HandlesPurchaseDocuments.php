@@ -65,6 +65,10 @@ trait HandlesPurchaseDocuments
                 $product = Product::query()->find((int) $line['product_id']);
             }
 
+            // Catatan: kolom khusus vendor_bill_lines (line_classification, fixed_asset_category_id,
+            // capitalized_amount) TIDAK dimasukkan di sini — hanya vendor_bill_lines yang punya kolom
+            // itu. VendorBillService menambahkannya lewat $sourceMap. purchase_order_lines dll. akan
+            // gagal insert kalau field ini ikut (kolom tidak ada).
             $normalized = array_merge([
                 'product_id' => $line['product_id'] ?? null,
                 'product_code' => $line['product_code'] ?? $product?->product_code,
@@ -72,7 +76,6 @@ trait HandlesPurchaseDocuments
                 'quantity' => (float) ($line['quantity'] ?? 0),
                 'unit_id' => $line['unit_id'] ?? $product?->unit_id,
                 'unit_price' => (float) ($line['unit_price'] ?? $line['estimated_unit_price'] ?? 0),
-                'line_classification' => $line['line_classification'] ?? null,
                 'discount_type' => $line['discount_type'] ?? null,
                 'discount_value' => $line['discount_value'] ?? null,
                 'tax_id' => $line['tax_id'] ?? null,
@@ -81,8 +84,6 @@ trait HandlesPurchaseDocuments
                 'department_id' => $line['department_id'] ?? null,
                 'project_id' => $line['project_id'] ?? null,
                 'expense_account_id' => $line['expense_account_id'] ?? null,
-                'fixed_asset_category_id' => $line['fixed_asset_category_id'] ?? null,
-                'capitalized_amount' => $line['capitalized_amount'] ?? 0,
                 'source_line_type' => $line['source_line_type'] ?? null,
                 'source_line_id' => $line['source_line_id'] ?? null,
                 'sort_order' => $line['sort_order'] ?? $index,

@@ -76,6 +76,12 @@ class VendorBillService
             $lines = $this->normalizePurchaseLines((array) $data['lines'], fn (array $line): array => [
                 'purchase_order_line_id' => $line['purchase_order_line_id'] ?? null,
                 'goods_receipt_line_id' => $line['goods_receipt_line_id'] ?? null,
+                // Kolom khusus vendor_bill_lines (fitur fixed-asset). Hanya ditambahkan di sini,
+                // bukan di normalizePurchaseLines bersama, agar tidak bocor ke tabel line lain
+                // (PO/PR/GR) yang tak punya kolom ini.
+                'line_classification' => $line['line_classification'] ?? null,
+                'fixed_asset_category_id' => $line['fixed_asset_category_id'] ?? null,
+                'capitalized_amount' => $line['capitalized_amount'] ?? 0,
             ]);
             $this->validateFixedAssetLines($lines);
             $lines = $this->withDraftPurchaseExpenseSnapshots($lines);
@@ -120,6 +126,12 @@ class VendorBillService
             $lines = $this->normalizePurchaseLines((array) ($data['lines'] ?? $bill->lines()->get()->toArray()), fn (array $line): array => [
                 'purchase_order_line_id' => $line['purchase_order_line_id'] ?? null,
                 'goods_receipt_line_id' => $line['goods_receipt_line_id'] ?? null,
+                // Kolom khusus vendor_bill_lines (fitur fixed-asset). Hanya ditambahkan di sini,
+                // bukan di normalizePurchaseLines bersama, agar tidak bocor ke tabel line lain
+                // (PO/PR/GR) yang tak punya kolom ini.
+                'line_classification' => $line['line_classification'] ?? null,
+                'fixed_asset_category_id' => $line['fixed_asset_category_id'] ?? null,
+                'capitalized_amount' => $line['capitalized_amount'] ?? 0,
             ]);
             $this->validateFixedAssetLines($lines);
             $lines = $this->withDraftPurchaseExpenseSnapshots($lines);

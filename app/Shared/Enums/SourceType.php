@@ -40,6 +40,13 @@ enum SourceType: string
     case INVENTORY_TRANSFER = 'inventory_transfer';
     case REVERSAL = 'reversal';
 
+    case FIXED_ASSET = 'fixed_asset';
+    case FIXED_ASSET_CAPITALIZATION = 'fixed_asset_capitalization';
+    case FIXED_ASSET_DEPRECIATION = 'fixed_asset_depreciation';
+    case FIXED_ASSET_DISPOSAL = 'fixed_asset_disposal';
+
+    case PERIOD_END = 'period_end';
+
     case IMPORT_BATCH = 'import_batch';
     case SYSTEM = 'system';
 }
