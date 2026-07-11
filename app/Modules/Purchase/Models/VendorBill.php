@@ -2,6 +2,10 @@
 
 namespace App\Modules\Purchase\Models;
 
+use App\Modules\Journal\Models\JournalEntry;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\MasterData\Models\Contact;
+use App\Modules\MasterData\Models\PaymentTerm;
 use Database\Factories\Tenant\VendorBillFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
