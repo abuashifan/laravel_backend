@@ -2,6 +2,8 @@
 
 namespace App\Modules\Purchase\Models;
 
+use App\Modules\MasterData\Models\Department;
+use App\Modules\MasterData\Models\Project;
 use App\Shared\Models\User;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;

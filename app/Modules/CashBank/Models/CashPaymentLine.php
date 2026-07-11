@@ -2,6 +2,9 @@
 
 namespace App\Modules\CashBank\Models;
 
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\MasterData\Models\Department;
+use App\Modules\MasterData\Models\Project;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;

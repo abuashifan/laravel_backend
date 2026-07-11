@@ -2,6 +2,8 @@
 
 namespace App\Modules\CashBank\Models;
 
+use App\Modules\Journal\Models\JournalEntry;
+use App\Modules\Journal\Models\JournalEntryLine;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;

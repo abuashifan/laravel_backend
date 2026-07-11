@@ -2,6 +2,7 @@
 
 namespace App\Modules\MasterData\Models;
 
+use App\Modules\Journal\Models\JournalEntryLine;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;

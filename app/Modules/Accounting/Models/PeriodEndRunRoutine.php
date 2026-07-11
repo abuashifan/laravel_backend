@@ -2,6 +2,7 @@
 
 namespace App\Modules\Accounting\Models;
 
+use App\Modules\Journal\Models\JournalEntry;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;

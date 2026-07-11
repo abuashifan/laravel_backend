@@ -2,6 +2,8 @@
 
 namespace App\Modules\Purchase\Models;
 
+use App\Modules\MasterData\Models\Product;
+use App\Modules\MasterData\Models\Unit;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;

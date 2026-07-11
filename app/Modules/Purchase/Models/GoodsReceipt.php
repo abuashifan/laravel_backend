@@ -2,6 +2,7 @@
 
 namespace App\Modules\Purchase\Models;
 
+use App\Modules\MasterData\Models\Contact;
 use Database\Factories\Tenant\GoodsReceiptFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
