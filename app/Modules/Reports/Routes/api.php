@@ -8,6 +8,7 @@ use App\Modules\Reports\Controllers\EquityChangesController;
 use App\Modules\Reports\Controllers\FinancialSummaryController;
 use App\Modules\Reports\Controllers\GeneralLedgerController;
 use App\Modules\Reports\Controllers\JournalListReportController;
+use App\Modules\Reports\Controllers\MultiPeriodReportController;
 use App\Modules\Reports\Controllers\ProfitLossController;
 use App\Modules\Reports\Controllers\Purchase\PurchaseReportController;
 use App\Modules\Reports\Controllers\ReconciliationReportController;
@@ -22,7 +23,9 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('reports')->group(
     Route::get('/account-ledger/{account}', [AccountLedgerDetailController::class, 'show'])->middleware('permission:reports.view');
     Route::get('/trial-balance', [TrialBalanceController::class, 'index'])->middleware('permission:reports.view');
     Route::get('/profit-loss', [ProfitLossController::class, 'index'])->middleware('permission:reports.view');
+    Route::get('/profit-loss/multi-period', [MultiPeriodReportController::class, 'profitLoss'])->middleware('permission:reports.view');
     Route::get('/balance-sheet', [BalanceSheetController::class, 'index'])->middleware('permission:reports.view');
+    Route::get('/balance-sheet/multi-period', [MultiPeriodReportController::class, 'balanceSheet'])->middleware('permission:reports.view');
     Route::get('/cash-flow', [CashFlowController::class, 'index'])->middleware('permission:reports.view');
     Route::get('/cash-flow-direct', [CashFlowDirectController::class, 'index'])->middleware('permission:reports.view');
     Route::get('/retained-earnings', [RetainedEarningsController::class, 'index'])->middleware('permission:reports.view');
