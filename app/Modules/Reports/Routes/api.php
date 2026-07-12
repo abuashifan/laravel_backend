@@ -14,6 +14,7 @@ use App\Modules\Reports\Controllers\Purchase\PurchaseReportController;
 use App\Modules\Reports\Controllers\ReconciliationReportController;
 use App\Modules\Reports\Controllers\RetainedEarningsController;
 use App\Modules\Reports\Controllers\Sales\SalesReportController;
+use App\Modules\Reports\Controllers\Tax\EfakturExportController;
 use App\Modules\Reports\Controllers\Tax\TaxReportController;
 use App\Modules\Reports\Controllers\TrialBalanceController;
 use Illuminate\Support\Facades\Route;
@@ -54,5 +55,7 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('reports')->group(
     Route::prefix('tax')->middleware('permission:reports.view')->group(function () {
         Route::get('/output-vat', [TaxReportController::class, 'outputVat']);
         Route::get('/input-vat', [TaxReportController::class, 'inputVat']);
+        Route::get('/efaktur/sales', [EfakturExportController::class, 'sales']);
+        Route::get('/efaktur/purchase', [EfakturExportController::class, 'purchase']);
     });
 });
