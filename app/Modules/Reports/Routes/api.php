@@ -3,12 +3,15 @@
 use App\Modules\Reports\Controllers\AccountLedgerDetailController;
 use App\Modules\Reports\Controllers\BalanceSheetController;
 use App\Modules\Reports\Controllers\CashFlowController;
+use App\Modules\Reports\Controllers\CashFlowDirectController;
+use App\Modules\Reports\Controllers\EquityChangesController;
 use App\Modules\Reports\Controllers\FinancialSummaryController;
 use App\Modules\Reports\Controllers\GeneralLedgerController;
 use App\Modules\Reports\Controllers\JournalListReportController;
 use App\Modules\Reports\Controllers\ProfitLossController;
 use App\Modules\Reports\Controllers\Purchase\PurchaseReportController;
 use App\Modules\Reports\Controllers\ReconciliationReportController;
+use App\Modules\Reports\Controllers\RetainedEarningsController;
 use App\Modules\Reports\Controllers\Sales\SalesReportController;
 use App\Modules\Reports\Controllers\TrialBalanceController;
 use Illuminate\Support\Facades\Route;
@@ -21,6 +24,9 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('reports')->group(
     Route::get('/profit-loss', [ProfitLossController::class, 'index'])->middleware('permission:reports.view');
     Route::get('/balance-sheet', [BalanceSheetController::class, 'index'])->middleware('permission:reports.view');
     Route::get('/cash-flow', [CashFlowController::class, 'index'])->middleware('permission:reports.view');
+    Route::get('/cash-flow-direct', [CashFlowDirectController::class, 'index'])->middleware('permission:reports.view');
+    Route::get('/retained-earnings', [RetainedEarningsController::class, 'index'])->middleware('permission:reports.view');
+    Route::get('/equity-changes', [EquityChangesController::class, 'index'])->middleware('permission:reports.view');
     Route::get('/financial-summary', [FinancialSummaryController::class, 'index'])->middleware('permission:reports.view');
     Route::get('/reconciliation/ar', [ReconciliationReportController::class, 'ar'])->middleware('permission:reports.view');
     Route::get('/reconciliation/ap', [ReconciliationReportController::class, 'ap'])->middleware('permission:reports.view');
