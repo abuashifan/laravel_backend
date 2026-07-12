@@ -281,7 +281,7 @@ class DocumentLifecycleMatrixTest extends TenantTestCase
             'is_taxable' => false,
             'tax_included' => false,
             'lines' => [
-                ['description' => 'Lifecycle purchase', 'quantity' => 1, 'unit_price' => 100],
+                ['product_id' => $this->product->id, 'description' => 'Lifecycle purchase', 'quantity' => 1, 'unit_price' => 100, 'warehouse_id' => $this->warehouse->id],
             ],
         ], $overrides);
     }

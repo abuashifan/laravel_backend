@@ -72,7 +72,8 @@ class VendorBillTest extends PurchaseTestCase
 
         $this->assertSame(1, DB::connection('tenant')->table('journal_entries')->where('source_type', 'vendor_bill')->count());
         $this->assertSame(3, DB::connection('tenant')->table('journal_entry_lines')->count());
-        $this->assertSame(0, StockMovement::query()->count());
+        // Bill stok langsung membuat satu pergerakan purchase_in (config direct stock receipt aktif).
+        $this->assertSame(1, StockMovement::query()->count());
 
         $this->patchJson('/api/purchase/bills/'.$bill['id'].'/void', ['reason' => 'Incorrect vendor bill'], $ctx['headers'])
             ->assertStatus(200)
@@ -80,7 +81,7 @@ class VendorBillTest extends PurchaseTestCase
         $this->assertSame('void', DB::connection('tenant')->table('journal_entries')->where('source_type', 'vendor_bill')->value('status'));
     }
 
-    public function test_direct_stock_bill_requires_warehouse_before_posting(): void
+    public function test_direct_stock_bill_without_warehouse_is_rejected(): void
     {
         $ctx = $this->setUpTenant();
         $this->seedPurchaseMappings();
@@ -94,14 +95,14 @@ class VendorBillTest extends PurchaseTestCase
             'is_active' => true,
         ])->id;
 
-        $bill = $this->postJson('/api/purchase/bills', $this->vendorBillPayload([
+        // Produk stok tanpa gudang bukan baris stok yang sah (tidak "menerima stok"); bill ditolak
+        // saat create, sesuai aturan hanya-stok/aset-tetap.
+        $this->postJson('/api/purchase/bills', $this->vendorBillPayload([
             'is_taxable' => false,
             'lines' => [['product_id' => $productId, 'description' => 'Stock Bill', 'quantity' => 1, 'unit_price' => 100]],
-        ]), $ctx['headers'])->assertStatus(201)->json('data');
-
-        $this->patchJson('/api/purchase/bills/'.$bill['id'].'/post', [], $ctx['headers'])
+        ]), $ctx['headers'])
             ->assertStatus(422)
-            ->assertJsonPath('code', 'WAREHOUSE_REQUIRED');
+            ->assertJsonPath('code', 'PURCHASE_BILL_LINE_CLASSIFICATION_REQUIRED');
     }
 
     public function test_post_bill_fails_with_actionable_message_when_payable_account_is_missing(): void
@@ -199,18 +200,20 @@ class VendorBillTest extends PurchaseTestCase
         $bill = $this->postJson('/api/purchase/bills', $this->vendorBillPayload(['is_taxable' => false]), $ctx['headers'])->assertStatus(201)->json('data');
         $this->patchJson('/api/purchase/bills/'.$bill['id'].'/post', [], $ctx['headers'])->assertStatus(200);
 
+        // Bill stok: snapshot akun ada di AP (bill) dan inventory_account_id (baris stock movement).
+        // Baris expense tidak berlaku untuk bill stok (backfill melewati baris stok).
         DB::connection('tenant')->table('vendor_bills')->where('id', $bill['id'])->update(['ap_account_id' => null]);
-        DB::connection('tenant')->table('vendor_bill_lines')->where('vendor_bill_id', $bill['id'])->update(['expense_account_id' => null]);
+        DB::connection('tenant')->table('stock_movement_lines')->update(['inventory_account_id' => null]);
 
         Artisan::call('tenant:backfill-vendor-bill-account-snapshots', ['--company-id' => $ctx['company']->id]);
         app(TenantConnectionManager::class)->connect($ctx['tenant_path']);
         $this->assertNull(DB::connection('tenant')->table('vendor_bills')->where('id', $bill['id'])->value('ap_account_id'));
-        $this->assertNull(DB::connection('tenant')->table('vendor_bill_lines')->where('vendor_bill_id', $bill['id'])->value('expense_account_id'));
+        $this->assertNull(DB::connection('tenant')->table('stock_movement_lines')->value('inventory_account_id'));
 
         Artisan::call('tenant:backfill-vendor-bill-account-snapshots', ['--company-id' => $ctx['company']->id, '--execute' => true]);
         app(TenantConnectionManager::class)->connect($ctx['tenant_path']);
         $this->assertSame($ids['ap'], (int) DB::connection('tenant')->table('vendor_bills')->where('id', $bill['id'])->value('ap_account_id'));
-        $this->assertSame($ids['expense'], (int) DB::connection('tenant')->table('vendor_bill_lines')->where('vendor_bill_id', $bill['id'])->value('expense_account_id'));
+        $this->assertSame($ids['inventory'], (int) DB::connection('tenant')->table('stock_movement_lines')->value('inventory_account_id'));
     }
 
     public function test_create_bill_from_purchase_order_copies_discount(): void
@@ -231,6 +234,7 @@ class VendorBillTest extends PurchaseTestCase
     public function test_create_bill_from_goods_receipt(): void
     {
         $ctx = $this->setUpTenant();
+        $this->seedPurchaseMappings(interim: true);
         $order = $this->postJson('/api/purchase/orders', $this->purchaseOrderPayload(['is_taxable' => false]), $ctx['headers'])->assertStatus(201)->json('data');
         $receipt = $this->postJson('/api/purchase/goods-receipts/from-purchase-order/'.$order['id'], [], $ctx['headers'])->assertStatus(201)->json('data');
         $this->patchJson('/api/purchase/goods-receipts/'.$receipt['id'].'/receive', [], $ctx['headers'])->assertStatus(200);
@@ -268,10 +272,10 @@ class VendorBillTest extends PurchaseTestCase
     public function test_bill_from_goods_receipt_uses_received_remaining_and_tracks_receipt_progress(): void
     {
         $ctx = $this->setUpTenant();
-        $this->seedPurchaseMappings();
+        $this->seedPurchaseMappings(interim: true);
         $order = $this->postJson('/api/purchase/orders', $this->purchaseOrderPayload([
             'is_taxable' => false,
-            'lines' => [['description' => 'Stock', 'quantity' => 4, 'unit_price' => 80]],
+            'lines' => [['product_id' => $this->defaultStockProductId, 'description' => 'Stock', 'quantity' => 4, 'unit_id' => $this->defaultUnitId, 'unit_price' => 80, 'warehouse_id' => $this->defaultWarehouseId]],
         ]), $ctx['headers'])->assertStatus(201)->json('data');
         $receipt = $this->postJson('/api/purchase/goods-receipts/from-purchase-order/'.$order['id'], [], $ctx['headers'])->assertStatus(201)->json('data');
         $this->patchJson('/api/purchase/goods-receipts/'.$receipt['id'].'/receive', [], $ctx['headers'])->assertStatus(200);

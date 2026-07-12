@@ -5,6 +5,9 @@ namespace Tests\Feature\Purchase;
 use App\Modules\MasterData\Models\AccountMapping;
 use App\Modules\MasterData\Models\ChartOfAccount;
 use App\Modules\MasterData\Models\Contact;
+use App\Modules\MasterData\Models\Product;
+use App\Modules\MasterData\Models\Unit;
+use App\Modules\MasterData\Models\Warehouse;
 use App\Shared\Models\Company;
 use App\Shared\Models\CompanyAccountingSetting;
 use App\Shared\Models\CompanyUser;
@@ -20,6 +23,14 @@ use Tests\TestCase;
 abstract class PurchaseTestCase extends TestCase
 {
     use RefreshDatabase;
+
+    // Fixture stok default (dibuat di setUpTenant) — vendor bill hanya boleh berisi baris stok
+    // atau aset tetap, jadi payload default memakai baris stok yang valid.
+    protected ?int $defaultUnitId = null;
+
+    protected ?int $defaultWarehouseId = null;
+
+    protected ?int $defaultStockProductId = null;
 
     protected function setUpTenant(string $role = 'owner'): array
     {
@@ -68,6 +79,23 @@ abstract class PurchaseTestCase extends TestCase
             '--force' => true,
         ]);
 
+        // Kode unik agar tidak bentrok dengan unit/gudang yang dibuat test tertentu.
+        // is_default=false agar tidak melanggar batasan "hanya satu gudang default".
+        $this->defaultUnitId = (int) Unit::query()->create([
+            'code' => 'DFU', 'name' => 'Default Unit', 'precision' => 0, 'is_active' => true,
+        ])->id;
+        $this->defaultWarehouseId = (int) Warehouse::factory()->create([
+            'code' => 'WH-DEF', 'name' => 'Default WH', 'is_default' => false,
+        ])->id;
+        $this->defaultStockProductId = (int) Product::factory()->create([
+            'product_code' => 'STK-DEF',
+            'product_name' => 'Default Stock Item',
+            'product_type' => 'goods',
+            'unit_id' => $this->defaultUnitId,
+            'is_stock_item' => true,
+            'is_active' => true,
+        ])->id;
+
         Sanctum::actingAs($user);
 
         return [
@@ -114,9 +142,12 @@ abstract class PurchaseTestCase extends TestCase
             'tax_included' => false,
             'lines' => [
                 [
+                    'product_id' => $this->defaultStockProductId,
                     'description' => 'Office chair',
                     'quantity' => 2,
+                    'unit_id' => $this->defaultUnitId,
                     'unit_price' => 100,
+                    'warehouse_id' => $this->defaultWarehouseId,
                     'tax_rate' => 11,
                 ],
             ],
@@ -130,8 +161,11 @@ abstract class PurchaseTestCase extends TestCase
             'receipt_date' => '2026-05-20',
             'lines' => [
                 [
+                    'product_id' => $this->defaultStockProductId,
                     'description' => 'Office chair',
                     'quantity' => 2,
+                    'unit_id' => $this->defaultUnitId,
+                    'warehouse_id' => $this->defaultWarehouseId,
                 ],
             ],
         ], $overrides);
@@ -157,6 +191,7 @@ abstract class PurchaseTestCase extends TestCase
         $deposit = $this->createAccount('asset', 'VD-'.uniqid());
         $return = $this->createAccount('expense', 'PRET-'.uniqid());
         $cash = $this->createAccount('asset', 'CASH-'.uniqid(), true);
+        $inventory = $this->createAccount('asset', 'INV-'.uniqid());
         $interimAccount = $interim ? $this->createAccount('liability', 'GRNI-'.uniqid()) : null;
 
         foreach ([
@@ -164,6 +199,7 @@ abstract class PurchaseTestCase extends TestCase
             'purchase.vendor_deposit' => $deposit,
             'purchase.return' => $return,
             'purchase.default_cash_bank' => $cash,
+            'inventory.asset' => $inventory,
         ] + ($payable ? ['purchase.accounts_payable' => $ap] : [])
             + ($legacyPayable ? ['purchase.payable' => $ap] : [])
             + ($expenseAccount !== null ? ['purchase.expense' => $expenseAccount] : [])
@@ -174,24 +210,36 @@ abstract class PurchaseTestCase extends TestCase
             );
         }
 
-        return ['ap' => $ap, 'expense' => $expenseAccount, 'tax' => $tax, 'deposit' => $deposit, 'return' => $return, 'cash' => $cash, 'interim' => $interimAccount];
+        return ['ap' => $ap, 'expense' => $expenseAccount, 'tax' => $tax, 'deposit' => $deposit, 'return' => $return, 'cash' => $cash, 'inventory' => $inventory, 'interim' => $interimAccount];
     }
 
     protected function vendorBillPayload(array $overrides = []): array
     {
-        return array_replace_recursive([
+        $payload = array_replace_recursive([
             'vendor_id' => $this->createVendor(),
             'bill_date' => '2026-05-20',
             'due_date' => '2026-05-30',
             'is_taxable' => true,
+            // Baris stok valid (produk stok + gudang) — memenuhi aturan "bill hanya stok/aset tetap".
             'lines' => [
                 [
-                    'description' => 'Purchase service',
+                    'product_id' => $this->defaultStockProductId,
+                    'description' => 'Default stock item',
                     'quantity' => 2,
+                    'unit_id' => $this->defaultUnitId,
                     'unit_price' => 100,
+                    'warehouse_id' => $this->defaultWarehouseId,
                     'tax_rate' => 11,
                 ],
             ],
         ], $overrides);
+
+        // Override 'lines' harus mengganti penuh (bukan deep-merge array_replace_recursive),
+        // agar field baris default tidak bocor ke baris yang disediakan test.
+        if (array_key_exists('lines', $overrides)) {
+            $payload['lines'] = $overrides['lines'];
+        }
+
+        return $payload;
     }
 }

@@ -132,7 +132,7 @@ class AccountsPayableLedgerTest extends PurchaseTestCase
         $billA = $this->postJson('/api/purchase/bills', $this->vendorBillPayload([
             'vendor_id' => $vendorA,
             'is_taxable' => false,
-            'lines' => [['description' => 'Service A', 'quantity' => 1, 'unit_price' => 100, 'tax_rate' => 0]],
+            'lines' => [['product_id' => $this->defaultStockProductId, 'description' => 'Stock A', 'quantity' => 1, 'unit_id' => $this->defaultUnitId, 'unit_price' => 100, 'warehouse_id' => $this->defaultWarehouseId, 'tax_rate' => 0]],
         ]), $ctx['headers'])->assertStatus(201)->json('data');
         DB::connection('tenant')->table('vendor_bills')->where('id', $billA['id'])->update(['ap_account_id' => $apA]);
         $this->patchJson('/api/purchase/bills/'.$billA['id'].'/post', [], $ctx['headers'])
@@ -142,7 +142,7 @@ class AccountsPayableLedgerTest extends PurchaseTestCase
         $billB = $this->postJson('/api/purchase/bills', $this->vendorBillPayload([
             'vendor_id' => $vendorB,
             'is_taxable' => false,
-            'lines' => [['description' => 'Service B', 'quantity' => 1, 'unit_price' => 200, 'tax_rate' => 0]],
+            'lines' => [['product_id' => $this->defaultStockProductId, 'description' => 'Stock B', 'quantity' => 1, 'unit_id' => $this->defaultUnitId, 'unit_price' => 200, 'warehouse_id' => $this->defaultWarehouseId, 'tax_rate' => 0]],
         ]), $ctx['headers'])->assertStatus(201)->json('data');
         DB::connection('tenant')->table('vendor_bills')->where('id', $billB['id'])->update(['ap_account_id' => $apB]);
         $this->patchJson('/api/purchase/bills/'.$billB['id'].'/post', [], $ctx['headers'])

@@ -250,9 +250,11 @@ class AccountMappingRequiredTest extends TenantTestCase
             'due_date' => '2026-05-31',
             'is_taxable' => false,
             'lines' => [[
+                'product_id' => $this->stockProduct->id,
                 'description' => 'Taxed Purchase',
                 'quantity' => 1,
                 'unit_price' => 200.0,
+                'warehouse_id' => $this->warehouse->id,
                 'tax_rate' => 10.0,
             ]],
         ], $this->headers)->assertCreated()->json('data');
@@ -354,9 +356,11 @@ class AccountMappingRequiredTest extends TenantTestCase
             'due_date' => '2026-05-31',
             'is_taxable' => false,
             'lines' => [[
+                'product_id' => $this->stockProduct->id,
                 'description' => 'Purchase Item',
                 'quantity' => 10,
                 'unit_price' => $amount / 10,
+                'warehouse_id' => $this->warehouse->id,
             ]],
         ], $this->headers)->assertCreated()->json('data');
 

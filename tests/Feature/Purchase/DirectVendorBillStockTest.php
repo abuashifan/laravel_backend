@@ -86,24 +86,23 @@ class DirectVendorBillStockTest extends TenantTestCase
         $this->assertBillJournalBalances($bill['id']);
     }
 
-    public function test_direct_vendor_bill_for_non_stock_item_creates_no_movement_and_debits_expense_account(): void
+    public function test_direct_vendor_bill_with_non_stock_expense_line_is_rejected(): void
     {
+        // Vendor bill hanya boleh berisi baris stok atau aset tetap. Baris expense (produk non-stok
+        // tanpa gudang) ditolak — beban langsung dicatat lewat pembayaran Kas/Bank.
         $vendor = $this->createVendor();
         $product = $this->createProduct('H6-NONSTOCK-1', false);
 
-        $bill = $this->createVendorBill($vendor, [
-            $this->billLine($product, 5, 200, null),
-        ], false);
-
-        $this->postBill($bill['id']);
-
-        $this->assertSame(0, StockMovement::query()
-            ->where('source_type', 'vendor_bill')
-            ->where('source_id', $bill['id'])
-            ->count());
-        $this->assertJournalDebit($bill['id'], $this->accounts['expense'], 1000.0);
-        $this->assertJournalCredit($bill['id'], $this->accounts['ap'], 1000.0);
-        $this->assertBillJournalBalances($bill['id']);
+        $this->postJson('/api/purchase/bills', [
+            'vendor_id' => $vendor->id,
+            'bill_date' => '2026-05-20',
+            'due_date' => '2026-05-30',
+            'is_taxable' => false,
+            'tax_included' => false,
+            'lines' => [$this->billLine($product, 5, 200, null)],
+        ], $this->headers)
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'PURCHASE_BILL_LINE_CLASSIFICATION_REQUIRED');
     }
 
     public function test_vendor_bill_from_goods_receipt_clears_grni_and_does_not_create_duplicate_stock_movement(): void
@@ -181,28 +180,27 @@ class DirectVendorBillStockTest extends TenantTestCase
         $this->assertBillJournalBalances($bill['id']);
     }
 
-    public function test_direct_vendor_bill_with_mixed_stock_and_non_stock_lines_splits_debit_to_correct_accounts(): void
+    public function test_direct_vendor_bill_mixing_a_non_stock_line_is_rejected(): void
     {
+        // Satu baris non-stok saja sudah membuat seluruh bill ditolak (bill harus homogen:
+        // baris stok dan/atau aset tetap).
         $vendor = $this->createVendor();
         $stockProduct = $this->createProduct('H6-MIX-STOCK', true);
         $nonStockProduct = $this->createProduct('H6-MIX-NONSTOCK', false);
 
-        $bill = $this->createVendorBill($vendor, [
-            $this->billLine($stockProduct, 5, 200, $this->warehouse->id),
-            $this->billLine($nonStockProduct, 2, 300, null),
-        ], false);
-
-        $this->postBill($bill['id']);
-
-        $movement = StockMovement::query()
-            ->where('source_type', 'vendor_bill')
-            ->where('source_id', $bill['id'])
-            ->firstOrFail();
-        $this->assertSame(1, $movement->lines()->count());
-        $this->assertJournalDebit($bill['id'], $this->accounts['inventory'], 1000.0);
-        $this->assertJournalDebit($bill['id'], $this->accounts['expense'], 600.0);
-        $this->assertJournalCredit($bill['id'], $this->accounts['ap'], 1600.0);
-        $this->assertBillJournalBalances($bill['id']);
+        $this->postJson('/api/purchase/bills', [
+            'vendor_id' => $vendor->id,
+            'bill_date' => '2026-05-20',
+            'due_date' => '2026-05-30',
+            'is_taxable' => false,
+            'tax_included' => false,
+            'lines' => [
+                $this->billLine($stockProduct, 5, 200, $this->warehouse->id),
+                $this->billLine($nonStockProduct, 2, 300, null),
+            ],
+        ], $this->headers)
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'PURCHASE_BILL_LINE_CLASSIFICATION_REQUIRED');
     }
 
     private function createVendor(): Contact
