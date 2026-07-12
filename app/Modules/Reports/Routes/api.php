@@ -14,6 +14,7 @@ use App\Modules\Reports\Controllers\Purchase\PurchaseReportController;
 use App\Modules\Reports\Controllers\ReconciliationReportController;
 use App\Modules\Reports\Controllers\RetainedEarningsController;
 use App\Modules\Reports\Controllers\Sales\SalesReportController;
+use App\Modules\Reports\Controllers\SavedReportController;
 use App\Modules\Reports\Controllers\Tax\EfakturExportController;
 use App\Modules\Reports\Controllers\Tax\TaxReportController;
 use App\Modules\Reports\Controllers\TrialBalanceController;
@@ -50,6 +51,14 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('reports')->group(
         Route::get('/summary', [PurchaseReportController::class, 'summary']);
         Route::get('/by-vendor', [PurchaseReportController::class, 'byVendor']);
         Route::get('/by-product', [PurchaseReportController::class, 'byProduct']);
+    });
+
+    Route::prefix('saved')->middleware('permission:reports.view')->group(function () {
+        Route::get('/', [SavedReportController::class, 'index']);
+        Route::post('/', [SavedReportController::class, 'store']);
+        Route::get('/{id}', [SavedReportController::class, 'show'])->whereNumber('id');
+        Route::put('/{id}', [SavedReportController::class, 'update'])->whereNumber('id');
+        Route::delete('/{id}', [SavedReportController::class, 'destroy'])->whereNumber('id');
     });
 
     Route::prefix('tax')->middleware('permission:reports.view')->group(function () {
