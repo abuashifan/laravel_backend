@@ -164,4 +164,86 @@ class FinancialIntegrationConsistencyTest extends JournalTestCase
 
         $this->assertSame($cashBalanceToEnd, $cfEnding);
     }
+
+    /**
+     * Fase 9: laba ditahan, perubahan ekuitas, dan arus kas langsung harus konsisten
+     * dengan Neraca dan Arus Kas (tidak langsung) di atas dataset yang sama.
+     */
+    public function test_phase9_retained_earnings_equity_and_direct_cash_flow_are_consistent(): void
+    {
+        $ctx = $this->setUpTenant(role: 'finance');
+        $cashId = (int) $ctx['accounts']['debit'];   // is_cash_bank=true
+        $revenueId = (int) $ctx['accounts']['credit']; // revenue
+        // Revenue ikut seksi operasi untuk arus kas langsung.
+        ChartOfAccount::query()->whereKey($revenueId)->update(['cash_flow_section' => 'operating']);
+
+        $capital = ChartOfAccount::query()->create(['account_code' => '3000', 'account_name' => 'Capital', 'account_type' => 'equity', 'normal_balance' => 'credit', 'is_cash_bank' => false, 'is_active' => true, 'is_system_default' => false])->id;
+        $expense = ChartOfAccount::query()->create(['account_code' => '5000', 'account_name' => 'Expense', 'account_type' => 'expense', 'normal_balance' => 'debit', 'cash_flow_section' => 'operating', 'is_cash_bank' => false, 'is_active' => true, 'is_system_default' => false])->id;
+        $equipment = ChartOfAccount::query()->create(['account_code' => '1500', 'account_name' => 'Equipment', 'account_type' => 'asset', 'normal_balance' => 'debit', 'cash_flow_section' => 'investing', 'is_cash_bank' => false, 'is_active' => true, 'is_system_default' => false])->id;
+
+        // Prior-year revenue (before period) => beginning retained earnings 1,000,000.
+        $this->postedJournal('C9-PRIOR', '2025-06-01', [[$cashId, 1000000, 0], [$revenueId, 0, 1000000]]);
+        // Prior-year capital injection => opening equity 5,000,000.
+        $this->postedJournal('C9-CAP', '2025-12-31', [[$cashId, 5000000, 0], [$capital, 0, 5000000]]);
+        // Period revenue 10,000,000 (operating cash in).
+        $this->postedJournal('C9-REV', '2026-01-10', [[$cashId, 10000000, 0], [$revenueId, 0, 10000000]]);
+        // Period expense 2,000,000 (operating cash out).
+        $this->postedJournal('C9-EXP', '2026-01-11', [[$expense, 2000000, 0], [$cashId, 0, 2000000]]);
+        // Period equipment purchase 3,000,000 (investing cash out).
+        $this->postedJournal('C9-EQP', '2026-01-15', [[$equipment, 3000000, 0], [$cashId, 0, 3000000]]);
+
+        $period = 'start_date=2026-01-01&end_date=2026-01-31';
+
+        $re = $this->getJson('/api/reports/retained-earnings?'.$period, $ctx['headers'])->assertStatus(200)->json('data');
+        $eq = $this->getJson('/api/reports/equity-changes?'.$period, $ctx['headers'])->assertStatus(200)->json('data');
+        $bs = $this->getJson('/api/reports/balance-sheet?as_of_date=2026-01-31', $ctx['headers'])->assertStatus(200)->json('data');
+        $cfInd = $this->getJson('/api/reports/cash-flow?'.$period, $ctx['headers'])->assertStatus(200)->json('data');
+        $cfDir = $this->getJson('/api/reports/cash-flow-direct?'.$period, $ctx['headers'])->assertStatus(200)->json('data');
+
+        // --- Retained earnings self-consistency + tie to balance sheet ---
+        $this->assertSame(1000000.0, (float) $re['beginning_retained_earnings']);
+        $this->assertSame(8000000.0, (float) $re['net_income']);
+        $this->assertSame(9000000.0, (float) $re['ending_retained_earnings']);
+        $this->assertSame(
+            (float) $re['beginning_retained_earnings'] + (float) $re['net_income'],
+            (float) $re['ending_retained_earnings'],
+        );
+        // Neraca "laba tahun berjalan" (kumulatif P/L s/d asOf) == laba ditahan akhir.
+        $this->assertSame((float) $re['ending_retained_earnings'], (float) $bs['totals']['current_year_profit_or_loss']);
+
+        // --- Equity changes ties to balance sheet equity ---
+        $capRow = collect($eq['rows'])->firstWhere('account_code', '3000');
+        $this->assertSame(5000000.0, (float) $capRow['closing_balance']);
+        $earnRow = collect($eq['rows'])->firstWhere('is_current_earnings', true);
+        $this->assertSame((float) $re['net_income'], (float) $earnRow['movement']);
+        // total_equity Neraca = ekuitas closing (akun + laba berjalan) + laba ditahan awal (belum di akun ekuitas).
+        $this->assertSame(
+            (float) $bs['totals']['total_equity'],
+            (float) $eq['totals']['closing_total'] + (float) $re['beginning_retained_earnings'],
+        );
+
+        // --- Direct vs indirect cash flow ---
+        $this->assertSame((float) $cfInd['summary']['net_cash_flow'], (float) $cfDir['summary']['net_cash_flow']);
+        $this->assertSame((float) $cfInd['summary']['ending_cash_balance'], (float) $cfDir['summary']['ending_cash_balance']);
+        $this->assertSame(5000000.0, (float) $cfDir['summary']['net_cash_flow']);
+
+        // Sum of direct section subtotals == net cash flow.
+        $subtotalSum = array_sum(array_map(fn ($s) => (float) $s['subtotal_net'], $cfDir['sections']));
+        $this->assertSame((float) $cfDir['summary']['net_cash_flow'], $subtotalSum);
+
+        // Direct per-section subtotal matches indirect per-section net.
+        $dirBySection = collect($cfDir['sections'])->keyBy('key');
+        $this->assertSame((float) $cfInd['sections']['operating']['net'], (float) $dirBySection['operating']['subtotal_net']);
+        $this->assertSame((float) $cfInd['sections']['investing']['net'], (float) $dirBySection['investing']['subtotal_net']);
+    }
+
+    /**
+     * @param  list<array{0:int,1:float,2:float}>  $lines  [account_id, debit, credit]
+     */
+    private function postedJournal(string $number, string $date, array $lines): void
+    {
+        $j = JournalEntry::query()->create(['journal_number' => $number, 'journal_date' => $date, 'status' => 'posted', 'is_obsolete' => false]);
+        $order = 1;
+        $j->lines()->createMany(array_map(fn ($l) => ['account_id' => $l[0], 'debit' => $l[1], 'credit' => $l[2], 'line_order' => $order++], $lines));
+    }
 }
