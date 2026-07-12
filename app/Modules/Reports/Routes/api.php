@@ -55,6 +55,7 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('reports')->group(
 
     Route::prefix('saved')->middleware('permission:reports.view')->group(function () {
         Route::get('/', [SavedReportController::class, 'index']);
+        Route::get('/shareable-users', [SavedReportController::class, 'shareableUsers']);
         Route::post('/', [SavedReportController::class, 'store']);
         Route::get('/{id}', [SavedReportController::class, 'show'])->whereNumber('id');
         Route::put('/{id}', [SavedReportController::class, 'update'])->whereNumber('id');

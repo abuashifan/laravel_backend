@@ -104,6 +104,18 @@ class SavedReportTest extends JournalTestCase
         $this->getJson('/api/reports/saved', $ctx['headers'])->assertStatus(200)->assertJsonCount(0, 'data');
     }
 
+    public function test_shareable_users_lists_other_active_company_users(): void
+    {
+        $ctx = $this->setUpTenant(role: 'finance');
+        $other = $this->addCompanyUser($ctx['company']->id, 'finance');
+
+        $res = $this->getJson('/api/reports/saved/shareable-users', $ctx['headers'])->assertStatus(200);
+        $ids = collect($res->json('data'))->pluck('id')->all();
+
+        $this->assertContains($other->id, $ids);
+        $this->assertNotContains($ctx['user']->id, $ids); // pemilik/aktif user dikecualikan
+    }
+
     private function addCompanyUser(int $companyId, string $role): User
     {
         $user = User::factory()->create(['status' => 'active']);
