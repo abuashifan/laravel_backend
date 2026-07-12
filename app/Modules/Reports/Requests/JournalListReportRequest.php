@@ -18,7 +18,7 @@ class JournalListReportRequest extends FormRequest
     {
         return [
             ...$this->dateFilterRules(),
-            'source' => ['nullable', 'in:all,sales,purchase,general'],
+            'source' => ['nullable', 'in:all,sales,purchase,inventory,general'],
         ];
     }
 }

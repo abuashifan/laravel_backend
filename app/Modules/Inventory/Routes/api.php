@@ -66,6 +66,8 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('inventory')->grou
         Route::get('/valuation', [InventoryReportController::class, 'valuation'])->middleware('permission:inventory.reports.view');
         Route::get('/low-stock', [InventoryReportController::class, 'lowStock'])->middleware('permission:inventory.reports.view');
         Route::get('/negative-stock', [InventoryReportController::class, 'negativeStock'])->middleware('permission:inventory.reports.view');
+        Route::get('/aging', [InventoryReportController::class, 'aging'])->middleware('permission:inventory.reports.view');
+        Route::get('/opname-worksheet', [InventoryReportController::class, 'opnameWorksheet'])->middleware('permission:inventory.reports.view');
     });
 
     Route::get('/valuation', [InventoryValuationController::class, 'current'])

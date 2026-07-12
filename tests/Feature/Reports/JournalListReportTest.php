@@ -88,6 +88,20 @@ class JournalListReportTest extends JournalTestCase
         $this->assertCount(0, $purchase->json('data.rows'));
     }
 
+    public function test_inventory_source_filter(): void
+    {
+        $ctx = $this->autoPostTenant();
+
+        $this->createManualJournal($ctx, '2026-06-01', 100);
+        $this->createSourcedJournal($ctx, '2026-06-04', 750, 'inventory', 'stock_movement');
+
+        $inventory = $this->getJson('/api/reports/journals?start_date=2026-06-01&end_date=2026-06-30&source=inventory', $ctx['headers'])
+            ->assertStatus(200);
+        $this->assertCount(1, $inventory->json('data.rows'));
+        $this->assertEquals('inventory', $inventory->json('data.rows.0.source_module'));
+        $this->assertEquals(750.0, $inventory->json('data.rows.0.total_debit'));
+    }
+
     public function test_void_and_obsolete_journals_excluded(): void
     {
         $ctx = $this->autoPostTenant();

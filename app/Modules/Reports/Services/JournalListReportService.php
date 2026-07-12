@@ -16,6 +16,7 @@ class JournalListReportService
     private const SOURCE_MODULE_MAP = [
         'sales' => ['sales'],
         'purchase' => ['purchase'],
+        'inventory' => ['inventory'],
         'general' => ['journal'],
     ];
 

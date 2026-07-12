@@ -3,8 +3,12 @@
 namespace App\Modules\Inventory\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Inventory\Requests\Reports\InventoryAgingReportRequest;
+use App\Modules\Inventory\Requests\Reports\OpnameWorksheetReportRequest;
+use App\Modules\Inventory\Services\Reports\InventoryAgingReportService;
 use App\Modules\Inventory\Services\Reports\InventoryAlertReportService;
 use App\Modules\Inventory\Services\Reports\InventoryValuationReportService;
+use App\Modules\Inventory\Services\Reports\OpnameWorksheetReportService;
 use App\Modules\Inventory\Services\Reports\StockBalanceReportService;
 use App\Modules\Inventory\Services\Reports\StockCardReportService;
 use App\Modules\Inventory\Services\Reports\StockMovementReportService;
@@ -23,6 +27,8 @@ class InventoryReportController extends Controller
         private readonly StockCardReportService $stockCardReport,
         private readonly InventoryValuationReportService $valuationReport,
         private readonly InventoryAlertReportService $alertReport,
+        private readonly InventoryAgingReportService $agingReport,
+        private readonly OpnameWorksheetReportService $opnameWorksheetReport,
     ) {}
 
     public function stockBalances(Request $request): JsonResponse
@@ -71,5 +77,15 @@ class InventoryReportController extends Controller
     public function negativeStock(Request $request): JsonResponse
     {
         return $this->successResponse($this->alertReport->negativeStock($request->query()), 'Negative stock report retrieved successfully');
+    }
+
+    public function aging(InventoryAgingReportRequest $request): JsonResponse
+    {
+        return $this->successResponse($this->agingReport->report($request->validated()), 'Inventory aging report retrieved successfully');
+    }
+
+    public function opnameWorksheet(OpnameWorksheetReportRequest $request): JsonResponse
+    {
+        return $this->successResponse($this->opnameWorksheetReport->report($request->validated()), 'Opname worksheet report retrieved successfully');
     }
 }
