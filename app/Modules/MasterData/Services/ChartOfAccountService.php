@@ -3,10 +3,13 @@
 namespace App\Modules\MasterData\Services;
 
 use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\MasterData\Services\Concerns\ParsesBooleanFilters;
 use App\Shared\Exceptions\ApiException;
 
 class ChartOfAccountService
 {
+    use ParsesBooleanFilters;
+
     public function list(array $filters = [])
     {
         $query = ChartOfAccount::query();
@@ -24,11 +27,6 @@ class ChartOfAccountService
         }
 
         return $query->orderBy('account_code')->get();
-    }
-
-    private function toBool(mixed $value): bool
-    {
-        return is_bool($value) ? $value : filter_var($value, FILTER_VALIDATE_BOOLEAN);
     }
 
     public function create(array $data): ChartOfAccount

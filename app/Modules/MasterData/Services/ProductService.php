@@ -7,10 +7,13 @@ use App\Modules\MasterData\Models\ChartOfAccount;
 use App\Modules\MasterData\Models\Product;
 use App\Modules\MasterData\Models\ProductCategory;
 use App\Modules\MasterData\Models\Unit;
+use App\Modules\MasterData\Services\Concerns\ParsesBooleanFilters;
 use App\Shared\Exceptions\ApiException;
 
 class ProductService
 {
+    use ParsesBooleanFilters;
+
     public function list(array $filters = [])
     {
         $query = Product::query();
@@ -26,11 +29,6 @@ class ProductService
         $products = $query->orderBy('product_name')->get();
 
         return $this->attachStockQuantities($products);
-    }
-
-    private function toBool(mixed $value): bool
-    {
-        return is_bool($value) ? $value : filter_var($value, FILTER_VALIDATE_BOOLEAN);
     }
 
     public function create(array $data): Product
