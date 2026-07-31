@@ -12,7 +12,7 @@ class ChartOfAccountService
         $query = ChartOfAccount::query();
 
         if (array_key_exists('is_active', $filters)) {
-            $query->where('is_active', (bool) $filters['is_active']);
+            $query->where('is_active', $this->toBool($filters['is_active']));
         }
 
         if (! empty($filters['account_type'])) {
@@ -20,10 +20,15 @@ class ChartOfAccountService
         }
 
         if (array_key_exists('is_cash_bank', $filters)) {
-            $query->where('is_cash_bank', (bool) $filters['is_cash_bank']);
+            $query->where('is_cash_bank', $this->toBool($filters['is_cash_bank']));
         }
 
         return $query->orderBy('account_code')->get();
+    }
+
+    private function toBool(mixed $value): bool
+    {
+        return is_bool($value) ? $value : filter_var($value, FILTER_VALIDATE_BOOLEAN);
     }
 
     public function create(array $data): ChartOfAccount

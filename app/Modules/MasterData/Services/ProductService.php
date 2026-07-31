@@ -16,7 +16,7 @@ class ProductService
         $query = Product::query();
 
         if (array_key_exists('is_active', $filters)) {
-            $query->where('is_active', (bool) $filters['is_active']);
+            $query->where('is_active', $this->toBool($filters['is_active']));
         }
 
         if (! empty($filters['product_type'])) {
@@ -26,6 +26,11 @@ class ProductService
         $products = $query->orderBy('product_name')->get();
 
         return $this->attachStockQuantities($products);
+    }
+
+    private function toBool(mixed $value): bool
+    {
+        return is_bool($value) ? $value : filter_var($value, FILTER_VALIDATE_BOOLEAN);
     }
 
     public function create(array $data): Product

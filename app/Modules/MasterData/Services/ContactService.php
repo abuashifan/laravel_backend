@@ -12,7 +12,15 @@ class ContactService
         $query = Contact::query();
 
         if (array_key_exists('is_active', $filters)) {
-            $query->where('is_active', (bool) $filters['is_active']);
+            $query->where('is_active', $this->toBool($filters['is_active']));
+        }
+
+        if (array_key_exists('is_customer', $filters)) {
+            $query->where('is_customer', $this->toBool($filters['is_customer']));
+        }
+
+        if (array_key_exists('is_supplier', $filters)) {
+            $query->where('is_supplier', $this->toBool($filters['is_supplier']));
         }
 
         if (! empty($filters['contact_type'])) {
@@ -20,6 +28,11 @@ class ContactService
         }
 
         return $query->orderBy('name')->get();
+    }
+
+    private function toBool(mixed $value): bool
+    {
+        return is_bool($value) ? $value : filter_var($value, FILTER_VALIDATE_BOOLEAN);
     }
 
     public function create(array $data): Contact
