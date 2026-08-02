@@ -2,6 +2,7 @@
 
 namespace App\Modules\Purchase\Models;
 
+use App\Modules\FixedAssets\Models\FixedAssetCategory;
 use App\Modules\MasterData\Models\ChartOfAccount;
 use App\Modules\MasterData\Models\Product;
 use App\Modules\MasterData\Models\Unit;
@@ -52,5 +53,10 @@ class VendorBillLine extends Model
     public function expenseAccount(): BelongsTo
     {
         return $this->belongsTo(ChartOfAccount::class, 'expense_account_id');
+    }
+
+    public function fixedAssetCategory(): BelongsTo
+    {
+        return $this->belongsTo(FixedAssetCategory::class, 'fixed_asset_category_id');
     }
 }

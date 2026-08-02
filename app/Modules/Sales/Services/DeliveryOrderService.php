@@ -35,7 +35,7 @@ class DeliveryOrderService
 
     public function list(array $filters = []): Collection
     {
-        $q = DeliveryOrder::query()->with('customer', 'salesOrder');
+        $q = DeliveryOrder::query()->with('customer', 'salesOrder', 'warehouse');
         if (! empty($filters['status'])) {
             $q->where('status', (string) $filters['status']);
         }
@@ -45,7 +45,7 @@ return $q->orderByDesc('delivery_date')->orderByDesc('id')->get();
 
     public function find(int $id): DeliveryOrder
     {
-        return DeliveryOrder::query()->with('lines.product', 'customer', 'salesOrder')->findOrFail($id);
+        return DeliveryOrder::query()->with('lines.product', 'customer', 'salesOrder', 'warehouse')->findOrFail($id);
     }
 
     public function create(array $data): DeliveryOrder

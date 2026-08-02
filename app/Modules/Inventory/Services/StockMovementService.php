@@ -71,7 +71,7 @@ class StockMovementService
 
     public function find(int $id): StockMovement
     {
-        return StockMovement::query()->with('lines', 'journalEntry', 'reversalOf', 'reversedBy')->findOrFail($id);
+        return StockMovement::query()->with('lines.product', 'lines.warehouse', 'journalEntry', 'reversalOf', 'reversedBy')->findOrFail($id);
     }
 
     public function createDraft(array $data): StockMovement

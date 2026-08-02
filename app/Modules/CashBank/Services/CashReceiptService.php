@@ -37,7 +37,7 @@ class CashReceiptService
 
     public function find(int $id): CashReceipt
     {
-        return CashReceipt::query()->with('lines', 'contact', 'cashBankAccount')->findOrFail($id);
+        return CashReceipt::query()->with('lines.account', 'contact', 'cashBankAccount')->findOrFail($id);
     }
 
     public function create(array $data): CashReceipt

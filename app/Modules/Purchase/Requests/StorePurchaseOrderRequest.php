@@ -24,6 +24,7 @@ class StorePurchaseOrderRequest extends FormRequest
                 }
             }],
             'purchase_request_id' => ['nullable', 'integer'],
+            'payment_term_id' => ['nullable', 'integer', 'exists:tenant.payment_terms,id'],
             'vendor_address' => ['nullable', 'string'],
             'shipping_address' => ['nullable', 'string'],
             'vendor_quote_number' => ['nullable', 'string', 'max:100'],

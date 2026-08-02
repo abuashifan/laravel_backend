@@ -33,7 +33,7 @@ class ContactController extends Controller
 
     public function show(int $id): JsonResponse
     {
-        $contact = Contact::query()->findOrFail($id);
+        $contact = Contact::query()->with('paymentTerm')->findOrFail($id);
 
         return $this->successResponse($contact, 'Contact retrieved successfully');
     }

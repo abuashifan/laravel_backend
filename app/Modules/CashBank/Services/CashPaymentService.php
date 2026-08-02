@@ -37,7 +37,7 @@ class CashPaymentService
 
     public function find(int $id): CashPayment
     {
-        return CashPayment::query()->with('lines', 'contact', 'cashBankAccount')->findOrFail($id);
+        return CashPayment::query()->with('lines.account', 'contact', 'cashBankAccount')->findOrFail($id);
     }
 
     public function create(array $data): CashPayment

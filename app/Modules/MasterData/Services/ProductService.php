@@ -16,7 +16,7 @@ class ProductService
 
     public function list(array $filters = [])
     {
-        $query = Product::query();
+        $query = Product::query()->with(['category', 'unit']);
 
         if (array_key_exists('is_active', $filters)) {
             $query->where('is_active', $this->toBool($filters['is_active']));

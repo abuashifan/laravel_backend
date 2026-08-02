@@ -33,7 +33,7 @@ class ChartOfAccountController extends Controller
 
     public function show(int $id): JsonResponse
     {
-        $account = ChartOfAccount::query()->findOrFail($id);
+        $account = ChartOfAccount::query()->with('parent')->findOrFail($id);
 
         return $this->successResponse($account, 'Chart of account retrieved successfully');
     }

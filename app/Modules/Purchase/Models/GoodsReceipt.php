@@ -3,6 +3,7 @@
 namespace App\Modules\Purchase\Models;
 
 use App\Modules\MasterData\Models\Contact;
+use App\Modules\MasterData\Models\Warehouse;
 use Database\Factories\Tenant\GoodsReceiptFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -45,5 +46,10 @@ class GoodsReceipt extends Model
     public function purchaseOrder(): BelongsTo
     {
         return $this->belongsTo(PurchaseOrder::class, 'purchase_order_id');
+    }
+
+    public function warehouse(): BelongsTo
+    {
+        return $this->belongsTo(Warehouse::class, 'warehouse_id');
     }
 }

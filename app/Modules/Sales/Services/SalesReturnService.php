@@ -47,7 +47,7 @@ return $q->orderByDesc('return_date')->orderByDesc('id')->get();
 
     public function find(int $id): SalesReturn
     {
-        return SalesReturn::query()->with('lines', 'customer', 'salesInvoice', 'deliveryOrder')->findOrFail($id);
+        return SalesReturn::query()->with('lines.product', 'customer', 'salesInvoice', 'deliveryOrder')->findOrFail($id);
     }
 
     public function create(array $data): SalesReturn

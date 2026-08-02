@@ -35,7 +35,7 @@ class GoodsReceiptService
 
     public function list(array $filters = []): Collection
     {
-        $query = GoodsReceipt::query()->with('vendor', 'purchaseOrder');
+        $query = GoodsReceipt::query()->with('vendor', 'purchaseOrder', 'warehouse');
         if (! empty($filters['status'])) {
             $query->where('status', (string) $filters['status']);
         }
@@ -51,7 +51,7 @@ class GoodsReceiptService
 
     public function find(int $id): GoodsReceipt
     {
-        return GoodsReceipt::query()->with('lines.product', 'lines.unit', 'vendor', 'purchaseOrder')->findOrFail($id);
+        return GoodsReceipt::query()->with('lines.product', 'lines.unit', 'vendor', 'purchaseOrder', 'warehouse')->findOrFail($id);
     }
 
     public function create(array $data): GoodsReceipt

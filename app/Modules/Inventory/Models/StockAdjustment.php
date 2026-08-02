@@ -2,6 +2,7 @@
 
 namespace App\Modules\Inventory\Models;
 
+use App\Modules\MasterData\Models\Warehouse;
 use Database\Factories\Tenant\StockAdjustmentFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -39,5 +40,10 @@ class StockAdjustment extends Model
     public function stockMovement(): BelongsTo
     {
         return $this->belongsTo(StockMovement::class, 'stock_movement_id');
+    }
+
+    public function warehouse(): BelongsTo
+    {
+        return $this->belongsTo(Warehouse::class, 'warehouse_id');
     }
 }

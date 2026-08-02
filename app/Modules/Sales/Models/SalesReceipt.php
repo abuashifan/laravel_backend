@@ -2,6 +2,7 @@
 
 namespace App\Modules\Sales\Models;
 
+use App\Modules\MasterData\Models\ChartOfAccount;
 use App\Modules\MasterData\Models\Contact;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -33,5 +34,10 @@ class SalesReceipt extends Model
     public function salesInvoice(): BelongsTo
     {
         return $this->belongsTo(SalesInvoice::class, 'sales_invoice_id');
+    }
+
+    public function cashBankAccount(): BelongsTo
+    {
+        return $this->belongsTo(ChartOfAccount::class, 'cash_bank_account_id');
     }
 }

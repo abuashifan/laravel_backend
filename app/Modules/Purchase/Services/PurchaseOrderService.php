@@ -10,6 +10,7 @@ use App\Shared\DocumentNumbering\DocumentNumberService;
 use App\Shared\DocumentNumbering\DocumentType;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
+use App\Shared\Validation\BusinessReferenceValidator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -28,7 +29,7 @@ class PurchaseOrderService
 
     public function list(array $filters = []): Collection
     {
-        $query = PurchaseOrder::query()->with('vendor');
+        $query = PurchaseOrder::query()->with('vendor', 'paymentTerm');
         if (! empty($filters['status'])) {
             $query->where('status', (string) $filters['status']);
         }
@@ -41,7 +42,7 @@ class PurchaseOrderService
 
     public function find(int $id): PurchaseOrder
     {
-        return PurchaseOrder::query()->with('lines.product', 'vendor', 'purchaseRequest', 'deposits')->findOrFail($id);
+        return PurchaseOrder::query()->with('lines.product', 'vendor', 'purchaseRequest', 'deposits', 'paymentTerm')->findOrFail($id);
     }
 
     public function create(array $data): PurchaseOrder
@@ -51,6 +52,7 @@ class PurchaseOrderService
             throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
         }
         $this->ensureVendorExists((int) $data['vendor_id']);
+        app(BusinessReferenceValidator::class)->paymentTerm(isset($data['payment_term_id']) ? (int) $data['payment_term_id'] : null);
 
         return DB::connection('tenant')->transaction(function () use ($company, $data) {
             $lines = $this->normalizePurchaseLines((array) $data['lines'], fn (array $line): array => [
@@ -70,7 +72,7 @@ class PurchaseOrderService
             if ((bool) ($data['has_down_payment'] ?? false) && ! empty($data['vendor_deposit'])) {
                 $this->depositService->createFromPurchaseOrder($order->refresh(), (array) $data['vendor_deposit']);
             }
-            $order = $order->refresh()->load('lines', 'vendor', 'deposits');
+            $order = $order->refresh()->load('lines', 'vendor', 'deposits', 'paymentTerm');
             $this->auditPurchase($this->auditLogService, 'purchase_order.created', $order, 'order_number');
 
             return $order;
@@ -82,6 +84,7 @@ class PurchaseOrderService
         if (! in_array($order->status, ['draft', 'approved'], true)) {
             throw ApiException::make('PURCHASE_ORDER_NOT_EDITABLE', 'Purchase order status is not editable.', 422);
         }
+        app(BusinessReferenceValidator::class)->paymentTerm(isset($data['payment_term_id']) ? (int) $data['payment_term_id'] : null);
 
         return DB::connection('tenant')->transaction(function () use ($order, $data) {
             $lines = $this->normalizePurchaseLines((array) ($data['lines'] ?? $order->lines()->get()->toArray()), fn (array $line): array => [
@@ -96,7 +99,7 @@ class PurchaseOrderService
             ]))->save();
             $order->lines()->delete();
             $order->lines()->createMany($totals['lines']);
-            $order = $order->refresh()->load('lines', 'vendor', 'deposits');
+            $order = $order->refresh()->load('lines', 'vendor', 'deposits', 'paymentTerm');
             $this->auditPurchase($this->auditLogService, 'purchase_order.updated', $order, 'order_number');
 
             return $order;
@@ -193,7 +196,7 @@ class PurchaseOrderService
         $order->{$userField} = auth()->id();
         $order->{$dateField} = now();
         $order->save();
-        $order = $order->refresh()->load('lines', 'vendor', 'deposits');
+        $order = $order->refresh()->load('lines', 'vendor', 'deposits', 'paymentTerm');
         $this->auditPurchase($this->auditLogService, 'purchase_order.'.$status, $order, 'order_number');
 
         return $order;

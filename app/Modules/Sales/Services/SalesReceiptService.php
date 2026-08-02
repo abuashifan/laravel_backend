@@ -25,7 +25,7 @@ class SalesReceiptService
 
     public function list(array $filters = []): Collection
     {
-        $q = SalesReceipt::query()->with('customer', 'salesInvoice');
+        $q = SalesReceipt::query()->with('customer', 'salesInvoice', 'cashBankAccount');
         if (! empty($filters['status'])) {
             $q->where('status', (string) $filters['status']);
         }
@@ -35,7 +35,7 @@ return $q->orderByDesc('receipt_date')->orderByDesc('id')->get();
 
     public function find(int $id): SalesReceipt
     {
-        return SalesReceipt::query()->with('lines', 'customer', 'salesInvoice')->findOrFail($id);
+        return SalesReceipt::query()->with('lines', 'customer', 'salesInvoice', 'cashBankAccount')->findOrFail($id);
     }
 
     public function create(array $data): SalesReceipt

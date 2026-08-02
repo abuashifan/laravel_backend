@@ -10,6 +10,7 @@ use App\Shared\DocumentNumbering\DocumentNumberService;
 use App\Shared\DocumentNumbering\DocumentType;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
+use App\Shared\Validation\BusinessReferenceValidator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -21,7 +22,7 @@ class SalesOrderService
 
     public function list(array $filters = []): Collection
     {
-        $query = SalesOrder::query()->with('customer');
+        $query = SalesOrder::query()->with('customer', 'paymentTerm');
         if (! empty($filters['status'])) {
             $query->where('status', (string) $filters['status']);
         }
@@ -31,7 +32,7 @@ class SalesOrderService
 
     public function find(int $id): SalesOrder
     {
-        return SalesOrder::query()->with('lines.product', 'customer', 'quotation', 'deposits')->findOrFail($id);
+        return SalesOrder::query()->with('lines.product', 'customer', 'quotation', 'deposits', 'paymentTerm')->findOrFail($id);
     }
 
     public function create(array $data): SalesOrder
@@ -41,6 +42,7 @@ class SalesOrderService
             throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
         }
         $this->ensureCustomerExists((int) $data['customer_id']);
+        app(BusinessReferenceValidator::class)->paymentTerm(isset($data['payment_term_id']) ? (int) $data['payment_term_id'] : null);
 
         return DB::connection('tenant')->transaction(function () use ($company, $data) {
             $lines = $this->normalizeLines((array) $data['lines'], fn (array $line): array => ['quotation_line_id' => $line['quotation_line_id'] ?? null]);
@@ -59,7 +61,7 @@ class SalesOrderService
                 $this->depositService->createFromSalesOrder($order->refresh(), (array) $data['down_payment']);
             }
 
-            return $order->refresh()->load('lines', 'customer', 'deposits');
+            return $order->refresh()->load('lines', 'customer', 'deposits', 'paymentTerm');
         });
     }
 
@@ -68,6 +70,7 @@ class SalesOrderService
         if (! in_array($order->status, ['draft', 'approved'], true)) {
             throw ApiException::make('SALES_ORDER_NOT_EDITABLE', 'Sales order status is not editable.', 422);
         }
+        app(BusinessReferenceValidator::class)->paymentTerm(isset($data['payment_term_id']) ? (int) $data['payment_term_id'] : null);
 
         return DB::connection('tenant')->transaction(function () use ($order, $data) {
             $lines = $this->normalizeLines((array) ($data['lines'] ?? $order->lines()->get()->toArray()), fn (array $line): array => ['quotation_line_id' => $line['quotation_line_id'] ?? null]);
@@ -78,7 +81,7 @@ class SalesOrderService
             $order->lines()->delete();
             $order->lines()->createMany($totals['lines']);
 
-            return $order->refresh()->load('lines', 'customer', 'deposits');
+            return $order->refresh()->load('lines', 'customer', 'deposits', 'paymentTerm');
         });
     }
 
@@ -146,6 +149,6 @@ return $order->refresh();
         $order->{$dateField} = now();
         $order->save();
 
-        return $order->refresh()->load('lines', 'customer', 'deposits');
+        return $order->refresh()->load('lines', 'customer', 'deposits', 'paymentTerm');
     }
 }

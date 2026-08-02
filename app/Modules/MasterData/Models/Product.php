@@ -105,11 +105,6 @@ class Product extends Model
         return $this->product_type === 'non_inventory';
     }
 
-    public function isFixedAssetItem(): bool
-    {
-        return $this->product_type === 'fixed_asset';
-    }
-
     public function isStockItem(): bool
     {
         return (bool) $this->is_stock_item;

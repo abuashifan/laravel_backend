@@ -33,7 +33,9 @@ class ProductController extends Controller
 
     public function show(int $id): JsonResponse
     {
-        $product = Product::query()->findOrFail($id);
+        $product = Product::query()
+            ->with(['category', 'unit', 'salesAccount', 'purchaseAccount', 'inventoryAccount', 'cogsAccount'])
+            ->findOrFail($id);
 
         return $this->successResponse($product, 'Product retrieved successfully');
     }

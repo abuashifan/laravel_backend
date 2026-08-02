@@ -15,6 +15,7 @@ class StoreSalesOrderRequest extends FormRequest
     {
         return [
             'customer_id' => ['required', 'exists:tenant.contacts,id'], 'order_date' => ['required', 'date'], 'quotation_id' => ['nullable', 'integer'],
+            'payment_term_id' => ['nullable', 'integer', 'exists:tenant.payment_terms,id'],
             'customer_address' => ['nullable', 'string'], 'shipping_address' => ['nullable', 'string'], 'customer_po_number' => ['nullable', 'string', 'max:100'], 'contract_number' => ['nullable', 'string', 'max:100'],
             'salesperson_id' => ['nullable', 'integer'], 'currency_code' => ['nullable', 'string', 'size:3'], 'exchange_rate' => ['nullable', 'numeric', 'gt:0'],
             'is_taxable' => ['nullable', 'boolean'], 'tax_included' => ['nullable', 'boolean'], 'has_down_payment' => ['nullable', 'boolean'],

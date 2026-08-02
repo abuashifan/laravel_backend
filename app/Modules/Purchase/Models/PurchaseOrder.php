@@ -3,6 +3,7 @@
 namespace App\Modules\Purchase\Models;
 
 use App\Modules\MasterData\Models\Contact;
+use App\Modules\MasterData\Models\PaymentTerm;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -49,5 +50,10 @@ class PurchaseOrder extends Model
     public function deposits(): HasMany
     {
         return $this->hasMany(VendorDeposit::class, 'purchase_order_id');
+    }
+
+    public function paymentTerm(): BelongsTo
+    {
+        return $this->belongsTo(PaymentTerm::class, 'payment_term_id');
     }
 }
