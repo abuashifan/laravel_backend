@@ -36,6 +36,11 @@ class SalesInvoiceLine extends Model
         return $this->belongsTo(ChartOfAccount::class, 'revenue_account_id');
     }
 
+    public function salesDiscountAccount(): BelongsTo
+    {
+        return $this->belongsTo(ChartOfAccount::class, 'sales_discount_account_id');
+    }
+
     public function unit(): BelongsTo
     {
         return $this->belongsTo(Unit::class, 'unit_id');

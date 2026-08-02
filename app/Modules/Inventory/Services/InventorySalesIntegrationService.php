@@ -13,6 +13,7 @@ class InventorySalesIntegrationService
     public function __construct(
         private readonly StockMovementService $stockMovementService,
         private readonly StockBalanceService $stockBalanceService,
+        private readonly InventoryAccountMappingService $accountMappingService,
     ) {}
 
     public function createSalesOutFromDeliveryOrder(DeliveryOrder $deliveryOrder): ?StockMovement
@@ -44,6 +45,8 @@ class InventorySalesIntegrationService
                 'unit_cost' => 0,
                 'department_id' => $ln->department_id,
                 'project_id' => $ln->project_id,
+                'inventory_account_id' => $this->accountMappingService->tryInventoryAccountIdForLine(['product_id' => $ln->product_id]),
+                'cogs_account_id' => $this->accountMappingService->tryCogsAccountIdForLine(['product_id' => $ln->product_id]),
                 'source_line_type' => 'delivery_order_line',
                 'source_line_id' => (int) $ln->id,
                 'sort_order' => (int) ($ln->sort_order ?? 0),
@@ -99,6 +102,8 @@ class InventorySalesIntegrationService
                 'unit_cost' => 0,
                 'department_id' => $ln->department_id,
                 'project_id' => $ln->project_id,
+                'inventory_account_id' => $this->accountMappingService->tryInventoryAccountIdForLine(['product_id' => $ln->product_id]),
+                'cogs_account_id' => $this->accountMappingService->tryCogsAccountIdForLine(['product_id' => $ln->product_id]),
                 'source_line_type' => 'sales_invoice_line',
                 'source_line_id' => (int) $ln->id,
                 'sort_order' => (int) ($ln->sort_order ?? 0),
@@ -154,6 +159,8 @@ class InventorySalesIntegrationService
                 'unit_cost' => $unitCost,
                 'department_id' => $ln->department_id,
                 'project_id' => $ln->project_id,
+                'inventory_account_id' => $this->accountMappingService->tryInventoryAccountIdForLine(['product_id' => $ln->product_id]),
+                'cogs_account_id' => $this->accountMappingService->tryCogsAccountIdForLine(['product_id' => $ln->product_id]),
                 'source_line_type' => 'sales_return_line',
                 'source_line_id' => (int) $ln->id,
                 'sort_order' => (int) ($ln->sort_order ?? 0),

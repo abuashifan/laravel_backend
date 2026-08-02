@@ -142,7 +142,7 @@ class ProductTest extends MasterDataTestCase
         ], $ctx['headers'])->assertStatus(422);
     }
 
-    public function test_purchase_inventory_and_cogs_accounts_must_match_account_types(): void
+    public function test_inventory_and_cogs_accounts_must_match_account_types(): void
     {
         $ctx = $this->setUpTenant();
         $expense = ChartOfAccount::query()->create([
@@ -170,19 +170,13 @@ class ProductTest extends MasterDataTestCase
         $product = $this->postJson('/api/master-data/products', [
             'product_name' => 'Accounting Product',
             'product_type' => 'goods',
-            'purchase_account_id' => $expense->id,
             'inventory_account_id' => $asset->id,
             'cogs_account_id' => $expense->id,
         ], $ctx['headers'])
             ->assertStatus(201)
-            ->assertJsonPath('data.purchase_account_id', $expense->id)
             ->assertJsonPath('data.inventory_account_id', $asset->id)
             ->assertJsonPath('data.cogs_account_id', $expense->id)
             ->json('data');
-
-        $this->patchJson('/api/master-data/products/'.$product['id'], [
-            'purchase_account_id' => $asset->id,
-        ], $ctx['headers'])->assertStatus(422);
 
         $this->patchJson('/api/master-data/products/'.$product['id'], [
             'inventory_account_id' => $liability->id,
@@ -190,6 +184,88 @@ class ProductTest extends MasterDataTestCase
 
         $this->patchJson('/api/master-data/products/'.$product['id'], [
             'cogs_account_id' => $asset->id,
+        ], $ctx['headers'])->assertStatus(422);
+    }
+
+    public function test_purchase_account_id_is_no_longer_accepted_on_product(): void
+    {
+        $ctx = $this->setUpTenant();
+        $expense = ChartOfAccount::query()->create([
+            'account_code' => '5100',
+            'account_name' => 'Expense',
+            'account_type' => 'expense',
+            'normal_balance' => 'debit',
+            'is_active' => true,
+        ]);
+
+        $product = $this->postJson('/api/master-data/products', [
+            'product_name' => 'No Purchase Account Product',
+            'product_type' => 'goods',
+            'purchase_account_id' => $expense->id,
+        ], $ctx['headers'])
+            ->assertStatus(201)
+            ->json('data');
+
+        $this->assertArrayNotHasKey('purchase_account_id', $product);
+    }
+
+    public function test_extended_account_fields_must_match_account_types(): void
+    {
+        $ctx = $this->setUpTenant();
+        $revenue = ChartOfAccount::query()->create([
+            'account_code' => '4100',
+            'account_name' => 'Revenue',
+            'account_type' => 'revenue',
+            'normal_balance' => 'credit',
+            'is_active' => true,
+        ]);
+        $expense = ChartOfAccount::query()->create([
+            'account_code' => '5100',
+            'account_name' => 'Expense',
+            'account_type' => 'expense',
+            'normal_balance' => 'debit',
+            'is_active' => true,
+        ]);
+        $liability = ChartOfAccount::query()->create([
+            'account_code' => '2150',
+            'account_name' => 'Interim',
+            'account_type' => 'liability',
+            'normal_balance' => 'credit',
+            'is_active' => true,
+        ]);
+
+        $product = $this->postJson('/api/master-data/products', [
+            'product_name' => 'Extended Accounts Product',
+            'product_type' => 'goods',
+            'sales_discount_account_id' => $revenue->id,
+            'sales_return_account_id' => $revenue->id,
+            'purchase_return_account_id' => $expense->id,
+            'inventory_interim_account_id' => $liability->id,
+        ], $ctx['headers'])
+            ->assertStatus(201)
+            ->assertJsonPath('data.sales_discount_account_id', $revenue->id)
+            ->assertJsonPath('data.sales_return_account_id', $revenue->id)
+            ->assertJsonPath('data.purchase_return_account_id', $expense->id)
+            ->assertJsonPath('data.inventory_interim_account_id', $liability->id)
+            ->json('data');
+
+        $this->patchJson('/api/master-data/products/'.$product['id'], [
+            'sales_discount_account_id' => $expense->id,
+        ], $ctx['headers'])->assertStatus(422);
+
+        // sales_return_account_id and purchase_return_account_id accept both revenue and
+        // expense (contra accounts are modeled either way depending on chart-of-accounts
+        // design), so only a genuinely unrelated type (liability) should be rejected.
+        $this->patchJson('/api/master-data/products/'.$product['id'], [
+            'sales_return_account_id' => $liability->id,
+        ], $ctx['headers'])->assertStatus(422);
+
+        $this->patchJson('/api/master-data/products/'.$product['id'], [
+            'purchase_return_account_id' => $liability->id,
+        ], $ctx['headers'])->assertStatus(422);
+
+        $this->patchJson('/api/master-data/products/'.$product['id'], [
+            'inventory_interim_account_id' => $revenue->id,
         ], $ctx['headers'])->assertStatus(422);
     }
 }

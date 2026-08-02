@@ -259,12 +259,35 @@ return $q->orderByDesc('return_date')->orderByDesc('id')->get();
         if (! $company) {
             throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
         } $journal = JournalEntry::query()->create(['journal_number' => $this->documentNumberService->generate($company, DocumentType::JOURNAL_ENTRY, (string) $return->return_date), 'journal_date' => $return->return_date, 'description' => 'Purchase return '.$return->return_number, 'status' => 'posted', 'revision_no' => 1, 'source_type' => 'purchase_return', 'source_id' => $return->id, 'source_number' => $return->return_number, 'source_revision' => $return->revision_no, 'source_module' => 'purchase', 'is_system_generated' => true, 'created_by' => auth()->id(), 'posted_by' => auth()->id(), 'posted_at' => now()]);
-        $lines = [['account_id' => $this->returnPayableAccountId($return), 'description' => 'Accounts Payable', 'debit' => $return->grand_total, 'credit' => 0, 'line_order' => 1], ['account_id' => $this->mapping('purchase.return'), 'description' => 'Purchase Return', 'debit' => 0, 'credit' => $return->grand_total - $return->tax_total, 'line_order' => 2]];
+        $order = 1;
+        $lines = [['account_id' => $this->returnPayableAccountId($return), 'description' => 'Accounts Payable', 'debit' => $return->grand_total, 'credit' => 0, 'line_order' => $order++]];
+        foreach ($this->returnAccountGroups($return) as $group) {
+            $lines[] = ['account_id' => $group['account_id'], 'description' => 'Purchase Return', 'debit' => 0, 'credit' => $group['amount'], 'line_order' => $order++];
+        }
         if ((float) $return->tax_total > 0) {
-            $lines[] = ['account_id' => $this->mapping('purchase.tax_input'), 'description' => 'Input Tax', 'debit' => 0, 'credit' => $return->tax_total, 'line_order' => 3];
+            $lines[] = ['account_id' => $this->mapping('purchase.tax_input'), 'description' => 'Input Tax', 'debit' => 0, 'credit' => $return->tax_total, 'line_order' => $order++];
         } $journal->lines()->createMany($lines);
 
         return $journal->refresh();
+    }
+
+    /**
+     * @return array<int,array{account_id:int,amount:float}>
+     */
+    private function returnAccountGroups(PurchaseReturn $return): array
+    {
+        $grouped = [];
+        foreach ($return->lines as $line) {
+            $accountId = $this->accountResolver->getPurchaseReturnAccountIdForLine($line);
+            if ((int) $line->purchase_return_account_id !== $accountId) {
+                $line->purchase_return_account_id = $accountId;
+                $line->save();
+            }
+            $netAmount = (float) $line->line_total - (float) $line->tax_amount;
+            $grouped[$accountId] = ($grouped[$accountId] ?? 0.0) + $netAmount;
+        }
+
+        return array_map(fn (int $accountId, float $amount): array => ['account_id' => $accountId, 'amount' => round($amount, 2)], array_keys($grouped), array_values($grouped));
     }
 
     private function returnPayableAccountId(PurchaseReturn $return): int

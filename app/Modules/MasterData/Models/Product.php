@@ -32,8 +32,11 @@ class Product extends Model
         'description',
         'metadata',
         'sales_account_id',
-        'purchase_account_id',
+        'sales_discount_account_id',
+        'sales_return_account_id',
+        'purchase_return_account_id',
         'inventory_account_id',
+        'inventory_interim_account_id',
         'cogs_account_id',
     ];
 
@@ -44,8 +47,11 @@ class Product extends Model
         'min_stock' => 'float',
         'is_active' => 'boolean',
         'sales_account_id' => 'integer',
-        'purchase_account_id' => 'integer',
+        'sales_discount_account_id' => 'integer',
+        'sales_return_account_id' => 'integer',
+        'purchase_return_account_id' => 'integer',
         'inventory_account_id' => 'integer',
+        'inventory_interim_account_id' => 'integer',
         'cogs_account_id' => 'integer',
         'metadata' => 'array',
     ];
@@ -65,14 +71,29 @@ class Product extends Model
         return $this->belongsTo(ChartOfAccount::class, 'sales_account_id');
     }
 
-    public function purchaseAccount(): BelongsTo
+    public function salesDiscountAccount(): BelongsTo
     {
-        return $this->belongsTo(ChartOfAccount::class, 'purchase_account_id');
+        return $this->belongsTo(ChartOfAccount::class, 'sales_discount_account_id');
+    }
+
+    public function salesReturnAccount(): BelongsTo
+    {
+        return $this->belongsTo(ChartOfAccount::class, 'sales_return_account_id');
+    }
+
+    public function purchaseReturnAccount(): BelongsTo
+    {
+        return $this->belongsTo(ChartOfAccount::class, 'purchase_return_account_id');
     }
 
     public function inventoryAccount(): BelongsTo
     {
         return $this->belongsTo(ChartOfAccount::class, 'inventory_account_id');
+    }
+
+    public function inventoryInterimAccount(): BelongsTo
+    {
+        return $this->belongsTo(ChartOfAccount::class, 'inventory_interim_account_id');
     }
 
     public function cogsAccount(): BelongsTo

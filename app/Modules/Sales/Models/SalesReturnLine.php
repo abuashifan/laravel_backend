@@ -2,6 +2,7 @@
 
 namespace App\Modules\Sales\Models;
 
+use App\Modules\MasterData\Models\ChartOfAccount;
 use App\Modules\MasterData\Models\Product;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -37,5 +38,10 @@ class SalesReturnLine extends Model
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class, 'product_id');
+    }
+
+    public function salesReturnAccount(): BelongsTo
+    {
+        return $this->belongsTo(ChartOfAccount::class, 'sales_return_account_id');
     }
 }

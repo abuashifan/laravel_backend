@@ -50,6 +50,7 @@ class InventoryPurchaseIntegrationService
             $lines[] = [
                 'product_id' => (int) $ln->product_id,
                 'inventory_account_id' => $this->accountResolver->getInventoryAccountIdForLine(['product_id' => $ln->product_id]),
+                'inventory_interim_account_id' => $this->accountResolver->getInventoryInterimAccountIdForLine(['product_id' => $ln->product_id]),
                 'warehouse_id' => (int) $ln->warehouse_id,
                 'unit_id' => (int) $ln->unit_id,
                 'quantity' => (float) $ln->quantity,

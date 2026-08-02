@@ -112,17 +112,19 @@ class ProductService
             }
         }
 
-        foreach (['sales_account_id', 'purchase_account_id', 'inventory_account_id', 'cogs_account_id'] as $key) {
+        foreach (['sales_account_id', 'sales_discount_account_id', 'sales_return_account_id', 'purchase_return_account_id', 'inventory_account_id', 'inventory_interim_account_id', 'cogs_account_id'] as $key) {
             if (array_key_exists($key, $data) && $data[$key] !== null) {
                 $query = ChartOfAccount::query()->whereKey((int) $data[$key])->where('is_active', true);
                 $type = match ($key) {
-                    'sales_account_id' => 'revenue',
-                    'purchase_account_id', 'cogs_account_id' => 'expense',
+                    'sales_account_id', 'sales_discount_account_id' => 'revenue',
+                    'sales_return_account_id', 'purchase_return_account_id' => ['revenue', 'expense'],
+                    'cogs_account_id' => 'expense',
                     'inventory_account_id' => 'asset',
+                    'inventory_interim_account_id' => 'liability',
                     default => null,
                 };
                 if ($type !== null) {
-                    $query->where('account_type', $type);
+                    is_array($type) ? $query->whereIn('account_type', $type) : $query->where('account_type', $type);
                 }
                 if (! $query->exists()) {
                     throw ApiException::make('ACCOUNT_NOT_FOUND', $key.' not found.', 422);

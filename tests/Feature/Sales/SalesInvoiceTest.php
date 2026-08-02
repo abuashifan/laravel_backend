@@ -609,11 +609,13 @@ class SalesInvoiceTest extends SalesTestCase
         $tax = $this->account('2100', 'Output Tax', 'liability', 'credit');
         $deposit = $this->account('2200', 'Customer Deposit', 'liability', 'credit');
         $return = $this->account('4200', 'Sales Return', 'revenue', 'credit');
+        $discount = $this->account('4300', 'Sales Discount', 'revenue', 'credit');
 
         $mappings = [
             'sales.tax_output' => $tax,
             'sales.customer_deposit' => $deposit,
             'sales.return' => $return,
+            'sales.discount' => $discount,
         ];
         if ($revenueAccount !== null) {
             $mappings['sales.revenue'] = $revenueAccount;
@@ -635,7 +637,7 @@ class SalesInvoiceTest extends SalesTestCase
             ]);
         }
 
-        return ['ar' => $ar, 'revenue' => $revenueAccount, 'tax' => $tax, 'deposit' => $deposit, 'return' => $return];
+        return ['ar' => $ar, 'revenue' => $revenueAccount, 'tax' => $tax, 'deposit' => $deposit, 'return' => $return, 'discount' => $discount];
     }
 
     private function account(string $code, string $name, string $type, string $normal, bool $cashBank = false): int

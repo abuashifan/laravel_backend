@@ -34,7 +34,7 @@ class ProductController extends Controller
     public function show(int $id): JsonResponse
     {
         $product = Product::query()
-            ->with(['category', 'unit', 'salesAccount', 'purchaseAccount', 'inventoryAccount', 'cogsAccount'])
+            ->with(['category', 'unit', 'salesAccount', 'salesDiscountAccount', 'salesReturnAccount', 'purchaseReturnAccount', 'inventoryAccount', 'inventoryInterimAccount', 'cogsAccount'])
             ->findOrFail($id);
 
         return $this->successResponse($product, 'Product retrieved successfully');

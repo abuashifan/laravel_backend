@@ -2,6 +2,7 @@
 
 namespace App\Modules\Purchase\Models;
 
+use App\Modules\MasterData\Models\ChartOfAccount;
 use App\Modules\MasterData\Models\Product;
 use App\Modules\MasterData\Models\Unit;
 use App\Modules\MasterData\Models\Warehouse;
@@ -49,5 +50,10 @@ class PurchaseReturnLine extends Model
     public function warehouse(): BelongsTo
     {
         return $this->belongsTo(Warehouse::class, 'warehouse_id');
+    }
+
+    public function purchaseReturnAccount(): BelongsTo
+    {
+        return $this->belongsTo(ChartOfAccount::class, 'purchase_return_account_id');
     }
 }

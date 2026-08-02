@@ -410,6 +410,7 @@ class SalesInvoiceService
     {
         return array_map(function (array $line): array {
             $line['revenue_account_id'] = $this->accountResolver->tryRevenueAccountIdForLine($line);
+            $line['sales_discount_account_id'] = $this->accountResolver->tryDiscountAccountIdForLine($line);
 
             return $line;
         }, $lines);
@@ -420,36 +421,36 @@ class SalesInvoiceService
      */
     private function invoiceRevenueJournalLines(SalesInvoice $invoice): array
     {
-        $grouped = [];
+        $revenueGrouped = [];
+        $discountGrouped = [];
         foreach ($invoice->lines as $line) {
-            $accountId = $this->accountResolver->getRevenueAccountIdForLine($line);
-            if ((int) $line->revenue_account_id !== $accountId) {
-                $line->revenue_account_id = $accountId;
+            $revenueAccountId = $this->accountResolver->getRevenueAccountIdForLine($line);
+            $discountAccountId = (float) $line->discount_amount > 0.0
+                ? $this->accountResolver->getDiscountAccountIdForLine($line)
+                : $this->accountResolver->tryDiscountAccountIdForLine($line);
+            if ((int) $line->revenue_account_id !== $revenueAccountId || (int) $line->sales_discount_account_id !== (int) $discountAccountId) {
+                $line->revenue_account_id = $revenueAccountId;
+                $line->sales_discount_account_id = $discountAccountId;
                 $line->save();
             }
-            $grouped[$accountId] = ($grouped[$accountId] ?? 0.0) + (float) $line->subtotal_after_discount;
-        }
-
-        $baseTotal = array_sum($grouped);
-        if ($baseTotal > 0) {
-            $targetTotal = (float) $invoice->subtotal_after_discount;
-            $allocated = 0.0;
-            $lastAccountId = array_key_last($grouped);
-            foreach ($grouped as $accountId => $amount) {
-                if ($accountId === $lastAccountId) {
-                    $grouped[$accountId] = round($targetTotal - $allocated, 2);
-
-                    continue;
-                }
-                $scaled = round($amount * ($targetTotal / $baseTotal), 2);
-                $grouped[$accountId] = $scaled;
-                $allocated += $scaled;
+            $revenueGrouped[$revenueAccountId] = ($revenueGrouped[$revenueAccountId] ?? 0.0) + (float) $line->gross_amount;
+            if ($discountAccountId !== null) {
+                $discountGrouped[$discountAccountId] = ($discountGrouped[$discountAccountId] ?? 0.0) + (float) $line->discount_amount;
             }
         }
 
-        $order = 2;
+        $totalDiscount = (float) $invoice->subtotal_before_discount - (float) $invoice->subtotal_after_discount;
 
-        return array_map(function (int $accountId, float $amount) use (&$order): array {
+        $revenueGrouped = $this->scaleGroupedAmounts($revenueGrouped, (float) $invoice->subtotal_before_discount);
+
+        if ($totalDiscount > 0.0 && $discountGrouped === []) {
+            // Header-level discount with no line-level discount to attribute it to.
+            $discountGrouped[$this->accountResolver->getDiscountAccountIdForLine([])] = $totalDiscount;
+        }
+        $discountGrouped = $totalDiscount > 0.0 ? $this->scaleGroupedAmounts($discountGrouped, $totalDiscount) : [];
+
+        $order = 2;
+        $lines = array_map(function (int $accountId, float $amount) use (&$order): array {
             return [
                 'account_id' => $accountId,
                 'description' => 'Sales Revenue',
@@ -457,7 +458,49 @@ class SalesInvoiceService
                 'credit' => $amount,
                 'line_order' => $order++,
             ];
-        }, array_keys($grouped), array_values($grouped));
+        }, array_keys($revenueGrouped), array_values($revenueGrouped));
+
+        foreach ($discountGrouped as $accountId => $amount) {
+            if (abs($amount) < 0.005) {
+                continue;
+            }
+            $lines[] = [
+                'account_id' => $accountId,
+                'description' => 'Sales Discount',
+                'debit' => $amount,
+                'credit' => 0,
+                'line_order' => $order++,
+            ];
+        }
+
+        return $lines;
+    }
+
+    /**
+     * @param  array<int,float>  $grouped
+     * @return array<int,float>
+     */
+    private function scaleGroupedAmounts(array $grouped, float $targetTotal): array
+    {
+        $baseTotal = array_sum($grouped);
+        if ($baseTotal <= 0) {
+            return $grouped;
+        }
+
+        $allocated = 0.0;
+        $lastAccountId = array_key_last($grouped);
+        foreach ($grouped as $accountId => $amount) {
+            if ($accountId === $lastAccountId) {
+                $grouped[$accountId] = round($targetTotal - $allocated, 2);
+
+                continue;
+            }
+            $scaled = round($amount * ($targetTotal / $baseTotal), 2);
+            $grouped[$accountId] = $scaled;
+            $allocated += $scaled;
+        }
+
+        return $grouped;
     }
 
     private function createDepositAllocationJournal(SalesInvoice $invoice, float $amount): JournalEntry

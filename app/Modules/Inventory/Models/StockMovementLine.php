@@ -25,6 +25,8 @@ class StockMovementLine extends Model
     protected $casts = [
         'metadata' => 'array',
         'inventory_account_id' => 'integer',
+        'cogs_account_id' => 'integer',
+        'inventory_interim_account_id' => 'integer',
         'quantity' => 'decimal:4',
         'quantity_before' => 'decimal:4',
         'quantity_after' => 'decimal:4',
@@ -49,6 +51,16 @@ class StockMovementLine extends Model
     public function inventoryAccount(): BelongsTo
     {
         return $this->belongsTo(ChartOfAccount::class, 'inventory_account_id');
+    }
+
+    public function cogsAccount(): BelongsTo
+    {
+        return $this->belongsTo(ChartOfAccount::class, 'cogs_account_id');
+    }
+
+    public function inventoryInterimAccount(): BelongsTo
+    {
+        return $this->belongsTo(ChartOfAccount::class, 'inventory_interim_account_id');
     }
 
     public function warehouse(): BelongsTo

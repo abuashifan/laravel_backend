@@ -257,15 +257,37 @@ return $q->orderByDesc('return_date')->orderByDesc('id')->get();
         if (! $company) {
             throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
         } $journal = JournalEntry::query()->create(['journal_number' => $this->documentNumberService->generate($company, DocumentType::JOURNAL_ENTRY, (string) $return->return_date), 'journal_date' => $return->return_date, 'description' => 'Sales return '.$return->return_number, 'status' => 'posted', 'revision_no' => 1, 'source_type' => 'sales_return', 'source_id' => $return->id, 'source_number' => $return->return_number, 'source_revision' => $return->revision_no, 'source_module' => 'sales', 'is_system_generated' => true, 'created_by' => auth()->id(), 'posted_by' => auth()->id(), 'posted_at' => now()]);
-        $lines = [['account_id' => $this->mapping('sales.return'), 'description' => 'Sales Return', 'debit' => $return->grand_total - $return->tax_total, 'credit' => 0, 'line_order' => 1]];
+        $order = 1;
+        $lines = array_map(function (array $group) use (&$order): array {
+            return ['account_id' => $group['account_id'], 'description' => 'Sales Return', 'debit' => $group['amount'], 'credit' => 0, 'line_order' => $order++];
+        }, $this->returnAccountGroups($return));
         if ((float) $return->tax_total > 0) {
-            $lines[] = ['account_id' => $this->mapping('sales.tax_output'), 'description' => 'Output Tax', 'debit' => $return->tax_total, 'credit' => 0, 'line_order' => 2];
+            $lines[] = ['account_id' => $this->mapping('sales.tax_output'), 'description' => 'Output Tax', 'debit' => $return->tax_total, 'credit' => 0, 'line_order' => $order++];
         } if ($return->sales_invoice_id) {
             $ar = $this->accountResolver->resolveInvoiceReceivableAccountId(SalesInvoice::query()->findOrFail((int) $return->sales_invoice_id));
-            $lines[] = ['account_id' => $ar, 'description' => 'Accounts Receivable', 'debit' => 0, 'credit' => $return->grand_total, 'line_order' => 3];
+            $lines[] = ['account_id' => $ar, 'description' => 'Accounts Receivable', 'debit' => 0, 'credit' => $return->grand_total, 'line_order' => $order++];
         } $journal->lines()->createMany($lines);
 
         return $journal->refresh();
+    }
+
+    /**
+     * @return array<int,array{account_id:int,amount:float}>
+     */
+    private function returnAccountGroups(SalesReturn $return): array
+    {
+        $grouped = [];
+        foreach ($return->lines as $line) {
+            $accountId = $this->accountResolver->getReturnAccountIdForLine($line);
+            if ((int) $line->sales_return_account_id !== $accountId) {
+                $line->sales_return_account_id = $accountId;
+                $line->save();
+            }
+            $netAmount = (float) $line->line_total - (float) $line->tax_amount;
+            $grouped[$accountId] = ($grouped[$accountId] ?? 0.0) + $netAmount;
+        }
+
+        return array_map(fn (int $accountId, float $amount): array => ['account_id' => $accountId, 'amount' => round($amount, 2)], array_keys($grouped), array_values($grouped));
     }
 
     private function mapping(string $key): int

@@ -2,7 +2,10 @@
 
 namespace App\Modules\Inventory\Services;
 
+use App\Modules\Inventory\Models\StockMovementLine;
 use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\MasterData\Models\Product;
 use App\Modules\Purchase\Services\PurchaseAccountResolverService;
 use App\Shared\AccountMapping\AccountMappingKey;
 use App\Shared\Exceptions\ApiException;
@@ -53,6 +56,60 @@ class InventoryAccountMappingService
     {
         // Reuse opening balance equity mapping.
         return $this->resolveOptionalAccount(AccountMappingKey::OPENING_BALANCE_EQUITY);
+    }
+
+    public function tryCogsAccountIdForLine(array|StockMovementLine $line): ?int
+    {
+        $snapshotAccountId = $line instanceof StockMovementLine
+            ? $line->cogs_account_id
+            : ($line['cogs_account_id'] ?? null);
+
+        if ($snapshotAccountId && $this->activeAccountExists((int) $snapshotAccountId, ['expense'])) {
+            return (int) $snapshotAccountId;
+        }
+
+        $productId = $line instanceof StockMovementLine
+            ? $line->product_id
+            : ($line['product_id'] ?? null);
+        $product = $productId ? Product::query()->find((int) $productId) : null;
+
+        if ($product?->cogs_account_id && $this->activeAccountExists((int) $product->cogs_account_id, ['expense'])) {
+            return (int) $product->cogs_account_id;
+        }
+
+        return $this->resolveOptionalAccount(AccountMappingKey::INVENTORY_COGS);
+    }
+
+    public function tryInventoryAccountIdForLine(array|StockMovementLine $line): ?int
+    {
+        $snapshotAccountId = $line instanceof StockMovementLine
+            ? $line->inventory_account_id
+            : ($line['inventory_account_id'] ?? null);
+
+        if ($snapshotAccountId && $this->activeAccountExists((int) $snapshotAccountId, ['asset'])) {
+            return (int) $snapshotAccountId;
+        }
+
+        $productId = $line instanceof StockMovementLine
+            ? $line->product_id
+            : ($line['product_id'] ?? null);
+        $product = $productId ? Product::query()->find((int) $productId) : null;
+
+        if ($product?->inventory_account_id && $this->activeAccountExists((int) $product->inventory_account_id, ['asset'])) {
+            return (int) $product->inventory_account_id;
+        }
+
+        return $this->resolveOptionalAccount(AccountMappingKey::INVENTORY_ASSET);
+    }
+
+    private function activeAccountExists(int $accountId, array $accountTypes): bool
+    {
+        return ChartOfAccount::query()
+            ->whereKey($accountId)
+            ->whereIn('account_type', $accountTypes)
+            ->where('is_active', true)
+            ->whereDoesntHave('children')
+            ->exists();
     }
 
     public function resolveRequiredAccount(string $key): int

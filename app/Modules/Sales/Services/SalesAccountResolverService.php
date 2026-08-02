@@ -8,6 +8,7 @@ use App\Modules\MasterData\Models\Contact;
 use App\Modules\MasterData\Models\Product;
 use App\Modules\Sales\Models\SalesInvoice;
 use App\Modules\Sales\Models\SalesInvoiceLine;
+use App\Modules\Sales\Models\SalesReturnLine;
 use App\Shared\Exceptions\ApiException;
 
 class SalesAccountResolverService
@@ -15,6 +16,10 @@ class SalesAccountResolverService
     public const RECEIVABLE_MAPPING_MESSAGE = 'Akun Piutang Usaha belum diatur. Buka Pengaturan > Pemetaan Akun > Sales > Piutang Usaha.';
 
     public const REVENUE_MAPPING_MESSAGE = 'Akun Pendapatan Penjualan belum diatur. Buka Pengaturan > Pemetaan Akun > Sales > Pendapatan Penjualan atau atur Akun Penjualan di master data produk.';
+
+    public const DISCOUNT_MAPPING_MESSAGE = 'Akun Diskon Penjualan belum diatur. Buka Pengaturan > Pemetaan Akun > Sales > Diskon Penjualan atau atur Akun Diskon Penjualan di master data produk.';
+
+    public const SALES_RETURN_MAPPING_MESSAGE = 'Akun Retur Penjualan belum diatur. Buka Pengaturan > Pemetaan Akun > Sales > Retur Penjualan atau atur Akun Retur Penjualan di master data produk.';
 
     /**
      * Resolve and snapshot the AR account used by a sales invoice.
@@ -86,6 +91,74 @@ class SalesAccountResolverService
         return $this->mappingAccountId('sales.revenue', 'revenue');
     }
 
+    public function getDiscountAccountIdForLine(array|SalesInvoiceLine $line): int
+    {
+        $accountId = $this->tryDiscountAccountIdForLine($line);
+        if ($accountId !== null) {
+            return $accountId;
+        }
+
+        throw ApiException::make('ACCOUNT_MAPPING_MISSING', self::DISCOUNT_MAPPING_MESSAGE, 422);
+    }
+
+    public function tryDiscountAccountIdForLine(array|SalesInvoiceLine $line): ?int
+    {
+        $snapshotAccountId = $line instanceof SalesInvoiceLine
+            ? $line->sales_discount_account_id
+            : ($line['sales_discount_account_id'] ?? null);
+
+        if ($snapshotAccountId && $this->activeAccountExists((int) $snapshotAccountId, 'revenue')) {
+            return (int) $snapshotAccountId;
+        }
+
+        $productId = $line instanceof SalesInvoiceLine
+            ? $line->product_id
+            : ($line['product_id'] ?? null);
+
+        if ($productId) {
+            $product = Product::query()->find((int) $productId);
+            if ($product?->sales_discount_account_id && $this->activeAccountExists((int) $product->sales_discount_account_id, 'revenue')) {
+                return (int) $product->sales_discount_account_id;
+            }
+        }
+
+        return $this->mappingAccountId('sales.discount', 'revenue');
+    }
+
+    public function getReturnAccountIdForLine(array|SalesReturnLine $line): int
+    {
+        $accountId = $this->tryReturnAccountIdForLine($line);
+        if ($accountId !== null) {
+            return $accountId;
+        }
+
+        throw ApiException::make('ACCOUNT_MAPPING_MISSING', self::SALES_RETURN_MAPPING_MESSAGE, 422);
+    }
+
+    public function tryReturnAccountIdForLine(array|SalesReturnLine $line): ?int
+    {
+        $snapshotAccountId = $line instanceof SalesReturnLine
+            ? $line->sales_return_account_id
+            : ($line['sales_return_account_id'] ?? null);
+
+        if ($snapshotAccountId && $this->activeAccountExists((int) $snapshotAccountId, ['revenue', 'expense'])) {
+            return (int) $snapshotAccountId;
+        }
+
+        $productId = $line instanceof SalesReturnLine
+            ? $line->product_id
+            : ($line['product_id'] ?? null);
+
+        if ($productId) {
+            $product = Product::query()->find((int) $productId);
+            if ($product?->sales_return_account_id && $this->activeAccountExists((int) $product->sales_return_account_id, ['revenue', 'expense'])) {
+                return (int) $product->sales_return_account_id;
+            }
+        }
+
+        return $this->mappingAccountId('sales.return', ['revenue', 'expense']);
+    }
+
     private function existingSnapshotAccountId(int $accountId, string $accountType, string $message): int
     {
         if ($this->activeAccountExists($accountId, $accountType)) {
@@ -95,7 +168,7 @@ class SalesAccountResolverService
         throw ApiException::make('ACCOUNT_MAPPING_MISSING', $message, 422);
     }
 
-    private function mappingAccountId(string $mappingKey, string $accountType): ?int
+    private function mappingAccountId(string $mappingKey, string|array $accountType): ?int
     {
         $mapping = AccountMapping::query()
             ->where('mapping_key', $mappingKey)
@@ -111,11 +184,13 @@ class SalesAccountResolverService
         return $this->activeAccountExists($accountId, $accountType) ? $accountId : null;
     }
 
-    private function activeAccountExists(int $accountId, string $accountType): bool
+    private function activeAccountExists(int $accountId, string|array $accountType): bool
     {
         return ChartOfAccount::query()
             ->whereKey($accountId)
-            ->where('account_type', $accountType)
+            ->where(function ($query) use ($accountType) {
+                is_array($accountType) ? $query->whereIn('account_type', $accountType) : $query->where('account_type', $accountType);
+            })
             ->where('is_active', true)
             ->whereDoesntHave('children')
             ->exists();

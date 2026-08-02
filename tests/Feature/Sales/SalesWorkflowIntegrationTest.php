@@ -174,7 +174,8 @@ class SalesWorkflowIntegrationTest extends SalesTestCase
         $deposit = $this->account('2200', 'Customer Deposit', 'liability', 'credit');
         $revenue = $this->account('4100', 'Revenue', 'revenue', 'credit');
         $salesReturn = $this->account('4200', 'Sales Return', 'revenue', 'debit');
-        foreach (['sales.accounts_receivable' => $ar, 'sales.revenue' => $revenue, 'sales.tax_output' => $tax, 'sales.customer_deposit' => $deposit, 'sales.return' => $salesReturn] as $key => $id) {
+        $discount = $this->account('4300', 'Sales Discount', 'revenue', 'debit');
+        foreach (['sales.accounts_receivable' => $ar, 'sales.revenue' => $revenue, 'sales.tax_output' => $tax, 'sales.customer_deposit' => $deposit, 'sales.return' => $salesReturn, 'sales.discount' => $discount] as $key => $id) {
             AccountMapping::query()->create(['mapping_key' => $key, 'module' => 'sales', 'account_id' => $id, 'is_required' => true, 'is_active' => true]);
         }
 

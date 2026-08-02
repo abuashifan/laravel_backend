@@ -6,6 +6,7 @@ use App\Modules\MasterData\Models\AccountMapping;
 use App\Modules\MasterData\Models\ChartOfAccount;
 use App\Modules\MasterData\Models\Contact;
 use App\Modules\MasterData\Models\Product;
+use App\Modules\Purchase\Models\PurchaseReturnLine;
 use App\Modules\Purchase\Models\VendorBill;
 use App\Modules\Purchase\Models\VendorBillLine;
 use App\Shared\Exceptions\ApiException;
@@ -21,6 +22,8 @@ class PurchaseAccountResolverService
     public const INVENTORY_INTERIM_MAPPING_MESSAGE = 'Akun Inventory Interim/GRNI belum diatur. Buka Pengaturan > Pemetaan Akun > Purchase > Inventory Interim sebelum menerima barang persediaan.';
 
     public const FIXED_ASSET_CLEARING_MAPPING_MESSAGE = 'Akun Fixed Asset Clearing belum diatur. Buka Pengaturan > Pemetaan Akun > Fixed Assets > Clearing.';
+
+    public const PURCHASE_RETURN_MAPPING_MESSAGE = 'Akun Retur Pembelian belum diatur. Buka Pengaturan > Pemetaan Akun > Purchase > Retur Pembelian atau atur Akun Retur Pembelian di master data produk.';
 
     public function resolveBillPayableAccountId(VendorBill $bill): int
     {
@@ -115,6 +118,16 @@ class PurchaseAccountResolverService
         throw ApiException::make('ACCOUNT_MAPPING_MISSING', self::INVENTORY_INTERIM_MAPPING_MESSAGE, 422);
     }
 
+    public function getInventoryInterimAccountIdForLine(array|VendorBillLine $line): int
+    {
+        $product = $this->lineProduct($line);
+        if ($product?->inventory_interim_account_id && $this->activeAccountExists((int) $product->inventory_interim_account_id, ['liability'])) {
+            return (int) $product->inventory_interim_account_id;
+        }
+
+        return $this->getInventoryInterimAccountId();
+    }
+
     public function getFixedAssetClearingAccountId(): int
     {
         $accountId = $this->mappingAccountId('fixed_assets.clearing', ['asset']);
@@ -128,6 +141,38 @@ class PurchaseAccountResolverService
     public function lineIsStockItem(array|VendorBillLine $line): bool
     {
         return (bool) $this->lineProduct($line)?->is_stock_item;
+    }
+
+    public function getPurchaseReturnAccountIdForLine(array|PurchaseReturnLine $line): int
+    {
+        $accountId = $this->tryPurchaseReturnAccountIdForLine($line);
+        if ($accountId !== null) {
+            return $accountId;
+        }
+
+        throw ApiException::make('ACCOUNT_MAPPING_MISSING', self::PURCHASE_RETURN_MAPPING_MESSAGE, 422);
+    }
+
+    public function tryPurchaseReturnAccountIdForLine(array|PurchaseReturnLine $line): ?int
+    {
+        $snapshotAccountId = $line instanceof PurchaseReturnLine
+            ? $line->purchase_return_account_id
+            : ($line['purchase_return_account_id'] ?? null);
+
+        if ($snapshotAccountId && $this->activeAccountExists((int) $snapshotAccountId, ['revenue', 'expense'])) {
+            return (int) $snapshotAccountId;
+        }
+
+        $productId = $line instanceof PurchaseReturnLine
+            ? $line->product_id
+            : ($line['product_id'] ?? null);
+        $product = $productId ? Product::query()->find((int) $productId) : null;
+
+        if ($product?->purchase_return_account_id && $this->activeAccountExists((int) $product->purchase_return_account_id, ['revenue', 'expense'])) {
+            return (int) $product->purchase_return_account_id;
+        }
+
+        return $this->mappingAccountId('purchase.return', ['revenue', 'expense']);
     }
 
     private function existingSnapshotAccountId(int $accountId, array $accountTypes, string $message): int

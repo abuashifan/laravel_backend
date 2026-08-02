@@ -34,20 +34,8 @@ class StockMovementJournalService
             return null;
         }
 
-        $interim = $this->mappingService->getInventoryInterimAccount();
-        if (! $interim) {
-            $message = $this->mappingService->missingMappingMessage('purchase.inventory_interim');
-            throw ApiException::make('ACCOUNT_MAPPING_MISSING', $message, 422, ['account_mapping' => [$message]]);
-        }
-
         $lines = $this->inventoryDebitLines($movement);
-        $lines[] = [
-            'account_id' => $interim,
-            'description' => 'Inventory Interim',
-            'debit' => 0,
-            'credit' => (float) $movement->total_value,
-            'line_order' => count($lines) + 1,
-        ];
+        array_push($lines, ...$this->interimCreditLines($movement, count($lines) + 1));
 
         return $this->createSimpleJournal($movement, $lines, 'Inventory receipt journal');
     }
@@ -71,24 +59,18 @@ class StockMovementJournalService
 
     public function createCogsJournalForSalesOut(StockMovement $movement): ?JournalEntry
     {
-        $inventory = $this->mappingService->getInventoryAccount();
-        $cogs = $this->mappingService->getCogsAccount();
+        $lines = $this->cogsDebitLines($movement);
+        array_push($lines, ...$this->inventoryCreditLines($movement, count($lines) + 1));
 
-        return $this->createSimpleJournal($movement, [
-            ['account_id' => $cogs, 'description' => 'COGS', 'debit' => (float) $movement->total_value, 'credit' => 0, 'line_order' => 1],
-            ['account_id' => $inventory, 'description' => 'Inventory', 'debit' => 0, 'credit' => (float) $movement->total_value, 'line_order' => 2],
-        ], 'COGS journal for sales out');
+        return $this->createSimpleJournal($movement, $lines, 'COGS journal for sales out');
     }
 
     public function createReturnJournal(StockMovement $movement): ?JournalEntry
     {
-        $inventory = $this->mappingService->getInventoryAccount();
-        $cogs = $this->mappingService->getCogsAccount();
+        $lines = $this->inventoryDebitLines($movement);
+        array_push($lines, ...$this->cogsCreditLines($movement, count($lines) + 1));
 
-        return $this->createSimpleJournal($movement, [
-            ['account_id' => $inventory, 'description' => 'Inventory', 'debit' => (float) $movement->total_value, 'credit' => 0, 'line_order' => 1],
-            ['account_id' => $cogs, 'description' => 'COGS', 'debit' => 0, 'credit' => (float) $movement->total_value, 'line_order' => 2],
-        ], 'Reverse COGS journal for sales return');
+        return $this->createSimpleJournal($movement, $lines, 'Reverse COGS journal for sales return');
     }
 
     public function createAdjustmentJournal(StockMovement $movement): ?JournalEntry
@@ -305,6 +287,72 @@ class StockMovementJournalService
                 return [
                     'account_id' => (int) ($lines->first()->inventory_account_id ?: $this->mappingService->getInventoryAccount()),
                     'description' => 'Inventory',
+                    'debit' => 0,
+                    'credit' => round((float) $lines->sum('total_cost'), 2),
+                    'line_order' => $startOrder + $index,
+                ];
+            })
+            ->all();
+    }
+
+    private function cogsDebitLines(StockMovement $movement, int $startOrder = 1): array
+    {
+        $movement->loadMissing('lines');
+
+        return $movement->lines
+            ->groupBy(fn ($line): int => (int) ($line->cogs_account_id ?: $this->mappingService->getCogsAccount()))
+            ->values()
+            ->map(function ($lines, int $index) use ($startOrder): array {
+                return [
+                    'account_id' => (int) ($lines->first()->cogs_account_id ?: $this->mappingService->getCogsAccount()),
+                    'description' => 'COGS',
+                    'debit' => round((float) $lines->sum('total_cost'), 2),
+                    'credit' => 0,
+                    'line_order' => $startOrder + $index,
+                ];
+            })
+            ->all();
+    }
+
+    private function interimCreditLines(StockMovement $movement, int $startOrder = 1): array
+    {
+        $movement->loadMissing('lines');
+        $globalInterim = $this->mappingService->getInventoryInterimAccount();
+
+        return $movement->lines
+            ->groupBy(function ($line) use ($globalInterim): int {
+                $accountId = (int) ($line->inventory_interim_account_id ?: $globalInterim);
+                if ($accountId === 0) {
+                    $message = $this->mappingService->missingMappingMessage('purchase.inventory_interim');
+                    throw ApiException::make('ACCOUNT_MAPPING_MISSING', $message, 422, ['account_mapping' => [$message]]);
+                }
+
+                return $accountId;
+            })
+            ->values()
+            ->map(function ($lines, int $index) use ($globalInterim, $startOrder): array {
+                return [
+                    'account_id' => (int) ($lines->first()->inventory_interim_account_id ?: $globalInterim),
+                    'description' => 'Inventory Interim',
+                    'debit' => 0,
+                    'credit' => round((float) $lines->sum('total_cost'), 2),
+                    'line_order' => $startOrder + $index,
+                ];
+            })
+            ->all();
+    }
+
+    private function cogsCreditLines(StockMovement $movement, int $startOrder = 1): array
+    {
+        $movement->loadMissing('lines');
+
+        return $movement->lines
+            ->groupBy(fn ($line): int => (int) ($line->cogs_account_id ?: $this->mappingService->getCogsAccount()))
+            ->values()
+            ->map(function ($lines, int $index) use ($startOrder): array {
+                return [
+                    'account_id' => (int) ($lines->first()->cogs_account_id ?: $this->mappingService->getCogsAccount()),
+                    'description' => 'COGS',
                     'debit' => 0,
                     'credit' => round((float) $lines->sum('total_cost'), 2),
                     'line_order' => $startOrder + $index,

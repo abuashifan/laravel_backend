@@ -472,7 +472,7 @@ class VendorBillService
                 $description = 'Fixed Asset Clearing';
             } elseif ($this->lineReceivesStock($line)) {
                 if ($bill->goods_receipt_id || $line->goods_receipt_line_id) {
-                    $accountId = $this->accountResolver->getInventoryInterimAccountId();
+                    $accountId = $this->accountResolver->getInventoryInterimAccountIdForLine($line);
                     $description = 'Inventory Interim';
                 } else {
                     $accountId = $this->accountResolver->getInventoryAccountIdForLine($line);
