@@ -40,12 +40,12 @@ class StoreProductRequest extends FormRequest
             $unitId = $this->input('unit_id');
 
             if ($isStockItem && empty($unitId)) {
-                $validator->errors()->add('unit_id', 'unit_id wajib untuk stock item.');
+                $validator->errors()->add('unit_id', 'Satuan wajib diisi untuk item stok.');
             }
 
             $type = $this->input('product_type', 'goods');
             if ($type === 'service' && $isStockItem) {
-                $validator->errors()->add('is_stock_item', 'Service tidak boleh menjadi stock item.');
+                $validator->errors()->add('is_stock_item', 'Produk tipe Jasa tidak bisa dijadikan item stok.');
             }
         });
     }
