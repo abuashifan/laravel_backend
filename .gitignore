@@ -29,3 +29,6 @@ Thumbs.db
 /database/tenants/*.sqlite
 /database/tenants/*.sqlite-shm
 /database/tenants/*.sqlite-wal
+
+# Agent worktree checkouts (isolation: "worktree") — separate git repos, never commit as gitlinks.
+/.claude/worktrees/
