@@ -10,14 +10,21 @@ use App\Modules\Inventory\Requests\UpdateStockAdjustmentRequest;
 use App\Modules\Inventory\Requests\VoidStockAdjustmentRequest;
 use App\Modules\Inventory\Services\StockAdjustmentService;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Api\ResolvesAdjacentRecords;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class StockAdjustmentController extends Controller
 {
     use ApiResponse;
+    use ResolvesAdjacentRecords;
 
     public function __construct(private readonly StockAdjustmentService $service) {}
+
+    public function adjacent(Request $request): JsonResponse
+    {
+        return $this->adjacentResponse(StockAdjustment::query(), $request, 'adjustment_number');
+    }
 
     public function index(Request $request): JsonResponse
     {

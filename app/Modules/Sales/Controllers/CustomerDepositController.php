@@ -12,6 +12,7 @@ use App\Modules\Sales\Requests\StoreCustomerDepositRequest;
 use App\Modules\Sales\Services\CustomerDepositService;
 use App\Shared\Api\ApiErrorCode;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Api\ResolvesAdjacentRecords;
 use App\Shared\Permission\PermissionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -19,8 +20,14 @@ use Illuminate\Http\Request;
 class CustomerDepositController extends Controller
 {
     use ApiResponse;
+    use ResolvesAdjacentRecords;
 
     public function __construct(private readonly CustomerDepositService $service, private readonly PermissionService $permissionService) {}
+
+    public function adjacent(Request $request): JsonResponse
+    {
+        return $this->adjacentResponse(CustomerDeposit::query(), $request, 'deposit_number');
+    }
 
     public function index(Request $request): JsonResponse
     {

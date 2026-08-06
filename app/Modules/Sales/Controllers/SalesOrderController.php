@@ -10,14 +10,21 @@ use App\Modules\Sales\Requests\StoreSalesOrderRequest;
 use App\Modules\Sales\Requests\UpdateSalesOrderRequest;
 use App\Modules\Sales\Services\SalesOrderService;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Api\ResolvesAdjacentRecords;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class SalesOrderController extends Controller
 {
     use ApiResponse;
+    use ResolvesAdjacentRecords;
 
     public function __construct(private readonly SalesOrderService $service) {}
+
+    public function adjacent(Request $request): JsonResponse
+    {
+        return $this->adjacentResponse(SalesOrder::query(), $request, 'order_number');
+    }
 
     public function index(Request $request): JsonResponse
     {

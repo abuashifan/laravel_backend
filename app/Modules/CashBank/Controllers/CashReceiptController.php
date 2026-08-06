@@ -8,14 +8,21 @@ use App\Modules\CashBank\Requests\CashBankActionRequest;
 use App\Modules\CashBank\Requests\StoreCashReceiptRequest;
 use App\Modules\CashBank\Services\CashReceiptService;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Api\ResolvesAdjacentRecords;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class CashReceiptController extends Controller
 {
     use ApiResponse;
+    use ResolvesAdjacentRecords;
 
     public function __construct(private readonly CashReceiptService $service) {}
+
+    public function adjacent(Request $request): JsonResponse
+    {
+        return $this->adjacentResponse(CashReceipt::query(), $request, 'receipt_number');
+    }
 
     public function index(Request $request): JsonResponse
     {

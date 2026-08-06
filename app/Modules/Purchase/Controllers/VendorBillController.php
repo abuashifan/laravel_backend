@@ -12,14 +12,21 @@ use App\Modules\Purchase\Requests\StoreVendorBillRequest;
 use App\Modules\Purchase\Requests\UpdateVendorBillRequest;
 use App\Modules\Purchase\Services\VendorBillService;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Api\ResolvesAdjacentRecords;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class VendorBillController extends Controller
 {
     use ApiResponse;
+    use ResolvesAdjacentRecords;
 
     public function __construct(private readonly VendorBillService $service) {}
+
+    public function adjacent(Request $request): JsonResponse
+    {
+        return $this->adjacentResponse(VendorBill::query(), $request, 'bill_number');
+    }
 
     public function index(Request $request): JsonResponse
     {

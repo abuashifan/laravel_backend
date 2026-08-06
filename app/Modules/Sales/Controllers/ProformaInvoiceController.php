@@ -11,14 +11,21 @@ use App\Modules\Sales\Requests\StoreProformaInvoiceRequest;
 use App\Modules\Sales\Requests\UpdateProformaInvoiceRequest;
 use App\Modules\Sales\Services\ProformaInvoiceService;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Api\ResolvesAdjacentRecords;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class ProformaInvoiceController extends Controller
 {
     use ApiResponse;
+    use ResolvesAdjacentRecords;
 
     public function __construct(private readonly ProformaInvoiceService $service) {}
+
+    public function adjacent(Request $request): JsonResponse
+    {
+        return $this->adjacentResponse(ProformaInvoice::query(), $request, 'proforma_number');
+    }
 
     public function index(Request $request): JsonResponse
     {

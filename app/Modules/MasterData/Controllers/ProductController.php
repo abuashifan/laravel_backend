@@ -8,14 +8,21 @@ use App\Modules\MasterData\Requests\StoreProductRequest;
 use App\Modules\MasterData\Requests\UpdateProductRequest;
 use App\Modules\MasterData\Services\ProductService;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Api\ResolvesAdjacentRecords;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class ProductController extends Controller
 {
     use ApiResponse;
+    use ResolvesAdjacentRecords;
 
     public function __construct(private readonly ProductService $service) {}
+
+    public function adjacent(Request $request): JsonResponse
+    {
+        return $this->adjacentResponse(Product::query(), $request, 'product_code');
+    }
 
     public function index(Request $request): JsonResponse
     {

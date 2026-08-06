@@ -13,6 +13,7 @@ use App\Modules\Journal\Requests\VoidJournalEntryRequest;
 use App\Modules\Journal\Services\JournalEntryService;
 use App\Shared\Api\ApiResponse;
 use App\Shared\Api\ApiResponseBuilder;
+use App\Shared\Api\ResolvesAdjacentRecords;
 use App\Shared\Tenant\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -20,12 +21,18 @@ use Illuminate\Http\Request;
 class JournalEntryController extends Controller
 {
     use ApiResponse;
+    use ResolvesAdjacentRecords;
 
     public function __construct(
         private readonly JournalEntryService $service,
         private readonly BudgetWarningService $budgetWarning,
         private readonly TenantContext $tenantContext,
     ) {}
+
+    public function adjacent(Request $request): JsonResponse
+    {
+        return $this->adjacentResponse(JournalEntry::query(), $request, 'journal_number');
+    }
 
     public function index(Request $request): JsonResponse
     {

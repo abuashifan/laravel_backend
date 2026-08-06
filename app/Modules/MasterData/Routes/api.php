@@ -17,6 +17,8 @@ use Illuminate\Support\Facades\Route;
 Route::middleware(['auth:sanctum', 'company.access'])->prefix('master-data')->group(function () {
     // Chart of Accounts
     Route::get('/chart-of-accounts', [ChartOfAccountController::class, 'index'])->middleware('permission:coa.view');
+    // Harus sebelum `/chart-of-accounts/{id}` supaya "adjacent" tidak tertangkap sebagai id.
+    Route::get('/chart-of-accounts/adjacent', [ChartOfAccountController::class, 'adjacent'])->middleware('permission:coa.view');
     Route::post('/chart-of-accounts', [ChartOfAccountController::class, 'store'])->middleware('permission:coa.create');
     Route::get('/chart-of-accounts/{id}', [ChartOfAccountController::class, 'show'])->middleware('permission:coa.view');
     Route::patch('/chart-of-accounts/{id}', [ChartOfAccountController::class, 'update'])->middleware('permission:coa.edit');
@@ -25,6 +27,7 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('master-data')->gr
 
     // Contacts
     Route::get('/contacts', [ContactController::class, 'index'])->middleware('permission:contacts.view');
+    Route::get('/contacts/adjacent', [ContactController::class, 'adjacent'])->middleware('permission:contacts.view');
     Route::post('/contacts', [ContactController::class, 'store'])->middleware('permission:contacts.create');
     Route::get('/contacts/{id}', [ContactController::class, 'show'])->middleware('permission:contacts.view');
     Route::patch('/contacts/{id}', [ContactController::class, 'update'])->middleware('permission:contacts.edit');
@@ -57,6 +60,7 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('master-data')->gr
 
     // Products
     Route::get('/products', [ProductController::class, 'index'])->middleware('permission:products.view');
+    Route::get('/products/adjacent', [ProductController::class, 'adjacent'])->middleware('permission:products.view');
     Route::post('/products', [ProductController::class, 'store'])->middleware('permission:products.create');
     Route::get('/products/{id}', [ProductController::class, 'show'])->middleware('permission:products.view');
     Route::patch('/products/{id}', [ProductController::class, 'update'])->middleware('permission:products.edit');

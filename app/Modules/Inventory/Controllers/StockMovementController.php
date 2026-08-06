@@ -8,14 +8,21 @@ use App\Modules\Inventory\Requests\StoreStockMovementRequest;
 use App\Modules\Inventory\Requests\VoidStockMovementRequest;
 use App\Modules\Inventory\Services\StockMovementService;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Api\ResolvesAdjacentRecords;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class StockMovementController extends Controller
 {
     use ApiResponse;
+    use ResolvesAdjacentRecords;
 
     public function __construct(private readonly StockMovementService $service) {}
+
+    public function adjacent(Request $request): JsonResponse
+    {
+        return $this->adjacentResponse(StockMovement::query(), $request, 'movement_number');
+    }
 
     public function index(Request $request): JsonResponse
     {

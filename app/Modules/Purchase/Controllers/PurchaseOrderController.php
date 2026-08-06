@@ -10,14 +10,21 @@ use App\Modules\Purchase\Requests\StorePurchaseOrderRequest;
 use App\Modules\Purchase\Requests\UpdatePurchaseOrderRequest;
 use App\Modules\Purchase\Services\PurchaseOrderService;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Api\ResolvesAdjacentRecords;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class PurchaseOrderController extends Controller
 {
     use ApiResponse;
+    use ResolvesAdjacentRecords;
 
     public function __construct(private readonly PurchaseOrderService $service) {}
+
+    public function adjacent(Request $request): JsonResponse
+    {
+        return $this->adjacentResponse(PurchaseOrder::query(), $request, 'order_number');
+    }
 
     public function index(Request $request): JsonResponse
     {

@@ -11,14 +11,21 @@ use App\Modules\Sales\Requests\StoreSalesReturnRequest;
 use App\Modules\Sales\Requests\UpdateSalesReturnRequest;
 use App\Modules\Sales\Services\SalesReturnService;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Api\ResolvesAdjacentRecords;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class SalesReturnController extends Controller
 {
     use ApiResponse;
+    use ResolvesAdjacentRecords;
 
     public function __construct(private readonly SalesReturnService $service) {}
+
+    public function adjacent(Request $request): JsonResponse
+    {
+        return $this->adjacentResponse(SalesReturn::query(), $request, 'return_number');
+    }
 
     public function index(Request $request): JsonResponse
     {

@@ -10,14 +10,21 @@ use App\Modules\Purchase\Requests\StoreGoodsReceiptRequest;
 use App\Modules\Purchase\Requests\UpdateGoodsReceiptRequest;
 use App\Modules\Purchase\Services\GoodsReceiptService;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Api\ResolvesAdjacentRecords;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class GoodsReceiptController extends Controller
 {
     use ApiResponse;
+    use ResolvesAdjacentRecords;
 
     public function __construct(private readonly GoodsReceiptService $service) {}
+
+    public function adjacent(Request $request): JsonResponse
+    {
+        return $this->adjacentResponse(GoodsReceipt::query(), $request, 'receipt_number');
+    }
 
     public function index(Request $request): JsonResponse
     {

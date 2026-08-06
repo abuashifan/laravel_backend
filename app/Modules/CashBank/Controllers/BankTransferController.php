@@ -8,14 +8,21 @@ use App\Modules\CashBank\Requests\CashBankActionRequest;
 use App\Modules\CashBank\Requests\StoreBankTransferRequest;
 use App\Modules\CashBank\Services\BankTransferService;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Api\ResolvesAdjacentRecords;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class BankTransferController extends Controller
 {
     use ApiResponse;
+    use ResolvesAdjacentRecords;
 
     public function __construct(private readonly BankTransferService $service) {}
+
+    public function adjacent(Request $request): JsonResponse
+    {
+        return $this->adjacentResponse(BankTransfer::query(), $request, 'transfer_number');
+    }
 
     public function index(Request $request): JsonResponse
     {

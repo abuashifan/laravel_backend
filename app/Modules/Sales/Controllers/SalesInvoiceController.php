@@ -13,14 +13,21 @@ use App\Modules\Sales\Requests\StoreSalesInvoiceRequest;
 use App\Modules\Sales\Requests\UpdateSalesInvoiceRequest;
 use App\Modules\Sales\Services\SalesInvoiceService;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Api\ResolvesAdjacentRecords;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class SalesInvoiceController extends Controller
 {
     use ApiResponse;
+    use ResolvesAdjacentRecords;
 
     public function __construct(private readonly SalesInvoiceService $service) {}
+
+    public function adjacent(Request $request): JsonResponse
+    {
+        return $this->adjacentResponse(SalesInvoice::query(), $request, 'invoice_number');
+    }
 
     public function index(Request $request): JsonResponse
     {

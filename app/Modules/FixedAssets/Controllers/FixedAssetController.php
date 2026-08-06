@@ -10,14 +10,21 @@ use App\Modules\FixedAssets\Requests\StoreFixedAssetRequest;
 use App\Modules\FixedAssets\Requests\UpdateFixedAssetRequest;
 use App\Modules\FixedAssets\Services\FixedAssetService;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Api\ResolvesAdjacentRecords;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class FixedAssetController extends Controller
 {
     use ApiResponse;
+    use ResolvesAdjacentRecords;
 
     public function __construct(private readonly FixedAssetService $service) {}
+
+    public function adjacent(Request $request): JsonResponse
+    {
+        return $this->adjacentResponse(FixedAsset::query(), $request, 'asset_number');
+    }
 
     public function index(Request $request): JsonResponse
     {

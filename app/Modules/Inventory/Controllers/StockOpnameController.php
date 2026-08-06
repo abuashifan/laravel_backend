@@ -11,14 +11,21 @@ use App\Modules\Inventory\Requests\UpdateStockOpnameLineRequest;
 use App\Modules\Inventory\Requests\VoidStockOpnameRequest;
 use App\Modules\Inventory\Services\StockOpnameService;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Api\ResolvesAdjacentRecords;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class StockOpnameController extends Controller
 {
     use ApiResponse;
+    use ResolvesAdjacentRecords;
 
     public function __construct(private readonly StockOpnameService $service) {}
+
+    public function adjacent(Request $request): JsonResponse
+    {
+        return $this->adjacentResponse(StockOpname::query(), $request, 'opname_number');
+    }
 
     public function index(Request $request): JsonResponse
     {

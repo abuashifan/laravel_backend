@@ -9,14 +9,21 @@ use App\Modules\Sales\Requests\StoreSalesQuotationRequest;
 use App\Modules\Sales\Requests\UpdateSalesQuotationRequest;
 use App\Modules\Sales\Services\SalesQuotationService;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Api\ResolvesAdjacentRecords;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class SalesQuotationController extends Controller
 {
     use ApiResponse;
+    use ResolvesAdjacentRecords;
 
     public function __construct(private readonly SalesQuotationService $service) {}
+
+    public function adjacent(Request $request): JsonResponse
+    {
+        return $this->adjacentResponse(SalesQuotation::query(), $request, 'quotation_number');
+    }
 
     public function index(Request $request): JsonResponse
     {

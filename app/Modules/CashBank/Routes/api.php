@@ -14,6 +14,9 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('cash-bank')->grou
 
     Route::get('/cash-receipts', [CashReceiptController::class, 'index'])
         ->middleware('permission:cash_bank.view');
+    // Harus sebelum `/cash-receipts/{id}` supaya "adjacent" tidak tertangkap sebagai id.
+    Route::get('/cash-receipts/adjacent', [CashReceiptController::class, 'adjacent'])
+        ->middleware('permission:cash_bank.view');
     Route::post('/cash-receipts', [CashReceiptController::class, 'store'])
         ->middleware('permission:cash_bank.create');
     Route::get('/cash-receipts/{id}', [CashReceiptController::class, 'show'])
@@ -24,6 +27,8 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('cash-bank')->grou
         ->middleware('permission:cash_bank.void');
 
     Route::get('/cash-payments', [CashPaymentController::class, 'index'])
+        ->middleware('permission:cash_bank.view');
+    Route::get('/cash-payments/adjacent', [CashPaymentController::class, 'adjacent'])
         ->middleware('permission:cash_bank.view');
     Route::post('/cash-payments', [CashPaymentController::class, 'store'])
         ->middleware('permission:cash_bank.create');
@@ -36,6 +41,8 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('cash-bank')->grou
 
     Route::get('/bank-transfers', [BankTransferController::class, 'index'])
         ->middleware('permission:cash_bank.view');
+    Route::get('/bank-transfers/adjacent', [BankTransferController::class, 'adjacent'])
+        ->middleware('permission:cash_bank.view');
     Route::post('/bank-transfers', [BankTransferController::class, 'store'])
         ->middleware('permission:cash_bank.transfer');
     Route::get('/bank-transfers/{id}', [BankTransferController::class, 'show'])
@@ -46,6 +53,8 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('cash-bank')->grou
         ->middleware('permission:cash_bank.void');
 
     Route::get('/bank-reconciliations', [BankReconciliationController::class, 'index'])
+        ->middleware('permission:cash_bank.view');
+    Route::get('/bank-reconciliations/adjacent', [BankReconciliationController::class, 'adjacent'])
         ->middleware('permission:cash_bank.view');
     Route::post('/bank-reconciliations', [BankReconciliationController::class, 'store'])
         ->middleware('permission:cash_bank.create');

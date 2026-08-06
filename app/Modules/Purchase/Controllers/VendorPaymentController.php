@@ -8,14 +8,21 @@ use App\Modules\Purchase\Requests\PurchaseRequestActionRequest;
 use App\Modules\Purchase\Requests\StoreVendorPaymentRequest;
 use App\Modules\Purchase\Services\VendorPaymentService;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Api\ResolvesAdjacentRecords;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class VendorPaymentController extends Controller
 {
     use ApiResponse;
+    use ResolvesAdjacentRecords;
 
     public function __construct(private readonly VendorPaymentService $service) {}
+
+    public function adjacent(Request $request): JsonResponse
+    {
+        return $this->adjacentResponse(VendorPayment::query(), $request, 'payment_number');
+    }
 
     public function index(Request $request): JsonResponse
     {

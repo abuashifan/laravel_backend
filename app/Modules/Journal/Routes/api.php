@@ -6,6 +6,8 @@ use Illuminate\Support\Facades\Route;
 Route::middleware(['auth:sanctum', 'company.access'])->group(function () {
     // Phase 6: Journal Entry Engine (manual journals only). No DELETE routes.
     Route::get('/journals', [JournalEntryController::class, 'index'])->middleware('permission:journal.view');
+    // Harus sebelum `/journals/{id}` supaya "adjacent" tidak tertangkap sebagai id.
+    Route::get('/journals/adjacent', [JournalEntryController::class, 'adjacent'])->middleware('permission:journal.view');
     Route::post('/journals', [JournalEntryController::class, 'store'])->middleware('permission:journal.create');
     Route::get('/journals/{id}', [JournalEntryController::class, 'show'])->middleware('permission:journal.view');
     Route::patch('/journals/{id}', [JournalEntryController::class, 'update'])->middleware('permission:journal.edit');

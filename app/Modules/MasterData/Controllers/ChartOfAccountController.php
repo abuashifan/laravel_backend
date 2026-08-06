@@ -8,14 +8,21 @@ use App\Modules\MasterData\Requests\StoreChartOfAccountRequest;
 use App\Modules\MasterData\Requests\UpdateChartOfAccountRequest;
 use App\Modules\MasterData\Services\ChartOfAccountService;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Api\ResolvesAdjacentRecords;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class ChartOfAccountController extends Controller
 {
     use ApiResponse;
+    use ResolvesAdjacentRecords;
 
     public function __construct(private readonly ChartOfAccountService $service) {}
+
+    public function adjacent(Request $request): JsonResponse
+    {
+        return $this->adjacentResponse(ChartOfAccount::query(), $request, 'account_code');
+    }
 
     public function index(Request $request): JsonResponse
     {

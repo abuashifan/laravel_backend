@@ -8,14 +8,21 @@ use App\Modules\MasterData\Requests\StoreContactRequest;
 use App\Modules\MasterData\Requests\UpdateContactRequest;
 use App\Modules\MasterData\Services\ContactService;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Api\ResolvesAdjacentRecords;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class ContactController extends Controller
 {
     use ApiResponse;
+    use ResolvesAdjacentRecords;
 
     public function __construct(private readonly ContactService $service) {}
+
+    public function adjacent(Request $request): JsonResponse
+    {
+        return $this->adjacentResponse(Contact::query(), $request, 'contact_code');
+    }
 
     public function index(Request $request): JsonResponse
     {

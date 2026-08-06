@@ -15,6 +15,9 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('fixed-assets')->g
 
     Route::get('/', [FixedAssetController::class, 'index'])
         ->middleware('permission:fixed_assets.view');
+    // Harus sebelum `/{id}` supaya "adjacent" tidak tertangkap sebagai id.
+    Route::get('/adjacent', [FixedAssetController::class, 'adjacent'])
+        ->middleware('permission:fixed_assets.view');
     Route::post('/', [FixedAssetController::class, 'store'])
         ->middleware('permission:fixed_assets.create');
 

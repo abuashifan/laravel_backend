@@ -8,14 +8,21 @@ use App\Modules\Sales\Requests\SalesActionRequest;
 use App\Modules\Sales\Requests\StoreSalesReceiptRequest;
 use App\Modules\Sales\Services\SalesReceiptService;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Api\ResolvesAdjacentRecords;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class SalesReceiptController extends Controller
 {
     use ApiResponse;
+    use ResolvesAdjacentRecords;
 
     public function __construct(private readonly SalesReceiptService $service) {}
+
+    public function adjacent(Request $request): JsonResponse
+    {
+        return $this->adjacentResponse(SalesReceipt::query(), $request, 'receipt_number');
+    }
 
     public function index(Request $request): JsonResponse
     {

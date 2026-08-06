@@ -9,14 +9,21 @@ use App\Modules\CashBank\Requests\StoreBankReconciliationRequest;
 use App\Modules\CashBank\Requests\UpdateBankReconciliationRequest;
 use App\Modules\CashBank\Services\BankReconciliationService;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Api\ResolvesAdjacentRecords;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class BankReconciliationController extends Controller
 {
     use ApiResponse;
+    use ResolvesAdjacentRecords;
 
     public function __construct(private readonly BankReconciliationService $service) {}
+
+    public function adjacent(Request $request): JsonResponse
+    {
+        return $this->adjacentResponse(BankReconciliation::query(), $request, 'reconciliation_number');
+    }
 
     public function index(Request $request): JsonResponse
     {
