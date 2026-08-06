@@ -11,6 +11,7 @@ use App\Modules\Sales\Models\SalesInvoice;
 use App\Modules\Sales\Models\SalesInvoiceLine;
 use App\Modules\Sales\Models\SalesReturn;
 use App\Modules\Sales\Services\Concerns\HandlesSalesDocuments;
+use App\Shared\Api\AppliesListQuery;
 use App\Shared\Audit\AuditLogService;
 use App\Shared\DocumentNumbering\DocumentNumberService;
 use App\Shared\DocumentNumbering\DocumentType;
@@ -18,12 +19,26 @@ use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
 use App\Shared\TransactionLifecycle\TransactionDateGuardService;
 use App\Shared\TransactionLifecycle\TransactionVoidEffectService;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 class SalesReturnService
 {
+    use AppliesListQuery;
     use HandlesSalesDocuments;
+
+    protected array $listSearchable = ['return_number'];
+
+    protected array $listSearchableRelations = ['customer' => ['name', 'contact_code']];
+
+    protected string $listDateColumn = 'return_date';
+
+    protected string $listStatusColumn = 'status';
+
+    protected array $listDefaultSort = ['return_date' => 'desc', 'id' => 'desc'];
+
+    protected array $listSortable = ['return_number', 'return_date', 'status', 'created_at'];
 
     public function __construct(
         private readonly TenantContext $tenantContext,
@@ -35,14 +50,19 @@ class SalesReturnService
         private readonly ?AuditLogService $auditLogService = null,
     ) {}
 
-    public function list(array $filters = []): Collection
+    /**
+     * @param  array<string,mixed>  $filters
+     * @return LengthAwarePaginator|Collection<int,SalesReturn>
+     */
+    public function list(array $filters = []): LengthAwarePaginator|Collection
     {
-        $q = SalesReturn::query()->with('customer', 'salesInvoice');
-        if (! empty($filters['status'])) {
-            $q->where('status', (string) $filters['status']);
+        $query = SalesReturn::query()->with('customer', 'salesInvoice');
+
+        if (! empty($filters['customer_id'])) {
+            $query->where('customer_id', (int) $filters['customer_id']);
         }
 
-return $q->orderByDesc('return_date')->orderByDesc('id')->get();
+        return $this->applyListQuery($query, $filters);
     }
 
     public function find(int $id): SalesReturn

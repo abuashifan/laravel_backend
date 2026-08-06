@@ -5,29 +5,49 @@ namespace App\Modules\Sales\Services;
 use App\Modules\Sales\Models\SalesOrder;
 use App\Modules\Sales\Models\SalesQuotation;
 use App\Modules\Sales\Services\Concerns\HandlesSalesDocuments;
+use App\Shared\Api\AppliesListQuery;
 use App\Shared\Audit\AuditLogService;
 use App\Shared\DocumentNumbering\DocumentNumberService;
 use App\Shared\DocumentNumbering\DocumentType;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
 use App\Shared\Validation\BusinessReferenceValidator;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 class SalesOrderService
 {
+    use AppliesListQuery;
     use HandlesSalesDocuments;
+
+    protected array $listSearchable = ['order_number', 'customer_po_number'];
+
+    protected array $listSearchableRelations = ['customer' => ['name', 'contact_code']];
+
+    protected string $listDateColumn = 'order_date';
+
+    protected string $listStatusColumn = 'status';
+
+    protected array $listDefaultSort = ['order_date' => 'desc', 'id' => 'desc'];
+
+    protected array $listSortable = ['order_number', 'order_date', 'status', 'created_at'];
 
     public function __construct(private readonly TenantContext $tenantContext, private readonly DocumentNumberService $documentNumberService, private readonly SalesCalculationService $calculationService, private readonly SalesQuotationService $quotationService, private readonly CustomerDepositService $depositService, private readonly ?AuditLogService $auditLogService = null) {}
 
-    public function list(array $filters = []): Collection
+    /**
+     * @param  array<string,mixed>  $filters
+     * @return LengthAwarePaginator|Collection<int,SalesOrder>
+     */
+    public function list(array $filters = []): LengthAwarePaginator|Collection
     {
         $query = SalesOrder::query()->with('customer', 'paymentTerm');
-        if (! empty($filters['status'])) {
-            $query->where('status', (string) $filters['status']);
+
+        if (! empty($filters['customer_id'])) {
+            $query->where('customer_id', (int) $filters['customer_id']);
         }
 
-        return $query->orderByDesc('order_date')->orderByDesc('id')->get();
+        return $this->applyListQuery($query, $filters);
     }
 
     public function find(int $id): SalesOrder

@@ -17,6 +17,7 @@ use App\Modules\Sales\Models\SalesOrderLine;
 use App\Modules\Sales\Models\SalesReceipt;
 use App\Modules\Sales\Models\SalesReturn;
 use App\Modules\Sales\Services\Concerns\HandlesSalesDocuments;
+use App\Shared\Api\AppliesListQuery;
 use App\Shared\Audit\AuditLogService;
 use App\Shared\DocumentNumbering\DocumentNumberService;
 use App\Shared\DocumentNumbering\DocumentType;
@@ -26,12 +27,27 @@ use App\Shared\TransactionLifecycle\PaymentTermDueDateService;
 use App\Shared\TransactionLifecycle\TransactionDateGuardService;
 use App\Shared\TransactionLifecycle\TransactionVoidEffectService;
 use App\Shared\Validation\BusinessReferenceValidator;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 class SalesInvoiceService
 {
+    use AppliesListQuery;
     use HandlesSalesDocuments;
+
+    /** `notes` ikut dicari (AR); `internal_notes` sengaja tidak -- lihat phase-2-sales.md. */
+    protected array $listSearchable = ['invoice_number', 'notes'];
+
+    protected array $listSearchableRelations = ['customer' => ['name', 'contact_code']];
+
+    protected string $listDateColumn = 'invoice_date';
+
+    protected string $listStatusColumn = 'status';
+
+    protected array $listDefaultSort = ['invoice_date' => 'desc', 'id' => 'desc'];
+
+    protected array $listSortable = ['invoice_number', 'invoice_date', 'due_date', 'status', 'created_at'];
 
     public function __construct(
         private readonly TenantContext $tenantContext,
@@ -46,14 +62,19 @@ class SalesInvoiceService
         private readonly ?AuditLogService $auditLogService = null,
     ) {}
 
-    public function list(array $filters = []): Collection
+    /**
+     * @param  array<string,mixed>  $filters
+     * @return LengthAwarePaginator|Collection<int,SalesInvoice>
+     */
+    public function list(array $filters = []): LengthAwarePaginator|Collection
     {
         $query = SalesInvoice::query()->with('customer', 'paymentTerm');
-        if (! empty($filters['status'])) {
-            $query->where('status', (string) $filters['status']);
+
+        if (! empty($filters['customer_id'])) {
+            $query->where('customer_id', (int) $filters['customer_id']);
         }
 
-        return $query->orderByDesc('invoice_date')->orderByDesc('id')->get();
+        return $this->applyListQuery($query, $filters);
     }
 
     public function find(int $id): SalesInvoice

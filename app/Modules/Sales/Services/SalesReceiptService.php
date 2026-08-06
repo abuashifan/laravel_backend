@@ -6,6 +6,7 @@ use App\Modules\Journal\Models\JournalEntry;
 use App\Modules\Sales\Models\SalesInvoice;
 use App\Modules\Sales\Models\SalesReceipt;
 use App\Modules\Sales\Services\Concerns\HandlesSalesDocuments;
+use App\Shared\Api\AppliesListQuery;
 use App\Shared\Audit\AuditLogService;
 use App\Shared\DocumentNumbering\DocumentNumberService;
 use App\Shared\DocumentNumbering\DocumentType;
@@ -14,23 +15,42 @@ use App\Shared\Tenant\TenantContext;
 use App\Shared\TransactionLifecycle\TransactionDateGuardService;
 use App\Shared\TransactionLifecycle\TransactionVoidEffectService;
 use App\Shared\Validation\BusinessReferenceValidator;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 class SalesReceiptService
 {
+    use AppliesListQuery;
     use HandlesSalesDocuments;
+
+    protected array $listSearchable = ['receipt_number'];
+
+    protected array $listSearchableRelations = ['customer' => ['name', 'contact_code']];
+
+    protected string $listDateColumn = 'receipt_date';
+
+    protected string $listStatusColumn = 'status';
+
+    protected array $listDefaultSort = ['receipt_date' => 'desc', 'id' => 'desc'];
+
+    protected array $listSortable = ['receipt_number', 'receipt_date', 'status', 'created_at'];
 
     public function __construct(private readonly TenantContext $tenantContext, private readonly DocumentNumberService $documentNumberService, private readonly TransactionDateGuardService $dateGuardService, private readonly TransactionVoidEffectService $voidEffectService, private readonly SalesAccountResolverService $accountResolver, private readonly CustomerDepositService $depositService, private readonly ARSubsidiaryLedgerService $ledgerService, private readonly ?AuditLogService $auditLogService = null) {}
 
-    public function list(array $filters = []): Collection
+    /**
+     * @param  array<string,mixed>  $filters
+     * @return LengthAwarePaginator|Collection<int,SalesReceipt>
+     */
+    public function list(array $filters = []): LengthAwarePaginator|Collection
     {
-        $q = SalesReceipt::query()->with('customer', 'salesInvoice', 'cashBankAccount');
-        if (! empty($filters['status'])) {
-            $q->where('status', (string) $filters['status']);
+        $query = SalesReceipt::query()->with('customer', 'salesInvoice', 'cashBankAccount');
+
+        if (! empty($filters['customer_id'])) {
+            $query->where('customer_id', (int) $filters['customer_id']);
         }
 
-return $q->orderByDesc('receipt_date')->orderByDesc('id')->get();
+        return $this->applyListQuery($query, $filters);
     }
 
     public function find(int $id): SalesReceipt

@@ -8,6 +8,7 @@ use App\Modules\Sales\Models\SalesInvoice;
 use App\Modules\Sales\Models\SalesOrder;
 use App\Modules\Sales\Models\SalesOrderLine;
 use App\Modules\Sales\Services\Concerns\HandlesSalesDocuments;
+use App\Shared\Api\AppliesListQuery;
 use App\Shared\Audit\AuditLogService;
 use App\Shared\DocumentNumbering\DocumentNumberService;
 use App\Shared\DocumentNumbering\DocumentType;
@@ -16,12 +17,26 @@ use App\Shared\Tenant\TenantContext;
 use App\Shared\TransactionLifecycle\TransactionDateGuardService;
 use App\Shared\TransactionLifecycle\TransactionVoidEffectService;
 use App\Shared\Validation\BusinessReferenceValidator;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 class DeliveryOrderService
 {
+    use AppliesListQuery;
     use HandlesSalesDocuments;
+
+    protected array $listSearchable = ['delivery_number'];
+
+    protected array $listSearchableRelations = ['customer' => ['name', 'contact_code']];
+
+    protected string $listDateColumn = 'delivery_date';
+
+    protected string $listStatusColumn = 'status';
+
+    protected array $listDefaultSort = ['delivery_date' => 'desc', 'id' => 'desc'];
+
+    protected array $listSortable = ['delivery_number', 'delivery_date', 'status', 'created_at'];
 
     public function __construct(
         private readonly TenantContext $tenantContext,
@@ -33,14 +48,19 @@ class DeliveryOrderService
         private readonly ?AuditLogService $auditLogService = null,
     ) {}
 
-    public function list(array $filters = []): Collection
+    /**
+     * @param  array<string,mixed>  $filters
+     * @return LengthAwarePaginator|Collection<int,DeliveryOrder>
+     */
+    public function list(array $filters = []): LengthAwarePaginator|Collection
     {
-        $q = DeliveryOrder::query()->with('customer', 'salesOrder', 'warehouse');
-        if (! empty($filters['status'])) {
-            $q->where('status', (string) $filters['status']);
+        $query = DeliveryOrder::query()->with('customer', 'salesOrder', 'warehouse');
+
+        if (! empty($filters['customer_id'])) {
+            $query->where('customer_id', (int) $filters['customer_id']);
         }
 
-return $q->orderByDesc('delivery_date')->orderByDesc('id')->get();
+        return $this->applyListQuery($query, $filters);
     }
 
     public function find(int $id): DeliveryOrder

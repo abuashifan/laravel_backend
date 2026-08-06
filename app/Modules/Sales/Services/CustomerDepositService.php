@@ -10,6 +10,7 @@ use App\Modules\Sales\Models\CustomerDepositAllocation;
 use App\Modules\Sales\Models\SalesInvoice;
 use App\Modules\Sales\Models\SalesOrder;
 use App\Modules\Sales\Services\Concerns\HandlesSalesDocuments;
+use App\Shared\Api\AppliesListQuery;
 use App\Shared\Audit\AuditLogService;
 use App\Shared\DocumentNumbering\DocumentNumberService;
 use App\Shared\DocumentNumbering\DocumentType;
@@ -18,12 +19,26 @@ use App\Shared\Tenant\TenantContext;
 use App\Shared\TransactionLifecycle\TransactionDateGuardService;
 use App\Shared\TransactionLifecycle\TransactionVoidEffectService;
 use App\Shared\Validation\BusinessReferenceValidator;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 class CustomerDepositService
 {
+    use AppliesListQuery;
     use HandlesSalesDocuments;
+
+    protected array $listSearchable = ['deposit_number'];
+
+    protected array $listSearchableRelations = ['customer' => ['name', 'contact_code']];
+
+    protected string $listDateColumn = 'deposit_date';
+
+    protected string $listStatusColumn = 'status';
+
+    protected array $listDefaultSort = ['deposit_date' => 'desc', 'id' => 'desc'];
+
+    protected array $listSortable = ['deposit_number', 'deposit_date', 'status', 'created_at'];
 
     public function __construct(
         private readonly TenantContext $tenantContext,
@@ -34,14 +49,19 @@ class CustomerDepositService
         private readonly ?AuditLogService $auditLogService = null,
     ) {}
 
-    public function list(array $filters = []): Collection
+    /**
+     * @param  array<string,mixed>  $filters
+     * @return LengthAwarePaginator|Collection<int,CustomerDeposit>
+     */
+    public function list(array $filters = []): LengthAwarePaginator|Collection
     {
         $query = CustomerDeposit::query()->with('customer', 'salesOrder', 'cashBankAccount');
-        if (! empty($filters['status'])) {
-            $query->where('status', (string) $filters['status']);
+
+        if (! empty($filters['customer_id'])) {
+            $query->where('customer_id', (int) $filters['customer_id']);
         }
 
-        return $query->orderByDesc('deposit_date')->orderByDesc('id')->get();
+        return $this->applyListQuery($query, $filters);
     }
 
     public function find(int $id): CustomerDeposit

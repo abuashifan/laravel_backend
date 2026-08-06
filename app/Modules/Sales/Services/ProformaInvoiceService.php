@@ -6,28 +6,48 @@ use App\Modules\Sales\Models\ProformaInvoice;
 use App\Modules\Sales\Models\SalesOrder;
 use App\Modules\Sales\Models\SalesQuotation;
 use App\Modules\Sales\Services\Concerns\HandlesSalesDocuments;
+use App\Shared\Api\AppliesListQuery;
 use App\Shared\Audit\AuditLogService;
 use App\Shared\DocumentNumbering\DocumentNumberService;
 use App\Shared\DocumentNumbering\DocumentType;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 class ProformaInvoiceService
 {
+    use AppliesListQuery;
     use HandlesSalesDocuments;
+
+    protected array $listSearchable = ['proforma_number'];
+
+    protected array $listSearchableRelations = ['customer' => ['name', 'contact_code']];
+
+    protected string $listDateColumn = 'proforma_date';
+
+    protected string $listStatusColumn = 'status';
+
+    protected array $listDefaultSort = ['proforma_date' => 'desc', 'id' => 'desc'];
+
+    protected array $listSortable = ['proforma_number', 'proforma_date', 'status', 'created_at'];
 
     public function __construct(private readonly TenantContext $tenantContext, private readonly DocumentNumberService $documentNumberService, private readonly SalesCalculationService $calculationService, private readonly ?AuditLogService $auditLogService = null) {}
 
-    public function list(array $filters = []): Collection
+    /**
+     * @param  array<string,mixed>  $filters
+     * @return LengthAwarePaginator|Collection<int,ProformaInvoice>
+     */
+    public function list(array $filters = []): LengthAwarePaginator|Collection
     {
-        $q = ProformaInvoice::query()->with('customer');
-        if (! empty($filters['status'])) {
-            $q->where('status', (string) $filters['status']);
+        $query = ProformaInvoice::query()->with('customer');
+
+        if (! empty($filters['customer_id'])) {
+            $query->where('customer_id', (int) $filters['customer_id']);
         }
 
-return $q->orderByDesc('proforma_date')->orderByDesc('id')->get();
+        return $this->applyListQuery($query, $filters);
     }
 
     public function find(int $id): ProformaInvoice

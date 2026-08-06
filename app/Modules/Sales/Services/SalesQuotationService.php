@@ -4,17 +4,32 @@ namespace App\Modules\Sales\Services;
 
 use App\Modules\Sales\Models\SalesQuotation;
 use App\Modules\Sales\Services\Concerns\HandlesSalesDocuments;
+use App\Shared\Api\AppliesListQuery;
 use App\Shared\Audit\AuditLogService;
 use App\Shared\DocumentNumbering\DocumentNumberService;
 use App\Shared\DocumentNumbering\DocumentType;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 class SalesQuotationService
 {
+    use AppliesListQuery;
     use HandlesSalesDocuments;
+
+    protected array $listSearchable = ['quotation_number'];
+
+    protected array $listSearchableRelations = ['customer' => ['name', 'contact_code']];
+
+    protected string $listDateColumn = 'quotation_date';
+
+    protected string $listStatusColumn = 'status';
+
+    protected array $listDefaultSort = ['quotation_date' => 'desc', 'id' => 'desc'];
+
+    protected array $listSortable = ['quotation_number', 'quotation_date', 'status', 'created_at'];
 
     public function __construct(
         private readonly TenantContext $tenantContext,
@@ -23,19 +38,23 @@ class SalesQuotationService
         private readonly ?AuditLogService $auditLogService = null,
     ) {}
 
-    public function list(array $filters = []): Collection
+    /**
+     * Mengembalikan `LengthAwarePaginator` saat `page`/`per_page` dikirim, atau
+     * `Collection` tanpa paginasi saat tidak -- lihat kontrak di
+     * `AppliesListQuery::applyListQuery()`.
+     *
+     * @param  array<string,mixed>  $filters
+     * @return LengthAwarePaginator|Collection<int,SalesQuotation>
+     */
+    public function list(array $filters = []): LengthAwarePaginator|Collection
     {
         $query = SalesQuotation::query()->with('customer');
-
-        if (! empty($filters['status'])) {
-            $query->where('status', (string) $filters['status']);
-        }
 
         if (! empty($filters['customer_id'])) {
             $query->where('customer_id', (int) $filters['customer_id']);
         }
 
-        return $query->orderByDesc('quotation_date')->orderByDesc('id')->get();
+        return $this->applyListQuery($query, $filters);
     }
 
     public function find(int $id): SalesQuotation
