@@ -4,6 +4,7 @@ namespace App\Shared\Api;
 
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -45,11 +46,20 @@ use Illuminate\Database\Eloquent\Model;
 trait AppliesListQuery
 {
     /**
+     * `listResponse()` punya kontrak: tanpa `page`/`per_page` di request berarti
+     * "kirim semua, tidak usah dipaginasi" (beberapa pemanggil internal
+     * bergantung pada ini, mis. modul yang butuh seluruh baris untuk agregasi).
+     * Method ini menghormati kontrak yang sama — search/status/tanggal/sort
+     * tetap jalan di SQL, tapi `->paginate()` cuma dipanggil kalau salah satu
+     * dari `page`/`per_page` benar-benar ada di `$filters`. Simetris dengan
+     * pengecekan `$request->hasAny(['page', 'per_page'])` di `ApiResponse`.
+     *
      * @param  Builder<covariant Model>  $query  Query dasar modul (filter khusus modul sudah
      *                                           diterapkan sebelum memanggil ini).
      * @param  array<string,mixed>  $filters  Biasanya `$request->query()`.
+     * @return LengthAwarePaginator|Collection<int,Model>
      */
-    protected function applyListQuery(Builder $query, array $filters): LengthAwarePaginator
+    protected function applyListQuery(Builder $query, array $filters): LengthAwarePaginator|Collection
     {
         $this->applyListSearchQuery($query, (string) ($filters['search'] ?? ''));
         $this->applyListStatusQuery($query, $filters['status'] ?? null);
@@ -63,6 +73,10 @@ trait AppliesListQuery
             (string) ($filters['sort_by'] ?? $filters['sort'] ?? ''),
             (string) ($filters['sort_direction'] ?? $filters['direction'] ?? 'asc'),
         );
+
+        if (! array_key_exists('page', $filters) && ! array_key_exists('per_page', $filters)) {
+            return $query->get();
+        }
 
         $perPage = max(1, min(100, (int) ($filters['per_page'] ?? 10)));
         $page = max(1, (int) ($filters['page'] ?? 1));

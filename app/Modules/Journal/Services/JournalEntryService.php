@@ -5,6 +5,7 @@ namespace App\Modules\Journal\Services;
 use App\Modules\Journal\Models\JournalEntry;
 use App\Modules\Settings\Services\CompanySettingService;
 use App\Shared\Api\ApiErrorCode;
+use App\Shared\Api\AppliesListQuery;
 use App\Shared\Audit\AuditLogService;
 use App\Shared\DocumentNumbering\DocumentNumberService;
 use App\Shared\DocumentNumbering\DocumentType;
@@ -14,11 +15,26 @@ use App\Shared\TransactionLifecycle\TransactionModule;
 use App\Shared\TransactionLifecycle\TransactionPolicyResult;
 use App\Shared\TransactionLifecycle\TransactionPolicyService;
 use App\Shared\TransactionLifecycle\TransactionRevisionService;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 class JournalEntryService
 {
+    use AppliesListQuery;
+
+    protected array $listSearchable = ['journal_number', 'description'];
+
+    protected array $listSearchableRelations = [];
+
+    protected string $listDateColumn = 'journal_date';
+
+    protected string $listStatusColumn = 'status';
+
+    protected array $listDefaultSort = ['journal_date' => 'desc', 'id' => 'desc'];
+
+    protected array $listSortable = ['journal_number', 'journal_date', 'status', 'created_at'];
+
     public function __construct(
         private readonly JournalValidationService $validator,
         private readonly JournalLineNormalizer $normalizer,
@@ -33,12 +49,22 @@ class JournalEntryService
     ) {}
 
     /**
-     * @return Collection<int,JournalEntry>
+     * Mengembalikan `LengthAwarePaginator` saat `page`/`per_page` dikirim, atau
+     * `Collection` tanpa paginasi saat tidak -- lihat kontrak di
+     * `AppliesListQuery::applyListQuery()`.
+     *
+     * @param  array<string,mixed>  $filters
+     * @return LengthAwarePaginator|Collection<int,JournalEntry>
      */
-    public function list(array $filters = []): Collection
+    public function list(array $filters = []): LengthAwarePaginator|Collection
     {
         $query = JournalEntry::query();
 
+        // include_void/include_obsolete tetap di sini -- keduanya bukan bagian
+        // dari kontrak search/status/tanggal/sort/paginate yang dipindahkan ke
+        // AppliesListQuery, dan harus diterapkan SEBELUM filter status generik
+        // supaya ?status=void tetap tidak berbalik menyertakan jurnal void
+        // ketika include_void tidak diminta.
         $includeVoid = filter_var($filters['include_void'] ?? false, FILTER_VALIDATE_BOOLEAN);
         if (! $includeVoid) {
             $query->where('status', '!=', 'void');
@@ -49,27 +75,7 @@ class JournalEntryService
             $query->where('is_obsolete', false);
         }
 
-        if (! empty($filters['status'])) {
-            $query->where('status', (string) $filters['status']);
-        }
-
-        if (! empty($filters['date_from'])) {
-            $query->whereDate('journal_date', '>=', (string) $filters['date_from']);
-        }
-
-        if (! empty($filters['date_to'])) {
-            $query->whereDate('journal_date', '<=', (string) $filters['date_to']);
-        }
-
-        if (! empty($filters['search'])) {
-            $term = '%'.str_replace('%', '', (string) $filters['search']).'%';
-            $query->where(function ($q) use ($term) {
-                $q->where('journal_number', 'like', $term)
-                    ->orWhere('description', 'like', $term);
-            });
-        }
-
-        return $query->orderByDesc('journal_date')->orderByDesc('id')->get();
+        return $this->applyListQuery($query, $filters);
     }
 
     public function find(int|string $id): JournalEntry
