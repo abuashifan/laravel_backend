@@ -7,6 +7,7 @@ use App\Modules\MasterData\Models\AccountMapping;
 use App\Modules\Purchase\Models\VendorBill;
 use App\Modules\Purchase\Models\VendorPayment;
 use App\Modules\Purchase\Services\Concerns\HandlesPurchaseDocuments;
+use App\Shared\Api\AppliesListQuery;
 use App\Shared\Audit\AuditLogService;
 use App\Shared\DocumentNumbering\DocumentNumberService;
 use App\Shared\DocumentNumbering\DocumentType;
@@ -15,12 +16,26 @@ use App\Shared\Tenant\TenantContext;
 use App\Shared\TransactionLifecycle\TransactionDateGuardService;
 use App\Shared\TransactionLifecycle\TransactionVoidEffectService;
 use App\Shared\Validation\BusinessReferenceValidator;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 class VendorPaymentService
 {
+    use AppliesListQuery;
     use HandlesPurchaseDocuments;
+
+    protected array $listSearchable = ['payment_number'];
+
+    protected array $listSearchableRelations = ['vendor' => ['name', 'contact_code']];
+
+    protected string $listDateColumn = 'payment_date';
+
+    protected string $listStatusColumn = 'status';
+
+    protected array $listDefaultSort = ['payment_date' => 'desc', 'id' => 'desc'];
+
+    protected array $listSortable = ['payment_number', 'payment_date', 'status', 'created_at'];
 
     public function __construct(
         private readonly TenantContext $tenantContext,
@@ -33,14 +48,19 @@ class VendorPaymentService
         private readonly ?AuditLogService $auditLogService = null,
     ) {}
 
-    public function list(array $filters = []): Collection
+    /**
+     * @param  array<string,mixed>  $filters
+     * @return LengthAwarePaginator|Collection<int,VendorPayment>
+     */
+    public function list(array $filters = []): LengthAwarePaginator|Collection
     {
         $query = VendorPayment::query()->with('vendor', 'vendorBill');
-        if (! empty($filters['status'])) {
-            $query->where('status', (string) $filters['status']);
+
+        if (! empty($filters['vendor_id'])) {
+            $query->where('vendor_id', (int) $filters['vendor_id']);
         }
 
-        return $query->orderByDesc('payment_date')->orderByDesc('id')->get();
+        return $this->applyListQuery($query, $filters);
     }
 
     public function find(int $id): VendorPayment

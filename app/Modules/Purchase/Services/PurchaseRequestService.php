@@ -4,17 +4,33 @@ namespace App\Modules\Purchase\Services;
 
 use App\Modules\Purchase\Models\PurchaseRequest;
 use App\Modules\Purchase\Services\Concerns\HandlesPurchaseDocuments;
+use App\Shared\Api\AppliesListQuery;
 use App\Shared\Audit\AuditLogService;
 use App\Shared\DocumentNumbering\DocumentNumberService;
 use App\Shared\DocumentNumbering\DocumentType;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 class PurchaseRequestService
 {
+    use AppliesListQuery;
     use HandlesPurchaseDocuments;
+
+    /** Tidak ada relasi vendor -- purchase_requests memang belum punya vendor_id. */
+    protected array $listSearchable = ['request_number'];
+
+    protected array $listSearchableRelations = [];
+
+    protected string $listDateColumn = 'request_date';
+
+    protected string $listStatusColumn = 'status';
+
+    protected array $listDefaultSort = ['request_date' => 'desc', 'id' => 'desc'];
+
+    protected array $listSortable = ['request_number', 'request_date', 'status', 'created_at'];
 
     public function __construct(
         private readonly TenantContext $tenantContext,
@@ -22,13 +38,17 @@ class PurchaseRequestService
         private readonly ?AuditLogService $auditLogService = null,
     ) {}
 
-    public function list(array $filters = []): Collection
+    /**
+     * Mengembalikan `LengthAwarePaginator` saat `page`/`per_page` dikirim, atau
+     * `Collection` tanpa paginasi saat tidak -- lihat kontrak di
+     * `AppliesListQuery::applyListQuery()`.
+     *
+     * @param  array<string,mixed>  $filters
+     * @return LengthAwarePaginator|Collection<int,PurchaseRequest>
+     */
+    public function list(array $filters = []): LengthAwarePaginator|Collection
     {
         $query = PurchaseRequest::query()->with('department', 'project');
-
-        if (! empty($filters['status'])) {
-            $query->where('status', (string) $filters['status']);
-        }
 
         if (! empty($filters['department_id'])) {
             $query->where('department_id', (int) $filters['department_id']);
@@ -38,7 +58,7 @@ class PurchaseRequestService
             $query->where('project_id', (int) $filters['project_id']);
         }
 
-        return $query->orderByDesc('request_date')->orderByDesc('id')->get();
+        return $this->applyListQuery($query, $filters);
     }
 
     public function find(int $id): PurchaseRequest

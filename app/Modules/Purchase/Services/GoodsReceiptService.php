@@ -8,6 +8,7 @@ use App\Modules\Purchase\Models\GoodsReceipt;
 use App\Modules\Purchase\Models\PurchaseOrder;
 use App\Modules\Purchase\Models\PurchaseOrderLine;
 use App\Modules\Purchase\Services\Concerns\HandlesPurchaseDocuments;
+use App\Shared\Api\AppliesListQuery;
 use App\Shared\Audit\AuditLogService;
 use App\Shared\DocumentNumbering\DocumentNumberService;
 use App\Shared\DocumentNumbering\DocumentType;
@@ -16,12 +17,26 @@ use App\Shared\Tenant\TenantContext;
 use App\Shared\TransactionLifecycle\TransactionDateGuardService;
 use App\Shared\TransactionLifecycle\TransactionVoidEffectService;
 use App\Shared\Validation\BusinessReferenceValidator;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 class GoodsReceiptService
 {
+    use AppliesListQuery;
     use HandlesPurchaseDocuments;
+
+    protected array $listSearchable = ['receipt_number'];
+
+    protected array $listSearchableRelations = ['vendor' => ['name', 'contact_code']];
+
+    protected string $listDateColumn = 'receipt_date';
+
+    protected string $listStatusColumn = 'status';
+
+    protected array $listDefaultSort = ['receipt_date' => 'desc', 'id' => 'desc'];
+
+    protected array $listSortable = ['receipt_number', 'receipt_date', 'status', 'created_at'];
 
     public function __construct(
         private readonly TenantContext $tenantContext,
@@ -33,12 +48,14 @@ class GoodsReceiptService
         private readonly ?AuditLogService $auditLogService = null,
     ) {}
 
-    public function list(array $filters = []): Collection
+    /**
+     * @param  array<string,mixed>  $filters
+     * @return LengthAwarePaginator|Collection<int,GoodsReceipt>
+     */
+    public function list(array $filters = []): LengthAwarePaginator|Collection
     {
         $query = GoodsReceipt::query()->with('vendor', 'purchaseOrder', 'warehouse');
-        if (! empty($filters['status'])) {
-            $query->where('status', (string) $filters['status']);
-        }
+
         if (! empty($filters['vendor_id'])) {
             $query->where('vendor_id', (int) $filters['vendor_id']);
         }
@@ -46,7 +63,7 @@ class GoodsReceiptService
             $query->where('purchase_order_id', (int) $filters['purchase_order_id']);
         }
 
-        return $query->orderByDesc('receipt_date')->orderByDesc('id')->get();
+        return $this->applyListQuery($query, $filters);
     }
 
     public function find(int $id): GoodsReceipt

@@ -17,6 +17,7 @@ use App\Modules\Purchase\Models\VendorDeposit;
 use App\Modules\Purchase\Models\VendorDepositAllocation;
 use App\Modules\Purchase\Models\VendorPayment;
 use App\Modules\Purchase\Services\Concerns\HandlesPurchaseDocuments;
+use App\Shared\Api\AppliesListQuery;
 use App\Shared\Audit\AuditLogService;
 use App\Shared\DocumentNumbering\DocumentNumberService;
 use App\Shared\DocumentNumbering\DocumentType;
@@ -26,12 +27,27 @@ use App\Shared\TransactionLifecycle\PaymentTermDueDateService;
 use App\Shared\TransactionLifecycle\TransactionDateGuardService;
 use App\Shared\TransactionLifecycle\TransactionVoidEffectService;
 use App\Shared\Validation\BusinessReferenceValidator;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 class VendorBillService
 {
+    use AppliesListQuery;
     use HandlesPurchaseDocuments;
+
+    /** `notes` ikut dicari (AP), simetris dengan SalesInvoiceService; `internal_notes` tidak. */
+    protected array $listSearchable = ['bill_number', 'vendor_invoice_number', 'notes'];
+
+    protected array $listSearchableRelations = ['vendor' => ['name', 'contact_code']];
+
+    protected string $listDateColumn = 'bill_date';
+
+    protected string $listStatusColumn = 'status';
+
+    protected array $listDefaultSort = ['bill_date' => 'desc', 'id' => 'desc'];
+
+    protected array $listSortable = ['bill_number', 'bill_date', 'due_date', 'status', 'created_at'];
 
     public function __construct(
         private readonly TenantContext $tenantContext,
@@ -46,15 +62,19 @@ class VendorBillService
         private readonly ?AuditLogService $auditLogService = null,
     ) {}
 
-    public function list(array $filters = []): Collection
+    /**
+     * @param  array<string,mixed>  $filters
+     * @return LengthAwarePaginator|Collection<int,VendorBill>
+     */
+    public function list(array $filters = []): LengthAwarePaginator|Collection
     {
-        // Status difilter oleh listResponse (mendukung multi-status comma-separated); vendor_id difilter di query.
         $query = VendorBill::query()->with('vendor', 'paymentTerm');
+
         if (! empty($filters['vendor_id'])) {
             $query->where('vendor_id', (int) $filters['vendor_id']);
         }
 
-        return $query->orderByDesc('bill_date')->orderByDesc('id')->get();
+        return $this->applyListQuery($query, $filters);
     }
 
     public function find(int $id): VendorBill

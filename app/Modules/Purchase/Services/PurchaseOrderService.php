@@ -5,18 +5,33 @@ namespace App\Modules\Purchase\Services;
 use App\Modules\Purchase\Models\PurchaseOrder;
 use App\Modules\Purchase\Models\PurchaseRequest;
 use App\Modules\Purchase\Services\Concerns\HandlesPurchaseDocuments;
+use App\Shared\Api\AppliesListQuery;
 use App\Shared\Audit\AuditLogService;
 use App\Shared\DocumentNumbering\DocumentNumberService;
 use App\Shared\DocumentNumbering\DocumentType;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
 use App\Shared\Validation\BusinessReferenceValidator;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 class PurchaseOrderService
 {
+    use AppliesListQuery;
     use HandlesPurchaseDocuments;
+
+    protected array $listSearchable = ['order_number', 'vendor_quote_number'];
+
+    protected array $listSearchableRelations = ['vendor' => ['name', 'contact_code']];
+
+    protected string $listDateColumn = 'order_date';
+
+    protected string $listStatusColumn = 'status';
+
+    protected array $listDefaultSort = ['order_date' => 'desc', 'id' => 'desc'];
+
+    protected array $listSortable = ['order_number', 'order_date', 'status', 'created_at'];
 
     public function __construct(
         private readonly TenantContext $tenantContext,
@@ -27,17 +42,19 @@ class PurchaseOrderService
         private readonly ?AuditLogService $auditLogService = null,
     ) {}
 
-    public function list(array $filters = []): Collection
+    /**
+     * @param  array<string,mixed>  $filters
+     * @return LengthAwarePaginator|Collection<int,PurchaseOrder>
+     */
+    public function list(array $filters = []): LengthAwarePaginator|Collection
     {
         $query = PurchaseOrder::query()->with('vendor', 'paymentTerm');
-        if (! empty($filters['status'])) {
-            $query->where('status', (string) $filters['status']);
-        }
+
         if (! empty($filters['vendor_id'])) {
             $query->where('vendor_id', (int) $filters['vendor_id']);
         }
 
-        return $query->orderByDesc('order_date')->orderByDesc('id')->get();
+        return $this->applyListQuery($query, $filters);
     }
 
     public function find(int $id): PurchaseOrder

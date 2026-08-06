@@ -12,6 +12,7 @@ use App\Modules\Purchase\Models\PurchaseReturn;
 use App\Modules\Purchase\Models\VendorBill;
 use App\Modules\Purchase\Models\VendorBillLine;
 use App\Modules\Purchase\Services\Concerns\HandlesPurchaseDocuments;
+use App\Shared\Api\AppliesListQuery;
 use App\Shared\Audit\AuditLogService;
 use App\Shared\DocumentNumbering\DocumentNumberService;
 use App\Shared\DocumentNumbering\DocumentType;
@@ -19,12 +20,26 @@ use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
 use App\Shared\TransactionLifecycle\TransactionDateGuardService;
 use App\Shared\TransactionLifecycle\TransactionVoidEffectService;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 class PurchaseReturnService
 {
+    use AppliesListQuery;
     use HandlesPurchaseDocuments;
+
+    protected array $listSearchable = ['return_number'];
+
+    protected array $listSearchableRelations = ['vendor' => ['name', 'contact_code']];
+
+    protected string $listDateColumn = 'return_date';
+
+    protected string $listStatusColumn = 'status';
+
+    protected array $listDefaultSort = ['return_date' => 'desc', 'id' => 'desc'];
+
+    protected array $listSortable = ['return_number', 'return_date', 'status', 'created_at'];
 
     public function __construct(
         private readonly TenantContext $tenantContext,
@@ -36,14 +51,19 @@ class PurchaseReturnService
         private readonly ?AuditLogService $auditLogService = null,
     ) {}
 
-    public function list(array $filters = []): Collection
+    /**
+     * @param  array<string,mixed>  $filters
+     * @return LengthAwarePaginator|Collection<int,PurchaseReturn>
+     */
+    public function list(array $filters = []): LengthAwarePaginator|Collection
     {
-        $q = PurchaseReturn::query()->with('vendor', 'vendorBill');
-        if (! empty($filters['status'])) {
-            $q->where('status', (string) $filters['status']);
+        $query = PurchaseReturn::query()->with('vendor', 'vendorBill');
+
+        if (! empty($filters['vendor_id'])) {
+            $query->where('vendor_id', (int) $filters['vendor_id']);
         }
 
-return $q->orderByDesc('return_date')->orderByDesc('id')->get();
+        return $this->applyListQuery($query, $filters);
     }
 
     public function find(int $id): PurchaseReturn
