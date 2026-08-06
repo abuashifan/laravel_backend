@@ -2,6 +2,7 @@
 
 namespace App\Shared\Api;
 
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 
@@ -23,6 +24,20 @@ trait ApiResponse
     ) {
         if (! $request->hasAny(['page', 'per_page'])) {
             return $this->successResponse($items, $message, $status);
+        }
+
+        // Service sudah memfilter/mengurutkan/memaginasi di SQL lewat
+        // AppliesListQuery — tidak perlu (dan tidak boleh) disaring ulang di sini.
+        if ($items instanceof LengthAwarePaginator) {
+            return $this->successResponse([
+                'data' => $items->items(),
+                'current_page' => $items->currentPage(),
+                'per_page' => $items->perPage(),
+                'total' => $items->total(),
+                'last_page' => $items->lastPage(),
+                'from' => $items->firstItem(),
+                'to' => $items->lastItem(),
+            ], $message, $status);
         }
 
         $collection = $items instanceof Collection ? $items->values() : collect($items)->values();
