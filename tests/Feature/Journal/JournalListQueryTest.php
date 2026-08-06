@@ -123,6 +123,34 @@ class JournalListQueryTest extends JournalTestCase
         $res->assertJsonPath('data.data.0.journal_number', 'JV-2026-000004');
     }
 
+    /**
+     * Skenario nyata yang dilaporkan user: void satu jurnal lewat UI, lalu
+     * centang filter status "Void" -- UI tidak pernah mengirim include_void,
+     * cuma status=void. Sebelum diperbaiki, where('status','!=','void') yang
+     * tanpa syarat bentrok dengan whereIn('status',['void']) dari
+     * AppliesListQuery: kontradiksi, selalu 0 hasil walau jurnalnya memang ada.
+     */
+    public function test_status_void_filter_works_without_include_void_flag(): void
+    {
+        ['headers' => $headers] = $this->seedJournals();
+
+        $res = $this->getJson('/api/journals?page=1&per_page=25&status=void', $headers);
+        $res->assertStatus(200);
+        $res->assertJsonPath('data.total', 1);
+        $res->assertJsonPath('data.data.0.journal_number', 'JV-2026-000004');
+    }
+
+    /** status=draft,void (tanpa include_void) juga harus menghormati filter eksplisit. */
+    public function test_status_filter_including_void_without_include_void_flag(): void
+    {
+        ['headers' => $headers] = $this->seedJournals();
+
+        $res = $this->getJson('/api/journals?page=1&per_page=25&status=draft,void', $headers);
+        $res->assertStatus(200);
+        $numbers = collect($res->json('data.data'))->pluck('journal_number')->sort()->values()->all();
+        $this->assertSame(['JV-2026-000001', 'JV-2026-000004'], $numbers);
+    }
+
     public function test_date_range_is_inclusive(): void
     {
         ['headers' => $headers] = $this->seedJournals();

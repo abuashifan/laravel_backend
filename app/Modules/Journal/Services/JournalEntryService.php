@@ -62,11 +62,19 @@ class JournalEntryService
 
         // include_void/include_obsolete tetap di sini -- keduanya bukan bagian
         // dari kontrak search/status/tanggal/sort/paginate yang dipindahkan ke
-        // AppliesListQuery, dan harus diterapkan SEBELUM filter status generik
-        // supaya ?status=void tetap tidak berbalik menyertakan jurnal void
-        // ketika include_void tidak diminta.
+        // AppliesListQuery.
+        //
+        // Exclusion "sembunyikan void" HANYA berlaku saat user tidak memfilter
+        // status sama sekali. Begitu user memfilter status secara eksplisit --
+        // termasuk memilih status=void di UI, yang TIDAK pernah mengirim
+        // include_void=true -- filter itu yang harus menang. Sebelumnya
+        // exclusion ini diterapkan tanpa syarat, sehingga where('status','!=',
+        // 'void') AND status='void' (dari AppliesListQuery) jadi kontradiksi
+        // yang selalu 0 hasil: user tidak bisa melihat jurnal yang sudah
+        // di-void lewat filter status, walau baru saja mereka void sendiri.
         $includeVoid = filter_var($filters['include_void'] ?? false, FILTER_VALIDATE_BOOLEAN);
-        if (! $includeVoid) {
+        $hasStatusFilter = ! empty($filters['status']);
+        if (! $includeVoid && ! $hasStatusFilter) {
             $query->where('status', '!=', 'void');
         }
 
