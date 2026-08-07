@@ -4,6 +4,7 @@ namespace App\Modules\CashBank\Services;
 
 use App\Modules\CashBank\Models\CashReceipt;
 use App\Modules\Journal\Models\JournalEntry;
+use App\Shared\Api\AppliesListQuery;
 use App\Shared\Audit\AuditLogService;
 use App\Shared\DocumentNumbering\DocumentNumberService;
 use App\Shared\DocumentNumbering\DocumentType;
@@ -11,11 +12,31 @@ use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
 use App\Shared\TransactionLifecycle\TransactionDateGuardService;
 use App\Shared\TransactionLifecycle\TransactionVoidEffectService;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 class CashReceiptService
 {
+    use AppliesListQuery;
+
+    /**
+     * Rencana Fase 4 menyebut `description`; kolom itu tidak ada di
+     * `cash_receipts` -- yang ada `notes`. Dipakai `notes` karena itu yang
+     * dimaksud ("nomor + keterangan"), simetris dengan `bank_transfers`.
+     */
+    protected array $listSearchable = ['receipt_number', 'notes'];
+
+    protected array $listSearchableRelations = [];
+
+    protected string $listDateColumn = 'receipt_date';
+
+    protected string $listStatusColumn = 'status';
+
+    protected array $listDefaultSort = ['receipt_date' => 'desc', 'id' => 'desc'];
+
+    protected array $listSortable = ['receipt_number', 'receipt_date', 'amount', 'status', 'created_at'];
+
     public function __construct(
         private readonly TenantContext $tenantContext,
         private readonly DocumentNumberService $documentNumberService,
@@ -25,14 +46,23 @@ class CashReceiptService
         private readonly ?AuditLogService $auditLogService = null,
     ) {}
 
-    public function list(array $filters = []): Collection
+    /**
+     * Mengembalikan `LengthAwarePaginator` saat `page`/`per_page` dikirim, atau
+     * `Collection` tanpa paginasi saat tidak -- lihat kontrak di
+     * `AppliesListQuery::applyListQuery()`.
+     *
+     * @param  array<string,mixed>  $filters
+     * @return LengthAwarePaginator|Collection<int,CashReceipt>
+     */
+    public function list(array $filters = []): LengthAwarePaginator|Collection
     {
         $query = CashReceipt::query()->with('contact', 'cashBankAccount');
-        if (! empty($filters['status'])) {
-            $query->where('status', (string) $filters['status']);
+
+        if (! empty($filters['cash_bank_account_id'])) {
+            $query->where('cash_bank_account_id', (int) $filters['cash_bank_account_id']);
         }
 
-        return $query->orderByDesc('receipt_date')->orderByDesc('id')->get();
+        return $this->applyListQuery($query, $filters);
     }
 
     public function find(int $id): CashReceipt

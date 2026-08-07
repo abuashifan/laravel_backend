@@ -5,33 +5,55 @@ namespace App\Modules\CashBank\Services;
 use App\Modules\CashBank\Models\BankReconciliation;
 use App\Modules\CashBank\Models\BankReconciliationLine;
 use App\Modules\Journal\Models\JournalEntryLine;
+use App\Shared\Api\AppliesListQuery;
 use App\Shared\DocumentNumbering\DocumentNumberService;
 use App\Shared\DocumentNumbering\DocumentType;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
 use Carbon\Carbon;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 class BankReconciliationService
 {
+    use AppliesListQuery;
+
+    protected array $listSearchable = ['reconciliation_number'];
+
+    protected array $listSearchableRelations = [];
+
+    /**
+     * Akhir periode, bukan `created_at` -- "rekonsiliasi periode Juni" dinilai
+     * dari tanggal tutup laporannya. Index ditambahkan di Fase 0.
+     */
+    protected string $listDateColumn = 'statement_end_date';
+
+    protected string $listStatusColumn = 'status';
+
+    protected array $listDefaultSort = ['statement_end_date' => 'desc', 'id' => 'desc'];
+
+    protected array $listSortable = ['reconciliation_number', 'statement_start_date', 'statement_end_date', 'status', 'created_at'];
+
     public function __construct(
         private readonly TenantContext $tenantContext,
         private readonly DocumentNumberService $documentNumberService,
         private readonly CashBankAccountService $cashBankAccountService,
     ) {}
 
-    public function list(array $filters = []): Collection
+    /**
+     * @param  array<string,mixed>  $filters
+     * @return LengthAwarePaginator|Collection<int,BankReconciliation>
+     */
+    public function list(array $filters = []): LengthAwarePaginator|Collection
     {
         $query = BankReconciliation::query()->with('cashBankAccount');
-        if (! empty($filters['status'])) {
-            $query->where('status', (string) $filters['status']);
-        }
+
         if (! empty($filters['cash_bank_account_id'])) {
             $query->where('cash_bank_account_id', (int) $filters['cash_bank_account_id']);
         }
 
-        return $query->orderByDesc('statement_end_date')->orderByDesc('id')->get();
+        return $this->applyListQuery($query, $filters);
     }
 
     public function find(int $id): BankReconciliation

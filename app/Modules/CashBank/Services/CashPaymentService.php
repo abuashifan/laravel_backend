@@ -4,6 +4,7 @@ namespace App\Modules\CashBank\Services;
 
 use App\Modules\CashBank\Models\CashPayment;
 use App\Modules\Journal\Models\JournalEntry;
+use App\Shared\Api\AppliesListQuery;
 use App\Shared\Audit\AuditLogService;
 use App\Shared\DocumentNumbering\DocumentNumberService;
 use App\Shared\DocumentNumbering\DocumentType;
@@ -11,11 +12,27 @@ use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
 use App\Shared\TransactionLifecycle\TransactionDateGuardService;
 use App\Shared\TransactionLifecycle\TransactionVoidEffectService;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 class CashPaymentService
 {
+    use AppliesListQuery;
+
+    /** `notes`, bukan `description` -- lihat catatan di CashReceiptService. */
+    protected array $listSearchable = ['payment_number', 'notes'];
+
+    protected array $listSearchableRelations = [];
+
+    protected string $listDateColumn = 'payment_date';
+
+    protected string $listStatusColumn = 'status';
+
+    protected array $listDefaultSort = ['payment_date' => 'desc', 'id' => 'desc'];
+
+    protected array $listSortable = ['payment_number', 'payment_date', 'amount', 'status', 'created_at'];
+
     public function __construct(
         private readonly TenantContext $tenantContext,
         private readonly DocumentNumberService $documentNumberService,
@@ -25,14 +42,19 @@ class CashPaymentService
         private readonly ?AuditLogService $auditLogService = null,
     ) {}
 
-    public function list(array $filters = []): Collection
+    /**
+     * @param  array<string,mixed>  $filters
+     * @return LengthAwarePaginator|Collection<int,CashPayment>
+     */
+    public function list(array $filters = []): LengthAwarePaginator|Collection
     {
         $query = CashPayment::query()->with('contact', 'cashBankAccount');
-        if (! empty($filters['status'])) {
-            $query->where('status', (string) $filters['status']);
+
+        if (! empty($filters['cash_bank_account_id'])) {
+            $query->where('cash_bank_account_id', (int) $filters['cash_bank_account_id']);
         }
 
-        return $query->orderByDesc('payment_date')->orderByDesc('id')->get();
+        return $this->applyListQuery($query, $filters);
     }
 
     public function find(int $id): CashPayment

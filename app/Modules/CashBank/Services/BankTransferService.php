@@ -4,6 +4,7 @@ namespace App\Modules\CashBank\Services;
 
 use App\Modules\CashBank\Models\BankTransfer;
 use App\Modules\Journal\Models\JournalEntry;
+use App\Shared\Api\AppliesListQuery;
 use App\Shared\Audit\AuditLogService;
 use App\Shared\DocumentNumbering\DocumentNumberService;
 use App\Shared\DocumentNumbering\DocumentType;
@@ -11,11 +12,26 @@ use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
 use App\Shared\TransactionLifecycle\TransactionDateGuardService;
 use App\Shared\TransactionLifecycle\TransactionVoidEffectService;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 class BankTransferService
 {
+    use AppliesListQuery;
+
+    protected array $listSearchable = ['transfer_number', 'notes'];
+
+    protected array $listSearchableRelations = [];
+
+    protected string $listDateColumn = 'transfer_date';
+
+    protected string $listStatusColumn = 'status';
+
+    protected array $listDefaultSort = ['transfer_date' => 'desc', 'id' => 'desc'];
+
+    protected array $listSortable = ['transfer_number', 'transfer_date', 'amount', 'status', 'created_at'];
+
     public function __construct(
         private readonly TenantContext $tenantContext,
         private readonly DocumentNumberService $documentNumberService,
@@ -25,14 +41,20 @@ class BankTransferService
         private readonly ?AuditLogService $auditLogService = null,
     ) {}
 
-    public function list(array $filters = []): Collection
+    /**
+     * Sengaja tidak menerima `cash_bank_account_id` seperti tiga service Kas &
+     * Bank lainnya: transfer punya DUA akun (`from_`/`to_`), jadi artinya
+     * ambigu -- akun asal saja, tujuan saja, atau salah satu. Menunggu
+     * keputusan pemilik produk, jangan ditebak.
+     *
+     * @param  array<string,mixed>  $filters
+     * @return LengthAwarePaginator|Collection<int,BankTransfer>
+     */
+    public function list(array $filters = []): LengthAwarePaginator|Collection
     {
         $query = BankTransfer::query()->with('fromCashBankAccount', 'toCashBankAccount');
-        if (! empty($filters['status'])) {
-            $query->where('status', (string) $filters['status']);
-        }
 
-        return $query->orderByDesc('transfer_date')->orderByDesc('id')->get();
+        return $this->applyListQuery($query, $filters);
     }
 
     public function find(int $id): BankTransfer
