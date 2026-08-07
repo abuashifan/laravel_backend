@@ -4,7 +4,7 @@ namespace App\Shared\Api;
 
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\Request;
-use Illuminate\Support\Collection;
+use LogicException;
 
 trait ApiResponse
 {
@@ -16,193 +16,52 @@ trait ApiResponse
         return ApiResponseBuilder::success($data, $message, $status);
     }
 
+    /**
+     * Membentuk response daftar. **Tidak lagi menyaring apa pun** — service
+     * yang memakai `AppliesListQuery` sudah mengerjakan search/status/tanggal/
+     * sort/paginate di SQL (Fase 1-6 list-query-pushdown).
+     *
+     * Dua cabangnya harus simetris dengan `AppliesListQuery::applyListQuery()`:
+     * keduanya memutuskan "paginasi atau tidak" dari ada-tidaknya `page`/
+     * `per_page`. Kalau salah satu sisi diubah tanpa yang lain, cabang di
+     * bawah akan menerima bentuk yang tidak diharapkan.
+     */
     protected function listResponse(
         mixed $items,
         Request $request,
         string $message = 'Success',
         int $status = 200
     ) {
+        // Kontrak lama yang tetap dipakai beberapa pemanggil internal:
+        // tanpa page/per_page berarti "kirim semua, jangan dipaginasi".
         if (! $request->hasAny(['page', 'per_page'])) {
             return $this->successResponse($items, $message, $status);
         }
 
-        // Service sudah memfilter/mengurutkan/memaginasi di SQL lewat
-        // AppliesListQuery — tidak perlu (dan tidak boleh) disaring ulang di sini.
-        if ($items instanceof LengthAwarePaginator) {
-            return $this->successResponse([
-                'data' => $items->items(),
-                'current_page' => $items->currentPage(),
-                'per_page' => $items->perPage(),
-                'total' => $items->total(),
-                'last_page' => $items->lastPage(),
-                'from' => $items->firstItem(),
-                'to' => $items->lastItem(),
-            ], $message, $status);
+        if (! $items instanceof LengthAwarePaginator) {
+            // Sampai Fase 6 ada jalur cadangan yang menyaring & memotong
+            // Collection di memori PHP. Jalur itu dihapus di Fase 7 setelah
+            // ke-32 endpoint daftar pindah ke SQL. Sengaja gagal keras: dulu
+            // service yang lupa dipindah tetap "jalan" diam-diam lewat jalur
+            // lambat itu, dan justru itu yang menyembunyikan masalahnya
+            // berbulan-bulan.
+            throw new LogicException(sprintf(
+                'listResponse() menerima %s, bukan LengthAwarePaginator. Service '.
+                'yang dipanggil harus memakai trait AppliesListQuery dan meneruskan '.
+                '$request->query() ke applyListQuery().',
+                get_debug_type($items),
+            ));
         }
-
-        $collection = $items instanceof Collection ? $items->values() : collect($items)->values();
-        $collection = $this->applyListSearch($collection, (string) $request->query('search', ''));
-        $collection = $this->applyListStatus($collection, $request->query('status'));
-        $collection = $this->applyListDateRange(
-            $collection,
-            $request->query('start_date', $request->query('date_from')),
-            $request->query('end_date', $request->query('date_to')),
-        );
-        $collection = $this->applyListSort(
-            $collection,
-            (string) $request->query('sort_by', $request->query('sort', '')),
-            (string) $request->query('sort_direction', $request->query('direction', 'asc')),
-        );
-
-        $page = max(1, (int) $request->query('page', 1));
-        $perPage = max(1, min(100, (int) $request->query('per_page', 10)));
-        $total = $collection->count();
-        $pageItems = $collection->slice(($page - 1) * $perPage, $perPage)->values();
-        $lastPage = max(1, (int) ceil($total / $perPage));
-        $from = $total === 0 ? null : (($page - 1) * $perPage) + 1;
-        $to = $total === 0 ? null : min($page * $perPage, $total);
 
         return $this->successResponse([
-            'data' => $pageItems,
-            'current_page' => $page,
-            'per_page' => $perPage,
-            'total' => $total,
-            'last_page' => $lastPage,
-            'from' => $from,
-            'to' => $to,
+            'data' => $items->items(),
+            'current_page' => $items->currentPage(),
+            'per_page' => $items->perPage(),
+            'total' => $items->total(),
+            'last_page' => $items->lastPage(),
+            'from' => $items->firstItem(),
+            'to' => $items->lastItem(),
         ], $message, $status);
-    }
-
-    private function applyListSearch(Collection $items, string $search): Collection
-    {
-        $term = trim(mb_strtolower($search));
-        if ($term === '') {
-            return $items;
-        }
-
-        return $items->filter(function (mixed $item) use ($term): bool {
-            foreach ($this->listItemValues($item) as $value) {
-                if (is_scalar($value) && str_contains(mb_strtolower((string) $value), $term)) {
-                    return true;
-                }
-            }
-
-            return false;
-        })->values();
-    }
-
-    private function applyListStatus(Collection $items, mixed $status): Collection
-    {
-        if ($status === null || $status === '') {
-            return $items;
-        }
-
-        // Mendukung satu status maupun beberapa status comma-separated (mis. "draft,posted").
-        $statuses = array_values(array_filter(array_map('trim', explode(',', (string) $status)), fn (string $s): bool => $s !== ''));
-        if ($statuses === []) {
-            return $items;
-        }
-
-        return $items->filter(function (mixed $item) use ($statuses): bool {
-            foreach (['status', 'state', 'is_active'] as $key) {
-                $value = data_get($item, $key);
-                if ($value === null) {
-                    continue;
-                }
-                $normalized = is_bool($value) ? ($value ? 'active' : 'inactive') : (string) $value;
-
-                return in_array($normalized, $statuses, true);
-            }
-
-            return false;
-        })->values();
-    }
-
-    private function applyListDateRange(Collection $items, mixed $startDate, mixed $endDate): Collection
-    {
-        if (($startDate === null || $startDate === '') && ($endDate === null || $endDate === '')) {
-            return $items;
-        }
-
-        return $items->filter(function (mixed $item) use ($startDate, $endDate): bool {
-            $value = $this->listDateValue($item);
-            if ($value === '') {
-                return true;
-            }
-            if ($startDate !== null && $startDate !== '' && $value < (string) $startDate) {
-                return false;
-            }
-            if ($endDate !== null && $endDate !== '' && $value > (string) $endDate) {
-                return false;
-            }
-
-            return true;
-        })->values();
-    }
-
-    private function applyListSort(Collection $items, string $sortBy, string $direction): Collection
-    {
-        if ($sortBy === '') {
-            return $items;
-        }
-
-        $sorted = $items->sortBy(
-            fn (mixed $item): mixed => data_get($item, $sortBy),
-            SORT_REGULAR,
-            mb_strtolower($direction) === 'desc',
-        );
-
-        return $sorted->values();
-    }
-
-    private function listDateValue(mixed $item): string
-    {
-        foreach ([
-            'document_date',
-            'date',
-            'transaction_date',
-            'quotation_date',
-            'order_date',
-            'delivery_date',
-            'proforma_date',
-            'invoice_date',
-            'receipt_date',
-            'return_date',
-            'request_date',
-            'po_date',
-            'goods_receipt_date',
-            'bill_date',
-            'deposit_date',
-            'payment_date',
-            'transfer_date',
-            'reconciliation_date',
-            'movement_date',
-            'adjustment_date',
-            'opname_date',
-            'created_at',
-        ] as $key) {
-            $value = data_get($item, $key);
-            if ($value !== null && $value !== '') {
-                return substr((string) $value, 0, 10);
-            }
-        }
-
-        return '';
-    }
-
-    private function listItemValues(mixed $item): array
-    {
-        if (is_array($item)) {
-            return $item;
-        }
-        if (is_object($item) && method_exists($item, 'toArray')) {
-            return $item->toArray();
-        }
-        if (is_object($item)) {
-            return get_object_vars($item);
-        }
-
-        return [$item];
     }
 
     protected function errorResponse(
