@@ -7,17 +7,34 @@ use App\Modules\Inventory\Models\StockMovement;
 use App\Modules\Inventory\Models\StockOpname;
 use App\Modules\Inventory\Models\StockOpnameLine;
 use App\Modules\MasterData\Models\AccountMapping;
+use App\Shared\Api\AppliesListQuery;
 use App\Shared\Audit\AuditLogService;
 use App\Shared\DocumentNumbering\DocumentNumberService;
 use App\Shared\DocumentNumbering\DocumentType;
 use App\Shared\Enums\SourceType;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 class StockOpnameService
 {
+    use AppliesListQuery;
+
+    /** Placeholder-nya cuma "Nomor opname...", jadi nomor saja. */
+    protected array $listSearchable = ['opname_number'];
+
+    protected array $listSearchableRelations = [];
+
+    protected string $listDateColumn = 'opname_date';
+
+    protected string $listStatusColumn = 'status';
+
+    protected array $listDefaultSort = ['opname_date' => 'desc', 'id' => 'desc'];
+
+    protected array $listSortable = ['opname_number', 'opname_date', 'status', 'created_at'];
+
     public function __construct(
         private readonly TenantContext $tenantContext,
         private readonly DocumentNumberService $documentNumberService,
@@ -28,30 +45,19 @@ class StockOpnameService
         private readonly AuditLogService $auditLogService,
     ) {}
 
-    public function list(array $filters = []): Collection
+    /**
+     * @param  array<string,mixed>  $filters
+     * @return LengthAwarePaginator|Collection<int,StockOpname>
+     */
+    public function list(array $filters = []): LengthAwarePaginator|Collection
     {
-        $q = StockOpname::query()->with('warehouse')->withCount('lines');
-
-        if (! empty($filters['status'])) {
-            $statuses = array_values(array_filter(array_map('trim', explode(',', (string) $filters['status']))));
-            if ($statuses !== []) {
-                $q->whereIn('status', $statuses);
-            }
-        }
+        $query = StockOpname::query()->with('warehouse')->withCount('lines');
 
         if (! empty($filters['warehouse_id'])) {
-            $q->where('warehouse_id', (int) $filters['warehouse_id']);
+            $query->where('warehouse_id', (int) $filters['warehouse_id']);
         }
 
-        if (! empty($filters['date_from'])) {
-            $q->whereDate('opname_date', '>=', (string) $filters['date_from']);
-        }
-
-        if (! empty($filters['date_to'])) {
-            $q->whereDate('opname_date', '<=', (string) $filters['date_to']);
-        }
-
-        return $q->orderByDesc('opname_date')->orderByDesc('id')->get();
+        return $this->applyListQuery($query, $filters);
     }
 
     public function find(int $id): StockOpname

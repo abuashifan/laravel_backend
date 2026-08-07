@@ -5,17 +5,39 @@ namespace App\Modules\Inventory\Services;
 use App\Modules\Inventory\Models\StockMovement;
 use App\Modules\Journal\Models\JournalEntry;
 use App\Modules\MasterData\Models\Product;
+use App\Shared\Api\AppliesListQuery;
 use App\Shared\Audit\AuditLogService;
 use App\Shared\DocumentNumbering\DocumentNumberService;
 use App\Shared\DocumentNumbering\DocumentType;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
 use Carbon\Carbon;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 class StockMovementService
 {
+    use AppliesListQuery;
+
+    /**
+     * `source_number` disertakan karena placeholder halamannya berbunyi
+     * "Nomor, sumber..." -- 00-conventions.md 4 hanya menyebut
+     * `movement_number` + `description`, tapi prinsip di 4 itu sendiri adalah
+     * menepati janji placeholder.
+     */
+    protected array $listSearchable = ['movement_number', 'source_number', 'description'];
+
+    protected array $listSearchableRelations = [];
+
+    protected string $listDateColumn = 'movement_date';
+
+    protected string $listStatusColumn = 'status';
+
+    protected array $listDefaultSort = ['movement_date' => 'desc', 'id' => 'desc'];
+
+    protected array $listSortable = ['movement_number', 'movement_date', 'movement_type', 'status', 'created_at'];
+
     public function __construct(
         private readonly TenantContext $tenantContext,
         private readonly DocumentNumberService $documentNumberService,
@@ -27,16 +49,20 @@ class StockMovementService
         private readonly AuditLogService $auditLogService,
     ) {}
 
-    public function list(array $filters = []): Collection
+    /**
+     * Mengembalikan `LengthAwarePaginator` saat `page`/`per_page` dikirim, atau
+     * `Collection` tanpa paginasi saat tidak -- lihat kontrak di
+     * `AppliesListQuery::applyListQuery()`.
+     *
+     * Status dan rentang tanggal sudah ditangani trait; filter khusus modul
+     * (`movement_type`, `warehouse_id`, `product_id`) tetap di sini.
+     *
+     * @param  array<string,mixed>  $filters
+     * @return LengthAwarePaginator|Collection<int,StockMovement>
+     */
+    public function list(array $filters = []): LengthAwarePaginator|Collection
     {
         $query = StockMovement::query()->with('warehouse');
-
-        if (! empty($filters['status'])) {
-            $statuses = array_values(array_filter(array_map('trim', explode(',', (string) $filters['status']))));
-            if ($statuses !== []) {
-                $query->whereIn('status', $statuses);
-            }
-        }
 
         if (! empty($filters['movement_type'])) {
             $types = array_values(array_filter(array_map('trim', explode(',', (string) $filters['movement_type']))));
@@ -58,15 +84,7 @@ class StockMovementService
             $query->whereHas('lines', fn ($lq) => $lq->where('product_id', $productId));
         }
 
-        if (! empty($filters['date_from'])) {
-            $query->whereDate('movement_date', '>=', (string) $filters['date_from']);
-        }
-
-        if (! empty($filters['date_to'])) {
-            $query->whereDate('movement_date', '<=', (string) $filters['date_to']);
-        }
-
-        return $query->orderByDesc('movement_date')->orderByDesc('id')->get();
+        return $this->applyListQuery($query, $filters);
     }
 
     public function find(int $id): StockMovement

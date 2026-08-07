@@ -7,17 +7,34 @@ use App\Modules\Inventory\Models\StockMovement;
 use App\Modules\MasterData\Models\AccountMapping;
 use App\Modules\MasterData\Models\Product;
 use App\Modules\Settings\Services\CompanySettingService;
+use App\Shared\Api\AppliesListQuery;
 use App\Shared\Audit\AuditLogService;
 use App\Shared\DocumentNumbering\DocumentNumberService;
 use App\Shared\DocumentNumbering\DocumentType;
 use App\Shared\Enums\SourceType;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 class StockAdjustmentService
 {
+    use AppliesListQuery;
+
+    /** `reason` disertakan karena placeholder-nya "Nomor, alasan...". */
+    protected array $listSearchable = ['adjustment_number', 'reason'];
+
+    protected array $listSearchableRelations = [];
+
+    protected string $listDateColumn = 'adjustment_date';
+
+    protected string $listStatusColumn = 'status';
+
+    protected array $listDefaultSort = ['adjustment_date' => 'desc', 'id' => 'desc'];
+
+    protected array $listSortable = ['adjustment_number', 'adjustment_date', 'status', 'created_at'];
+
     public function __construct(
         private readonly TenantContext $tenantContext,
         private readonly DocumentNumberService $documentNumberService,
@@ -29,30 +46,22 @@ class StockAdjustmentService
         private readonly CompanySettingService $companySettingService,
     ) {}
 
-    public function list(array $filters = []): Collection
+    /**
+     * Status dan rentang tanggal ditangani trait; `warehouse_id` tetap di sini.
+     * `withCount('lines')` dipertahankan -- ikut jalan lewat `->paginate()`.
+     *
+     * @param  array<string,mixed>  $filters
+     * @return LengthAwarePaginator|Collection<int,StockAdjustment>
+     */
+    public function list(array $filters = []): LengthAwarePaginator|Collection
     {
-        $q = StockAdjustment::query()->with('warehouse')->withCount('lines');
-
-        if (! empty($filters['status'])) {
-            $statuses = array_values(array_filter(array_map('trim', explode(',', (string) $filters['status']))));
-            if ($statuses !== []) {
-                $q->whereIn('status', $statuses);
-            }
-        }
+        $query = StockAdjustment::query()->with('warehouse')->withCount('lines');
 
         if (! empty($filters['warehouse_id'])) {
-            $q->where('warehouse_id', (int) $filters['warehouse_id']);
+            $query->where('warehouse_id', (int) $filters['warehouse_id']);
         }
 
-        if (! empty($filters['date_from'])) {
-            $q->whereDate('adjustment_date', '>=', (string) $filters['date_from']);
-        }
-
-        if (! empty($filters['date_to'])) {
-            $q->whereDate('adjustment_date', '<=', (string) $filters['date_to']);
-        }
-
-        return $q->orderByDesc('adjustment_date')->orderByDesc('id')->get();
+        return $this->applyListQuery($query, $filters);
     }
 
     public function find(int $id): StockAdjustment
