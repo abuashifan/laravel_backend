@@ -8,13 +8,39 @@ use App\Modules\MasterData\Models\Product;
 use App\Modules\MasterData\Models\ProductCategory;
 use App\Modules\MasterData\Models\Unit;
 use App\Modules\MasterData\Services\Concerns\ParsesBooleanFilters;
+use App\Shared\Api\AppliesListQuery;
 use App\Shared\Exceptions\ApiException;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Pagination\LengthAwarePaginator as ConcretePaginator;
 
 class ProductService
 {
+    use AppliesListQuery;
     use ParsesBooleanFilters;
 
-    public function list(array $filters = [])
+    protected array $listSearchable = ['product_code', 'product_name'];
+
+    protected array $listSearchableRelations = [];
+
+    protected string $listDateColumn = '';
+
+    protected string $listStatusColumn = 'is_active';
+
+    protected array $listDefaultSort = ['product_name' => 'asc'];
+
+    protected array $listSortable = ['product_code', 'product_name', 'product_type', 'is_active'];
+
+    /**
+     * Agregat stok tetap dihitung SETELAH paginasi -- kini hanya untuk baris
+     * yang benar-benar dikirim, bukan seluruh tabel produk seperti sebelumnya.
+     * Hasilnya identik karena `attachStockQuantities()` menjumlahkan per
+     * product_id, tidak bergantung pada produk lain di halaman yang sama.
+     *
+     * @param  array<string,mixed>  $filters
+     * @return LengthAwarePaginator|Collection<int,Product>
+     */
+    public function list(array $filters = []): LengthAwarePaginator|Collection
     {
         $query = Product::query()->with(['category', 'unit']);
 
@@ -26,9 +52,13 @@ class ProductService
             $query->where('product_type', (string) $filters['product_type']);
         }
 
-        $products = $query->orderBy('product_name')->get();
+        $result = $this->applyListQuery($query, $filters);
 
-        return $this->attachStockQuantities($products);
+        if ($result instanceof ConcretePaginator) {
+            return $result->setCollection($this->attachStockQuantities($result->getCollection()));
+        }
+
+        return $this->attachStockQuantities($result);
     }
 
     public function create(array $data): Product

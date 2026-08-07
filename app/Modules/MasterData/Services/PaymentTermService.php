@@ -3,11 +3,33 @@
 namespace App\Modules\MasterData\Services;
 
 use App\Modules\MasterData\Models\PaymentTerm;
+use App\Shared\Api\AppliesListQuery;
 use App\Shared\Exceptions\ApiException;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Collection;
 
 class PaymentTermService
 {
-    public function list(array $filters = [])
+    use AppliesListQuery;
+
+    protected array $listSearchable = ['name'];
+
+    protected array $listSearchableRelations = [];
+
+    protected string $listDateColumn = '';
+
+    protected string $listStatusColumn = 'is_active';
+
+    /** Urutan manual (sort_order) dipertahankan sebagai kunci pertama. */
+    protected array $listDefaultSort = ['sort_order' => 'asc', 'name' => 'asc'];
+
+    protected array $listSortable = ['name', 'sort_order', 'is_active'];
+
+    /**
+     * @param  array<string,mixed>  $filters
+     * @return LengthAwarePaginator|Collection<int,PaymentTerm>
+     */
+    public function list(array $filters = []): LengthAwarePaginator|Collection
     {
         $query = PaymentTerm::query();
 
@@ -15,7 +37,7 @@ class PaymentTermService
             $query->where('is_active', (bool) $filters['is_active']);
         }
 
-        return $query->orderBy('sort_order')->orderBy('name')->get();
+        return $this->applyListQuery($query, $filters);
     }
 
     public function create(array $data): PaymentTerm

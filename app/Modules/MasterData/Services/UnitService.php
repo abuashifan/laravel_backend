@@ -3,11 +3,32 @@
 namespace App\Modules\MasterData\Services;
 
 use App\Modules\MasterData\Models\Unit;
+use App\Shared\Api\AppliesListQuery;
 use App\Shared\Exceptions\ApiException;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Collection;
 
 class UnitService
 {
-    public function list(array $filters = [])
+    use AppliesListQuery;
+
+    protected array $listSearchable = ['code', 'name'];
+
+    protected array $listSearchableRelations = [];
+
+    protected string $listDateColumn = '';
+
+    protected string $listStatusColumn = 'is_active';
+
+    protected array $listDefaultSort = ['code' => 'asc'];
+
+    protected array $listSortable = ['code', 'name', 'is_active'];
+
+    /**
+     * @param  array<string,mixed>  $filters
+     * @return LengthAwarePaginator|Collection<int,Unit>
+     */
+    public function list(array $filters = []): LengthAwarePaginator|Collection
     {
         $query = Unit::query();
 
@@ -15,7 +36,7 @@ class UnitService
             $query->where('is_active', (bool) $filters['is_active']);
         }
 
-        return $query->orderBy('code')->get();
+        return $this->applyListQuery($query, $filters);
     }
 
     public function create(array $data): Unit

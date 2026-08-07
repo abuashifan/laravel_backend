@@ -4,13 +4,33 @@ namespace App\Modules\MasterData\Services;
 
 use App\Modules\MasterData\Models\Contact;
 use App\Modules\MasterData\Services\Concerns\ParsesBooleanFilters;
+use App\Shared\Api\AppliesListQuery;
 use App\Shared\Exceptions\ApiException;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Collection;
 
 class ContactService
 {
+    use AppliesListQuery;
     use ParsesBooleanFilters;
 
-    public function list(array $filters = [])
+    protected array $listSearchable = ['contact_code', 'name', 'email', 'phone'];
+
+    protected array $listSearchableRelations = [];
+
+    protected string $listDateColumn = '';
+
+    protected string $listStatusColumn = 'is_active';
+
+    protected array $listDefaultSort = ['name' => 'asc'];
+
+    protected array $listSortable = ['contact_code', 'name', 'email', 'contact_type', 'is_active'];
+
+    /**
+     * @param  array<string,mixed>  $filters
+     * @return LengthAwarePaginator|Collection<int,Contact>
+     */
+    public function list(array $filters = []): LengthAwarePaginator|Collection
     {
         $query = Contact::query();
 
@@ -30,7 +50,7 @@ class ContactService
             $query->where('contact_type', (string) $filters['contact_type']);
         }
 
-        return $query->orderBy('name')->get();
+        return $this->applyListQuery($query, $filters);
     }
 
     public function create(array $data): Contact

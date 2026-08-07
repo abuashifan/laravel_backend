@@ -3,11 +3,41 @@
 namespace App\Modules\MasterData\Services;
 
 use App\Modules\MasterData\Models\Project;
+use App\Shared\Api\AppliesListQuery;
 use App\Shared\Exceptions\ApiException;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Collection;
 
 class ProjectService
 {
-    public function list(array $filters = [])
+    use AppliesListQuery;
+
+    protected array $listSearchable = ['code', 'name'];
+
+    protected array $listSearchableRelations = [];
+
+    protected string $listDateColumn = '';
+
+    /**
+     * SATU-SATUNYA master data yang punya kolom `status` string sendiri di
+     * samping `is_active` (diverifikasi lewat PRAGMA table_info). Jadi
+     * `?status=` di sini menyaring kolom status proyek apa adanya, BUKAN
+     * dipetakan ke boolean seperti delapan service master data lainnya --
+     * persis seperti perilaku lama: `applyListStatus` in-memory memeriksa
+     * kunci `status` lebih dulu dan berhenti di situ. Filter `is_active`
+     * tetap dikirim terpisah.
+     */
+    protected string $listStatusColumn = 'status';
+
+    protected array $listDefaultSort = ['code' => 'asc'];
+
+    protected array $listSortable = ['code', 'name', 'status', 'is_active'];
+
+    /**
+     * @param  array<string,mixed>  $filters
+     * @return LengthAwarePaginator|Collection<int,Project>
+     */
+    public function list(array $filters = []): LengthAwarePaginator|Collection
     {
         $query = Project::query();
 
@@ -15,18 +45,7 @@ class ProjectService
             $query->where('is_active', (bool) $filters['is_active']);
         }
 
-        if (! empty($filters['status'])) {
-            $query->where('status', (string) $filters['status']);
-        }
-
-        if (! empty($filters['search'])) {
-            $term = '%'.str_replace('%', '', (string) $filters['search']).'%';
-            $query->where(function ($q) use ($term) {
-                $q->where('code', 'like', $term)->orWhere('name', 'like', $term);
-            });
-        }
-
-        return $query->orderBy('code')->get();
+        return $this->applyListQuery($query, $filters);
     }
 
     public function find(int|string $id): Project

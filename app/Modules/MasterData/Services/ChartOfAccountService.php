@@ -4,13 +4,35 @@ namespace App\Modules\MasterData\Services;
 
 use App\Modules\MasterData\Models\ChartOfAccount;
 use App\Modules\MasterData\Services\Concerns\ParsesBooleanFilters;
+use App\Shared\Api\AppliesListQuery;
 use App\Shared\Exceptions\ApiException;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Collection;
 
 class ChartOfAccountService
 {
+    use AppliesListQuery;
     use ParsesBooleanFilters;
 
-    public function list(array $filters = [])
+    protected array $listSearchable = ['account_code', 'account_name'];
+
+    protected array $listSearchableRelations = [];
+
+    /** Master data tidak punya tanggal dokumen; daftarnya juga tidak menyediakan filter periode. */
+    protected string $listDateColumn = '';
+
+    /** Boolean, bukan string -- `?status=active|inactive` dipetakan di trait. */
+    protected string $listStatusColumn = 'is_active';
+
+    protected array $listDefaultSort = ['account_code' => 'asc'];
+
+    protected array $listSortable = ['account_code', 'account_name', 'account_type', 'is_active'];
+
+    /**
+     * @param  array<string,mixed>  $filters
+     * @return LengthAwarePaginator|Collection<int,ChartOfAccount>
+     */
+    public function list(array $filters = []): LengthAwarePaginator|Collection
     {
         $query = ChartOfAccount::query();
 
@@ -26,7 +48,7 @@ class ChartOfAccountService
             $query->where('is_cash_bank', $this->toBool($filters['is_cash_bank']));
         }
 
-        return $query->orderBy('account_code')->get();
+        return $this->applyListQuery($query, $filters);
     }
 
     public function create(array $data): ChartOfAccount

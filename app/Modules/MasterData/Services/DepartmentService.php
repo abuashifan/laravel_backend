@@ -3,11 +3,33 @@
 namespace App\Modules\MasterData\Services;
 
 use App\Modules\MasterData\Models\Department;
+use App\Shared\Api\AppliesListQuery;
 use App\Shared\Exceptions\ApiException;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Collection;
 
 class DepartmentService
 {
-    public function list(array $filters = [])
+    use AppliesListQuery;
+
+    /** Blok pencarian manual dihapus -- trait mencari kolom yang sama persis. */
+    protected array $listSearchable = ['code', 'name'];
+
+    protected array $listSearchableRelations = [];
+
+    protected string $listDateColumn = '';
+
+    protected string $listStatusColumn = 'is_active';
+
+    protected array $listDefaultSort = ['code' => 'asc'];
+
+    protected array $listSortable = ['code', 'name', 'is_active'];
+
+    /**
+     * @param  array<string,mixed>  $filters
+     * @return LengthAwarePaginator|Collection<int,Department>
+     */
+    public function list(array $filters = []): LengthAwarePaginator|Collection
     {
         $query = Department::query();
 
@@ -15,14 +37,7 @@ class DepartmentService
             $query->where('is_active', (bool) $filters['is_active']);
         }
 
-        if (! empty($filters['search'])) {
-            $term = '%'.str_replace('%', '', (string) $filters['search']).'%';
-            $query->where(function ($q) use ($term) {
-                $q->where('code', 'like', $term)->orWhere('name', 'like', $term);
-            });
-        }
-
-        return $query->orderBy('code')->get();
+        return $this->applyListQuery($query, $filters);
     }
 
     public function find(int|string $id): Department
