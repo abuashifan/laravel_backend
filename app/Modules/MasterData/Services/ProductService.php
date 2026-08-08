@@ -52,6 +52,13 @@ class ProductService
             $query->where('product_type', (string) $filters['product_type']);
         }
 
+        // Filter kategori dari sidebar daftar produk. `category_id` diterima
+        // sebagai alias karena modul laporan persediaan memakai nama itu.
+        $categoryId = $filters['product_category_id'] ?? $filters['category_id'] ?? null;
+        if (! empty($categoryId)) {
+            $query->where('product_category_id', (int) $categoryId);
+        }
+
         $result = $this->applyListQuery($query, $filters);
 
         if ($result instanceof ConcretePaginator) {

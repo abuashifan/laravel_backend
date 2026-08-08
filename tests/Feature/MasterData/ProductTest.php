@@ -268,4 +268,55 @@ class ProductTest extends MasterDataTestCase
             'inventory_interim_account_id' => $revenue->id,
         ], $ctx['headers'])->assertStatus(422);
     }
+
+    public function test_product_list_can_be_filtered_by_category(): void
+    {
+        $ctx = $this->setUpTenant();
+
+        $minuman = $this->postJson('/api/master-data/product-categories', [
+            'name' => 'Minuman',
+        ], $ctx['headers'])->assertStatus(201)->json('data');
+
+        $makanan = $this->postJson('/api/master-data/product-categories', [
+            'name' => 'Makanan',
+        ], $ctx['headers'])->assertStatus(201)->json('data');
+
+        foreach ([['Kopi', $minuman['id']], ['Teh', $minuman['id']], ['Roti', $makanan['id']]] as [$name, $categoryId]) {
+            $this->postJson('/api/master-data/products', [
+                'product_name' => $name,
+                'product_type' => 'goods',
+                'product_category_id' => $categoryId,
+            ], $ctx['headers'])->assertStatus(201);
+        }
+
+        // Tanpa kategori sama sekali -- harus tetap ikut terhitung saat filter kosong,
+        // dan tidak boleh muncul saat kategori dipilih.
+        $this->postJson('/api/master-data/products', [
+            'product_name' => 'Tanpa Kategori',
+            'product_type' => 'service',
+        ], $ctx['headers'])->assertStatus(201);
+
+        $this->getJson('/api/master-data/products?page=1&per_page=25', $ctx['headers'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.total', 4);
+
+        $filtered = $this->getJson(
+            '/api/master-data/products?page=1&per_page=25&product_category_id='.$minuman['id'],
+            $ctx['headers'],
+        )->assertStatus(200)->assertJsonPath('data.total', 2)->json('data.data');
+
+        $this->assertSame(['Kopi', 'Teh'], collect($filtered)->pluck('product_name')->sort()->values()->all());
+
+        // Alias `category_id` dipakai modul laporan persediaan.
+        $this->getJson(
+            '/api/master-data/products?page=1&per_page=25&category_id='.$makanan['id'],
+            $ctx['headers'],
+        )->assertStatus(200)->assertJsonPath('data.total', 1)->assertJsonPath('data.data.0.product_name', 'Roti');
+
+        // Kategori digabung dengan pencarian, bukan saling menimpa.
+        $this->getJson(
+            '/api/master-data/products?page=1&per_page=25&search=Kopi&product_category_id='.$makanan['id'],
+            $ctx['headers'],
+        )->assertStatus(200)->assertJsonPath('data.total', 0);
+    }
 }
