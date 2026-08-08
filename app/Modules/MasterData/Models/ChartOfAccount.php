@@ -41,7 +41,18 @@ class ChartOfAccount extends Model
         'is_active' => 'boolean',
         'is_system_default' => 'boolean',
         'metadata' => 'array',
+        // Bukan kolom tabel -- ikut terhidrasi dari recursive CTE di
+        // ChartOfAccountService::hierarchicalQuery(). Hanya ada pada endpoint
+        // daftar mode hierarkis.
+        'depth' => 'integer',
     ];
+
+    /**
+     * `hierarchy_path` adalah kolom turunan dari CTE yang memakai byte
+     * `char(1)` sebagai pemisah -- tidak layak masuk JSON. Ia hanya dipakai
+     * untuk `ORDER BY` di sisi server.
+     */
+    protected $hidden = ['hierarchy_path'];
 
     public function parent(): BelongsTo
     {
