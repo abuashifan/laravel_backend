@@ -26,7 +26,11 @@ Route::middleware(['auth:sanctum', 'company.access'])->group(function () {
         Route::post('/{id}/submit', [BudgetSubmissionController::class, 'submit'])->middleware('permission:budgets.submit');
         Route::post('/{id}/approve-head', [BudgetSubmissionController::class, 'approveHead'])->middleware('permission:budgets.approve_head');
         Route::post('/{id}/approve-finance', [BudgetSubmissionController::class, 'approveFinance'])->middleware('permission:budgets.approve_finance');
-        Route::post('/{id}/reject', [BudgetSubmissionController::class, 'reject'])->middleware('permission:budgets.approve_head');
+        // Penolakan bisa terjadi di dua tahap: oleh kepala (status `submitted`)
+        // dan oleh finance (status `approved_by_head`). Sintaks `|` berarti
+        // salah satu permission cukup — tanpa itu role yang hanya memegang
+        // budgets.approve_finance tidak bisa menolak di tahapnya sendiri.
+        Route::post('/{id}/reject', [BudgetSubmissionController::class, 'reject'])->middleware('permission:budgets.approve_head|budgets.approve_finance');
     });
 
     Route::get('/reports/budget/comparison', [BudgetComparisonController::class, 'show'])->middleware('permission:budgets.view');
