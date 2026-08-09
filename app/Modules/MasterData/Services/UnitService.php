@@ -3,6 +3,7 @@
 namespace App\Modules\MasterData\Services;
 
 use App\Modules\MasterData\Models\Unit;
+use App\Modules\MasterData\Services\Concerns\ParsesBooleanFilters;
 use App\Shared\Api\AppliesListQuery;
 use App\Shared\Exceptions\ApiException;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -11,6 +12,7 @@ use Illuminate\Database\Eloquent\Collection;
 class UnitService
 {
     use AppliesListQuery;
+    use ParsesBooleanFilters;
 
     protected array $listSearchable = ['code', 'name'];
 
@@ -33,7 +35,7 @@ class UnitService
         $query = Unit::query();
 
         if (array_key_exists('is_active', $filters)) {
-            $query->where('is_active', (bool) $filters['is_active']);
+            $query->where('is_active', $this->toBool($filters['is_active']));
         }
 
         return $this->applyListQuery($query, $filters);

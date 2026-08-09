@@ -165,6 +165,120 @@ class MasterDataListQueryTest extends MasterDataTestCase
     }
 
     /**
+     * Sembilan endpoint yang menerima `is_active`, beserta seed 2 aktif +
+     * 1 nonaktif. Terpisah dari `masterDataModules()` karena provider itu hanya
+     * memuat lima modul, sementara bug boolean di bawah mengenai sembilan.
+     *
+     * @return array<string,array{0:string,1:class-string,2:array<int,array<string,mixed>>}>
+     */
+    public static function booleanStatusModules(): array
+    {
+        return [
+            'chart-of-accounts' => ['/api/master-data/chart-of-accounts', ChartOfAccount::class, [
+                ['account_code' => '1-1000', 'account_name' => 'Kas Besar', 'account_type' => 'asset', 'normal_balance' => 'debit', 'is_active' => true],
+                ['account_code' => '1-2000', 'account_name' => 'Bank Mandiri', 'account_type' => 'asset', 'normal_balance' => 'debit', 'is_active' => true],
+                ['account_code' => '1-3000', 'account_name' => 'Piutang Usaha', 'account_type' => 'asset', 'normal_balance' => 'debit', 'is_active' => false],
+            ]],
+            'contacts' => ['/api/master-data/contacts', Contact::class, [
+                ['contact_code' => 'C-001', 'name' => 'Andi', 'is_active' => true],
+                ['contact_code' => 'C-002', 'name' => 'Budi', 'is_active' => true],
+                ['contact_code' => 'C-003', 'name' => 'Citra', 'is_active' => false],
+            ]],
+            'products' => ['/api/master-data/products', Product::class, [
+                ['product_code' => 'PR-001', 'product_name' => 'Kopi', 'product_type' => 'service', 'is_active' => true],
+                ['product_code' => 'PR-002', 'product_name' => 'Teh', 'product_type' => 'service', 'is_active' => true],
+                ['product_code' => 'PR-003', 'product_name' => 'Roti', 'product_type' => 'service', 'is_active' => false],
+            ]],
+            'product-categories' => ['/api/master-data/product-categories', ProductCategory::class, [
+                ['name' => 'Aksesoris', 'is_active' => true],
+                ['name' => 'Bahan Baku', 'is_active' => true],
+                ['name' => 'Cetakan', 'is_active' => false],
+            ]],
+            'units' => ['/api/master-data/units', Unit::class, [
+                ['code' => 'U-001', 'name' => 'Ampere', 'is_active' => true],
+                ['code' => 'U-002', 'name' => 'Buah', 'is_active' => true],
+                ['code' => 'U-003', 'name' => 'Cawan', 'is_active' => false],
+            ]],
+            'warehouses' => ['/api/master-data/warehouses', Warehouse::class, [
+                ['code' => 'W-001', 'name' => 'Alpha', 'is_default' => false, 'is_active' => true],
+                ['code' => 'W-002', 'name' => 'Bravo', 'is_default' => false, 'is_active' => true],
+                ['code' => 'W-003', 'name' => 'Charlie', 'is_default' => false, 'is_active' => false],
+            ]],
+            'departments' => ['/api/master-data/departments', Department::class, [
+                ['code' => 'D-001', 'name' => 'Akuntansi', 'is_active' => true],
+                ['code' => 'D-002', 'name' => 'Bengkel', 'is_active' => true],
+                ['code' => 'D-003', 'name' => 'Cabang', 'is_active' => false],
+            ]],
+            'projects' => ['/api/master-data/projects', Project::class, [
+                ['code' => 'P-001', 'name' => 'Renovasi', 'status' => 'ongoing', 'is_active' => true],
+                ['code' => 'P-002', 'name' => 'Ekspansi', 'status' => 'ongoing', 'is_active' => true],
+                ['code' => 'P-003', 'name' => 'Tunda', 'status' => 'ongoing', 'is_active' => false],
+            ]],
+        ];
+    }
+
+    /**
+     * `is_active=true|false` -- bentuk yang BENAR-BENAR dikirim browser.
+     *
+     * Axios menyerialisasi boolean lewat `toString()`, jadi yang sampai ke
+     * backend adalah string `"false"`, bukan `0`. `(bool) "false"` di PHP
+     * bernilai **true** karena string tak-kosong selalu truthy, sehingga memilih
+     * "Nonaktif" justru menampilkan baris aktif.
+     *
+     * `test_is_active_filter_still_works` di atas memakai `0`/`1` dan lolos:
+     * `(bool) "0"` memang `false`. Itulah kenapa bug ini bertahan sampai
+     * dilaporkan pemakai. Test ini memakai bentuk yang dikirim browser.
+     *
+     * Payment terms sengaja tidak diikutkan: migrasi tenant menyeed syarat bayar
+     * bawaan, jadi jumlahnya tidak bisa dipastikan lewat `total`. Endpoint itu
+     * dikunci oleh `test_payment_term_inactive_filter_excludes_active_rows`.
+     *
+     * @param  class-string  $model
+     * @param  array<int,array<string,mixed>>  $rows
+     */
+    #[DataProvider('booleanStatusModules')]
+    public function test_is_active_accepts_boolean_strings_from_browser(string $uri, string $model, array $rows): void
+    {
+        $headers = $this->seedRows($model, $rows);
+
+        $this->getJson("{$uri}?page=1&per_page=25&is_active=true", $headers)
+            ->assertStatus(200)
+            ->assertJsonPath('data.total', 2);
+
+        $inactive = $this->getJson("{$uri}?page=1&per_page=25&is_active=false", $headers);
+        $inactive->assertStatus(200)->assertJsonPath('data.total', 1);
+
+        // Bukan hanya jumlahnya -- baris yang kembali memang yang nonaktif.
+        $this->assertSame(
+            [false],
+            collect($inactive->json('data.data'))->pluck('is_active')->map(fn ($v) => (bool) $v)->all(),
+        );
+    }
+
+    /**
+     * Syarat bayar dipisah karena migrasi tenant menyeed baris bawaan yang
+     * semuanya aktif -- `total` tidak bisa dipakai, tapi "tidak ada baris aktif
+     * yang lolos" tetap bisa dibuktikan.
+     */
+    public function test_payment_term_inactive_filter_excludes_active_rows(): void
+    {
+        $ctx = $this->setUpTenant();
+        PaymentTerm::query()->create(['code' => 'PT-A', 'name' => 'Alpha 30', 'sort_order' => 1, 'is_active' => true]);
+        PaymentTerm::query()->create(['code' => 'PT-B', 'name' => 'Bravo 60', 'sort_order' => 2, 'is_active' => false]);
+
+        $res = $this->getJson('/api/master-data/payment-terms?page=1&per_page=100&is_active=false', $ctx['headers']);
+        $res->assertStatus(200);
+
+        $rows = collect($res->json('data.data'));
+        $this->assertNotEmpty($rows, 'Filter nonaktif tidak boleh mengosongkan hasil.');
+        $this->assertEmpty(
+            $rows->filter(fn (array $r) => (bool) $r['is_active']),
+            'Baris aktif ikut lolos filter is_active=false.',
+        );
+        $this->assertContains('PT-B', $rows->pluck('code')->all());
+    }
+
+    /**
      * Urutan tampil tiap daftar TIDAK boleh berubah -- ini yang paling mudah
      * bergeser diam-diam saat sort pindah ke trait.
      *
