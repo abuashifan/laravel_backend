@@ -59,10 +59,30 @@ class ChartOfAccountService
     public function list(array $filters = []): LengthAwarePaginator|Collection
     {
         $sortBy = (string) ($filters['sort_by'] ?? $filters['sort'] ?? '');
+
+        // Filter kolom terpisah untuk dialog pemilih akun: di sana "No Akun"
+        // dan "Nama Akun" adalah dua kotak berbeda dan harus di-AND-kan.
+        // `search` yang ada bersifat OR antar kedua kolom, jadi tidak bisa
+        // dipakai untuk mempersempit keduanya sekaligus.
+        $accountCode = trim((string) ($filters['account_code'] ?? ''));
+        $accountName = trim((string) ($filters['account_name'] ?? ''));
+
+        // Sama seperti pencarian: begitu hasilnya himpunan tersebar, mode
+        // hierarkis dimatikan supaya tidak ada anak menjorok tanpa induknya.
         $hierarkis = trim((string) ($filters['search'] ?? '')) === ''
+            && $accountCode === ''
+            && $accountName === ''
             && ! in_array($sortBy, $this->listSortable, true);
 
         $query = $hierarkis ? $this->hierarchicalQuery() : ChartOfAccount::query();
+
+        if ($accountCode !== '') {
+            $query->where('account_code', 'like', "%{$accountCode}%");
+        }
+
+        if ($accountName !== '') {
+            $query->where('account_name', 'like', "%{$accountName}%");
+        }
 
         if (array_key_exists('is_active', $filters)) {
             $query->where('is_active', $this->toBool($filters['is_active']));

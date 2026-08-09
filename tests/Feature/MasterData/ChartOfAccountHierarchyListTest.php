@@ -198,6 +198,51 @@ class ChartOfAccountHierarchyListTest extends MasterDataTestCase
         $this->assertSame(['1100', '1100.1'], $this->kodeDari($res));
     }
 
+    /**
+     * Dialog pemilih akun punya dua kotak filter terpisah (No Akun & Nama
+     * Akun) yang harus di-AND-kan. `search` bawaan bersifat OR antar kedua
+     * kolom, jadi tidak bisa menggantikan keduanya.
+     */
+    public function test_filter_kode_dan_nama_dipakai_bersamaan(): void
+    {
+        $ctx = $this->setUpTenant();
+        $headers = $ctx['headers'];
+
+        $buat = function (string $code, string $name): void {
+            ChartOfAccount::query()->create([
+                'account_code' => $code,
+                'account_name' => $name,
+                'account_type' => 'asset',
+                'normal_balance' => 'debit',
+                'is_active' => true,
+            ]);
+        };
+
+        $buat('1101', 'Kas');
+        $buat('1101.01', 'Kas - IDR');
+        $buat('1102', 'Bank');
+        $buat('1102.01', 'Bank BCA - IDR');
+
+        // Hanya kode.
+        $byCode = $this->getJson(self::URI.'?page=1&per_page=25&account_code=1101', $headers);
+        $byCode->assertStatus(200);
+        $this->assertSame(['1101', '1101.01'], $this->kodeDari($byCode));
+
+        // Hanya nama.
+        $byName = $this->getJson(self::URI.'?page=1&per_page=25&account_name=Bank', $headers);
+        $byName->assertStatus(200);
+        $this->assertSame(['1102', '1102.01'], $this->kodeDari($byName));
+
+        // Keduanya = AND, bukan OR: 1101 punya kode cocok tapi nama tidak.
+        $both = $this->getJson(self::URI.'?page=1&per_page=25&account_code=1102&account_name=BCA', $headers);
+        $both->assertStatus(200);
+        $this->assertSame(['1102.01'], $this->kodeDari($both));
+
+        // Tanpa filter: urutan hierarkis tetap seperti semula.
+        $none = $this->getJson(self::URI.'?page=1&per_page=25', $headers);
+        $this->assertSame(['1101', '1101.01', '1102', '1102.01'], $this->kodeDari($none));
+    }
+
     public function test_siklus_induk_ditolak(): void
     {
         ['headers' => $headers, 'ids' => $ids] = $this->seedTree();
