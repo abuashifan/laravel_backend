@@ -199,4 +199,120 @@ class JournalListQueryTest extends JournalTestCase
         $empty->assertJsonPath('data.from', null);
         $empty->assertJsonPath('data.to', null);
     }
+
+    /**
+     * Seed jurnal berbaris supaya total debit/kredit per jurnal berbeda dan
+     * urutannya bisa diuji.
+     *
+     * @return array{headers: array<string,string>}
+     */
+    private function seedJournalsWithLines(): array
+    {
+        $ctx = $this->setUpTenant();
+        $accounts = $ctx['accounts'];
+
+        $amounts = [
+            'JV-2026-000101' => 500000,
+            'JV-2026-000102' => 2500000,
+            'JV-2026-000103' => 1000000,
+        ];
+
+        foreach ($amounts as $number => $amount) {
+            $journal = JournalEntry::query()->create([
+                'journal_number' => $number,
+                'journal_date' => '2026-04-01',
+                'description' => 'Jurnal '.$number,
+                'status' => 'posted',
+            ]);
+
+            $journal->lines()->createMany([
+                ['account_id' => $accounts['debit'], 'debit' => $amount, 'credit' => 0, 'line_order' => 1],
+                ['account_id' => $accounts['credit'], 'debit' => 0, 'credit' => $amount, 'line_order' => 2],
+            ]);
+        }
+
+        return ['headers' => $ctx['headers']];
+    }
+
+    /** Daftar wajib mengirim agregat total_debit/total_credit, bukan hanya kolom tabel. */
+    public function test_list_returns_debit_and_credit_totals(): void
+    {
+        ['headers' => $headers] = $this->seedJournalsWithLines();
+
+        $res = $this->getJson('/api/journals?page=1&per_page=25&sort_by=journal_number&sort_direction=asc', $headers);
+        $res->assertStatus(200);
+
+        $rows = collect($res->json('data.data'));
+        $first = $rows->firstWhere('journal_number', 'JV-2026-000101');
+
+        $this->assertNotNull($first);
+        $this->assertEquals(500000, (float) $first['total_debit']);
+        $this->assertEquals(500000, (float) $first['total_credit']);
+    }
+
+    public function test_sort_by_total_debit(): void
+    {
+        ['headers' => $headers] = $this->seedJournalsWithLines();
+
+        $asc = $this->getJson('/api/journals?page=1&per_page=25&sort_by=total_debit&sort_direction=asc', $headers);
+        $asc->assertStatus(200);
+        $this->assertSame(
+            ['JV-2026-000101', 'JV-2026-000103', 'JV-2026-000102'],
+            collect($asc->json('data.data'))->pluck('journal_number')->all(),
+        );
+
+        $desc = $this->getJson('/api/journals?page=1&per_page=25&sort_by=total_debit&sort_direction=desc', $headers);
+        $desc->assertStatus(200);
+        $this->assertSame(
+            ['JV-2026-000102', 'JV-2026-000103', 'JV-2026-000101'],
+            collect($desc->json('data.data'))->pluck('journal_number')->all(),
+        );
+    }
+
+    public function test_sort_by_total_credit(): void
+    {
+        ['headers' => $headers] = $this->seedJournalsWithLines();
+
+        $res = $this->getJson('/api/journals?page=1&per_page=25&sort_by=total_credit&sort_direction=desc', $headers);
+        $res->assertStatus(200);
+        $this->assertSame(
+            ['JV-2026-000102', 'JV-2026-000103', 'JV-2026-000101'],
+            collect($res->json('data.data'))->pluck('journal_number')->all(),
+        );
+    }
+
+    public function test_is_system_generated_filter_hides_system_journals(): void
+    {
+        $ctx = $this->setUpTenant();
+        $headers = $ctx['headers'];
+
+        JournalEntry::query()->create([
+            'journal_number' => 'JV-2026-000201',
+            'journal_date' => '2026-05-01',
+            'description' => 'Jurnal manual',
+            'status' => 'posted',
+            'is_system_generated' => false,
+        ]);
+        JournalEntry::query()->create([
+            'journal_number' => 'SI-2026-000001',
+            'journal_date' => '2026-05-02',
+            'description' => 'Jurnal otomatis penjualan',
+            'status' => 'posted',
+            'is_system_generated' => true,
+        ]);
+
+        $manualOnly = $this->getJson('/api/journals?page=1&per_page=25&is_system_generated=false', $headers);
+        $manualOnly->assertStatus(200);
+        $manualOnly->assertJsonPath('data.total', 1);
+        $manualOnly->assertJsonPath('data.data.0.journal_number', 'JV-2026-000201');
+
+        $systemOnly = $this->getJson('/api/journals?page=1&per_page=25&is_system_generated=true', $headers);
+        $systemOnly->assertStatus(200);
+        $systemOnly->assertJsonPath('data.total', 1);
+        $systemOnly->assertJsonPath('data.data.0.journal_number', 'SI-2026-000001');
+
+        // Tanpa parameter: keduanya tetap tampil (perilaku lama tidak berubah).
+        $all = $this->getJson('/api/journals?page=1&per_page=25', $headers);
+        $all->assertJsonPath('data.total', 2);
+    }
 }

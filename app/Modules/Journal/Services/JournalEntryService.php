@@ -33,7 +33,14 @@ class JournalEntryService
 
     protected array $listDefaultSort = ['journal_date' => 'desc', 'id' => 'desc'];
 
-    protected array $listSortable = ['journal_number', 'journal_date', 'status', 'created_at'];
+    /**
+     * `total_debit`/`total_credit` bukan kolom tabel -- keduanya alias dari
+     * `withSum()` di `list()`. Alias itu ikut ke SELECT, jadi `ORDER BY
+     * total_debit` valid di SQLite maupun MySQL. Tanpa alias tersebut, sorting
+     * nominal di UI daftar tidak mungkin dilakukan tanpa menarik seluruh baris
+     * jurnal ke PHP.
+     */
+    protected array $listSortable = ['journal_number', 'journal_date', 'status', 'created_at', 'total_debit', 'total_credit'];
 
     public function __construct(
         private readonly JournalValidationService $validator,
@@ -58,7 +65,14 @@ class JournalEntryService
      */
     public function list(array $filters = []): LengthAwarePaginator|Collection
     {
-        $query = JournalEntry::query();
+        // Total debit/kredit dihitung di SQL sebagai agregat per jurnal.
+        // Sebelumnya daftar tidak pernah mengirim angka ini (dan tidak memuat
+        // lines), sehingga kolom Total Debit/Kredit di UI selalu "-" dan tidak
+        // bisa diurutkan. Alias `total_debit`/`total_credit` sengaja dipakai
+        // supaya sama dengan nama field pada response detail.
+        $query = JournalEntry::query()
+            ->withSum('lines as total_debit', 'debit')
+            ->withSum('lines as total_credit', 'credit');
 
         // include_void/include_obsolete tetap di sini -- keduanya bukan bagian
         // dari kontrak search/status/tanggal/sort/paginate yang dipindahkan ke
@@ -81,6 +95,16 @@ class JournalEntryService
         $includeObsolete = filter_var($filters['include_obsolete'] ?? false, FILTER_VALIDATE_BOOLEAN);
         if (! $includeObsolete) {
             $query->where('is_obsolete', false);
+        }
+
+        // Halaman Jurnal Umum hanya menampilkan jurnal manual dan sudah lama
+        // mengirim `is_system_generated=false`, tapi filternya tidak pernah
+        // diterapkan -- jurnal hasil posting Sales/Purchase/Inventory ikut
+        // muncul dan bisa ikut terpilih pada aksi massal, padahal jurnal
+        // sistem tidak boleh disunting/di-void langsung.
+        $systemGenerated = $filters['is_system_generated'] ?? null;
+        if ($systemGenerated !== null && $systemGenerated !== '') {
+            $query->where('is_system_generated', filter_var($systemGenerated, FILTER_VALIDATE_BOOLEAN));
         }
 
         return $this->applyListQuery($query, $filters);
