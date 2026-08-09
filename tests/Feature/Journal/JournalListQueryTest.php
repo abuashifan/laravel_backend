@@ -281,6 +281,53 @@ class JournalListQueryTest extends JournalTestCase
         );
     }
 
+    /**
+     * `users` ada di database pusat dan `journal_entries` di tenant, jadi nama
+     * pembuat tidak bisa datang dari relasi Eloquent — pastikan resolusinya
+     * benar-benar terlampir di response daftar maupun detail.
+     */
+    public function test_list_and_detail_include_creator_name(): void
+    {
+        $ctx = $this->setUpTenant();
+        $headers = $ctx['headers'];
+
+        $create = $this->postJson('/api/journals', [
+            'journal_date' => '2026-05-10',
+            'description' => 'Jurnal dengan pembuat',
+            'lines' => [
+                ['account_id' => $ctx['accounts']['debit'], 'debit' => 1000, 'credit' => 0],
+                ['account_id' => $ctx['accounts']['credit'], 'debit' => 0, 'credit' => 1000],
+            ],
+        ], $headers)->assertStatus(201);
+
+        $expectedName = $ctx['user']->name;
+
+        $list = $this->getJson('/api/journals?page=1&per_page=25', $headers);
+        $list->assertStatus(200);
+        $list->assertJsonPath('data.data.0.created_by_name', $expectedName);
+
+        $detail = $this->getJson('/api/journals/'.$create->json('data.id'), $headers);
+        $detail->assertStatus(200);
+        $detail->assertJsonPath('data.created_by_name', $expectedName);
+    }
+
+    /** Jurnal tanpa `created_by` (mis. dibuat proses sistem) tetap valid, namanya null. */
+    public function test_creator_name_is_null_when_created_by_is_empty(): void
+    {
+        $ctx = $this->setUpTenant();
+
+        JournalEntry::query()->create([
+            'journal_number' => 'JV-2026-000301',
+            'journal_date' => '2026-05-11',
+            'description' => 'Tanpa pembuat',
+            'status' => 'posted',
+        ]);
+
+        $res = $this->getJson('/api/journals?page=1&per_page=25', $ctx['headers']);
+        $res->assertStatus(200);
+        $res->assertJsonPath('data.data.0.created_by_name', null);
+    }
+
     public function test_is_system_generated_filter_hides_system_journals(): void
     {
         $ctx = $this->setUpTenant();

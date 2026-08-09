@@ -10,6 +10,7 @@ use App\Shared\Audit\AuditLogService;
 use App\Shared\DocumentNumbering\DocumentNumberService;
 use App\Shared\DocumentNumbering\DocumentType;
 use App\Shared\Exceptions\ApiException;
+use App\Shared\Models\User;
 use App\Shared\Tenant\TenantContext;
 use App\Shared\TransactionLifecycle\TransactionModule;
 use App\Shared\TransactionLifecycle\TransactionPolicyResult;
@@ -107,12 +108,49 @@ class JournalEntryService
             $query->where('is_system_generated', filter_var($systemGenerated, FILTER_VALIDATE_BOOLEAN));
         }
 
-        return $this->applyListQuery($query, $filters);
+        $result = $this->applyListQuery($query, $filters);
+
+        $this->attachCreatorNames($result instanceof LengthAwarePaginator ? $result->getCollection() : $result);
+
+        return $result;
+    }
+
+    /**
+     * Lampirkan nama pembuat jurnal sebagai `created_by_name`.
+     *
+     * `journal_entries` ada di database tenant sedangkan `users` di database
+     * pusat, jadi relasi Eloquent lintas koneksi tidak bisa di-eager-load.
+     * Nama diambil sekali untuk seluruh halaman (satu query, bukan N+1) lalu
+     * dipetakan ke tiap baris. Nilainya `null` bila jurnal dibuat sistem atau
+     * user-nya sudah dihapus.
+     *
+     * @param  iterable<int,JournalEntry>  $journals
+     */
+    private function attachCreatorNames(iterable $journals): void
+    {
+        $ids = collect($journals)
+            ->pluck('created_by')
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        $names = $ids === []
+            ? []
+            : User::query()->whereIn('id', $ids)->pluck('name', 'id')->all();
+
+        foreach ($journals as $journal) {
+            $createdBy = $journal->created_by;
+            $journal->setAttribute('created_by_name', $createdBy ? ($names[$createdBy] ?? null) : null);
+        }
     }
 
     public function find(int|string $id): JournalEntry
     {
-        return JournalEntry::query()->with('lines.account')->findOrFail($id);
+        $journal = JournalEntry::query()->with('lines.account')->findOrFail($id);
+        $this->attachCreatorNames([$journal]);
+
+        return $journal;
     }
 
     public function createManual(array $data): JournalEntry
