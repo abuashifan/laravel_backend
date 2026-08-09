@@ -98,6 +98,17 @@ class ProductService
 
         $this->validateRelations($data);
 
+        // `UpdateProductRequest` menerima `is_active` dan `fill()` meneruskannya,
+        // jadi tanpa penjaga ini `PATCH /products/{id}` dengan
+        // `{"is_active": false}` melewati larangan di `deactivate()` sepenuhnya.
+        // Hanya diperiksa saat benar-benar mematikan produk yang sedang aktif --
+        // menyimpan form produk yang memang sudah nonaktif tidak ikut ditolak.
+        if (array_key_exists('is_active', $data)
+            && ! $this->toBool($data['is_active'])
+            && $product->is_active) {
+            $this->assertNoRemainingStock($product);
+        }
+
         $product->fill($data);
         $product->save();
 
@@ -106,10 +117,64 @@ class ProductService
 
     public function deactivate(Product $product): Product
     {
+        $this->assertNoRemainingStock($product);
+
         $product->is_active = false;
         $product->save();
 
         return $product->refresh();
+    }
+
+    /**
+     * Total stok on-hand seluruh gudang untuk satu produk.
+     *
+     * Dibulatkan ke presisi stok lebih dulu -- tanpa itu sisa pecahan float
+     * (mis. 1e-15 dari penyesuaian berulang) menahan penonaktifan produk yang
+     * stoknya sebenarnya sudah nol. Presisinya sengaja sama dengan
+     * `attachStockQuantities()`.
+     *
+     * Dibaca langsung dari StockBalance, bukan dari atribut
+     * `current_quantity`: atribut itu hanya dipasang di `list()`, sedangkan
+     * di sini produknya diambil per-id.
+     */
+    private function stockOnHandFor(Product $product): float
+    {
+        return round(
+            (float) StockBalance::query()
+                ->where('product_id', $product->id)
+                ->sum('quantity_on_hand'),
+            (int) config('inventory.stock_precision', 4),
+        );
+    }
+
+    /**
+     * Produk berstok tidak boleh dinonaktifkan.
+     *
+     * Menonaktifkannya membuat stoknya terdampar: saldonya tetap terhitung di
+     * Neraca, tapi produknya hilang dari seluruh picker (`produkApi.search`
+     * selalu mengirim `is_active: true`) -- termasuk Penyesuaian Stok, alat
+     * yang justru dipakai untuk menghapusbukukannya. Selama produknya masih
+     * aktif semua jalur itu berfungsi, jadi penjaga ini hanya memaksa
+     * urutannya benar: habiskan stok dulu, baru nonaktifkan.
+     *
+     * `!= 0`, bukan `> 0` -- stok negatif adalah keadaan galat, dan
+     * menonaktifkan produknya justru menyembunyikannya.
+     */
+    private function assertNoRemainingStock(Product $product): void
+    {
+        $quantity = $this->stockOnHandFor($product);
+
+        if ($quantity == 0.0) {
+            return;
+        }
+
+        throw ApiException::make(
+            'PRODUCT_HAS_STOCK',
+            'Cannot deactivate product that still has stock.',
+            422,
+            [],
+            ['quantity_on_hand' => $quantity],
+        );
     }
 
     public function activate(Product $product): Product
