@@ -9,6 +9,7 @@ use App\Modules\Reports\Controllers\FinancialSummaryController;
 use App\Modules\Reports\Controllers\GeneralLedgerController;
 use App\Modules\Reports\Controllers\JournalListReportController;
 use App\Modules\Reports\Controllers\MultiPeriodReportController;
+use App\Modules\Reports\Controllers\ProductHistoryReportController;
 use App\Modules\Reports\Controllers\ProfitLossController;
 use App\Modules\Reports\Controllers\Purchase\PurchaseReportController;
 use App\Modules\Reports\Controllers\ReconciliationReportController;
@@ -40,6 +41,10 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('reports')->group(
     Route::get('/reconciliation/grni', [ReconciliationReportController::class, 'grni'])->middleware('permission:reports.view');
     Route::get('/reconciliation/customer-deposits', [ReconciliationReportController::class, 'customerDeposits'])->middleware('permission:reports.view');
     Route::get('/reconciliation/vendor-deposits', [ReconciliationReportController::class, 'vendorDeposits'])->middleware('permission:reports.view');
+
+    // Di level atas, bukan di dalam grup sales/purchase: isinya lintas kedua
+    // domain (penjualan + pembelian satu produk).
+    Route::get('/product-history', [ProductHistoryReportController::class, 'index'])->middleware('permission:reports.view');
 
     Route::prefix('sales')->middleware('permission:reports.view')->group(function () {
         Route::get('/summary', [SalesReportController::class, 'summary']);

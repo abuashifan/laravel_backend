@@ -49,6 +49,7 @@ class SavedReport extends Model
         'inventory-analysis',
         'inventory-aging',
         'inventory-opname',
+        'product-history',
         'sales-summary',
         'sales-by-customer',
         'sales-by-product',
