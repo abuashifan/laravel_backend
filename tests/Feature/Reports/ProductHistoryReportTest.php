@@ -190,7 +190,7 @@ class ProductHistoryReportTest extends PurchaseTestCase
 
         $rows = $res->json('data.rows');
         $this->assertCount(2, $rows);
-        $this->assertSame('stock_movement', $rows[1]['document_type']);
+        $this->assertSame('stock_adjustment', $rows[1]['document_type']);
         $this->assertSame('ADJ-0001', $rows[1]['document_number']);
         $this->assertEquals(-3.0, $rows[1]['quantity']);
 
@@ -239,9 +239,51 @@ class ProductHistoryReportTest extends PurchaseTestCase
         $this->assertSame($invoiceId, $rows[0]['document_id']);
     }
 
+    /**
+     * Baris penyesuaian harus membawa id **penyesuaiannya**, bukan id
+     * pergerakan stok. Pergerakan stok tidak punya halaman sendiri, jadi
+     * mengirim idnya membuat barisnya membuka dokumen yang salah — atau tidak
+     * bisa dibuka sama sekali.
+     */
+    public function test_inventory_rows_link_to_their_source_document_not_the_movement(): void
+    {
+        $ctx = $this->setUpTenant();
+        $product = $this->makeProduct('PRD-A', 'Alpha');
+
+        $movementId = $this->makeStockMovementLine(
+            'stock_adjustment', 'SA-0007', '2026-07-15', $product, 'out', 3, 1000, sourceId: 42,
+        );
+
+        $row = $this->getJson(self::URI."?product_id={$product}", $ctx['headers'])
+            ->assertStatus(200)
+            ->json('data.rows.0');
+
+        $this->assertSame('stock_adjustment', $row['document_type']);
+        $this->assertSame(42, $row['document_id']);
+        $this->assertNotSame($movementId, $row['document_id']);
+    }
+
+    /** Pergerakan tanpa dokumen sumber tetap tampil, memakai idnya sendiri. */
+    public function test_movement_without_source_falls_back_to_its_own_id(): void
+    {
+        $ctx = $this->setUpTenant();
+        $product = $this->makeProduct('PRD-A', 'Alpha');
+
+        $movementId = $this->makeStockMovementLine(
+            'opening', 'OPN-AWAL', '2026-07-01', $product, 'in', 10, 1000, sourceId: null,
+        );
+
+        $row = $this->getJson(self::URI."?product_id={$product}", $ctx['headers'])
+            ->assertStatus(200)
+            ->json('data.rows.0');
+
+        $this->assertSame('stock_movement', $row['document_type']);
+        $this->assertSame($movementId, $row['document_id']);
+    }
+
     // ── Helper ────────────────────────────────────────────────────────────────
 
-    private function makeStockMovementLine(string $sourceType, string $sourceNumber, string $date, int $productId, string $direction, float $qty, float $unitCost): void
+    private function makeStockMovementLine(string $sourceType, string $sourceNumber, string $date, int $productId, string $direction, float $qty, float $unitCost, ?int $sourceId = 1): int
     {
         $warehouse = Warehouse::query()->firstOrCreate(
             ['code' => 'WH-A'],
@@ -255,6 +297,7 @@ class ProductHistoryReportTest extends PurchaseTestCase
             'direction' => $direction,
             'status' => 'posted',
             'source_type' => $sourceType,
+            'source_id' => $sourceId,
             'source_number' => $sourceNumber,
             'warehouse_id' => $warehouse->id,
         ])->id;
@@ -269,6 +312,8 @@ class ProductHistoryReportTest extends PurchaseTestCase
             'unit_cost' => $unitCost,
             'total_cost' => $qty * $unitCost,
         ]);
+
+        return $movementId;
     }
 
     private function makeContact(string $name, string $type): int

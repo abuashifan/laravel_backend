@@ -90,6 +90,18 @@ class ProductHistoryReportService
      * Sengaja daftar-buang, bukan daftar-izin: jenis sumber baru (mis. transfer
      * antar gudang) langsung ikut tampil, bukan hilang diam-diam.
      */
+    /**
+     * Jenis dokumen yang berasal dari pergerakan stok, bukan transaksi
+     * komersial. Dipakai `totals()` untuk memisahkannya dari beli/jual.
+     * Harus sinkron dengan `movementDocumentType()`.
+     */
+    private const INVENTORY_DOCUMENT_TYPES = [
+        'stock_adjustment',
+        'stock_opname',
+        'stock_transfer',
+        'stock_movement',
+    ];
+
     private const MOVEMENT_SOURCES_ALREADY_COVERED = [
         'sales_invoice',
         'sales_return',
@@ -232,6 +244,8 @@ class ProductHistoryReportService
                 hdr.id as document_id,
                 hdr.movement_date as document_date,
                 hdr.movement_number as document_number,
+                hdr.source_type as source_type,
+                hdr.source_id as source_id,
                 hdr.source_number as source_number,
                 hdr.movement_type as movement_type,
                 dpt.name as department_name,
@@ -244,9 +258,17 @@ class ProductHistoryReportService
             ->get()
             ->map(fn ($row) => [
                 'date' => $this->toDateString($row->document_date),
-                'document_type' => 'stock_movement',
-                'document_id' => (int) $row->document_id,
-                // Nomor dokumen sumber (mis. ADJ-0003) lebih dikenali user
+                // Jenis dan id yang dikirim adalah milik dokumen SUMBER
+                // (`stock_adjustment` id 2), bukan pergerakan stoknya (id 27) --
+                // pergerakan tidak punya halaman sendiri, jadi mengirim idnya
+                // membuat barisnya tidak bisa dibuka. `source_id` sudah ada di
+                // tabelnya; tinggal dipakai.
+                //
+                // Fallback ke pergerakan hanya untuk baris tanpa sumber sama
+                // sekali (mis. saldo awal hasil impor).
+                'document_type' => $this->movementDocumentType($row->source_type),
+                'document_id' => (int) ($row->source_id ?: $row->document_id),
+                // Nomor dokumen sumber (mis. SA-2026-000001) lebih dikenali user
                 // daripada nomor pergerakan internal.
                 'document_number' => (string) ($row->source_number ?: $row->document_number),
                 'direction' => (string) $row->direction === 'in' ? 'in' : 'out',
@@ -260,6 +282,26 @@ class ProductHistoryReportService
             ])
             ->values()
             ->all();
+    }
+
+    /**
+     * Petakan `source_type` pergerakan stok ke jenis dokumen yang punya halaman
+     * sendiri, supaya frontend bisa menautkannya.
+     *
+     * Data lama memakai `adjustment`/`opname`, data baru memakai
+     * `stock_adjustment`/`stock_opname` -- keduanya diterima. Sumber yang tidak
+     * dikenali (mis. `opening`, atau jenis baru) jatuh ke `stock_movement`, dan
+     * frontend merendernya sebagai teks biasa: lebih baik tidak bisa diklik
+     * daripada membuka dokumen yang salah.
+     */
+    private function movementDocumentType(mixed $sourceType): string
+    {
+        return match ((string) $sourceType) {
+            'stock_adjustment', 'adjustment' => 'stock_adjustment',
+            'stock_opname', 'opname' => 'stock_opname',
+            'inventory_transfer', 'transfer' => 'stock_transfer',
+            default => 'stock_movement',
+        };
     }
 
     /**
@@ -306,7 +348,7 @@ class ProductHistoryReportService
 
             // Pergerakan non-komersial dihitung terpisah dan TIDAK masuk
             // rata-rata beli/jual -- harganya HPP, bukan harga transaksi.
-            if ($row['document_type'] === 'stock_movement') {
+            if (in_array($row['document_type'], self::INVENTORY_DOCUMENT_TYPES, true)) {
                 $adjustedQty += (float) $row['quantity'];
 
                 continue;
