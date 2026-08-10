@@ -2,9 +2,12 @@
 
 namespace Tests\Feature\Reports;
 
+use App\Modules\Inventory\Models\StockMovement;
+use App\Modules\Inventory\Models\StockMovementLine;
 use App\Modules\MasterData\Models\Contact;
 use App\Modules\MasterData\Models\Product;
 use App\Modules\MasterData\Models\Unit;
+use App\Modules\MasterData\Models\Warehouse;
 use App\Modules\Purchase\Models\PurchaseReturn;
 use App\Modules\Purchase\Models\PurchaseReturnLine;
 use App\Modules\Purchase\Models\VendorBill;
@@ -173,7 +176,100 @@ class ProductHistoryReportTest extends PurchaseTestCase
         $this->assertSame('2026-06-15', $res->json('data.rows.0.date'));
     }
 
+    public function test_includes_stock_adjustments_without_touching_buy_sell_averages(): void
+    {
+        $ctx = $this->setUpTenant();
+        $customer = $this->makeContact('Customer', 'customer');
+        $product = $this->makeProduct('PRD-A', 'Alpha');
+
+        $this->makeSalesInvoiceLine($customer, '2026-07-10', 'posted', $product, 10, 2000, 20000);
+        // Penyesuaian keluar 3 unit dengan HPP 1.000.
+        $this->makeStockMovementLine('adjustment', 'ADJ-0001', '2026-07-15', $product, 'out', 3, 1000);
+
+        $res = $this->getJson(self::URI."?product_id={$product}", $ctx['headers'])->assertStatus(200);
+
+        $rows = $res->json('data.rows');
+        $this->assertCount(2, $rows);
+        $this->assertSame('stock_movement', $rows[1]['document_type']);
+        $this->assertSame('ADJ-0001', $rows[1]['document_number']);
+        $this->assertEquals(-3.0, $rows[1]['quantity']);
+
+        $totals = $res->json('data.totals');
+        $this->assertEquals(-3.0, $totals['adjusted_qty']);
+        // Penyesuaian tidak boleh menarik rata-rata jual ke HPP.
+        $this->assertEquals(10.0, $totals['sold_qty']);
+        $this->assertEquals(2000.0, $totals['avg_sell_price']);
+    }
+
+    /**
+     * Satu penjualan lewat Surat Jalan lalu Faktur tidak boleh muncul dua kali.
+     * Ini yang paling mudah terlewat: pergerakan stoknya nyata, tapi barangnya
+     * sudah diwakili baris faktur.
+     */
+    public function test_does_not_duplicate_movements_already_covered_by_documents(): void
+    {
+        $ctx = $this->setUpTenant();
+        $customer = $this->makeContact('Customer', 'customer');
+        $product = $this->makeProduct('PRD-A', 'Alpha');
+
+        $this->makeSalesInvoiceLine($customer, '2026-07-10', 'posted', $product, 10, 2000, 20000);
+        $this->makeStockMovementLine('delivery_order', 'SJ-0001', '2026-07-10', $product, 'out', 10, 1000);
+
+        $rows = $this->getJson(self::URI."?product_id={$product}", $ctx['headers'])
+            ->assertStatus(200)
+            ->json('data.rows');
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('sales_invoice', $rows[0]['document_type']);
+    }
+
+    public function test_rows_carry_document_id_for_linking(): void
+    {
+        $ctx = $this->setUpTenant();
+        $customer = $this->makeContact('Customer', 'customer');
+        $product = $this->makeProduct('PRD-A', 'Alpha');
+
+        $invoiceId = $this->makeSalesInvoice($customer, '2026-07-01', 'posted');
+        $this->addSalesInvoiceLine($invoiceId, $product, 1, 1000, 1000);
+
+        $rows = $this->getJson(self::URI."?product_id={$product}", $ctx['headers'])
+            ->assertStatus(200)
+            ->json('data.rows');
+
+        $this->assertSame($invoiceId, $rows[0]['document_id']);
+    }
+
     // ── Helper ────────────────────────────────────────────────────────────────
+
+    private function makeStockMovementLine(string $sourceType, string $sourceNumber, string $date, int $productId, string $direction, float $qty, float $unitCost): void
+    {
+        $warehouse = Warehouse::query()->firstOrCreate(
+            ['code' => 'WH-A'],
+            ['name' => 'Gudang A', 'is_active' => true],
+        );
+
+        $movementId = (int) StockMovement::query()->create([
+            'movement_number' => 'MV-'.uniqid(),
+            'movement_date' => $date,
+            'movement_type' => $sourceType,
+            'direction' => $direction,
+            'status' => 'posted',
+            'source_type' => $sourceType,
+            'source_number' => $sourceNumber,
+            'warehouse_id' => $warehouse->id,
+        ])->id;
+
+        StockMovementLine::query()->create([
+            'stock_movement_id' => $movementId,
+            'movement_type' => $sourceType,
+            'direction' => $direction,
+            'product_id' => $productId,
+            'warehouse_id' => $warehouse->id,
+            'quantity' => $qty,
+            'unit_cost' => $unitCost,
+            'total_cost' => $qty * $unitCost,
+        ]);
+    }
 
     private function makeContact(string $name, string $type): int
     {

@@ -2,6 +2,7 @@
 
 namespace App\Modules\Reports\Services;
 
+use App\Modules\Inventory\Models\StockMovementLine;
 use App\Modules\Purchase\Models\PurchaseReturnLine;
 use App\Modules\Purchase\Models\VendorBillLine;
 use App\Modules\Sales\Models\SalesInvoiceLine;
@@ -79,6 +80,26 @@ class ProductHistoryReportService
     ];
 
     /**
+     * Pergerakan stok yang sudah diwakili keempat dokumen komersial di atas,
+     * atau oleh dokumen di rantai yang sama.
+     *
+     * Tanpa pengecualian ini satu penjualan lewat Surat Jalan lalu Faktur akan
+     * muncul dua kali dengan kuantitas yang sama: sekali dari baris faktur,
+     * sekali lagi dari pergerakan stok Surat Jalan-nya.
+     *
+     * Sengaja daftar-buang, bukan daftar-izin: jenis sumber baru (mis. transfer
+     * antar gudang) langsung ikut tampil, bukan hilang diam-diam.
+     */
+    private const MOVEMENT_SOURCES_ALREADY_COVERED = [
+        'sales_invoice',
+        'sales_return',
+        'vendor_bill',
+        'purchase_return',
+        'delivery_order',
+        'goods_receipt',
+    ];
+
+    /**
      * @param  array{product_id: int, start_date?: string|null, end_date?: string|null, department_id?: int|null, project_id?: int|null}  $filters
      * @return array{rows: list<array<string,mixed>>, totals: array<string,float>}
      */
@@ -90,6 +111,10 @@ class ProductHistoryReportService
             foreach ($this->fetchSource($source, $filters) as $row) {
                 $rows[] = $row;
             }
+        }
+
+        foreach ($this->fetchInventoryMovements($filters) as $row) {
+            $rows[] = $row;
         }
 
         // Digabung dan diurut di PHP, bukan lewat SQL UNION: nama kolom berbeda
@@ -139,6 +164,7 @@ class ProductHistoryReportService
 
         return $query
             ->selectRaw("
+                hdr.id as document_id,
                 hdr.{$source['date_column']} as document_date,
                 hdr.{$source['number_column']} as document_number,
                 ctc.name as contact_name,
@@ -153,6 +179,7 @@ class ProductHistoryReportService
             ->map(fn ($row) => [
                 'date' => $this->toDateString($row->document_date),
                 'document_type' => $source['type'],
+                'document_id' => (int) $row->document_id,
                 'document_number' => (string) $row->document_number,
                 'direction' => $source['direction'],
                 'contact_name' => $row->contact_name !== null ? (string) $row->contact_name : null,
@@ -160,6 +187,74 @@ class ProductHistoryReportService
                 'quantity' => $source['sign'] * (float) $row->quantity,
                 'unit_price' => (float) $row->unit_price,
                 'line_total' => (float) $row->line_total,
+                'department_name' => $row->department_name !== null ? (string) $row->department_name : null,
+                'project_name' => $row->project_name !== null ? (string) $row->project_name : null,
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Pergerakan stok non-komersial: penyesuaian, opname, saldo awal, transfer.
+     *
+     * Harganya memakai HPP (`unit_cost`), bukan harga jual/beli -- pergerakan
+     * ini memang tidak punya harga transaksi. Karena itu ia juga tidak ikut
+     * dihitung ke rata-rata beli/jual di `totals()`; kalau ikut, rata-rata harga
+     * jual akan tertarik ke HPP dan tidak lagi berarti apa pun.
+     *
+     * @param  array<string,mixed>  $filters
+     * @return list<array<string,mixed>>
+     */
+    private function fetchInventoryMovements(array $filters): array
+    {
+        $query = StockMovementLine::query()
+            ->join('stock_movements as hdr', 'hdr.id', '=', 'stock_movement_lines.stock_movement_id')
+            ->leftJoin('departments as dpt', 'dpt.id', '=', 'stock_movement_lines.department_id')
+            ->leftJoin('projects as prj', 'prj.id', '=', 'stock_movement_lines.project_id')
+            ->where('hdr.status', 'posted')
+            ->where('stock_movement_lines.product_id', (int) $filters['product_id'])
+            ->where(function ($q) {
+                $q->whereNull('hdr.source_type')
+                    ->orWhereNotIn('hdr.source_type', self::MOVEMENT_SOURCES_ALREADY_COVERED);
+            });
+
+        $this->applyDateRange($query, 'hdr.movement_date', $filters);
+
+        if (! empty($filters['department_id'])) {
+            $query->where('stock_movement_lines.department_id', (int) $filters['department_id']);
+        }
+        if (! empty($filters['project_id'])) {
+            $query->where('stock_movement_lines.project_id', (int) $filters['project_id']);
+        }
+
+        return $query
+            ->selectRaw('
+                hdr.id as document_id,
+                hdr.movement_date as document_date,
+                hdr.movement_number as document_number,
+                hdr.source_number as source_number,
+                hdr.movement_type as movement_type,
+                dpt.name as department_name,
+                prj.name as project_name,
+                stock_movement_lines.direction as direction,
+                stock_movement_lines.quantity as quantity,
+                stock_movement_lines.unit_cost as unit_cost,
+                stock_movement_lines.total_cost as total_cost
+            ')
+            ->get()
+            ->map(fn ($row) => [
+                'date' => $this->toDateString($row->document_date),
+                'document_type' => 'stock_movement',
+                'document_id' => (int) $row->document_id,
+                // Nomor dokumen sumber (mis. ADJ-0003) lebih dikenali user
+                // daripada nomor pergerakan internal.
+                'document_number' => (string) ($row->source_number ?: $row->document_number),
+                'direction' => (string) $row->direction === 'in' ? 'in' : 'out',
+                'contact_name' => null,
+                'description' => (string) $row->movement_type,
+                'quantity' => ((string) $row->direction === 'in' ? 1 : -1) * (float) $row->quantity,
+                'unit_price' => (float) $row->unit_cost,
+                'line_total' => (float) $row->total_cost,
                 'department_name' => $row->department_name !== null ? (string) $row->department_name : null,
                 'project_name' => $row->project_name !== null ? (string) $row->project_name : null,
             ])
@@ -203,10 +298,20 @@ class ProductHistoryReportService
         $purchasedValue = 0.0;
         $soldQty = 0.0;
         $soldValue = 0.0;
+        $adjustedQty = 0.0;
 
         foreach ($rows as $row) {
             $qty = abs((float) $row['quantity']);
             $value = abs((float) $row['line_total']);
+
+            // Pergerakan non-komersial dihitung terpisah dan TIDAK masuk
+            // rata-rata beli/jual -- harganya HPP, bukan harga transaksi.
+            if ($row['document_type'] === 'stock_movement') {
+                $adjustedQty += (float) $row['quantity'];
+
+                continue;
+            }
+
             $isPurchase = in_array($row['document_type'], ['vendor_bill', 'purchase_return'], true);
             // Retur membalik tandanya: retur pembelian mengurangi total dibeli,
             // retur penjualan mengurangi total dijual. Tanpa ini "total dibeli"
@@ -228,6 +333,8 @@ class ProductHistoryReportService
             'purchased_value' => round($purchasedValue, 2),
             'sold_qty' => round($soldQty, 4),
             'sold_value' => round($soldValue, 2),
+            // Bertanda: negatif berarti stok berkurang lewat penyesuaian.
+            'adjusted_qty' => round($adjustedQty, 4),
             // Rata-rata TERTIMBANG: nilai dibagi kuantitas, bukan AVG(unit_price).
             // Rata-rata polos memberi bobot sama pada transaksi 1 unit dan 1.000
             // unit, dan hasilnya tidak akan pernah cocok dengan nilai/qty.
