@@ -7,8 +7,12 @@ use App\Modules\Inventory\Models\StockMovement;
 use App\Modules\Journal\Models\JournalEntry;
 use App\Modules\MasterData\Models\AccountMapping;
 use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\MasterData\Models\Product;
+use App\Modules\MasterData\Models\Unit;
+use App\Modules\MasterData\Models\Warehouse;
 use App\Modules\Sales\Models\SalesInvoice;
 use App\Modules\Sales\Models\SalesReturn;
+use App\Modules\Sales\Models\SalesReturnLine;
 use App\Shared\Models\FiscalYear;
 
 class SalesReturnTest extends SalesTestCase
@@ -53,6 +57,47 @@ class SalesReturnTest extends SalesTestCase
                 'unit_price' => 100,
             ]],
         ], $ctx['headers'])->assertStatus(422);
+    }
+
+    /**
+     * `product_id` dkk. dulu tidak ada di StoreSalesReturnRequest, jadi
+     * `validated()` membuangnya dan retur yang dibuat langsung lewat API
+     * tersimpan tanpa produk -- barisnya ada, product_id NULL. Retur yang
+     * dibuat dari faktur tidak terkena karena melewati FormRequest.
+     */
+    public function test_direct_return_keeps_product_and_warehouse_on_lines(): void
+    {
+        $ctx = $this->setUpTenant();
+        $this->seedMappings();
+
+        $unit = Unit::query()->create(['code' => 'PCS', 'name' => 'Pieces', 'precision' => 0, 'is_active' => true]);
+        $product = Product::query()->create([
+            'product_code' => 'PRD-RET-1',
+            'product_name' => 'Barang Retur',
+            'product_type' => 'service',
+            'unit_id' => $unit->id,
+            'is_stock_item' => false,
+            'is_active' => true,
+        ]);
+        $warehouse = Warehouse::query()->create(['code' => 'WH-RET', 'name' => 'Gudang Retur', 'is_active' => true]);
+
+        $return = $this->postJson('/api/sales/returns', [
+            'return_date' => '2026-05-20',
+            'customer_id' => $this->createCustomer(),
+            'lines' => [[
+                'product_id' => $product->id,
+                'unit_id' => $unit->id,
+                'warehouse_id' => $warehouse->id,
+                'description' => 'Barang Retur',
+                'quantity' => 2,
+                'unit_price' => 100,
+            ]],
+        ], $ctx['headers'])->assertStatus(201)->json('data');
+
+        $line = SalesReturnLine::query()->where('sales_return_id', $return['id'])->firstOrFail();
+        $this->assertSame($product->id, (int) $line->product_id);
+        $this->assertSame($unit->id, (int) $line->unit_id);
+        $this->assertSame($warehouse->id, (int) $line->warehouse_id);
     }
 
     public function test_post_return_creates_contra_revenue_ar_journal_and_updates_invoice(): void
