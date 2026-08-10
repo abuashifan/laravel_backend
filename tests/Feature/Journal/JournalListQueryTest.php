@@ -56,6 +56,105 @@ class JournalListQueryTest extends JournalTestCase
         return ['headers' => $ctx['headers']];
     }
 
+    /**
+     * Jurnal dengan `source_type` beragam, meniru isi daftar Jurnal Umum yang
+     * memuat jurnal dari semua modul sekaligus.
+     *
+     * @return array{headers: array<string,string>}
+     */
+    private function seedJournalsBySourceType(): array
+    {
+        $ctx = $this->setUpTenant();
+
+        $sourceTypes = [
+            'JV-SRC-000001' => 'manual_journal',
+            'JV-SRC-000002' => 'fixed_asset_depreciation',
+            'JV-SRC-000003' => 'fixed_asset_depreciation',
+            'JV-SRC-000004' => 'sales_invoice',
+            'JV-SRC-000005' => 'vendor_bill',
+        ];
+
+        foreach ($sourceTypes as $number => $sourceType) {
+            JournalEntry::query()->create([
+                'journal_number' => $number,
+                'journal_date' => '2026-04-01',
+                'description' => "Jurnal {$sourceType}",
+                'status' => 'posted',
+                'source_type' => $sourceType,
+                'is_system_generated' => $sourceType !== 'manual_journal',
+            ]);
+        }
+
+        return ['headers' => $ctx['headers']];
+    }
+
+    public function test_source_type_filters_single_value(): void
+    {
+        ['headers' => $headers] = $this->seedJournalsBySourceType();
+
+        // Skenario yang diminta user: "lihat jurnal depresiasi saja".
+        $res = $this->getJson('/api/journals?page=1&per_page=25&source_type=fixed_asset_depreciation', $headers);
+        $res->assertStatus(200);
+        $res->assertJsonPath('data.total', 2);
+        $numbers = collect($res->json('data.data'))->pluck('journal_number')->sort()->values()->all();
+        $this->assertSame(['JV-SRC-000002', 'JV-SRC-000003'], $numbers);
+    }
+
+    public function test_source_type_filters_comma_separated_values(): void
+    {
+        ['headers' => $headers] = $this->seedJournalsBySourceType();
+
+        $res = $this->getJson('/api/journals?page=1&per_page=25&source_type=sales_invoice,vendor_bill', $headers);
+        $res->assertStatus(200);
+        $numbers = collect($res->json('data.data'))->pluck('journal_number')->sort()->values()->all();
+        $this->assertSame(['JV-SRC-000004', 'JV-SRC-000005'], $numbers);
+    }
+
+    public function test_source_type_absent_returns_every_type(): void
+    {
+        ['headers' => $headers] = $this->seedJournalsBySourceType();
+
+        // Tanpa filter, daftar tetap memuat jurnal manual maupun jurnal sistem.
+        $res = $this->getJson('/api/journals?page=1&per_page=25', $headers);
+        $res->assertStatus(200);
+        $res->assertJsonPath('data.total', 5);
+
+        // String kosong diperlakukan sama dengan tidak mengirim filter.
+        $empty = $this->getJson('/api/journals?page=1&per_page=25&source_type=', $headers);
+        $empty->assertStatus(200);
+        $empty->assertJsonPath('data.total', 5);
+    }
+
+    public function test_source_type_combines_with_other_filters(): void
+    {
+        ['headers' => $headers] = $this->seedJournalsBySourceType();
+
+        // source_type harus meng-AND filter lain, bukan menggantikannya.
+        $res = $this->getJson(
+            '/api/journals?page=1&per_page=25&source_type=fixed_asset_depreciation&search=000003',
+            $headers,
+        );
+        $res->assertStatus(200);
+        $res->assertJsonPath('data.total', 1);
+        $res->assertJsonPath('data.data.0.journal_number', 'JV-SRC-000003');
+
+        $none = $this->getJson(
+            '/api/journals?page=1&per_page=25&source_type=fixed_asset_depreciation&status=draft',
+            $headers,
+        );
+        $none->assertStatus(200);
+        $none->assertJsonPath('data.total', 0);
+    }
+
+    public function test_unknown_source_type_returns_empty_list(): void
+    {
+        ['headers' => $headers] = $this->seedJournalsBySourceType();
+
+        $res = $this->getJson('/api/journals?page=1&per_page=25&source_type=tidak_ada', $headers);
+        $res->assertStatus(200);
+        $res->assertJsonPath('data.total', 0);
+    }
+
     public function test_search_matches_journal_number(): void
     {
         ['headers' => $headers] = $this->seedJournals();

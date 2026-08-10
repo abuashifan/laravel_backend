@@ -28,6 +28,10 @@ class ListQueryBenchmarkTest extends JournalTestCase
                 'journal_date' => '2026-01-01',
                 'description' => 'Baris ke-'.$i,
                 'status' => $i % 3 === 0 ? 'draft' : 'posted',
+                // Jenis jurnal diselang-seling supaya filter `source_type`
+                // benar-benar menyaring (1 dari 4 baris), bukan mengembalikan
+                // seluruh tabel dan terlihat murah secara semu.
+                'source_type' => $i % 4 === 0 ? 'fixed_asset_depreciation' : 'manual_journal',
                 'is_obsolete' => false,
                 'created_at' => now(),
                 'updated_at' => now(),
@@ -59,6 +63,10 @@ class ListQueryBenchmarkTest extends JournalTestCase
             'per_page=1' => '/api/journals?page=1&per_page=1',
             'per_page=25' => '/api/journals?page=1&per_page=25',
             'per_page=25 + search' => '/api/journals?page=1&per_page=25&search=002500',
+            // Filter jenis jurnal harus ikut jalur SQL yang sama: menyaring 750
+            // dari 3000 baris tidak boleh menghidrasi lebih dari satu halaman.
+            'per_page=25 + source_type' => '/api/journals?page=1&per_page=25&source_type=fixed_asset_depreciation',
+            'per_page=25 + 2 source_type' => '/api/journals?page=1&per_page=25&source_type=fixed_asset_depreciation,manual_journal',
             'halaman terakhir' => '/api/journals?page=120&per_page=25',
             'tanpa paginasi' => '/api/journals',
         ];
@@ -84,5 +92,10 @@ class ListQueryBenchmarkTest extends JournalTestCase
         $this->assertSame(1, $out['per_page=1']['rows']);
         $this->assertSame(25, $out['per_page=25']['rows']);
         $this->assertSame(self::ROWS, $out['tanpa paginasi']['rows']);
+
+        // Filter jenis jurnal juga dipotong SQL: satu halaman tetap 25 baris
+        // walau yang cocok 750, bukan seluruh hasil filter dihidrasi dulu.
+        $this->assertSame(25, $out['per_page=25 + source_type']['rows']);
+        $this->assertSame(25, $out['per_page=25 + 2 source_type']['rows']);
     }
 }

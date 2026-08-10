@@ -108,6 +108,25 @@ class JournalEntryService
             $query->where('is_system_generated', filter_var($systemGenerated, FILTER_VALIDATE_BOOLEAN));
         }
 
+        // Filter jenis jurnal: satu `source_type`, atau beberapa dipisah koma --
+        // pola yang sama dengan `status` di AppliesListQuery. Daftar Jurnal Umum
+        // memuat jurnal dari semua modul, jadi tanpa filter ini user tidak punya
+        // cara mempersempit ke satu jenis saja (mis. hanya depresiasi aset
+        // tetap); menyaring per modul lewat `source_module` terlalu kasar karena
+        // satu modul menerbitkan banyak jenis jurnal sekaligus.
+        //
+        // Nilainya masuk lewat `whereIn` (parameter terikat), dan sengaja tidak
+        // dibatasi allowlist `config('source_links.source_types')`: jurnal lama
+        // dan data seed memakai source_type di luar daftar itu, dan tetap harus
+        // bisa disaring bila pemanggil tahu nilainya.
+        $sourceTypes = array_values(array_filter(
+            array_map('trim', explode(',', (string) ($filters['source_type'] ?? ''))),
+            fn (string $sourceType): bool => $sourceType !== '',
+        ));
+        if ($sourceTypes !== []) {
+            $query->whereIn('source_type', $sourceTypes);
+        }
+
         $result = $this->applyListQuery($query, $filters);
 
         $this->attachCreatorNames($result instanceof LengthAwarePaginator ? $result->getCollection() : $result);
