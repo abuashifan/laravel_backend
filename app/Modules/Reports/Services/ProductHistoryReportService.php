@@ -3,6 +3,7 @@
 namespace App\Modules\Reports\Services;
 
 use App\Modules\Inventory\Models\StockMovementLine;
+use App\Modules\MasterData\Models\Product;
 use App\Modules\Purchase\Models\PurchaseReturnLine;
 use App\Modules\Purchase\Models\VendorBillLine;
 use App\Modules\Sales\Models\SalesInvoiceLine;
@@ -114,7 +115,7 @@ class ProductHistoryReportService
 
     /**
      * @param  array{product_id: int, start_date?: string|null, end_date?: string|null, department_id?: int|null, project_id?: int|null}  $filters
-     * @return array{rows: list<array<string,mixed>>, totals: array<string,float>}
+     * @return array{product: array<string,mixed>|null, rows: list<array<string,mixed>>, totals: array<string,float>}
      */
     public function getReport(array $filters): array
     {
@@ -137,7 +138,18 @@ class ProductHistoryReportService
             return [$a['date'], $a['document_number']] <=> [$b['date'], $b['document_number']];
         });
 
+        // Produk ikut dikirim supaya judul laporan dan filter bisa menampilkan
+        // namanya tanpa permintaan kedua -- dan tetap benar setelah halaman
+        // dimuat ulang atau laporan dibuka dari daftar tersimpan, di mana klien
+        // hanya punya `product_id`.
+        $product = Product::query()->find((int) $filters['product_id']);
+
         return [
+            'product' => $product === null ? null : [
+                'id' => (int) $product->id,
+                'product_code' => $product->product_code,
+                'product_name' => $product->product_name,
+            ],
             'rows' => $rows,
             'totals' => $this->totals($rows),
         ];

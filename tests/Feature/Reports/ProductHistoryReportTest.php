@@ -223,6 +223,22 @@ class ProductHistoryReportTest extends PurchaseTestCase
         $this->assertSame('sales_invoice', $rows[0]['document_type']);
     }
 
+    /**
+     * Produk ikut dikirim supaya judul laporan dan filter bisa menampilkan
+     * namanya. Tanpa ini klien hanya punya `product_id` dan menampilkan "ID 1".
+     */
+    public function test_response_carries_the_product_identity(): void
+    {
+        $ctx = $this->setUpTenant();
+        $product = $this->makeProduct('PRD-A', 'Beras Premium 5kg');
+
+        $this->getJson(self::URI."?product_id={$product}", $ctx['headers'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.product.id', $product)
+            ->assertJsonPath('data.product.product_code', 'PRD-A')
+            ->assertJsonPath('data.product.product_name', 'Beras Premium 5kg');
+    }
+
     public function test_rows_carry_document_id_for_linking(): void
     {
         $ctx = $this->setUpTenant();
