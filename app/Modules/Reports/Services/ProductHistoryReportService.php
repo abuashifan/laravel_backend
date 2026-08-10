@@ -99,6 +99,7 @@ class ProductHistoryReportService
         'stock_adjustment',
         'stock_opname',
         'stock_transfer',
+        'opening_balance',
         'stock_movement',
     ];
 
@@ -300,6 +301,10 @@ class ProductHistoryReportService
             'stock_adjustment', 'adjustment' => 'stock_adjustment',
             'stock_opname', 'opname' => 'stock_opname',
             'inventory_transfer', 'transfer' => 'stock_transfer',
+            // Saldo awal tidak punya dokumen sumber -- ia titik mulai
+            // pembukuan, bukan hasil transaksi. Tetap diberi jenis sendiri
+            // supaya labelnya jelas, walau tidak bisa ditautkan.
+            'opening', 'opening_stock', 'opening_balance' => 'opening_balance',
             default => 'stock_movement',
         };
     }

@@ -263,14 +263,39 @@ class ProductHistoryReportTest extends PurchaseTestCase
         $this->assertNotSame($movementId, $row['document_id']);
     }
 
-    /** Pergerakan tanpa dokumen sumber tetap tampil, memakai idnya sendiri. */
-    public function test_movement_without_source_falls_back_to_its_own_id(): void
+    /**
+     * Saldo awal wajib ikut tampil -- pemilik produk: "semua yang terkait
+     * dengan pergerakan stock harus muncul di riwayat produk". Ia tidak punya
+     * dokumen sumber, jadi memakai id pergerakannya sendiri dan tidak
+     * ditautkan, tapi jenisnya tetap dikenali supaya labelnya jelas.
+     */
+    public function test_opening_balance_appears_with_its_own_type(): void
     {
         $ctx = $this->setUpTenant();
         $product = $this->makeProduct('PRD-A', 'Alpha');
 
         $movementId = $this->makeStockMovementLine(
-            'opening', 'OPN-AWAL', '2026-07-01', $product, 'in', 10, 1000, sourceId: null,
+            'opening', 'SM-OS-PRD-A', '2026-07-01', $product, 'in', 320, 60000, sourceId: null,
+        );
+
+        $row = $this->getJson(self::URI."?product_id={$product}", $ctx['headers'])
+            ->assertStatus(200)
+            ->json('data.rows.0');
+
+        $this->assertSame('opening_balance', $row['document_type']);
+        $this->assertSame('SM-OS-PRD-A', $row['document_number']);
+        $this->assertSame($movementId, $row['document_id']);
+        $this->assertEquals(320.0, $row['quantity']);
+    }
+
+    /** Jenis sumber yang tidak dikenali tetap tampil sebagai pergerakan biasa. */
+    public function test_unknown_movement_source_still_appears(): void
+    {
+        $ctx = $this->setUpTenant();
+        $product = $this->makeProduct('PRD-A', 'Alpha');
+
+        $movementId = $this->makeStockMovementLine(
+            'sesuatu_yang_baru', 'XX-0001', '2026-07-02', $product, 'in', 5, 1000, sourceId: null,
         );
 
         $row = $this->getJson(self::URI."?product_id={$product}", $ctx['headers'])
