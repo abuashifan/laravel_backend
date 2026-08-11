@@ -38,20 +38,19 @@ class CompanyQuotaService
     }
 
     /**
-     * Kuota khusus di akun menang atas angka paket. Jumlah perusahaan sering
-     * merupakan kesepakatan per client, jadi owner aplikasi bisa menentukannya
-     * langsung tanpa harus membuat paket baru. NULL berarti ikut paket.
+     * Tier bertingkat (Free/Basic/Pro) memakai angka bawaan paketnya. Hanya
+     * tier Custom yang jumlahnya ditentukan per client lewat
+     * `users.company_quota` — di situlah owner aplikasi menyepakati angka
+     * berapa pun tanpa harus membuat paket baru.
      */
     public function limitFor(User $user): int
     {
-        if ($user->company_quota !== null) {
-            return max(0, (int) $user->company_quota);
-        }
+        $plan = $this->planFor($user);
 
-        $plan = $user->plan;
-
-        if (! $plan) {
-            $plan = Plan::query()->where('code', self::DEFAULT_PLAN_CODE)->first();
+        if ($plan?->isCustom()) {
+            return $user->company_quota !== null
+                ? max(0, (int) $user->company_quota)
+                : max(0, (int) $plan->max_companies);
         }
 
         if (! $plan) {
@@ -64,7 +63,14 @@ class CompanyQuotaService
     /** Dari mana batas itu berasal — dipakai UI untuk menjelaskan angkanya. */
     public function limitSourceFor(User $user): string
     {
-        return $user->company_quota !== null ? 'custom' : 'plan';
+        $plan = $this->planFor($user);
+
+        return $plan?->isCustom() && $user->company_quota !== null ? 'custom' : 'plan';
+    }
+
+    private function planFor(User $user): ?Plan
+    {
+        return $user->plan ?? Plan::query()->where('code', self::DEFAULT_PLAN_CODE)->first();
     }
 
     public function canCreate(User $user): bool
@@ -82,7 +88,7 @@ class CompanyQuotaService
     {
         $used = $this->usedCount($user);
         $limit = $this->limitFor($user);
-        $plan = $user->plan ?? Plan::query()->where('code', self::DEFAULT_PLAN_CODE)->first();
+        $plan = $this->planFor($user);
 
         return [
             'used' => $used,

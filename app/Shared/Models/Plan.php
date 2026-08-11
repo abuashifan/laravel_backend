@@ -10,6 +10,12 @@ class Plan extends Model
 {
     use HasFactory;
 
+    /**
+     * Tier yang jumlah perusahaannya ditentukan per client, bukan oleh paket.
+     * Hanya tier ini yang membaca `users.company_quota`.
+     */
+    public const CUSTOM_CODE = 'custom';
+
     protected $fillable = [
         'name',
         'code',
@@ -40,5 +46,10 @@ class Plan extends Model
     public function subscriptions(): HasMany
     {
         return $this->hasMany(Subscription::class);
+    }
+
+    public function isCustom(): bool
+    {
+        return $this->code === self::CUSTOM_CODE;
     }
 }

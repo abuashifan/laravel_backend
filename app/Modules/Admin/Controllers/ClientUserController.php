@@ -33,6 +33,9 @@ class ClientUserController extends Controller
     private const SUBSCRIPTION_RULES = [
         'plan_id' => ['sometimes', 'nullable', 'integer', 'exists:plans,id'],
         'company_quota' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:999'],
+        // Minimal 1: perusahaan selalu punya owner, jadi batas nol tidak masuk
+        // akal dan hanya akan membuat perusahaan yang ada jadi over-quota.
+        'user_quota' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:999'],
     ];
 
     public function __construct(private readonly ClientUserService $service) {}
@@ -73,7 +76,7 @@ class ClientUserController extends Controller
         ]);
 
         $user = $registrationService->register($data);
-        $user->forceFill($this->extraAttributes($data))->save();
+        $user->forceFill($this->extraAttributes($data, null))->save();
 
         return $this->successResponse($this->service->payload($user), 'Client created successfully', 201);
     }
@@ -91,7 +94,7 @@ class ClientUserController extends Controller
         ]);
 
         $user->fill(array_intersect_key($data, array_flip(['name', 'email', 'status'])))->save();
-        $user->forceFill($this->extraAttributes($data))->save();
+        $user->forceFill($this->extraAttributes($data, $user->plan_id))->save();
 
         return $this->successResponse($this->service->payload($user->refresh()), 'Client updated successfully');
     }
@@ -104,7 +107,7 @@ class ClientUserController extends Controller
      * @param  array<string, mixed>  $data
      * @return array<string, mixed>
      */
-    private function extraAttributes(array $data): array
+    private function extraAttributes(array $data, ?int $currentPlanId): array
     {
         $attributes = [];
 
@@ -114,17 +117,38 @@ class ClientUserController extends Controller
             }
         }
 
+        $planId = array_key_exists('plan_id', $data) ? ($data['plan_id'] ?: null) : $currentPlanId;
+
         if (array_key_exists('plan_id', $data)) {
-            $attributes['plan_id'] = $data['plan_id'] ?: null;
+            $attributes['plan_id'] = $planId;
         }
 
-        if (array_key_exists('company_quota', $data)) {
-            $attributes['company_quota'] = $data['company_quota'] !== null && $data['company_quota'] !== ''
-                ? (int) $data['company_quota']
-                : null;
+        foreach (['company_quota', 'user_quota'] as $field) {
+            if (array_key_exists($field, $data)) {
+                $attributes[$field] = $data[$field] !== null && $data[$field] !== ''
+                    ? (int) $data[$field]
+                    : null;
+            }
+        }
+
+        // Angka kuota hanya bermakna di tier Custom. Untuk tier bertingkat,
+        // sisa angka lama dibersihkan supaya data tersimpan tidak menyiratkan
+        // batas yang sebenarnya tidak dipakai saat menghitung.
+        if (! $this->isCustomPlan($planId)) {
+            $attributes['company_quota'] = null;
+            $attributes['user_quota'] = null;
         }
 
         return $attributes;
+    }
+
+    private function isCustomPlan(?int $planId): bool
+    {
+        if ($planId === null) {
+            return false;
+        }
+
+        return Plan::query()->whereKey($planId)->value('code') === Plan::CUSTOM_CODE;
     }
 
     /**
@@ -173,6 +197,9 @@ class ClientUserController extends Controller
                 'name' => $plan->name,
                 'max_companies' => (int) $plan->max_companies,
                 'max_users' => (int) $plan->max_users,
+                // Menandai tier yang jumlah perusahaannya diisi manual, supaya
+                // frontend tidak perlu mencocokkan string kodenya sendiri.
+                'is_custom' => $plan->isCustom(),
             ])
             ->values();
 

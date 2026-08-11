@@ -84,5 +84,34 @@ class PlanSeeder extends Seeder
                 ],
             ]
         );
+
+        // Tier khusus: jumlah perusahaannya tidak ditentukan paket, melainkan
+        // diisi per client lewat `users.company_quota`. `max_companies` di sini
+        // hanya nilai cadangan kalau kuota client belum diisi.
+        Plan::updateOrCreate(
+            ['code' => Plan::CUSTOM_CODE],
+            [
+                'name' => 'Custom',
+                'description' => 'Kuota perusahaan ditentukan per client.',
+                'max_users' => 10,
+                'max_companies' => 1,
+                'max_transactions_per_month' => null,
+                'can_use_sales' => true,
+                'can_use_purchases' => true,
+                'can_use_inventory' => true,
+                'can_export_reports' => true,
+                'monthly_price' => 0,
+                'yearly_price' => 0,
+                'status' => 'active',
+                'features' => [
+                    'basic_accounting',
+                    'sales',
+                    'purchases',
+                    'inventory',
+                    'reports_export',
+                    'multi_user',
+                ],
+            ]
+        );
     }
 }

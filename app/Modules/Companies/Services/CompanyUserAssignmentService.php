@@ -6,11 +6,14 @@ use App\Shared\Models\Company;
 use App\Shared\Models\CompanyUser;
 use App\Shared\Models\TenantDatabase;
 use App\Shared\Models\User;
+use App\Shared\Subscription\UserQuotaService;
 use Illuminate\Support\Facades\File;
 use InvalidArgumentException;
 
 class CompanyUserAssignmentService
 {
+    public function __construct(private readonly UserQuotaService $userQuotaService) {}
+
     /**
      * @param  array{company_id:int,email:string,role:string}  $input
      */
@@ -73,6 +76,28 @@ class CompanyUserAssignmentService
             ->where('company_id', $company->id)
             ->where('user_id', $user->id)
             ->first();
+
+        // Batas jumlah user paket ditegakkan di sini karena ini satu-satunya
+        // jalur yang menambah anggota perusahaan — provisioning hanya membuat
+        // baris owner, dan alur undangan belum punya endpoint penerimaan.
+        // Kalau alur itu kelak diselesaikan, endpoint accept-nya wajib lewat
+        // pemeriksaan yang sama.
+        //
+        // Mengubah role user yang sudah aktif tidak menambah siapa pun, jadi
+        // tidak ditahan. Mengaktifkan kembali user nonaktif menambah, jadi
+        // ditahan sama seperti anggota baru.
+        $addsActiveUser = ! $assignment || $assignment->status !== 'active';
+
+        if ($addsActiveUser && ! $this->userQuotaService->canAddUser($company)) {
+            $summary = $this->userQuotaService->summaryFor($company);
+
+            throw new InvalidArgumentException(sprintf(
+                'Kuota user perusahaan ini sudah penuh (%d dari %d terpakai%s). Naikkan paket pemiliknya untuk menambah user.',
+                $summary['used'],
+                $summary['limit'],
+                $summary['plan_name'] ? ', paket '.$summary['plan_name'] : '',
+            ));
+        }
 
         if ($assignment) {
             $assignment->forceFill([

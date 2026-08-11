@@ -31,6 +31,7 @@ class User extends Authenticatable
         'is_platform_admin',
         'plan_id',
         'company_quota',
+        'user_quota',
         'company_name',
         'job_title',
         'address',

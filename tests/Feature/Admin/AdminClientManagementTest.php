@@ -173,38 +173,66 @@ class AdminClientManagementTest extends TestCase
             ->assertStatus(403);
     }
 
-    public function test_admin_can_set_custom_quota_that_overrides_plan(): void
+    public function test_quota_is_only_configurable_on_custom_tier(): void
     {
         $admin = $this->platformAdmin();
-        $pro = Plan::query()->create([
-            'name' => 'Pro', 'code' => 'pro', 'max_users' => 10, 'max_companies' => 3, 'status' => 'active',
-        ]);
+        $pro = $this->plan('pro', 'Pro', 3);
+        $custom = $this->plan(Plan::CUSTOM_CODE, 'Custom', 1);
         $client = User::factory()->create(['status' => 'active', 'plan_id' => $pro->id]);
 
-        // Kuota khusus menang atas angka paket.
+        // Tier bertingkat memakai angka paketnya; kuota yang dikirim diabaikan
+        // dan tidak ikut tersimpan.
         $this->actingAsAdmin($admin)
             ->patchJson('/api/admin/clients/'.$client->id, ['company_quota' => 7])
-            ->assertStatus(200)
-            ->assertJsonPath('data.companies_limit', 7)
-            ->assertJsonPath('data.company_quota', 7)
-            ->assertJsonPath('data.limit_source', 'custom');
-
-        // Dikosongkan berarti kembali mengikuti paket, bukan dibiarkan apa adanya.
-        $this->actingAsAdmin($admin)
-            ->patchJson('/api/admin/clients/'.$client->id, ['company_quota' => null])
             ->assertStatus(200)
             ->assertJsonPath('data.companies_limit', 3)
             ->assertJsonPath('data.company_quota', null)
             ->assertJsonPath('data.limit_source', 'plan');
+
+        // Tier Custom barulah membaca angka per client.
+        $this->actingAsAdmin($admin)
+            ->patchJson('/api/admin/clients/'.$client->id, [
+                'plan_id' => $custom->id,
+                'company_quota' => 7,
+            ])
+            ->assertStatus(200)
+            ->assertJsonPath('data.companies_limit', 7)
+            ->assertJsonPath('data.company_quota', 7)
+            ->assertJsonPath('data.plan.is_custom', true)
+            ->assertJsonPath('data.limit_source', 'custom');
+
+        // Pindah kembali ke tier bertingkat membersihkan angka khususnya.
+        $this->actingAsAdmin($admin)
+            ->patchJson('/api/admin/clients/'.$client->id, ['plan_id' => $pro->id])
+            ->assertStatus(200)
+            ->assertJsonPath('data.companies_limit', 3)
+            ->assertJsonPath('data.company_quota', null);
+    }
+
+    public function test_custom_tier_without_quota_falls_back_to_plan_number(): void
+    {
+        $admin = $this->platformAdmin();
+        $custom = $this->plan(Plan::CUSTOM_CODE, 'Custom', 1);
+        $client = User::factory()->create(['status' => 'active']);
+
+        $this->actingAsAdmin($admin)
+            ->patchJson('/api/admin/clients/'.$client->id, ['plan_id' => $custom->id])
+            ->assertStatus(200)
+            ->assertJsonPath('data.companies_limit', 1)
+            ->assertJsonPath('data.company_quota', null);
     }
 
     public function test_custom_quota_is_enforced_when_client_creates_company(): void
     {
         $admin = $this->platformAdmin();
+        $custom = $this->plan(Plan::CUSTOM_CODE, 'Custom', 1);
         $client = User::factory()->create(['status' => 'active', 'password' => Hash::make('password123')]);
 
         $this->actingAsAdmin($admin)
-            ->patchJson('/api/admin/clients/'.$client->id, ['company_quota' => 0])
+            ->patchJson('/api/admin/clients/'.$client->id, [
+                'plan_id' => $custom->id,
+                'company_quota' => 0,
+            ])
             ->assertStatus(200)
             ->assertJsonPath('data.companies_limit', 0);
 
@@ -219,6 +247,7 @@ class AdminClientManagementTest extends TestCase
     public function test_admin_can_store_client_contact_profile(): void
     {
         $admin = $this->platformAdmin();
+        $custom = $this->plan(Plan::CUSTOM_CODE, 'Custom', 1);
 
         $this->actingAsAdmin($admin)
             ->postJson('/api/admin/clients', [
@@ -230,6 +259,7 @@ class AdminClientManagementTest extends TestCase
                 'job_title' => 'Direktur Keuangan',
                 'address' => 'Jl. Melati No. 12, Surabaya',
                 'notes' => 'Berlangganan sejak Agustus.',
+                'plan_id' => $custom->id,
                 'company_quota' => 5,
             ])
             ->assertStatus(201)
@@ -346,6 +376,17 @@ class AdminClientManagementTest extends TestCase
     }
 
     // ── Helper ───────────────────────────────────────────────────────────────
+
+    private function plan(string $code, string $name, int $maxCompanies): Plan
+    {
+        return Plan::query()->create([
+            'name' => $name,
+            'code' => $code,
+            'max_users' => 10,
+            'max_companies' => $maxCompanies,
+            'status' => 'active',
+        ]);
+    }
 
     private function platformAdmin(): User
     {

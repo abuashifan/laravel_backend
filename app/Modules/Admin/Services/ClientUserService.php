@@ -69,6 +69,21 @@ class ClientUserService
     }
 
     /**
+     * Batas user per perusahaan milik client ini: angka manual kalau tier
+     * Custom, selain itu `max_users` bawaan paketnya.
+     */
+    private function usersLimitFor(User $user): int
+    {
+        $plan = $user->plan;
+
+        if ($plan?->isCustom() && $user->user_quota !== null) {
+            return max(1, (int) $user->user_quota);
+        }
+
+        return max(1, (int) ($plan?->max_users ?? 1));
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function payload(User $user): array
@@ -93,13 +108,19 @@ class ClientUserService
                 'code' => $user->plan->code,
                 'name' => $user->plan->name,
                 'max_companies' => (int) $user->plan->max_companies,
+                'is_custom' => $user->plan->isCustom(),
             ] : null,
             // NULL berarti mengikuti paket; angka berarti kuota khusus yang
             // ditetapkan owner aplikasi untuk client ini.
             'company_quota' => $user->company_quota !== null ? (int) $user->company_quota : null,
+            'user_quota' => $user->user_quota !== null ? (int) $user->user_quota : null,
             'companies_used' => (int) $owned,
             'companies_limit' => $limit,
             'limit_source' => $this->quotaService->limitSourceFor($user),
+            // Batas user berlaku per perusahaan, jadi yang ditampilkan adalah
+            // angkanya saja — bukan "terpakai berapa" yang berbeda tiap
+            // perusahaan.
+            'users_limit' => $this->usersLimitFor($user),
             // Menurunkan paket tidak mencabut perusahaan yang sudah ada, jadi
             // keadaan "melebihi jatah" itu sah dan harus terlihat di daftar.
             'over_quota' => (int) $owned > $limit,
