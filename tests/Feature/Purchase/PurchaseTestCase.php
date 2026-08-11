@@ -96,7 +96,7 @@ abstract class PurchaseTestCase extends TestCase
             'is_active' => true,
         ])->id;
 
-        Sanctum::actingAs($user);
+        Sanctum::actingAs($user, ['*']);
 
         return [
             'user' => $user,

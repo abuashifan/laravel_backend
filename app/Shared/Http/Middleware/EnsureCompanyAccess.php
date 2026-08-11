@@ -4,6 +4,7 @@ namespace App\Shared\Http\Middleware;
 
 use App\Shared\Api\ApiErrorCode;
 use App\Shared\Api\ApiResponseBuilder;
+use App\Shared\Auth\TokenAbility;
 use App\Shared\Models\Company;
 use App\Shared\Models\CompanyUser;
 use App\Shared\Models\TenantDatabase;
@@ -30,6 +31,19 @@ class EnsureCompanyAccess
 
         if (! $user) {
             return ApiResponseBuilder::error(ApiErrorCode::UNAUTHENTICATED, null, [], 401);
+        }
+
+        // Sesi admin aplikasi tidak boleh membuka data perusahaan. Token client
+        // membawa ability `client`; token admin tidak, jadi tertahan di sini.
+        // Token lama yang terbit sebelum pemisahan ini berability `*` dan tetap
+        // lolos, sehingga sesi client yang sedang berjalan tidak terputus.
+        if (! $user->tokenCan(TokenAbility::CLIENT)) {
+            return ApiResponseBuilder::error(
+                ApiErrorCode::FORBIDDEN,
+                'Sesi ini tidak berhak membuka data perusahaan.',
+                [],
+                403
+            );
         }
 
         $companyId = $request->header('X-Company-ID');

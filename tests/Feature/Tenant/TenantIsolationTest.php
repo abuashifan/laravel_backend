@@ -38,7 +38,7 @@ class TenantIsolationTest extends TestCase
     public function test_authenticated_user_cannot_access_tenant_context_without_x_company_id(): void
     {
         $user = User::factory()->create(['status' => 'active']);
-        Sanctum::actingAs($user);
+        Sanctum::actingAs($user, ['*']);
 
         $this->getJson('/api/tenant-context-test')
             ->assertStatus(422)
@@ -49,7 +49,7 @@ class TenantIsolationTest extends TestCase
     {
         [$userA, $companyA] = $this->seedTenantForUser(role: 'owner');
 
-        Sanctum::actingAs($userA);
+        Sanctum::actingAs($userA, ['*']);
 
         $this->getJson('/api/tenant-context-test', ['X-Company-ID' => (string) $companyA->id])
             ->assertStatus(200)
@@ -62,7 +62,7 @@ class TenantIsolationTest extends TestCase
         [$userA] = $this->seedTenantForUser(role: 'owner');
         [, $companyB] = $this->seedTenantForUser(role: 'owner');
 
-        Sanctum::actingAs($userA);
+        Sanctum::actingAs($userA, ['*']);
 
         $this->getJson('/api/tenant-context-test', ['X-Company-ID' => (string) $companyB->id])
             ->assertStatus(403)
@@ -74,7 +74,7 @@ class TenantIsolationTest extends TestCase
         [$userA, $companyA] = $this->seedTenantForUser(role: 'owner');
         $this->seedTenantForUser(role: 'owner'); // userB + companyB
 
-        Sanctum::actingAs($userA);
+        Sanctum::actingAs($userA, ['*']);
 
         $response = $this->getJson('/api/companies')->assertStatus(200);
 
@@ -92,7 +92,7 @@ class TenantIsolationTest extends TestCase
         [$userA] = $this->seedTenantForUser(role: 'owner');
         [, $companyB] = $this->seedTenantForUser(role: 'owner');
 
-        Sanctum::actingAs($userA);
+        Sanctum::actingAs($userA, ['*']);
 
         $this->postJson('/api/companies/select', ['company_id' => $companyB->id])
             ->assertStatus(403)
@@ -131,7 +131,7 @@ class TenantIsolationTest extends TestCase
             'status' => 'inactive',
         ]);
 
-        Sanctum::actingAs($userA);
+        Sanctum::actingAs($userA, ['*']);
 
         $this->getJson('/api/tenant-context-test', ['X-Company-ID' => (string) $companyA->id])
             ->assertStatus(422)

@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Route;
 Route::get('/health', [HealthController::class, 'index']);
 
 require base_path('app/Modules/Auth/Routes/api.php');
+require base_path('app/Modules/Admin/Routes/api.php');
 require base_path('app/Modules/Companies/Routes/api.php');
 require base_path('app/Modules/Tenant/Routes/api.php');
 require base_path('app/Modules/Setup/Routes/api.php');

@@ -11,9 +11,10 @@ trait ApiResponse
     protected function successResponse(
         mixed $data = null,
         string $message = 'Success',
-        int $status = 200
+        int $status = 200,
+        array $meta = []
     ) {
-        return ApiResponseBuilder::success($data, $message, $status);
+        return ApiResponseBuilder::success($data, $message, $status, $meta);
     }
 
     /**

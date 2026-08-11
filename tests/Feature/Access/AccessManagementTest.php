@@ -23,7 +23,7 @@ class AccessManagementTest extends TestCase
         $this->getJson('/api/access/company-users')->assertStatus(401);
 
         $user = User::factory()->create(['status' => 'active']);
-        Sanctum::actingAs($user);
+        Sanctum::actingAs($user, ['*']);
         $this->getJson('/api/access/company-users')->assertStatus(422);
     }
 
@@ -143,7 +143,7 @@ class AccessManagementTest extends TestCase
             ->assertJsonPath('code', 'SELF_ACCESS_CHANGE_NOT_ALLOWED');
 
         $viewer = $this->companyUser($ctx['company'], 'readonly@example.test', 'viewer');
-        Sanctum::actingAs($viewer->user);
+        Sanctum::actingAs($viewer->user, ['*']);
         $this->getJson('/api/access/company-users', $ctx['headers'])->assertStatus(403);
     }
 
@@ -167,7 +167,7 @@ class AccessManagementTest extends TestCase
             'joined_at' => now(),
         ]);
         $this->tenant($company);
-        Sanctum::actingAs($user);
+        Sanctum::actingAs($user, ['*']);
 
         return compact('company', 'companyUser') + [
             'company_user' => $companyUser,

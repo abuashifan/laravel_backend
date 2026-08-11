@@ -5,6 +5,7 @@ namespace App\Modules\Auth\Controllers;
 use App\Http\Controllers\Controller;
 use App\Modules\Auth\Requests\LoginRequest;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Auth\TokenAbility;
 use App\Shared\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -31,9 +32,16 @@ class AuthController extends Controller
             return $this->errorResponse('Akun tidak aktif.', 403);
         }
 
+        // Akun pengelola aplikasi tidak boleh masuk lewat pintu client. Sesi
+        // yang lahir di sini hanya membawa ability `client`, jadi token dari
+        // pintu ini tidak akan pernah bisa memanggil endpoint /admin.
+        if ($user->is_platform_admin) {
+            return $this->errorResponse('Akun ini admin aplikasi. Masuk lewat halaman login admin.', 403);
+        }
+
         $user->forceFill(['last_login_at' => now()])->save();
 
-        $token = $user->createToken('api-token')->plainTextToken;
+        $token = $user->createToken('api-token', [TokenAbility::CLIENT])->plainTextToken;
 
         return $this->successResponse([
             'user' => $user,

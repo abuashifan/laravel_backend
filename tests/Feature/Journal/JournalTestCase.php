@@ -94,7 +94,7 @@ abstract class JournalTestCase extends TestCase
             'is_system_default' => false,
         ]);
 
-        Sanctum::actingAs($user);
+        Sanctum::actingAs($user, ['*']);
 
         return [
             'user' => $user,

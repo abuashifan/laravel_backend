@@ -215,7 +215,7 @@ class BudgetFlowTest extends BudgetTestCase
             'status' => 'active',
             'joined_at' => now(),
         ]);
-        Sanctum::actingAs($reviewer);
+        Sanctum::actingAs($reviewer, ['*']);
 
         // Rolenya memang tidak punya approve_head — kalau langkah ini lolos,
         // test di bawahnya tidak membuktikan apa pun.

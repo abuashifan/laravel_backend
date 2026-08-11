@@ -7,6 +7,7 @@ use App\Modules\Companies\Services\CompanyCreationService;
 use App\Shared\Api\ApiResponse;
 use App\Shared\Models\Company;
 use App\Shared\Models\CompanyUser;
+use App\Shared\Subscription\CompanyQuotaService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use InvalidArgumentException;
@@ -16,7 +17,7 @@ class CompanyController extends Controller
 {
     use ApiResponse;
 
-    public function index(Request $request): JsonResponse
+    public function index(Request $request, CompanyQuotaService $quotaService): JsonResponse
     {
         $user = $request->user();
 
@@ -27,7 +28,14 @@ class CompanyController extends Controller
             ->map(fn (Company $company) => $this->companyPayload($company, $company->pivot?->role))
             ->values();
 
-        return $this->successResponse($companies, 'Companies retrieved successfully');
+        // Kuota dikirim di meta, bukan di data, supaya bentuk `data` tetap
+        // berupa array perusahaan seperti kontrak yang sudah dipakai frontend.
+        return $this->successResponse(
+            $companies,
+            'Companies retrieved successfully',
+            200,
+            ['quota' => $quotaService->summaryFor($user)]
+        );
     }
 
     /**
@@ -39,14 +47,38 @@ class CompanyController extends Controller
      * yang membatasi siapa boleh memakai endpoint ini adalah tertutupnya
      * registrasi mandiri (lihat Modules/Auth/Routes/api.php).
      */
-    public function store(Request $request, CompanyCreationService $creationService): JsonResponse
-    {
+    public function store(
+        Request $request,
+        CompanyCreationService $creationService,
+        CompanyQuotaService $quotaService
+    ): JsonResponse {
         $data = $request->validate([
             'name' => ['required', 'string', 'min:3', 'max:100'],
         ]);
 
         $user = $request->user();
         $name = trim($data['name']);
+
+        // Gerbang kuota. Menurunkan paket tidak mencabut perusahaan yang sudah
+        // ada, jadi `used` bisa saja melebihi `limit` — yang ditahan hanya
+        // penambahan baru.
+        if (! $quotaService->canCreate($user)) {
+            $summary = $quotaService->summaryFor($user);
+            $planLabel = $summary['plan_name'] ?? 'Anda';
+
+            return $this->errorCodeResponse(
+                'COMPANY_QUOTA_EXCEEDED',
+                sprintf(
+                    'Paket %s mencakup %d perusahaan dan Anda sudah memakai %d. Hubungi admin untuk menambah kuota.',
+                    $planLabel,
+                    $summary['limit'],
+                    $summary['used'],
+                ),
+                [],
+                422,
+                ['quota' => $summary]
+            );
+        }
 
         // Menahan double-submit: tanpa ini dua klik cepat menghasilkan dua
         // perusahaan beserta dua tenant database yang sama-sama kosong.

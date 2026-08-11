@@ -4,6 +4,7 @@ namespace Tests\Feature\Companies;
 
 use App\Shared\Models\Company;
 use App\Shared\Models\CompanyUser;
+use App\Shared\Models\Plan;
 use App\Shared\Models\TenantDatabase;
 use App\Shared\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -69,7 +70,7 @@ class CreateCompanyTest extends TestCase
     public function test_authenticated_user_can_create_company_and_becomes_owner(): void
     {
         $user = User::factory()->create(['status' => 'active']);
-        Sanctum::actingAs($user);
+        Sanctum::actingAs($user, ['*']);
 
         $response = $this->postJson('/api/companies', ['name' => 'PT Maju Jaya'])
             ->assertStatus(201)
@@ -98,7 +99,7 @@ class CreateCompanyTest extends TestCase
     public function test_created_company_tenant_database_is_migrated_and_selectable(): void
     {
         $user = User::factory()->create(['status' => 'active']);
-        Sanctum::actingAs($user);
+        Sanctum::actingAs($user, ['*']);
 
         $companyId = (int) $this->postJson('/api/companies', ['name' => 'PT Migrasi'])
             ->assertStatus(201)
@@ -132,7 +133,7 @@ class CreateCompanyTest extends TestCase
         ]);
 
         $user = User::factory()->create(['status' => 'active']);
-        Sanctum::actingAs($user);
+        Sanctum::actingAs($user, ['*']);
 
         $response = $this->postJson('/api/companies', ['name' => 'PT Maju Jaya'])
             ->assertStatus(201)
@@ -145,8 +146,14 @@ class CreateCompanyTest extends TestCase
 
     public function test_duplicate_name_for_same_user_is_rejected_without_creating_second_tenant(): void
     {
-        $user = User::factory()->create(['status' => 'active']);
-        Sanctum::actingAs($user);
+        // Paket berkuota lebih dari satu, supaya yang teruji di sini benar-benar
+        // penjaga nama duplikat — bukan gerbang kuota yang lebih dulu menolak.
+        $plan = Plan::query()->create([
+            'name' => 'Pro', 'code' => 'pro', 'max_users' => 10, 'max_companies' => 3, 'status' => 'active',
+        ]);
+
+        $user = User::factory()->create(['status' => 'active', 'plan_id' => $plan->id]);
+        Sanctum::actingAs($user, ['*']);
 
         $companyId = (int) $this->postJson('/api/companies', ['name' => 'PT Maju Jaya'])
             ->assertStatus(201)
@@ -168,7 +175,7 @@ class CreateCompanyTest extends TestCase
     public function test_name_is_validated(): void
     {
         $user = User::factory()->create(['status' => 'active']);
-        Sanctum::actingAs($user);
+        Sanctum::actingAs($user, ['*']);
 
         $this->postJson('/api/companies', ['name' => ''])->assertStatus(422);
         $this->postJson('/api/companies', ['name' => 'PT'])->assertStatus(422);
@@ -181,14 +188,14 @@ class CreateCompanyTest extends TestCase
         $userA = User::factory()->create(['status' => 'active']);
         $userB = User::factory()->create(['status' => 'active']);
 
-        Sanctum::actingAs($userA);
+        Sanctum::actingAs($userA, ['*']);
         $companyAId = (int) $this->postJson('/api/companies', ['name' => 'PT Punya A'])
             ->assertStatus(201)
             ->json('data.id');
         $tenantA = TenantDatabase::query()->where('company_id', $companyAId)->firstOrFail();
         $this->trackTenantFile($tenantA->database_path);
 
-        Sanctum::actingAs($userB);
+        Sanctum::actingAs($userB, ['*']);
         $companyBId = (int) $this->postJson('/api/companies', ['name' => 'PT Punya B'])
             ->assertStatus(201)
             ->json('data.id');

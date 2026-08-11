@@ -66,7 +66,7 @@ abstract class SalesTestCase extends TestCase
             '--force' => true,
         ]);
 
-        Sanctum::actingAs($user);
+        Sanctum::actingAs($user, ['*']);
 
         return [
             'user' => $user,

@@ -2,8 +2,8 @@
 
 namespace App\Console\Commands;
 
-use App\Modules\Auth\Services\UserRegistrationService;
 use App\Modules\Companies\Services\CompanyUserAssignmentService;
+use App\Shared\Users\UserRegistrationService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Validator;
 

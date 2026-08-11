@@ -76,7 +76,7 @@ class SavedReportTest extends JournalTestCase
         $this->assertSame([$recipient->id], $created->json('data.shared_user_ids'));
 
         // Recipient sees it (read-only): is_owner=false.
-        Sanctum::actingAs($recipient);
+        Sanctum::actingAs($recipient, ['*']);
         $list = $this->getJson('/api/reports/saved', $ctx['headers'])->assertStatus(200);
         $this->assertCount(1, $list->json('data'));
         $this->assertFalse($list->json('data.0.is_owner'));
@@ -100,7 +100,7 @@ class SavedReportTest extends JournalTestCase
             'params' => [],
         ], $ctx['headers'])->assertStatus(201);
 
-        Sanctum::actingAs($stranger);
+        Sanctum::actingAs($stranger, ['*']);
         $this->getJson('/api/reports/saved', $ctx['headers'])->assertStatus(200)->assertJsonCount(0, 'data');
     }
 

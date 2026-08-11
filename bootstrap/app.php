@@ -19,6 +19,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'company.access' => \App\Shared\Http\Middleware\EnsureCompanyAccess::class,
             'permission' => \App\Shared\Http\Middleware\EnsurePermission::class,
+            'platform.admin' => \App\Shared\Http\Middleware\EnsurePlatformAdmin::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

@@ -63,7 +63,7 @@ abstract class MasterDataTestCase extends TestCase
             '--force' => true,
         ]);
 
-        Sanctum::actingAs($user);
+        Sanctum::actingAs($user, ['*']);
 
         return [
             'user' => $user,
