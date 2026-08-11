@@ -50,7 +50,9 @@ class ClientUserService
         if ($search !== '') {
             $query->where(function (Builder $q) use ($search) {
                 $q->where('name', 'like', '%'.$search.'%')
-                    ->orWhere('email', 'like', '%'.$search.'%');
+                    ->orWhere('email', 'like', '%'.$search.'%')
+                    ->orWhere('phone', 'like', '%'.$search.'%')
+                    ->orWhere('company_name', 'like', '%'.$search.'%');
             });
         }
 
@@ -80,6 +82,11 @@ class ClientUserService
             'id' => $user->id,
             'name' => $user->name,
             'email' => $user->email,
+            'phone' => $user->phone,
+            'company_name' => $user->company_name,
+            'job_title' => $user->job_title,
+            'address' => $user->address,
+            'notes' => $user->notes,
             'status' => $user->status,
             'plan' => $user->plan ? [
                 'id' => $user->plan->id,
@@ -87,8 +94,12 @@ class ClientUserService
                 'name' => $user->plan->name,
                 'max_companies' => (int) $user->plan->max_companies,
             ] : null,
+            // NULL berarti mengikuti paket; angka berarti kuota khusus yang
+            // ditetapkan owner aplikasi untuk client ini.
+            'company_quota' => $user->company_quota !== null ? (int) $user->company_quota : null,
             'companies_used' => (int) $owned,
             'companies_limit' => $limit,
+            'limit_source' => $this->quotaService->limitSourceFor($user),
             // Menurunkan paket tidak mencabut perusahaan yang sudah ada, jadi
             // keadaan "melebihi jatah" itu sah dan harus terlihat di daftar.
             'over_quota' => (int) $owned > $limit,

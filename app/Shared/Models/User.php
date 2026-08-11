@@ -30,6 +30,11 @@ class User extends Authenticatable
         'last_login_at',
         'is_platform_admin',
         'plan_id',
+        'company_quota',
+        'company_name',
+        'job_title',
+        'address',
+        'notes',
     ];
 
     protected $hidden = [

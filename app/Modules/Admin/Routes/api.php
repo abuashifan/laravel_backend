@@ -21,6 +21,7 @@ Route::prefix('admin')->group(function () {
 
         Route::get('/plans', [ClientUserController::class, 'plans']);
         Route::get('/clients', [ClientUserController::class, 'index']);
+        Route::get('/clients/{id}', [ClientUserController::class, 'show']);
         Route::post('/clients', [ClientUserController::class, 'store']);
         Route::patch('/clients/{id}', [ClientUserController::class, 'update']);
         Route::patch('/clients/{id}/plan', [ClientUserController::class, 'updatePlan']);

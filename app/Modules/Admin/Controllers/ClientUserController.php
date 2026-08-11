@@ -16,6 +16,25 @@ class ClientUserController extends Controller
 {
     use ApiResponse;
 
+    /** Data kontak client — semuanya opsional, diisi seadanya oleh owner aplikasi. */
+    private const PROFILE_RULES = [
+        'phone' => ['sometimes', 'nullable', 'string', 'max:50'],
+        'company_name' => ['sometimes', 'nullable', 'string', 'max:255'],
+        'job_title' => ['sometimes', 'nullable', 'string', 'max:255'],
+        'address' => ['sometimes', 'nullable', 'string', 'max:1000'],
+        'notes' => ['sometimes', 'nullable', 'string', 'max:2000'],
+    ];
+
+    /**
+     * `company_quota` boleh 0 (mengunci client dari membuat perusahaan baru)
+     * dan dibatasi di angka wajar supaya salah ketik tidak menjadi kuota
+     * ribuan tenant database.
+     */
+    private const SUBSCRIPTION_RULES = [
+        'plan_id' => ['sometimes', 'nullable', 'integer', 'exists:plans,id'],
+        'company_quota' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:999'],
+    ];
+
     public function __construct(private readonly ClientUserService $service) {}
 
     public function index(Request $request): JsonResponse
@@ -35,20 +54,26 @@ class ClientUserController extends Controller
         return $this->listResponse($paginator, $request, 'Clients retrieved successfully');
     }
 
+    public function show(int $id): JsonResponse
+    {
+        return $this->successResponse(
+            $this->service->payload($this->client($id)),
+            'Client retrieved successfully'
+        );
+    }
+
     public function store(Request $request, UserRegistrationService $registrationService): JsonResponse
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'string', 'min:8'],
-            'plan_id' => ['nullable', 'integer', 'exists:plans,id'],
+            ...self::PROFILE_RULES,
+            ...self::SUBSCRIPTION_RULES,
         ]);
 
         $user = $registrationService->register($data);
-
-        if (! empty($data['plan_id'])) {
-            $user->forceFill(['plan_id' => (int) $data['plan_id']])->save();
-        }
+        $user->forceFill($this->extraAttributes($data))->save();
 
         return $this->successResponse($this->service->payload($user), 'Client created successfully', 201);
     }
@@ -61,11 +86,45 @@ class ClientUserController extends Controller
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'email' => ['sometimes', 'required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
             'status' => ['sometimes', 'required', Rule::in(['active', 'inactive', 'suspended'])],
+            ...self::PROFILE_RULES,
+            ...self::SUBSCRIPTION_RULES,
         ]);
 
-        $user->fill($data)->save();
+        $user->fill(array_intersect_key($data, array_flip(['name', 'email', 'status'])))->save();
+        $user->forceFill($this->extraAttributes($data))->save();
 
         return $this->successResponse($this->service->payload($user->refresh()), 'Client updated successfully');
+    }
+
+    /**
+     * Nilai yang perlu diset eksplisit ke null saat dikosongkan, sehingga tidak
+     * bisa lewat `fill()` biasa: mengosongkan kuota khusus berarti "kembali
+     * ikut paket", bukan "biarkan seperti sebelumnya".
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function extraAttributes(array $data): array
+    {
+        $attributes = [];
+
+        foreach (['phone', 'company_name', 'job_title', 'address', 'notes'] as $field) {
+            if (array_key_exists($field, $data)) {
+                $attributes[$field] = $data[$field] !== '' ? $data[$field] : null;
+            }
+        }
+
+        if (array_key_exists('plan_id', $data)) {
+            $attributes['plan_id'] = $data['plan_id'] ?: null;
+        }
+
+        if (array_key_exists('company_quota', $data)) {
+            $attributes['company_quota'] = $data['company_quota'] !== null && $data['company_quota'] !== ''
+                ? (int) $data['company_quota']
+                : null;
+        }
+
+        return $attributes;
     }
 
     /**

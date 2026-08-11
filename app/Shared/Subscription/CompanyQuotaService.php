@@ -37,8 +37,17 @@ class CompanyQuotaService
             ->count();
     }
 
+    /**
+     * Kuota khusus di akun menang atas angka paket. Jumlah perusahaan sering
+     * merupakan kesepakatan per client, jadi owner aplikasi bisa menentukannya
+     * langsung tanpa harus membuat paket baru. NULL berarti ikut paket.
+     */
     public function limitFor(User $user): int
     {
+        if ($user->company_quota !== null) {
+            return max(0, (int) $user->company_quota);
+        }
+
         $plan = $user->plan;
 
         if (! $plan) {
@@ -52,6 +61,12 @@ class CompanyQuotaService
         return max(0, (int) $plan->max_companies);
     }
 
+    /** Dari mana batas itu berasal — dipakai UI untuk menjelaskan angkanya. */
+    public function limitSourceFor(User $user): string
+    {
+        return $user->company_quota !== null ? 'custom' : 'plan';
+    }
+
     public function canCreate(User $user): bool
     {
         return $this->usedCount($user) < $this->limitFor($user);
@@ -61,7 +76,7 @@ class CompanyQuotaService
      * Ringkasan untuk frontend supaya tombol tambah perusahaan bisa
      * menyesuaikan diri, bukan membiarkan client mengisi form lalu ditolak.
      *
-     * @return array{used:int, limit:int, can_create:bool, plan_code:string|null, plan_name:string|null}
+     * @return array{used:int, limit:int, can_create:bool, plan_code:string|null, plan_name:string|null, limit_source:string}
      */
     public function summaryFor(User $user): array
     {
@@ -75,6 +90,7 @@ class CompanyQuotaService
             'can_create' => $used < $limit,
             'plan_code' => $plan?->code,
             'plan_name' => $plan?->name,
+            'limit_source' => $this->limitSourceFor($user),
         ];
     }
 }

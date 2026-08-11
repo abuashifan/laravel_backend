@@ -11,6 +11,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Route;
+use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
 class AdminClientManagementTest extends TestCase
@@ -170,6 +171,94 @@ class AdminClientManagementTest extends TestCase
 
         $this->postJson('/api/auth/login', ['email' => $client->email, 'password' => 'password123'])
             ->assertStatus(403);
+    }
+
+    public function test_admin_can_set_custom_quota_that_overrides_plan(): void
+    {
+        $admin = $this->platformAdmin();
+        $pro = Plan::query()->create([
+            'name' => 'Pro', 'code' => 'pro', 'max_users' => 10, 'max_companies' => 3, 'status' => 'active',
+        ]);
+        $client = User::factory()->create(['status' => 'active', 'plan_id' => $pro->id]);
+
+        // Kuota khusus menang atas angka paket.
+        $this->actingAsAdmin($admin)
+            ->patchJson('/api/admin/clients/'.$client->id, ['company_quota' => 7])
+            ->assertStatus(200)
+            ->assertJsonPath('data.companies_limit', 7)
+            ->assertJsonPath('data.company_quota', 7)
+            ->assertJsonPath('data.limit_source', 'custom');
+
+        // Dikosongkan berarti kembali mengikuti paket, bukan dibiarkan apa adanya.
+        $this->actingAsAdmin($admin)
+            ->patchJson('/api/admin/clients/'.$client->id, ['company_quota' => null])
+            ->assertStatus(200)
+            ->assertJsonPath('data.companies_limit', 3)
+            ->assertJsonPath('data.company_quota', null)
+            ->assertJsonPath('data.limit_source', 'plan');
+    }
+
+    public function test_custom_quota_is_enforced_when_client_creates_company(): void
+    {
+        $admin = $this->platformAdmin();
+        $client = User::factory()->create(['status' => 'active', 'password' => Hash::make('password123')]);
+
+        $this->actingAsAdmin($admin)
+            ->patchJson('/api/admin/clients/'.$client->id, ['company_quota' => 0])
+            ->assertStatus(200)
+            ->assertJsonPath('data.companies_limit', 0);
+
+        Sanctum::actingAs($client->fresh(), ['*']);
+
+        $this->postJson('/api/companies', ['name' => 'PT Ditolak'])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'COMPANY_QUOTA_EXCEEDED')
+            ->assertJsonPath('meta.quota.limit', 0);
+    }
+
+    public function test_admin_can_store_client_contact_profile(): void
+    {
+        $admin = $this->platformAdmin();
+
+        $this->actingAsAdmin($admin)
+            ->postJson('/api/admin/clients', [
+                'name' => 'Budi Santoso',
+                'email' => 'budi@clientbaru.com',
+                'password' => 'password123',
+                'phone' => '08123456789',
+                'company_name' => 'CV Sinar Terang',
+                'job_title' => 'Direktur Keuangan',
+                'address' => 'Jl. Melati No. 12, Surabaya',
+                'notes' => 'Berlangganan sejak Agustus.',
+                'company_quota' => 5,
+            ])
+            ->assertStatus(201)
+            ->assertJsonPath('data.phone', '08123456789')
+            ->assertJsonPath('data.company_name', 'CV Sinar Terang')
+            ->assertJsonPath('data.job_title', 'Direktur Keuangan')
+            ->assertJsonPath('data.address', 'Jl. Melati No. 12, Surabaya')
+            ->assertJsonPath('data.notes', 'Berlangganan sejak Agustus.')
+            ->assertJsonPath('data.companies_limit', 5);
+    }
+
+    public function test_clients_can_be_searched_by_phone_and_company_name(): void
+    {
+        $admin = $this->platformAdmin();
+        User::factory()->create([
+            'status' => 'active',
+            'name' => 'Budi',
+            'company_name' => 'CV Sinar Terang',
+            'phone' => '08123456789',
+        ]);
+        User::factory()->create(['status' => 'active', 'name' => 'Siti']);
+
+        $rows = $this->actingAsAdmin($admin)
+            ->getJson('/api/admin/clients?page=1&per_page=25&search=Sinar')
+            ->assertStatus(200)
+            ->json('data.data');
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('CV Sinar Terang', $rows[0]['company_name']);
     }
 
     public function test_admin_can_change_plan_and_quota_follows(): void
