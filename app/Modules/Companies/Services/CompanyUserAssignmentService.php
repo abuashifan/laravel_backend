@@ -91,11 +91,18 @@ class CompanyUserAssignmentService
         if ($addsActiveUser && ! $this->userQuotaService->canAddUser($company)) {
             $summary = $this->userQuotaService->summaryFor($company);
 
+            // Add-on disebut terpisah dari paket: kalau tidak, angka batasnya
+            // tidak cocok dengan `max_users` paket dan terbaca seperti bug.
+            $origin = $summary['plan_name'] ? ', paket '.$summary['plan_name'] : '';
+            if ($summary['extra_users'] > 0) {
+                $origin .= sprintf(' + add-on %d user', $summary['extra_users']);
+            }
+
             throw new InvalidArgumentException(sprintf(
-                'Kuota user perusahaan ini sudah penuh (%d dari %d terpakai%s). Naikkan paket pemiliknya untuk menambah user.',
+                'Kuota user perusahaan ini sudah penuh (%d dari %d terpakai%s). Naikkan paket pemiliknya atau tambah add-on user.',
                 $summary['used'],
                 $summary['limit'],
-                $summary['plan_name'] ? ', paket '.$summary['plan_name'] : '',
+                $origin,
             ));
         }
 

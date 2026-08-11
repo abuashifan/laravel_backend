@@ -209,6 +209,35 @@ class AdminClientManagementTest extends TestCase
             ->assertJsonPath('data.company_quota', null);
     }
 
+    public function test_add_on_survives_plan_change_and_raises_users_limit(): void
+    {
+        $admin = $this->platformAdmin();
+        $basic = $this->plan('basic', 'Basic', 1);
+        $pro = $this->plan('pro', 'Pro', 3);
+        $client = User::factory()->create(['status' => 'active', 'plan_id' => $basic->id]);
+
+        // Paket memberi 10 user; add-on menambah 5 di tiap perusahaan.
+        $this->actingAsAdmin($admin)
+            ->patchJson('/api/admin/clients/'.$client->id, ['extra_users' => 5])
+            ->assertStatus(200)
+            ->assertJsonPath('data.extra_users', 5)
+            ->assertJsonPath('data.users_limit', 15);
+
+        // Berbeda dari kuota khusus tier Custom, add-on dibeli terpisah dan
+        // tidak ikut terhapus saat paketnya diganti.
+        $this->actingAsAdmin($admin)
+            ->patchJson('/api/admin/clients/'.$client->id, ['plan_id' => $pro->id])
+            ->assertStatus(200)
+            ->assertJsonPath('data.extra_users', 5)
+            ->assertJsonPath('data.users_limit', 15);
+
+        $this->actingAsAdmin($admin)
+            ->patchJson('/api/admin/clients/'.$client->id, ['extra_users' => 0])
+            ->assertStatus(200)
+            ->assertJsonPath('data.extra_users', 0)
+            ->assertJsonPath('data.users_limit', 10);
+    }
+
     public function test_custom_tier_without_quota_falls_back_to_plan_number(): void
     {
         $admin = $this->platformAdmin();

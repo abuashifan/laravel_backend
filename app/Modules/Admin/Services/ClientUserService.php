@@ -4,6 +4,7 @@ namespace App\Modules\Admin\Services;
 
 use App\Shared\Models\User;
 use App\Shared\Subscription\CompanyQuotaService;
+use App\Shared\Subscription\UserQuotaService;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 
@@ -16,7 +17,10 @@ use Illuminate\Database\Eloquent\Builder;
  */
 class ClientUserService
 {
-    public function __construct(private readonly CompanyQuotaService $quotaService) {}
+    public function __construct(
+        private readonly CompanyQuotaService $quotaService,
+        private readonly UserQuotaService $userQuotaService,
+    ) {}
 
     /**
      * @param  array{search?:string|null, status?:string|null, plan_id?:int|null, page?:int, per_page?:int}  $filters
@@ -69,21 +73,6 @@ class ClientUserService
     }
 
     /**
-     * Batas user per perusahaan milik client ini: angka manual kalau tier
-     * Custom, selain itu `max_users` bawaan paketnya.
-     */
-    private function usersLimitFor(User $user): int
-    {
-        $plan = $user->plan;
-
-        if ($plan?->isCustom() && $user->user_quota !== null) {
-            return max(1, (int) $user->user_quota);
-        }
-
-        return max(1, (int) ($plan?->max_users ?? 1));
-    }
-
-    /**
      * @return array<string, mixed>
      */
     public function payload(User $user): array
@@ -114,13 +103,16 @@ class ClientUserService
             // ditetapkan owner aplikasi untuk client ini.
             'company_quota' => $user->company_quota !== null ? (int) $user->company_quota : null,
             'user_quota' => $user->user_quota !== null ? (int) $user->user_quota : null,
+            // Add-on user: dibeli per client, berlaku di semua perusahaannya.
+            'extra_users' => (int) $user->extra_users,
             'companies_used' => (int) $owned,
             'companies_limit' => $limit,
             'limit_source' => $this->quotaService->limitSourceFor($user),
             // Batas user berlaku per perusahaan, jadi yang ditampilkan adalah
             // angkanya saja — bukan "terpakai berapa" yang berbeda tiap
-            // perusahaan.
-            'users_limit' => $this->usersLimitFor($user),
+            // perusahaan. Dihitung service yang sama dengan penegakannya
+            // supaya angka di admin tidak pernah berbeda dari kenyataan.
+            'users_limit' => $this->userQuotaService->limitForOwner($user),
             // Menurunkan paket tidak mencabut perusahaan yang sudah ada, jadi
             // keadaan "melebihi jatah" itu sah dan harus terlihat di daftar.
             'over_quota' => (int) $owned > $limit,

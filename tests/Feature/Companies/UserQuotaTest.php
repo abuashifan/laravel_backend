@@ -143,6 +143,47 @@ class UserQuotaTest extends TestCase
         $this->assign($company->fresh(), $extra, 'staff');
     }
 
+    public function test_add_on_adds_slots_to_every_company_of_the_client(): void
+    {
+        $plan = $this->plan('basic', 'Basic', maxUsers: 2);
+        [$owner, $companyA] = $this->seedCompany($plan);
+        [, $companyB] = $this->seedCompany($plan, $owner);
+
+        $owner->forceFill(['extra_users' => 2])->save();
+
+        // 2 dari paket + 2 add-on, berlaku penuh di masing-masing perusahaan —
+        // bukan dua slot tambahan yang dibagi berdua.
+        $quota = app(UserQuotaService::class);
+        $this->assertSame(4, $quota->limitFor($companyA));
+        $this->assertSame(4, $quota->limitFor($companyB));
+
+        foreach (['a', 'b', 'c'] as $suffix) {
+            $this->assign($companyA, User::factory()->create([
+                'status' => 'active', 'email' => "a-{$suffix}@client.com",
+            ]), 'staff');
+            $this->assign($companyB, User::factory()->create([
+                'status' => 'active', 'email' => "b-{$suffix}@client.com",
+            ]), 'staff');
+        }
+
+        $this->assertSame(4, CompanyUser::query()->where('company_id', $companyA->id)->count());
+        $this->assertSame(4, CompanyUser::query()->where('company_id', $companyB->id)->count());
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->assign($companyA, User::factory()->create(['status' => 'active']), 'staff');
+    }
+
+    public function test_add_on_stacks_on_top_of_custom_tier_quota(): void
+    {
+        $custom = $this->plan(Plan::CUSTOM_CODE, 'Custom', maxUsers: 2);
+        [$owner, $company] = $this->seedCompany($custom);
+
+        // Angka manual tier Custom pun ditambah add-on, tidak digantikan.
+        $owner->forceFill(['user_quota' => 3, 'extra_users' => 2])->save();
+
+        $this->assertSame(5, app(UserQuotaService::class)->limitFor($company));
+    }
+
     private function assign(Company $company, User $user, string $role): CompanyUser
     {
         return app(CompanyUserAssignmentService::class)->assign([

@@ -35,10 +35,24 @@ class UserQuotaService
     {
         $owner = $this->ownerOf($company);
 
-        if (! $owner) {
-            return self::FALLBACK_LIMIT;
-        }
+        return $owner ? $this->limitForOwner($owner) : self::FALLBACK_LIMIT;
+    }
 
+    /**
+     * Batas untuk tiap perusahaan milik client ini, tanpa perlu menunjuk salah
+     * satu perusahaannya. Dipakai area admin, yang menampilkan angka client
+     * sebelum perusahaannya tentu sudah ada.
+     */
+    public function limitForOwner(User $owner): int
+    {
+        return $this->baseLimitFor($owner) + $this->addOnFor($owner);
+    }
+
+    /**
+     * Jatah bawaan paket, sebelum add-on.
+     */
+    private function baseLimitFor(User $owner): int
+    {
         $plan = $owner->plan ?? Plan::query()->where('code', CompanyQuotaService::DEFAULT_PLAN_CODE)->first();
 
         if ($plan?->isCustom()) {
@@ -54,13 +68,23 @@ class UserQuotaService
         return max(1, (int) $plan->max_users);
     }
 
+    /**
+     * Add-on dibeli per client dan berlaku di **semua** perusahaannya — bukan
+     * satu jatah yang dibagi rata. Client dengan tiga perusahaan dan add-on 5
+     * mendapat 5 slot tambahan di masing-masing perusahaan.
+     */
+    private function addOnFor(User $owner): int
+    {
+        return max(0, (int) $owner->extra_users);
+    }
+
     public function canAddUser(Company $company): bool
     {
         return $this->usedCount($company) < $this->limitFor($company);
     }
 
     /**
-     * @return array{used:int, limit:int, can_add:bool, plan_name:string|null}
+     * @return array{used:int, limit:int, can_add:bool, plan_name:string|null, extra_users:int}
      */
     public function summaryFor(Company $company): array
     {
@@ -73,6 +97,7 @@ class UserQuotaService
             'limit' => $limit,
             'can_add' => $used < $limit,
             'plan_name' => $owner?->plan?->name,
+            'extra_users' => $owner ? $this->addOnFor($owner) : 0,
         ];
     }
 

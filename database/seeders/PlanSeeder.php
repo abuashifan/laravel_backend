@@ -45,7 +45,7 @@ class PlanSeeder extends Seeder
                 'max_transactions_per_month' => 1000,
                 'can_use_sales' => true,
                 'can_use_purchases' => true,
-                'can_use_inventory' => false,
+                'can_use_inventory' => true,
                 'can_export_reports' => true,
                 'monthly_price' => 99000,
                 'yearly_price' => 990000,
@@ -54,6 +54,7 @@ class PlanSeeder extends Seeder
                     'basic_accounting',
                     'sales',
                     'purchases',
+                    'inventory',
                     'reports_export',
                 ],
             ]
@@ -63,8 +64,8 @@ class PlanSeeder extends Seeder
             ['code' => 'pro'],
             [
                 'name' => 'Pro',
-                'description' => 'Paket lengkap dengan inventory.',
-                'max_users' => 10,
+                'description' => 'Untuk UMKM berkembang yang butuh kontrol operasional lebih lengkap.',
+                'max_users' => 5,
                 'max_companies' => 3,
                 'max_transactions_per_month' => null,
                 'can_use_sales' => true,
@@ -73,6 +74,34 @@ class PlanSeeder extends Seeder
                 'can_export_reports' => true,
                 'monthly_price' => 199000,
                 'yearly_price' => 1990000,
+                'status' => 'active',
+                'features' => [
+                    'basic_accounting',
+                    'sales',
+                    'purchases',
+                    'inventory',
+                    'reports_export',
+                    'multi_user',
+                ],
+            ]
+        );
+
+        // Harga belum ditentukan pemilik produk, jadi 0 — kolomnya tidak
+        // nullable dan angka ini tidak dibaca kode mana pun.
+        Plan::updateOrCreate(
+            ['code' => 'enterprise'],
+            [
+                'name' => 'Enterprise',
+                'description' => 'Untuk perusahaan dengan beberapa unit usaha.',
+                'max_users' => 10,
+                'max_companies' => 5,
+                'max_transactions_per_month' => null,
+                'can_use_sales' => true,
+                'can_use_purchases' => true,
+                'can_use_inventory' => true,
+                'can_export_reports' => true,
+                'monthly_price' => 0,
+                'yearly_price' => 0,
                 'status' => 'active',
                 'features' => [
                     'basic_accounting',

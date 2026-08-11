@@ -32,6 +32,7 @@ class User extends Authenticatable
         'plan_id',
         'company_quota',
         'user_quota',
+        'extra_users',
         'company_name',
         'job_title',
         'address',
@@ -55,6 +56,7 @@ class User extends Authenticatable
             'last_login_at' => 'datetime',
             'password' => 'hashed',
             'is_platform_admin' => 'boolean',
+            'extra_users' => 'integer',
         ];
     }
 

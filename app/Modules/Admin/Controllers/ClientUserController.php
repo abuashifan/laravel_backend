@@ -36,6 +36,9 @@ class ClientUserController extends Controller
         // Minimal 1: perusahaan selalu punya owner, jadi batas nol tidak masuk
         // akal dan hanya akan membuat perusahaan yang ada jadi over-quota.
         'user_quota' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:999'],
+        // Add-on berlaku di semua tier, termasuk Custom — angkanya menambah,
+        // bukan menggantikan.
+        'extra_users' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:999'],
     ];
 
     public function __construct(private readonly ClientUserService $service) {}
@@ -139,6 +142,13 @@ class ClientUserController extends Controller
             $attributes['user_quota'] = null;
         }
 
+        // Sengaja di luar blok di atas: add-on tidak dibersihkan saat paket
+        // berubah, karena ia dibeli terpisah dan tetap berlaku lintas tier.
+        // Dikosongkan berarti nol — add-on tidak punya keadaan "ikut paket".
+        if (array_key_exists('extra_users', $data)) {
+            $attributes['extra_users'] = max(0, (int) $data['extra_users']);
+        }
+
         return $attributes;
     }
 
@@ -189,7 +199,12 @@ class ClientUserController extends Controller
     {
         $plans = Plan::query()
             ->where('status', 'active')
+            // Custom selalu paling bawah: `max_companies` miliknya cuma nilai
+            // cadangan, jadi mengurutkannya bersama tier lain menaruhnya di
+            // tengah daftar dan membuat urutannya terbaca acak.
+            ->orderByRaw('CASE WHEN code = ? THEN 1 ELSE 0 END', [Plan::CUSTOM_CODE])
             ->orderBy('max_companies')
+            ->orderBy('max_users')
             ->get()
             ->map(fn (Plan $plan) => [
                 'id' => $plan->id,
