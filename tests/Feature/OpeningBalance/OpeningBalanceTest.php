@@ -22,6 +22,45 @@ class OpeningBalanceTest extends JournalTestCase
             ->assertStatus(403);
     }
 
+    public function test_batch_endpoints_resolve_without_preconfigured_tenant_connection(): void
+    {
+        $ctx = $this->setUpTenant(role: 'owner');
+        app(CompanySettingService::class)->getOrCreateModuleSetting($ctx['company']);
+        $accounts = $this->seedOpeningAccounts();
+
+        $batch = $this->postJson('/api/opening-balance/batches', [
+            'opening_date' => '2026-01-01',
+        ], $ctx['headers'])->assertCreated()->json('data');
+
+        // Proses HTTP sungguhan memulai request tanpa koneksi tenant terpasang:
+        // `company.access` yang memasangnya, dan itu berjalan setelah
+        // SubstituteBindings. Tanpa reset ini, test tidak pernah menguji urutan
+        // tersebut karena setUpTenant() sudah menyambungkan koneksi lebih dulu.
+        $this->resetTenantConnection();
+        $this->getJson('/api/opening-balance/batches/'.$batch['id'], $ctx['headers'])
+            ->assertOk()
+            ->assertJsonPath('data.id', $batch['id']);
+
+        $this->resetTenantConnection();
+        $this->putJson('/api/opening-balance/batches/'.$batch['id'].'/lines', [
+            'lines' => [
+                ['account_id' => $accounts['asset'], 'debit' => 1000, 'credit' => 0],
+                ['account_id' => $accounts['equity'], 'debit' => 0, 'credit' => 1000],
+            ],
+        ], $ctx['headers'])->assertOk();
+
+        $this->resetTenantConnection();
+        $this->postJson('/api/opening-balance/batches/'.$batch['id'].'/validate', [], $ctx['headers'])
+            ->assertOk()
+            ->assertJsonPath('data.valid', true);
+    }
+
+    private function resetTenantConnection(): void
+    {
+        config(['database.connections.tenant.database' => null]);
+        DB::purge('tenant');
+    }
+
     public function test_batch_line_validate_preview_post_and_lock_flow(): void
     {
         $ctx = $this->setUpTenant(role: 'owner');

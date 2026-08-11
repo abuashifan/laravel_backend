@@ -33,43 +33,52 @@ class OpeningBalanceController extends Controller
         return $this->successResponse($this->service->create($request->validated()), 'Opening balance batch created successfully', 201);
     }
 
-    public function show(OpeningBalanceBatch $batch): JsonResponse
+    public function show(int $id): JsonResponse
     {
-        return $this->successResponse($batch->load('lines.account', 'journalEntry'), 'Opening balance batch retrieved successfully');
+        return $this->successResponse($this->batch($id)->load('lines.account', 'journalEntry'), 'Opening balance batch retrieved successfully');
     }
 
-    public function update(UpdateOpeningBalanceBatchRequest $request, OpeningBalanceBatch $batch): JsonResponse
+    public function update(UpdateOpeningBalanceBatchRequest $request, int $id): JsonResponse
     {
-        return $this->successResponse($this->service->update($batch, $request->validated()), 'Opening balance batch updated successfully');
+        return $this->successResponse($this->service->update($this->batch($id), $request->validated()), 'Opening balance batch updated successfully');
     }
 
-    public function replaceLines(ReplaceOpeningBalanceLinesRequest $request, OpeningBalanceBatch $batch): JsonResponse
+    public function replaceLines(ReplaceOpeningBalanceLinesRequest $request, int $id): JsonResponse
     {
-        return $this->successResponse($this->service->replaceLines($batch, (array) $request->validated('lines')), 'Opening balance lines replaced successfully');
+        return $this->successResponse($this->service->replaceLines($this->batch($id), (array) $request->validated('lines')), 'Opening balance lines replaced successfully');
     }
 
-    public function validateBatch(OpeningBalanceBatch $batch): JsonResponse
+    public function validateBatch(int $id): JsonResponse
     {
-        return $this->successResponse($this->service->validate($batch), 'Opening balance validation completed successfully');
+        return $this->successResponse($this->service->validate($this->batch($id)), 'Opening balance validation completed successfully');
     }
 
-    public function preview(OpeningBalanceBatch $batch): JsonResponse
+    public function preview(int $id): JsonResponse
     {
-        return $this->successResponse($this->service->preview($batch), 'Opening balance preview retrieved successfully');
+        return $this->successResponse($this->service->preview($this->batch($id)), 'Opening balance preview retrieved successfully');
     }
 
-    public function post(OpeningBalanceBatch $batch): JsonResponse
+    public function post(int $id): JsonResponse
     {
-        return $this->successResponse($this->service->post($batch), 'Opening balance posted successfully');
+        return $this->successResponse($this->service->post($this->batch($id)), 'Opening balance posted successfully');
     }
 
-    public function lock(OpeningBalanceBatch $batch): JsonResponse
+    public function lock(int $id): JsonResponse
     {
-        return $this->successResponse($this->service->lock($batch), 'Opening balance locked successfully');
+        return $this->successResponse($this->service->lock($this->batch($id)), 'Opening balance locked successfully');
     }
 
-    public function reopen(ReopenOpeningBalanceRequest $request, OpeningBalanceBatch $batch): JsonResponse
+    public function reopen(ReopenOpeningBalanceRequest $request, int $id): JsonResponse
     {
-        return $this->successResponse($this->service->reopen($batch, (string) $request->validated('reason')), 'Opening balance reopened successfully');
+        return $this->successResponse($this->service->reopen($this->batch($id), (string) $request->validated('reason')), 'Opening balance reopened successfully');
+    }
+
+    /**
+     * Batch dimuat di controller, bukan lewat implicit route model binding:
+     * binding berjalan sebelum middleware tenant menyiapkan koneksi database.
+     */
+    private function batch(int $id): OpeningBalanceBatch
+    {
+        return OpeningBalanceBatch::query()->findOrFail($id);
     }
 }

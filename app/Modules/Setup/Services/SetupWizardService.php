@@ -54,6 +54,7 @@ class SetupWizardService
         return [
             'state' => $this->serializeState($state),
             'steps' => $this->buildSteps($state),
+            'gate' => $this->gate($state),
         ];
     }
 
@@ -64,6 +65,27 @@ class SetupWizardService
         return [
             'steps' => $this->buildSteps($state),
             'state' => $this->serializeState($state),
+            'gate' => $this->gate($state),
+        ];
+    }
+
+    /**
+     * Jawaban tunggal untuk pertanyaan "boleh tidak menampilkan alur setup
+     * awal". Frontend memakai ini untuk mengarahkan ke wizard dan untuk
+     * menyembunyikan menu yang hanya relevan sekali di awal (mis. Saldo Awal),
+     * supaya tidak ada lagi dua sumber kebenaran yang bisa berbeda.
+     *
+     * @return array{is_finalized: bool, has_operational_data: bool, initial_setup_available: bool}
+     */
+    private function gate(CompanySetupState $state): array
+    {
+        $isFinalized = $state->status === self::STATUS_FINALIZED;
+        $hasOperationalData = $this->hasOperationalTransactions();
+
+        return [
+            'is_finalized' => $isFinalized,
+            'has_operational_data' => $hasOperationalData,
+            'initial_setup_available' => ! $isFinalized && ! $hasOperationalData,
         ];
     }
 
@@ -591,9 +613,16 @@ class SetupWizardService
             ]);
     }
 
-    private function operationalTransactionBlockers(string $openingDate): array
+    /**
+     * Definisi transaksi operasional: tabel, kolom tanggal, dan scope yang
+     * mengecualikan baris hasil setup awal (jurnal opening balance, stok awal,
+     * import aktiva tetap) serta baris void.
+     *
+     * @return array<int, array{0:string, 1:string, 2:callable}>
+     */
+    private function operationalTransactionChecks(): array
     {
-        $checks = [
+        return [
             ['journal_entries', 'journal_date', fn ($query) => $query->where('status', '!=', 'void')->where(function ($q) {
                 $q->whereNull('source_type')->orWhere('source_type', '!=', 'opening_balance');
             })],
@@ -611,9 +640,12 @@ class SetupWizardService
                 $q->whereNull('source_type')->orWhere('source_type', '!=', 'opening_import');
             })],
         ];
+    }
 
+    private function operationalTransactionBlockers(string $openingDate): array
+    {
         $blocking = [];
-        foreach ($checks as [$table, $dateColumn, $scope]) {
+        foreach ($this->operationalTransactionChecks() as [$table, $dateColumn, $scope]) {
             if (! Schema::connection('tenant')->hasTable($table) || ! Schema::connection('tenant')->hasColumn($table, $dateColumn)) {
                 continue;
             }
@@ -626,6 +658,29 @@ class SetupWizardService
         }
 
         return $blocking;
+    }
+
+    /**
+     * Sama seperti blockers, tapi tanpa cutoff tanggal: dipakai untuk menjawab
+     * "apakah buku perusahaan ini masih kosong". Perusahaan yang sudah
+     * bertransaksi tidak boleh lagi ditawari alur setup awal, meskipun setup
+     * state-nya belum pernah difinalisasi (mis. perusahaan lama yang dibuat
+     * sebelum wizard ada).
+     */
+    private function hasOperationalTransactions(): bool
+    {
+        foreach ($this->operationalTransactionChecks() as [$table, $dateColumn, $scope]) {
+            if (! Schema::connection('tenant')->hasTable($table)) {
+                continue;
+            }
+            $query = DB::connection('tenant')->table($table);
+            $scope($query);
+            if ($query->exists()) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function requiredStepKeys(CompanySetupState $state): array

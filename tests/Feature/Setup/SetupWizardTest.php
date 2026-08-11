@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Setup;
 
+use App\Modules\Journal\Models\JournalEntry;
 use App\Modules\MasterData\Models\AccountMapping;
 use App\Modules\MasterData\Models\ChartOfAccount;
 use App\Modules\Settings\Services\CompanySettingService;
@@ -37,6 +38,48 @@ class SetupWizardTest extends JournalTestCase
             ->assertJsonPath('data.state.status', 'in_progress')
             ->assertJsonPath('data.state.current_step', 'accounting_settings')
             ->assertJsonPath('data.state.opening_date', '2026-01-01');
+    }
+
+    public function test_gate_offers_initial_setup_only_while_books_are_empty(): void
+    {
+        $ctx = $this->setUpTenant(role: 'owner');
+
+        $this->getJson('/api/setup/status', $ctx['headers'])
+            ->assertOk()
+            ->assertJsonPath('data.gate.is_finalized', false)
+            ->assertJsonPath('data.gate.has_operational_data', false)
+            ->assertJsonPath('data.gate.initial_setup_available', true);
+
+        // Satu transaksi operasional cukup untuk menutup alur setup awal,
+        // walaupun setup state belum pernah difinalisasi.
+        JournalEntry::query()->create([
+            'journal_number' => 'JV-GATE-001',
+            'journal_date' => '2026-02-01',
+            'description' => 'Transaksi operasional',
+            'status' => 'posted',
+            'total_debit' => 1000,
+            'total_credit' => 1000,
+        ]);
+
+        $this->getJson('/api/setup/status', $ctx['headers'])
+            ->assertOk()
+            ->assertJsonPath('data.gate.has_operational_data', true)
+            ->assertJsonPath('data.gate.initial_setup_available', false);
+    }
+
+    public function test_gate_closes_initial_setup_once_finalized(): void
+    {
+        $ctx = $this->setUpTenant(role: 'owner');
+
+        CompanySetupState::query()->updateOrCreate(
+            ['company_id' => $ctx['company']->id],
+            ['status' => 'finalized', 'current_step' => 'finalized', 'finalized_at' => now()],
+        );
+
+        $this->getJson('/api/setup/status', $ctx['headers'])
+            ->assertOk()
+            ->assertJsonPath('data.gate.is_finalized', true)
+            ->assertJsonPath('data.gate.initial_setup_available', false);
     }
 
     public function test_validate_all_blocks_when_opening_balance_batch_is_missing(): void

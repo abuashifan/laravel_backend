@@ -142,8 +142,13 @@ class TenantIsolationTest extends TestCase
     {
         $routes = Route::getRoutes();
 
+        // `POST api/companies` dulu ada di daftar ini. Sekarang endpoint itu
+        // disengaja: user yang sudah diregistrasi owner aplikasi boleh membuat
+        // perusahaannya sendiri. Penggantinya ada di bawah — endpoint tersebut
+        // wajib tetap di belakang auth:sanctum. Registrasi mandiri ditutup di
+        // Modules/Auth/Routes/api.php, jadi endpoint ini tidak terbuka publik.
         $forbidden = [
-            ['POST', 'api/companies'],
+            ['POST', 'api/auth/register'],
             ['POST', 'api/tenants'],
             ['POST', 'api/tenant/migrate'],
             ['POST', 'api/company-users'],
@@ -157,6 +162,13 @@ class TenantIsolationTest extends TestCase
 
             $this->assertFalse($exists, "Forbidden route exists: {$method} {$uri}");
         }
+
+        $createCompany = collect($routes)->first(function ($route) {
+            return in_array('POST', $route->methods(), true) && $route->uri() === 'api/companies';
+        });
+
+        $this->assertNotNull($createCompany, 'POST api/companies harus ada.');
+        $this->assertContains('auth:sanctum', $createCompany->gatherMiddleware());
     }
 
     /**

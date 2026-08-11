@@ -88,7 +88,12 @@ class TenantProvisioningService
                 $company->forceFill(['code' => $companyCode])->save();
 
                 $databaseName = $this->generateDatabaseName($company->id);
-                $databasePath = database_path('tenants/'.$databaseName);
+                // Dibentuk dari config('tenant.database_path') — direktori yang
+                // barusan divalidasi ada & writable di atas. Defaultnya tetap
+                // database_path('tenants'), jadi perilaku produksi tidak berubah;
+                // test bisa mengarahkannya ke folder sementara supaya tidak
+                // menyentuh file tenant milik lingkungan dev.
+                $databasePath = rtrim($tenantDirectory, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.$databaseName;
 
                 if (TenantDatabase::query()->where('database_name', $databaseName)->exists()) {
                     throw new RuntimeException("Generated database_name sudah ada di tenant_databases: {$databaseName}");

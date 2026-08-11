@@ -4,7 +4,6 @@ namespace App\Modules\Auth\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Auth\Requests\LoginRequest;
-use App\Modules\Auth\Requests\RegisterRequest;
 use App\Shared\Api\ApiResponse;
 use App\Shared\Models\User;
 use Illuminate\Http\JsonResponse;
@@ -15,27 +14,6 @@ use Illuminate\Validation\ValidationException;
 class AuthController extends Controller
 {
     use ApiResponse;
-
-    public function register(RegisterRequest $request): JsonResponse
-    {
-        $data = $request->validated();
-
-        $user = User::create([
-            'name' => $data['name'],
-            'email' => $data['email'],
-            'password' => Hash::make($data['password']),
-            'phone' => $data['phone'] ?? null,
-            'status' => 'active',
-        ]);
-
-        $token = $user->createToken('api-token')->plainTextToken;
-
-        return $this->successResponse([
-            'user' => $user,
-            'token' => $token,
-            'token_type' => 'Bearer',
-        ], 'Register berhasil', 201);
-    }
 
     public function login(LoginRequest $request): JsonResponse
     {
