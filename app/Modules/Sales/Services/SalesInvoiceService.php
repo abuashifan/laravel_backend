@@ -82,7 +82,11 @@ class SalesInvoiceService
         return $this->withAvailableDepositSummary(SalesInvoice::query()->with('lines.product', 'customer', 'paymentTerm', 'salesOrder', 'deliveryOrder', 'proformaInvoice')->findOrFail($id));
     }
 
-    public function create(array $data): SalesInvoice
+    /**
+     * @param  array<string, mixed>  $data
+     * @param  array{suppress_auto_post?: bool}  $options
+     */
+    public function create(array $data, array $options = []): SalesInvoice
     {
         $company = $this->tenantContext->company();
         if (! $company) {
@@ -93,7 +97,7 @@ class SalesInvoiceService
         app(BusinessReferenceValidator::class)->paymentTerm(isset($data['payment_term_id']) ? (int) $data['payment_term_id'] : null);
         $data = $this->paymentTermDueDateService->apply($data, 'invoice_date', (int) $data['customer_id']);
 
-        return DB::connection('tenant')->transaction(function () use ($company, $data) {
+        return DB::connection('tenant')->transaction(function () use ($company, $data, $options) {
             $lines = $this->normalizeLines((array) $data['lines'], fn (array $line): array => [
                 'sales_order_line_id' => $line['sales_order_line_id'] ?? null,
                 'delivery_order_line_id' => $line['delivery_order_line_id'] ?? null,
@@ -119,7 +123,11 @@ class SalesInvoiceService
             $invoice = $invoice->refresh()->load('lines', 'customer', 'paymentTerm');
             $this->auditSales($this->auditLogService, 'sales_invoice.created', 'sales', $invoice, 'invoice_number');
 
-            if ($this->shouldAutoPostOnCreateAccountingWorkflow()) {
+            // Fase 3 rencana impor data: importer selalu menghasilkan draft,
+            // tidak pernah auto-post. Opsi suppress_auto_post digunakan oleh
+            // SalesInvoiceImportCommitter. Jalur normal (controller) tidak
+            // terpengaruh — default false mempertahankan perilaku yang ada.
+            if ($this->shouldAutoPostOnCreateAccountingWorkflow() && ! ($options['suppress_auto_post'] ?? false)) {
                 return $this->post($invoice);
             }
 
@@ -828,5 +836,73 @@ class SalesInvoiceService
         ]));
 
         return $invoice;
+    }
+
+    /**
+     * Posting massal faktur — satu per satu lewat post(), bukan operasi
+     * massal di database. Setiap faktur tetap melewati penjaga periode,
+     * pemeriksaan stok, dan penomoran yang sama dengan posting manual.
+     *
+     * Sebagian boleh berhasil. Faktur yang gagal diposting tetap draft,
+     * dengan alasannya dilaporkan per faktur.
+     *
+     * @param  array<int, int>  $ids
+     * @return array{posted_count: int, failed_count: int, results: array<int, array{id: int, invoice_number: string|null, status: string, error: string|null}>}
+     */
+    public function bulkPost(array $ids): array
+    {
+        $ids = array_values(array_unique(array_map('intval', $ids)));
+        $results = [];
+        $postedCount = 0;
+        $failedCount = 0;
+
+        foreach ($ids as $id) {
+            $invoice = SalesInvoice::query()->find($id);
+
+            if (! $invoice instanceof SalesInvoice) {
+                $failedCount++;
+                $results[] = [
+                    'id' => $id,
+                    'invoice_number' => null,
+                    'status' => 'failed',
+                    'error' => 'Invoice tidak ditemukan.',
+                ];
+
+                continue;
+            }
+
+            try {
+                $posted = $this->post($invoice);
+                $postedCount++;
+                $results[] = [
+                    'id' => $posted->id,
+                    'invoice_number' => $posted->invoice_number,
+                    'status' => 'posted',
+                    'error' => null,
+                ];
+            } catch (\App\Shared\Exceptions\ApiException $e) {
+                $failedCount++;
+                $results[] = [
+                    'id' => $invoice->id,
+                    'invoice_number' => $invoice->invoice_number,
+                    'status' => 'failed',
+                    'error' => $e->getMessage(),
+                ];
+            } catch (\Throwable $e) {
+                $failedCount++;
+                $results[] = [
+                    'id' => $invoice->id,
+                    'invoice_number' => $invoice->invoice_number,
+                    'status' => 'failed',
+                    'error' => 'Gagal memposting faktur: '.$e->getMessage(),
+                ];
+            }
+        }
+
+        return [
+            'posted_count' => $postedCount,
+            'failed_count' => $failedCount,
+            'results' => $results,
+        ];
     }
 }

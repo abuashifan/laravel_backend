@@ -65,12 +65,22 @@ class ImportEngineTest extends TestCase
         Storage::fake('local');
         $ctx = $this->setUpTenant();
 
+        // Siapkan kontak dan produk agar lookup committer berhasil.
+        \App\Modules\MasterData\Models\Contact::query()->create([
+            'contact_code' => 'PT-A', 'name' => 'PT A', 'contact_type' => 'customer',
+            'is_customer' => true, 'is_active' => true,
+        ]);
+        \App\Modules\MasterData\Models\Product::query()->create([
+            'product_code' => 'PRD-001', 'product_name' => 'Produk A', 'product_type' => 'goods',
+            'is_active' => true,
+        ]);
+
         $batch = $this->postJson('/api/imports', [
             'profile' => 'sales_invoice',
             'file' => $this->csvFile('sales.csv', [
-                ['Ref', 'Customer', 'Amount'],
-                ['INV-20260811-001', 'PT A', '1000'],
-                ['', 'PT B', '2000'],
+                ['Ref', 'Customer', 'Invoice Date', 'Item', 'Quantity', 'Unit Price'],
+                ['INV-20260811-001', 'PT A', '2026-08-11', 'Produk A', '2', '50000'],
+                ['', 'PT B', '2026-08-11', 'Produk A', '1', '75000'],
             ]),
         ], $ctx['headers'])->assertCreated()->json('data.batch');
 
@@ -78,7 +88,10 @@ class ImportEngineTest extends TestCase
             'column_map' => [
                 'ref' => 'Ref',
                 'customer' => 'Customer',
-                'amount' => 'Amount',
+                'invoice_date' => 'Invoice Date',
+                'item' => 'Item',
+                'quantity' => 'Quantity',
+                'unit_price' => 'Unit Price',
             ],
         ], $ctx['headers'])
             ->assertOk()

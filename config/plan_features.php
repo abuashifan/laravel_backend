@@ -54,6 +54,10 @@ return [
 
         // --- Pro ke atas ---------------------------------------------------
 
+        'transaction_import' => [
+            'transactions.import',
+        ],
+
         'multi_warehouse' => [
             'warehouses.create',
             'warehouses.edit',

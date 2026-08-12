@@ -55,6 +55,7 @@ class PlanFeatureMatrixTest extends TestCase
             'projects.create' => [false, false, true],
             'access.roles.create' => [false, false, true],
             'access.permissions.manage' => [false, false, true],
+            'transactions.import' => [false, true, true],
         ];
 
         foreach ($expectations as $permission => [$basic, $pro, $enterprise]) {
@@ -84,6 +85,7 @@ class PlanFeatureMatrixTest extends TestCase
             'inventory.view',
             'journal.view',
             'dashboard.view',
+            'masterdata.import',
         ];
 
         foreach (['basic', 'pro', 'enterprise'] as $tier) {

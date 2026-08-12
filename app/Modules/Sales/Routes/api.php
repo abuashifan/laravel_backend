@@ -69,6 +69,7 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('sales')->group(fu
     Route::patch('/proformas/{id}/cancel', [ProformaInvoiceController::class, 'cancel'])->middleware('permission:sales.proformas.cancel');
 
     Route::get('/invoices', [SalesInvoiceController::class, 'index'])->middleware('permission:sales.invoices.view');
+    Route::get('/invoices/export', [SalesInvoiceController::class, 'exportExcel'])->middleware('permission:sales.invoices.view');
     Route::get('/invoices/adjacent', [SalesInvoiceController::class, 'adjacent'])->middleware('permission:sales.invoices.view');
     Route::post('/invoices', [SalesInvoiceController::class, 'store'])->middleware('permission:sales.invoices.create');
     Route::get('/invoices/{id}', [SalesInvoiceController::class, 'show'])->middleware('permission:sales.invoices.view');
@@ -78,6 +79,7 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('sales')->group(fu
     Route::post('/invoices/from-proforma/{proformaId}', [SalesInvoiceController::class, 'createFromProforma'])->middleware('permission:sales.invoices.create');
     Route::patch('/invoices/{id}/approve', [SalesInvoiceController::class, 'approve'])->middleware('permission:sales.invoices.approve');
     Route::patch('/invoices/{id}/post', [SalesInvoiceController::class, 'post'])->middleware('permission:sales.invoices.post');
+    Route::post('/invoices/bulk-post', [SalesInvoiceController::class, 'bulkPost'])->middleware('permission:sales.invoices.post');
     Route::patch('/invoices/{id}/void', [SalesInvoiceController::class, 'void'])->middleware('permission:sales.invoices.void');
 
     Route::get('/customer-deposits', [CustomerDepositController::class, 'index'])->middleware('permission:sales.deposits.view');

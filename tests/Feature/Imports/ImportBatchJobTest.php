@@ -140,13 +140,13 @@ class ImportBatchJobTest extends TestCase
         Storage::fake('local');
         $ctx = $this->setUpTenant();
 
-        // Batch dengan profil yang TIDAK punya committer — job akan gagal
-        // saat ImportCommitterFactory::has() mengembalikan false.
+        // Gunakan vendor_bill — profil async yang belum punya committer
+        // (Fase 4). sales_invoice sudah punya committer sejak Fase 3.
         $batch = $this->postJson('/api/imports', [
-            'profile' => 'sales_invoice',
-            'file' => $this->csvFile('inv.csv', [
-                ['Ref', 'Customer'],
-                ['INV-001', 'PT A'],
+            'profile' => 'vendor_bill',
+            'file' => $this->csvFile('bill.csv', [
+                ['Ref', 'Vendor'],
+                ['BILL-001', 'PT A'],
             ]),
         ], $ctx['headers'])->assertCreated()->json('data.batch');
 
@@ -199,7 +199,7 @@ class ImportBatchJobTest extends TestCase
 
     // ── Test: profil async dispatch job, profil sync tidak ───────────────
 
-    public function test_async_profile_commit_is_rejected_until_phase_3(): void
+    public function test_async_profile_dispatches_job_and_sync_profile_does_not(): void
     {
         Bus::fake();
         Storage::fake('local');
@@ -217,22 +217,37 @@ class ImportBatchJobTest extends TestCase
 
         Bus::assertNotDispatched(ImportBatchJob::class);
 
-        // Profil async (sales_invoice) — belum punya committer (Fase 3),
-        // jadi harus ditolak dengan pesan jelas.
+        // Profil async (vendor_bill) — punya committer sejak Fase 4,
+        // jadi harus dispatch job ke antrean.
+        \App\Modules\MasterData\Models\Contact::query()->create([
+            'contact_code' => 'PT-A', 'name' => 'PT A', 'contact_type' => 'supplier',
+            'is_supplier' => true, 'is_active' => true,
+        ]);
+        \App\Modules\MasterData\Models\Product::query()->create([
+            'product_code' => 'PRD', 'product_name' => 'Produk', 'product_type' => 'goods',
+            'is_active' => true,
+        ]);
+
         $asyncBatch = $this->postJson('/api/imports', [
-            'profile' => 'sales_invoice',
-            'file' => $this->csvFile('inv.csv', [
-                ['Ref', 'Customer'],
-                ['INV-001', 'PT A'],
+            'profile' => 'vendor_bill',
+            'file' => $this->csvFile('bill.csv', [
+                ['Ref', 'Vendor', 'Bill Date', 'Item', 'Quantity', 'Unit Cost'],
+                ['BILL-001', 'PT A', '2026-08-11', 'Produk', '2', '50000'],
             ]),
         ], $ctx['headers'])->assertCreated()->json('data.batch');
 
-        ImportBatch::query()->where('uuid', $asyncBatch['uuid'])->update(['status' => 'previewed', 'valid_rows' => 1]);
+        $this->patchJson('/api/imports/'.$asyncBatch['uuid'].'/mapping', [
+            'column_map' => [
+                'ref' => 'Ref', 'vendor' => 'Vendor', 'bill_date' => 'Bill Date',
+                'item' => 'Item', 'quantity' => 'Quantity', 'unit_cost' => 'Unit Cost',
+            ],
+        ], $ctx['headers'])->assertOk();
 
         $this->postJson('/api/imports/'.$asyncBatch['uuid'].'/commit', [], $ctx['headers'])
-            ->assertStatus(422)
-            ->assertJsonPath('code', 'VALIDATION_ERROR')
-            ->assertJsonFragment(['message' => 'Commit untuk profil ini belum tersedia. Profil transaksi menunggu antrean (Fase 2 rencana impor data).']);
+            ->assertOk()
+            ->assertJsonPath('data.status', 'committing');
+
+        Bus::assertDispatched(ImportBatchJob::class);
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────

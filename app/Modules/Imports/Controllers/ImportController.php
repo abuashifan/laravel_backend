@@ -10,6 +10,7 @@ use App\Modules\Imports\Services\ImportBatchService;
 use App\Modules\Imports\Services\ImportTemplateService;
 use App\Shared\Api\ApiErrorCode;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Export\ExcelExportService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -21,6 +22,7 @@ class ImportController extends Controller
     public function __construct(
         private readonly ImportBatchService $batches,
         private readonly ImportTemplateService $templates,
+        private readonly ExcelExportService $excel,
     ) {}
 
     /**
@@ -42,6 +44,28 @@ class ImportController extends Controller
             ->values();
 
         return $this->successResponse($profiles, 'Import profiles retrieved.');
+    }
+
+    /**
+     * Upload jalur master data — hanya menerima profil master.
+     */
+    public function storeMaster(StoreImportRequest $request): JsonResponse
+    {
+        $profile = (string) $request->validated('profile');
+        $this->assertProfileIn($profile, ['contact', 'product', 'chart_of_account'], 'master');
+
+        return $this->store($request);
+    }
+
+    /**
+     * Upload jalur transaksi — hanya menerima profil transaksi.
+     */
+    public function storeTransaction(StoreImportRequest $request): JsonResponse
+    {
+        $profile = (string) $request->validated('profile');
+        $this->assertProfileIn($profile, ['sales_invoice', 'vendor_bill', 'journal_entry'], 'transactions');
+
+        return $this->store($request);
     }
 
     public function store(StoreImportRequest $request): JsonResponse
@@ -92,6 +116,56 @@ class ImportController extends Controller
         $this->batches->cancel($uuid);
 
         return $this->successResponse(null, 'Import batch cancelled.');
+    }
+
+    private function assertProfileIn(string $profile, array $allowed, string $group): void
+    {
+        if (! in_array($profile, $allowed, true)) {
+            throw \App\Shared\Exceptions\ApiException::make(
+                ApiErrorCode::VALIDATION_ERROR,
+                "Profil '{$profile}' tidak termasuk dalam grup impor {$group}.",
+                422,
+                ['profile' => ["Profil '{$profile}' bukan profil {$group}."]]
+            );
+        }
+    }
+
+    /**
+     * Ekspor baris gagal dari batch impor ke Excel — supaya user bisa
+     * memperbaiki lalu mengunggah ulang.
+     */
+    public function exportErrors(string $uuid, ExcelExportService $excel): StreamedResponse
+    {
+        $batch = \App\Modules\Imports\Models\ImportBatch::query()->where('uuid', $uuid)->firstOrFail();
+
+        $rows = $batch->rows()
+            ->where('status', 'invalid')
+            ->orderBy('row_number')
+            ->get();
+
+        if ($rows->isEmpty()) {
+            // Return empty Excel dengan header saja.
+            return $excel->downloadFromArray([], ['Row', 'Errors'], "import-{$uuid}-errors");
+        }
+
+        // Ambil header dari kolom pertama yang punya normalized data.
+        $firstRow = $rows->first();
+        $normalized = (array) ($firstRow->normalized ?? []);
+        $headers = array_keys($normalized);
+        $headers[] = '_errors';
+
+        $data = [];
+        foreach ($rows as $row) {
+            $values = (array) ($row->normalized ?? []);
+            $errorMessages = [];
+            foreach ((array) ($row->errors ?? []) as $field => $msgs) {
+                $errorMessages[] = "{$field}: ".implode('; ', (array) $msgs);
+            }
+            $values['_errors'] = implode(' | ', $errorMessages);
+            $data[] = array_values($values);
+        }
+
+        return $excel->downloadFromArray($data, $headers, "import-{$uuid}-errors");
     }
 
     public function template(string $profile): StreamedResponse

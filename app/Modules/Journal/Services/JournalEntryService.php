@@ -172,7 +172,11 @@ class JournalEntryService
         return $journal;
     }
 
-    public function createManual(array $data): JournalEntry
+    /**
+     * @param  array<string, mixed>  $data
+     * @param  array{suppress_auto_post?: bool}  $options
+     */
+    public function createManual(array $data, array $options = []): JournalEntry
     {
         $company = $this->tenantContext->company();
         if (! $company) {
@@ -202,7 +206,10 @@ class JournalEntryService
         $userId = auth()->id();
         $workflow = $this->companySettingService->getOrCreateAccountingSetting($company);
 
-        $shouldAutoPost = $workflow->transaction_workflow_mode === 'simple_auto_post' && (bool) $workflow->auto_post_transactions;
+        // Fase 4 rencana impor data: importer selalu menghasilkan draft.
+        $shouldAutoPost = ! ($options['suppress_auto_post'] ?? false)
+            && $workflow->transaction_workflow_mode === 'simple_auto_post'
+            && (bool) $workflow->auto_post_transactions;
 
         return DB::transaction(function () use ($data, $lines, $journalNumber, $journalDate, $userId, $shouldAutoPost) {
             $journal = JournalEntry::query()->create([

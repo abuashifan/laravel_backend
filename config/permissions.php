@@ -252,6 +252,10 @@ return [
         'imports.cancel',
         'imports.templates.view',
 
+        // Import tier gates (Fase 5)
+        'masterdata.import',       // Basic+ — kontak, produk, COA
+        'transactions.import',     // Pro+   — faktur, tagihan, jurnal
+
         // Budget
         'budgets.view',
         'budgets.submit',
@@ -331,6 +335,8 @@ return [
             'imports.commit',
             'imports.cancel',
             'imports.templates.view',
+            'masterdata.import',
+            'transactions.import',
             'budgets.view',
             'budgets.submit',
             'budgets.approve_head',
@@ -372,6 +378,8 @@ return [
             'imports.map',
             'imports.cancel',
             'imports.templates.view',
+            'masterdata.import',
+            'transactions.import',
         ],
         'sales' => [
             'dashboard.view',
@@ -425,6 +433,8 @@ return [
             'imports.map',
             'imports.cancel',
             'imports.templates.view',
+            'masterdata.import',
+            'transactions.import',
         ],
         'purchasing' => [
             'dashboard.view',
@@ -471,6 +481,8 @@ return [
             'imports.map',
             'imports.cancel',
             'imports.templates.view',
+            'masterdata.import',
+            'transactions.import',
         ],
         'warehouse' => [
             'dashboard.view',

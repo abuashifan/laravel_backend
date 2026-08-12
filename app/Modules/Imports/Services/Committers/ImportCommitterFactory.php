@@ -15,6 +15,9 @@ class ImportCommitterFactory
         private readonly ContactImportCommitter $contact,
         private readonly ProductImportCommitter $product,
         private readonly ChartOfAccountImportCommitter $chartOfAccount,
+        private readonly SalesInvoiceImportCommitter $salesInvoice,
+        private readonly VendorBillImportCommitter $vendorBill,
+        private readonly JournalEntryImportCommitter $journalEntry,
     ) {}
 
     public function has(string $profile): bool
@@ -36,6 +39,9 @@ class ImportCommitterFactory
             'contact' => $this->contact,
             'product' => $this->product,
             'chart_of_account' => $this->chartOfAccount,
+            'sales_invoice' => $this->salesInvoice,
+            'vendor_bill' => $this->vendorBill,
+            'journal_entry' => $this->journalEntry,
         ];
     }
 }

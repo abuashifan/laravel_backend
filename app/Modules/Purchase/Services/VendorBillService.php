@@ -82,7 +82,11 @@ class VendorBillService
         return $this->withAvailableDepositSummary(VendorBill::query()->with('lines.product', 'lines.fixedAssetCategory', 'vendor', 'paymentTerm', 'purchaseOrder', 'goodsReceipt')->findOrFail($id));
     }
 
-    public function create(array $data): VendorBill
+    /**
+     * @param  array<string, mixed>  $data
+     * @param  array{suppress_auto_post?: bool}  $options
+     */
+    public function create(array $data, array $options = []): VendorBill
     {
         $company = $this->tenantContext->company();
         if (! $company) {
@@ -92,7 +96,7 @@ class VendorBillService
         app(BusinessReferenceValidator::class)->paymentTerm(isset($data['payment_term_id']) ? (int) $data['payment_term_id'] : null);
         $data = $this->paymentTermDueDateService->apply($data, 'bill_date', (int) $data['vendor_id']);
 
-        return DB::connection('tenant')->transaction(function () use ($company, $data) {
+        return DB::connection('tenant')->transaction(function () use ($company, $data, $options) {
             $lines = $this->normalizePurchaseLines((array) $data['lines'], fn (array $line): array => [
                 'purchase_order_line_id' => $line['purchase_order_line_id'] ?? null,
                 'goods_receipt_line_id' => $line['goods_receipt_line_id'] ?? null,
@@ -122,7 +126,8 @@ class VendorBillService
             $bill->lines()->createMany($totals['lines']);
             $bill = $bill->refresh()->load('lines', 'vendor', 'paymentTerm');
             $this->auditPurchase($this->auditLogService, 'vendor_bill.created', $bill, 'bill_number');
-            if ($this->shouldAutoPostOnCreateAccountingWorkflow()) {
+            // Fase 4 rencana impor data: importer selalu menghasilkan draft.
+            if ($this->shouldAutoPostOnCreateAccountingWorkflow() && ! ($options['suppress_auto_post'] ?? false)) {
                 return $this->post($bill);
             }
 

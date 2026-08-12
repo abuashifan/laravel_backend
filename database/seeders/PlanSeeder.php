@@ -15,11 +15,11 @@ class PlanSeeder extends Seeder
      * `UpdateCompanyAccountingSettingRequest`). Peta lengkap dan alasannya ada di
      * `Finlite_knowladge/plans/subscription-tiers/phase-2-peta-tier-dan-peluncuran.md`.
      */
-    private const PRO_FEATURES = ['multi_warehouse', 'audit_trail', 'advanced_reports', 'transaction_approval'];
+    private const PRO_FEATURES = ['multi_warehouse', 'audit_trail', 'advanced_reports', 'transaction_approval', 'transaction_import'];
 
     private const ENTERPRISE_FEATURES = [
         'multi_warehouse', 'audit_trail', 'advanced_reports', 'transaction_approval',
-        'budgeting', 'dimensions', 'user_permission',
+        'budgeting', 'dimensions', 'user_permission', 'transaction_import',
     ];
 
     /**
