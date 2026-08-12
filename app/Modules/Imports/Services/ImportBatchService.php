@@ -2,6 +2,7 @@
 
 namespace App\Modules\Imports\Services;
 
+use App\Jobs\ImportBatchJob;
 use App\Modules\Imports\Models\ImportBatch;
 use App\Modules\Imports\Models\ImportRow;
 use App\Modules\Imports\Services\Committers\ImportCommitterFactory;
@@ -181,10 +182,11 @@ class ImportBatchService
     }
 
     /**
-     * Sinkron di Fase 1 — ratusan baris master data tanpa posting jurnal
-     * selesai dalam hitungan detik, jadi antrean baru masuk di Fase 2 untuk
-     * profil transaksi. Profil yang belum punya committer (transaksi) tetap
-     * ditolak eksplisit, bukan diam-diam menulis apa pun.
+     * Profil master data (Fase 1) commit sinkron — ratusan baris tanpa
+     * posting jurnal selesai dalam hitungan detik. Profil transaksi
+     * (async=true) mengirim job ke antrean (Fase 2).
+     *
+     * Profil yang belum punya committer tetap ditolak eksplisit.
      */
     public function commit(string $uuid): array
     {
@@ -214,13 +216,22 @@ class ImportBatchService
             );
         }
 
+        // Profil transaksi: kirim ke antrean. Worker memprosesnya di latar
+        // supaya tidak menabrak max_execution_time PHP-FPM.
+        if ($this->isAsyncProfile($batch->profile)) {
+            $batch->update(['status' => 'committing']);
+
+            ImportBatchJob::dispatch([
+                'uuid' => $batch->uuid,
+                'company_id' => $this->companyId(),
+            ]);
+
+            return $this->show($uuid);
+        }
+
+        // Profil master data: commit sinkron.
         $batch->update(['status' => 'committing']);
 
-        // SENGAJA di luar satu transaksi besar: "sebagian masuk" adalah
-        // keputusan produk (README rencana impor data, §"Sebagian atau
-        // semua-atau-tidak") — satu baris gagal tidak boleh menggulung
-        // balik baris lain yang sudah berhasil dibuat lewat service
-        // dokumennya masing-masing.
         $results = $this->committers->make($batch->profile)->commit($batch);
 
         $committedCount = 0;
@@ -241,6 +252,11 @@ class ImportBatchService
         ]);
 
         return $this->show($uuid);
+    }
+
+    private function isAsyncProfile(string $profile): bool
+    {
+        return (bool) config("imports.profiles.{$profile}.async", false);
     }
 
     private function inspect(SpreadsheetReader $reader, string $path): array

@@ -25,12 +25,28 @@ class TenantConnectionManager
         DB::purge('tenant');
         DB::reconnect('tenant');
 
+        $driver = (string) config('database.connections.tenant.driver');
+
+        if ($driver !== 'sqlite') {
+            return;
+        }
+
         // Some CI/dev sandboxes restrict SQLite rollback journal file creation.
         // For tests we can safely keep SQLite journals in memory to avoid disk I/O errors.
-        if (app()->environment('testing') && (string) config('database.connections.tenant.driver') === 'sqlite') {
+        if (app()->environment('testing')) {
             DB::connection('tenant')->statement('PRAGMA journal_mode = MEMORY');
             DB::connection('tenant')->statement('PRAGMA synchronous = OFF');
+
+            return;
         }
+
+        // Fase 2 rencana impor data: WAL (Write-Ahead Logging) membiarkan
+        // pembaca dan penulis berjalan bersamaan — pola akses yang muncul
+        // saat worker antrean menulis sementara user bekerja di browser.
+        // busy_timeout memberi ruang tunggu 5 detik sebelum SQLITE_BUSY,
+        // alih-alih langsung gagal.
+        DB::connection('tenant')->statement('PRAGMA journal_mode = WAL');
+        DB::connection('tenant')->statement('PRAGMA busy_timeout = 5000');
     }
 
     public function disconnect(): void
