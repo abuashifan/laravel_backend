@@ -4,6 +4,10 @@ use App\Modules\Imports\Controllers\ImportController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth:sanctum', 'company.access'])->group(function () {
+    // Sebelum '/imports/{uuid}' -- kalau tidak, "profiles" akan dicoba
+    // sebagai uuid dan selalu 404.
+    Route::get('/imports/profiles', [ImportController::class, 'profiles'])
+        ->middleware('permission:imports.view');
     Route::get('/imports/templates/{profile}', [ImportController::class, 'template'])
         ->middleware('permission:imports.templates.view');
     Route::post('/imports', [ImportController::class, 'store'])

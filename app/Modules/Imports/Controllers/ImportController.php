@@ -23,6 +23,27 @@ class ImportController extends Controller
         private readonly ImportTemplateService $templates,
     ) {}
 
+    /**
+     * Metadata seluruh profil impor — label, kunci field (sejajar dengan
+     * `headers`), field wajib. Frontend memakainya membangun `column_map`
+     * otomatis saat client memakai templat unduhan apa adanya, dan menyusun
+     * layar pemetaan manual saat tidak.
+     */
+    public function profiles(): JsonResponse
+    {
+        $profiles = collect((array) config('imports.profiles', []))
+            ->map(fn (array $profile, string $key) => [
+                'key' => $key,
+                'label' => $profile['label'],
+                'fields' => $profile['fields'] ?? [],
+                'headers' => $profile['headers'],
+                'required_fields' => $profile['required_fields'],
+            ])
+            ->values();
+
+        return $this->successResponse($profiles, 'Import profiles retrieved.');
+    }
+
     public function store(StoreImportRequest $request): JsonResponse
     {
         try {
@@ -63,7 +84,7 @@ class ImportController extends Controller
 
     public function commit(string $uuid): JsonResponse
     {
-        $this->batches->commit($uuid);
+        return $this->successResponse($this->batches->commit($uuid), 'Import batch committed.');
     }
 
     public function destroy(string $uuid): JsonResponse

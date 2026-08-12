@@ -64,6 +64,14 @@ class ModuleBoundariesTest extends TestCase
         'Dashboard → App\\Modules\\Reports\\Services\\CashFlowService',
         'Dashboard → App\\Modules\\Reports\\Services\\FinancialSummaryService',
         'Budget → App\\Modules\\Settings\\Services\\CompanySettingService',
+        // Rencana impor data, Fase 1: aturan tunggal yang tidak boleh
+        // dilanggar adalah importer WAJIB lewat service dokumen yang sudah
+        // ada, bukan menulis model langsung -- lihat
+        // Finlite_knowladge/plans/data-import/README.md. Coupling ini bukan
+        // kebocoran lapis, ia SATU-SATUNYA cara mematuhi aturan itu.
+        'Imports → App\\Modules\\MasterData\\Services\\ContactService',
+        'Imports → App\\Modules\\MasterData\\Services\\ProductService',
+        'Imports → App\\Modules\\MasterData\\Services\\ChartOfAccountService',
     ];
 
     /**

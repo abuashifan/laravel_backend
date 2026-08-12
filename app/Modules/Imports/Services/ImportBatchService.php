@@ -4,6 +4,7 @@ namespace App\Modules\Imports\Services;
 
 use App\Modules\Imports\Models\ImportBatch;
 use App\Modules\Imports\Models\ImportRow;
+use App\Modules\Imports\Services\Committers\ImportCommitterFactory;
 use App\Shared\Api\ApiErrorCode;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Subscription\StorageQuotaService;
@@ -21,6 +22,7 @@ class ImportBatchService
         private readonly TenantContext $tenantContext,
         private readonly SpreadsheetReaderFactory $readerFactory,
         private readonly StorageQuotaService $storageQuota,
+        private readonly ImportCommitterFactory $committers,
     ) {}
 
     public function upload(string $profile, UploadedFile $file, bool $confirmDuplicateFile = false): array
@@ -178,15 +180,67 @@ class ImportBatchService
         });
     }
 
-    public function commit(string $uuid): never
+    /**
+     * Sinkron di Fase 1 — ratusan baris master data tanpa posting jurnal
+     * selesai dalam hitungan detik, jadi antrean baru masuk di Fase 2 untuk
+     * profil transaksi. Profil yang belum punya committer (transaksi) tetap
+     * ditolak eksplisit, bukan diam-diam menulis apa pun.
+     */
+    public function commit(string $uuid): array
     {
-        $this->find($uuid);
+        $batch = $this->find($uuid);
 
-        throw ApiException::make(
-            ApiErrorCode::VALIDATION_ERROR,
-            'Commit impor belum tersedia di Fase 0. Profil dokumen akan mengaktifkannya pada fase berikutnya.',
-            422
-        );
+        if (! $this->committers->has($batch->profile)) {
+            throw ApiException::make(
+                ApiErrorCode::VALIDATION_ERROR,
+                'Commit untuk profil ini belum tersedia. Profil transaksi menunggu antrean (Fase 2 rencana impor data).',
+                422
+            );
+        }
+
+        if ($batch->status !== 'previewed') {
+            throw ApiException::make(
+                ApiErrorCode::VALIDATION_ERROR,
+                'Batch impor harus melalui pemetaan kolom dan pratinjau sebelum di-commit.',
+                422
+            );
+        }
+
+        if ($batch->valid_rows === 0) {
+            throw ApiException::make(
+                ApiErrorCode::VALIDATION_ERROR,
+                'Tidak ada baris valid untuk di-commit.',
+                422
+            );
+        }
+
+        $batch->update(['status' => 'committing']);
+
+        // SENGAJA di luar satu transaksi besar: "sebagian masuk" adalah
+        // keputusan produk (README rencana impor data, §"Sebagian atau
+        // semua-atau-tidak") — satu baris gagal tidak boleh menggulung
+        // balik baris lain yang sudah berhasil dibuat lewat service
+        // dokumennya masing-masing.
+        $results = $this->committers->make($batch->profile)->commit($batch);
+
+        $committedCount = 0;
+        foreach ($results as $rowId => $result) {
+            $committedCount += $result['status'] === 'committed' ? 1 : 0;
+
+            ImportRow::query()->whereKey($rowId)->update([
+                'status' => $result['status'],
+                'document_id' => $result['document_id'],
+                'document_type' => $result['document_type'],
+                'errors' => $result['error'] !== null ? ['commit' => [$result['error']]] : null,
+            ]);
+        }
+
+        $batch->update([
+            'status' => $committedCount > 0 ? 'completed' : 'failed',
+            'committed_rows' => $committedCount,
+        ]);
+
+        return $this->show($uuid);
     }
 
     private function inspect(SpreadsheetReader $reader, string $path): array
@@ -268,6 +322,17 @@ class ImportBatchService
         foreach ($requiredFields as $field) {
             if (trim((string) ($normalized[$field] ?? '')) === '') {
                 $errors[$field][] = Str::headline($field).' wajib diisi.';
+            }
+        }
+
+        // Aturan bisnis khusus profil (kode duplikat, akun induk, kategori/
+        // satuan tak dikenal, dst) — di atas required_fields generik. Profil
+        // yang belum punya committer (mis. profil transaksi) dilewati di
+        // sini; commit()-nya sendiri yang menolak secara eksplisit.
+        if ($this->committers->has($batch->profile)) {
+            $profileErrors = $this->committers->make($batch->profile)->validateRow($batch, $normalized);
+            foreach ($profileErrors as $field => $messages) {
+                $errors[$field] = array_merge($errors[$field] ?? [], $messages);
             }
         }
 
