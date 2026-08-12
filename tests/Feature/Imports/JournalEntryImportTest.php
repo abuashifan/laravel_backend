@@ -13,6 +13,7 @@ use App\Shared\Models\CompanyUser;
 use App\Shared\Models\TenantDatabase;
 use App\Shared\Models\User;
 use App\Shared\Tenant\TenantConnectionManager;
+use App\Shared\Tenant\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Artisan;
@@ -33,8 +34,8 @@ class JournalEntryImportTest extends TestCase
 
         $batch = $this->createBatch($ctx, [
             ['Ref', 'Journal Date', 'Account Code', 'Description', 'Debit', 'Credit'],
-            ['JV-001', '2026-08-11', '1100', 'Kas', '500000', '0'],
-            ['JV-001', '2026-08-11', '4100', 'Pendapatan', '0', '500000'],
+            ['JV-001', '11/08/2026', '1100', 'Kas', '500000', '0'],
+            ['JV-001', '11/08/2026', '4100', 'Pendapatan', '0', '500000'],
         ]);
 
         $this->dispatchSync($batch['uuid'], $ctx['company']->id);
@@ -56,8 +57,8 @@ class JournalEntryImportTest extends TestCase
 
         $batch = $this->uploadCsv($ctx, [
             ['Ref', 'Journal Date', 'Account Code', 'Description', 'Debit', 'Credit'],
-            ['JV-001', '2026-08-11', '1100', 'Kas', '500000', '0'],
-            ['JV-001', '2026-08-11', '4100', 'Pendapatan', '0', '400000'],
+            ['JV-001', '11/08/2026', '1100', 'Kas', '500000', '0'],
+            ['JV-001', '11/08/2026', '4100', 'Pendapatan', '0', '400000'],
         ]);
 
         $this->patchJson('/api/imports/'.$batch['uuid'].'/mapping', [
@@ -84,7 +85,7 @@ class JournalEntryImportTest extends TestCase
 
         $batch = $this->uploadCsv($ctx, [
             ['Ref', 'Journal Date', 'Account Code', 'Description', 'Debit', 'Credit'],
-            ['JV-001', '2026-08-11', '1100', 'Kas', '500000', '0'],
+            ['JV-001', '11/08/2026', '1100', 'Kas', '500000', '0'],
         ]);
 
         $res = $this->patchJson('/api/imports/'.$batch['uuid'].'/mapping', [
@@ -113,7 +114,7 @@ class JournalEntryImportTest extends TestCase
 
         $batch = $this->uploadCsv($ctx, [
             ['Ref', 'Journal Date', 'Account Code', 'Description', 'Debit', 'Credit'],
-            ['JV-001', '2026-08-11', '9999', 'Inaktif', '500000', '0'],
+            ['JV-001', '11/08/2026', '9999', 'Inaktif', '500000', '0'],
         ]);
 
         $res = $this->patchJson('/api/imports/'.$batch['uuid'].'/mapping', [
@@ -165,8 +166,12 @@ class JournalEntryImportTest extends TestCase
 
     private function dispatchSync(string $uuid, int $companyId): void
     {
+        // Meniru ImportBatchService::commit(): status di-flip ke 'committing'
+        // sebelum job dijalankan.
+        ImportBatch::query()->where('uuid', $uuid)->update(['status' => 'committing']);
+
         (new ImportBatchJob(['uuid' => $uuid, 'company_id' => $companyId]))
-            ->handle(app(TenantConnectionManager::class), app(ImportCommitterFactory::class));
+            ->handle(app(TenantConnectionManager::class), app(ImportCommitterFactory::class), app(TenantContext::class));
     }
 
     private function dispatchSyncExpectingFailure(string $uuid, int $companyId): ImportBatch
@@ -210,7 +215,9 @@ class JournalEntryImportTest extends TestCase
     {
         $path = tempnam(sys_get_temp_dir(), 'je_csv_');
         $h = fopen($path, 'w');
-        foreach ($rows as $r) { fputcsv($h, $r); }
+        foreach ($rows as $r) {
+            fputcsv($h, $r);
+        }
         fclose($h);
 
         return new UploadedFile($path, $name, 'text/csv', null, true);

@@ -3,6 +3,7 @@
 return [
     'max_rows' => 1000,
     'retention_days' => 30,
+    'committing_timeout_minutes' => 30,
     'active_statuses' => ['validating', 'previewed', 'committing'],
 
     'profiles' => [
@@ -12,7 +13,7 @@ return [
             'required_fields' => ['ref'],
             'fields' => ['ref', 'customer', 'invoice_date', 'due_date', 'item', 'quantity', 'unit_price', 'tax_code', 'notes'],
             'headers' => ['Ref', 'Customer', 'Invoice Date', 'Due Date', 'Item', 'Quantity', 'Unit Price', 'Tax Code', 'Notes'],
-            'sample' => ['INV-20260811-001', 'PT Contoh Pelanggan', '2026-08-11', '2026-08-25', 'Jasa Konsultasi', '1', '1500000', 'PPN', 'Contoh baris templat'],
+            'sample' => ['INV-20260811-001', 'PT Contoh Pelanggan', '11/08/2026', '25/08/2026', 'Jasa Konsultasi', '1', '1500000', 'PPN', 'Contoh baris templat'],
             'tax_codes' => ['PPN' => 11, 'PPN11' => 11, 'PPN12' => 12, 'VAT' => 11],
         ],
         'vendor_bill' => [
@@ -21,7 +22,7 @@ return [
             'required_fields' => ['ref'],
             'fields' => ['ref', 'vendor', 'bill_date', 'due_date', 'item', 'quantity', 'unit_cost', 'tax_code', 'notes'],
             'headers' => ['Ref', 'Vendor', 'Bill Date', 'Due Date', 'Item', 'Quantity', 'Unit Cost', 'Tax Code', 'Notes'],
-            'sample' => ['BILL-20260811-001', 'PT Contoh Vendor', '2026-08-11', '2026-08-25', 'Barang Contoh', '2', '750000', 'PPN', 'Contoh baris templat'],
+            'sample' => ['BILL-20260811-001', 'PT Contoh Vendor', '11/08/2026', '25/08/2026', 'Barang Contoh', '2', '750000', 'PPN', 'Contoh baris templat'],
             'tax_codes' => ['PPN' => 11, 'PPN11' => 11, 'PPN12' => 12, 'VAT' => 11],
         ],
         'journal_entry' => [
@@ -30,7 +31,11 @@ return [
             'required_fields' => ['ref'],
             'fields' => ['ref', 'journal_date', 'account_code', 'description', 'debit', 'credit', 'department', 'project'],
             'headers' => ['Ref', 'Journal Date', 'Account Code', 'Description', 'Debit', 'Credit', 'Department', 'Project'],
-            'sample' => ['JRN-20260811-001', '2026-08-11', '6100', 'Beban operasional', '100000', '0', 'OPS', ''],
+            // Dua baris contoh dengan Ref sama → satu jurnal seimbang (debit = kredit).
+            'samples' => [
+                ['JRN-20260811-001', '11/08/2026', '6100', 'Beban operasional', '100000', '0', 'OPS', ''],
+                ['JRN-20260811-001', '11/08/2026', '1101', 'Kas kecil', '0', '100000', '', ''],
+            ],
         ],
         // Tiga profil di bawah (Fase 1, rencana impor data) punya 'fields' --
         // daftar kunci field snake_case, sejajar 1:1 dengan 'headers'. Dipakai

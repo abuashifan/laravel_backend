@@ -14,10 +14,22 @@ class ImportTemplateService
     {
         $profileConfig = $this->profile($profile);
 
+        // 'samples' (array of arrays) dipakai untuk profil yang butuh
+        // beberapa baris contoh — mis. jurnal umum (debit + kredit).
+        // 'sample' (array tunggal) tetap didukung untuk backward compatibility.
+        $rows = [];
+        if (isset($profileConfig['samples']) && is_array($profileConfig['samples'])) {
+            foreach ($profileConfig['samples'] as $sampleRow) {
+                $rows[] = (array) $sampleRow;
+            }
+        } elseif (isset($profileConfig['sample'])) {
+            $rows[] = (array) $profileConfig['sample'];
+        }
+
         return [
             'filename' => 'template-'.$profile.'.csv',
             'headers' => (array) $profileConfig['headers'],
-            'rows' => [(array) $profileConfig['sample']],
+            'rows' => $rows,
         ];
     }
 

@@ -24,6 +24,7 @@ use Throwable;
  */
 class VendorBillImportCommitter implements ImportProfileCommitter
 {
+    use Concerns\NormalizesImportDates;
     use ResolvesModelByCodeOrName;
 
     public function __construct(private readonly VendorBillService $billService) {}
@@ -52,14 +53,9 @@ class VendorBillImportCommitter implements ImportProfileCommitter
         if ($billDate === '') {
             $errors['bill_date'][] = 'Bill Date wajib diisi.';
         } else {
-            try {
-                $parsedDate = CarbonImmutable::createFromFormat('Y-m-d', $billDate);
-                if ($parsedDate === false) {
-                    $errors['bill_date'][] = 'Bill Date harus dalam format YYYY-MM-DD.';
-                    $parsedDate = null;
-                }
-            } catch (Throwable) {
-                $errors['bill_date'][] = 'Bill Date harus dalam format YYYY-MM-DD.';
+            $parsedDate = $this->parseImportDate($billDate);
+            if ($parsedDate === null) {
+                $errors['bill_date'][] = 'Bill Date harus dalam format DD/MM/YYYY dan tanggal valid.';
             }
         }
 
@@ -106,15 +102,11 @@ class VendorBillImportCommitter implements ImportProfileCommitter
         }
 
         if ($dueDate !== '') {
-            try {
-                $parsedDue = CarbonImmutable::createFromFormat('Y-m-d', $dueDate);
-                if ($parsedDue === false) {
-                    $errors['due_date'][] = 'Due Date harus dalam format YYYY-MM-DD.';
-                } elseif ($parsedDate instanceof CarbonImmutable && $parsedDue->lt($parsedDate)) {
-                    $errors['due_date'][] = 'Due Date tidak boleh sebelum Bill Date.';
-                }
-            } catch (Throwable) {
-                $errors['due_date'][] = 'Due Date harus dalam format YYYY-MM-DD.';
+            $parsedDue = $this->parseImportDate($dueDate);
+            if ($parsedDue === null) {
+                $errors['due_date'][] = 'Due Date harus dalam format DD/MM/YYYY dan tanggal valid.';
+            } elseif ($parsedDate instanceof CarbonImmutable && $parsedDue->lt($parsedDate)) {
+                $errors['due_date'][] = 'Due Date tidak boleh sebelum Bill Date.';
             }
         }
 
@@ -197,8 +189,8 @@ class VendorBillImportCommitter implements ImportProfileCommitter
             return;
         }
 
-        $billDate = trim((string) ($normalized['bill_date'] ?? ''));
-        $dueDate = trim((string) ($normalized['due_date'] ?? ''));
+        $billDate = $this->normalizeDate(trim((string) ($normalized['bill_date'] ?? '')));
+        $dueDate = $this->normalizeDate(trim((string) ($normalized['due_date'] ?? '')));
         $notes = trim((string) ($normalized['notes'] ?? ''));
         $taxCodes = (array) config('imports.profiles.vendor_bill.tax_codes', []);
 
@@ -260,8 +252,12 @@ class VendorBillImportCommitter implements ImportProfileCommitter
 
     private function resolveTaxRate(string $code, array $taxCodes): ?float
     {
-        if ($code === '') { return null; }
-        if (is_numeric($code)) { return (float) $code; }
+        if ($code === '') {
+            return null;
+        }
+        if (is_numeric($code)) {
+            return (float) $code;
+        }
 
         return $taxCodes[mb_strtoupper($code)] ?? null;
     }

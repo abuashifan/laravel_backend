@@ -81,6 +81,15 @@ class ImportBatchService
     public function applyMapping(string $uuid, array $columnMap): array
     {
         $batch = $this->find($uuid);
+
+        if (in_array($batch->status, ['committing', 'completed'], true)) {
+            throw ApiException::make(
+                ApiErrorCode::VALIDATION_ERROR,
+                "Batch impor sudah berstatus '{$batch->status}' dan tidak bisa dipetakan ulang.",
+                422
+            );
+        }
+
         $path = Storage::disk('local')->path($batch->stored_path);
         $extension = strtolower(pathinfo($batch->stored_path, PATHINFO_EXTENSION));
         $reader = $this->readerFactory->make($extension);
@@ -106,6 +115,7 @@ class ImportBatchService
                     'column_map' => $normalizedMap,
                     'valid_rows' => 0,
                     'failed_rows' => 0,
+                    'error_message' => null,
                 ]);
                 $batch->rows()->delete();
 
@@ -246,12 +256,52 @@ class ImportBatchService
             ]);
         }
 
+        $errorMessage = null;
+        if ($committedCount === 0) {
+            $errorMessage = $this->summarizeCommitErrors($results);
+        }
+
         $batch->update([
             'status' => $committedCount > 0 ? 'completed' : 'failed',
             'committed_rows' => $committedCount,
+            'error_message' => $errorMessage,
         ]);
 
         return $this->show($uuid);
+    }
+
+    /**
+     * Rangkum pesan error dari hasil commit yang gagal.
+     *
+     * @param  array<int, array{status: string, error: ?string}>  $results
+     */
+    private function summarizeCommitErrors(array $results): string
+    {
+        $errors = [];
+
+        foreach ($results as $rowId => $result) {
+            $msg = $result['error'] ?? null;
+            if ($msg === null) {
+                continue;
+            }
+
+            $key = md5($msg);
+            if (! isset($errors[$key])) {
+                $errors[$key] = ['message' => $msg, 'count' => 0];
+            }
+            $errors[$key]['count']++;
+        }
+
+        if ($errors === []) {
+            return 'Commit gagal — tidak ada baris yang berhasil di-commit.';
+        }
+
+        $lines = array_map(
+            fn (array $e): string => "{$e['message']} ({$e['count']} baris)",
+            array_values($errors),
+        );
+
+        return implode("\n", $lines);
     }
 
     private function isAsyncProfile(string $profile): bool
@@ -412,6 +462,18 @@ class ImportBatchService
             return;
         }
 
+        // Batch stuck di committing melewati timeout → anggap gagal.
+        if ($active->status === 'committing' && $this->isStuckCommitting($active)) {
+            $active->update([
+                'status' => 'failed',
+                'error_message' => 'Commit dibatalkan otomatis — melebihi batas waktu '
+                    .(int) config('imports.committing_timeout_minutes', 30).' menit. '
+                    .'Pastikan queue worker berjalan atau coba ulangi commit.',
+            ]);
+
+            return;
+        }
+
         throw ApiException::make(
             ApiErrorCode::IMPORT_ACTIVE_BATCH_EXISTS,
             'Masih ada batch impor aktif. Selesaikan atau batalkan batch itu sebelum mengunggah berkas baru.',
@@ -419,6 +481,14 @@ class ImportBatchService
             [],
             ['batch_uuid' => $active->uuid, 'status' => $active->status]
         );
+    }
+
+    private function isStuckCommitting(ImportBatch $batch): bool
+    {
+        $timeoutMinutes = (int) config('imports.committing_timeout_minutes', 30);
+
+        return $batch->updated_at instanceof \DateTimeInterface
+            && $batch->updated_at->diffInMinutes(now()) >= $timeoutMinutes;
     }
 
     private function ensureProfileExists(string $profile): void
@@ -480,6 +550,7 @@ class ImportBatchService
             'valid_rows' => $batch->valid_rows,
             'failed_rows' => $batch->failed_rows,
             'committed_rows' => $batch->committed_rows,
+            'error_message' => $batch->error_message,
             'created_by' => $batch->created_by,
             'created_at' => $batch->created_at?->toISOString(),
             'updated_at' => $batch->updated_at?->toISOString(),

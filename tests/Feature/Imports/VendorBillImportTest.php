@@ -8,12 +8,15 @@ use App\Modules\Imports\Models\ImportRow;
 use App\Modules\Imports\Services\Committers\ImportCommitterFactory;
 use App\Modules\MasterData\Models\Contact;
 use App\Modules\MasterData\Models\Product;
+use App\Modules\MasterData\Models\Unit;
+use App\Modules\MasterData\Models\Warehouse;
 use App\Modules\Purchase\Models\VendorBill;
 use App\Shared\Models\Company;
 use App\Shared\Models\CompanyUser;
 use App\Shared\Models\TenantDatabase;
 use App\Shared\Models\User;
 use App\Shared\Tenant\TenantConnectionManager;
+use App\Shared\Tenant\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Artisan;
@@ -36,7 +39,7 @@ class VendorBillImportTest extends TestCase
 
         $batch = $this->createBatch($ctx, [
             ['Ref', 'Vendor', 'Bill Date', 'Item', 'Quantity', 'Unit Cost', 'Warehouse'],
-            ['BILL-001', 'PT Supplier', '2026-08-11', 'Barang A', '5', '75000', (string) $this->warehouseId],
+            ['BILL-001', 'PT Supplier', '11/08/2026', 'Barang A', '5', '75000', (string) $this->warehouseId],
         ]);
 
         $this->dispatchSync($batch['uuid'], $ctx['company']->id);
@@ -56,8 +59,8 @@ class VendorBillImportTest extends TestCase
 
         $batch = $this->createBatch($ctx, [
             ['Ref', 'Vendor', 'Bill Date', 'Item', 'Quantity', 'Unit Cost', 'Warehouse'],
-            ['BILL-001', 'PT Supplier', '2026-08-11', 'Barang A', '3', '50000', (string) $this->warehouseId],
-            ['BILL-001', 'PT Supplier', '2026-08-11', 'Barang B', '2', '75000', (string) $this->warehouseId],
+            ['BILL-001', 'PT Supplier', '11/08/2026', 'Barang A', '3', '50000', (string) $this->warehouseId],
+            ['BILL-001', 'PT Supplier', '11/08/2026', 'Barang B', '2', '75000', (string) $this->warehouseId],
         ]);
 
         $this->dispatchSync($batch['uuid'], $ctx['company']->id);
@@ -72,7 +75,7 @@ class VendorBillImportTest extends TestCase
 
         $batch = $this->uploadCsv($ctx, [
             ['Ref', 'Vendor', 'Bill Date', 'Item', 'Quantity', 'Unit Cost'],
-            ['BILL-001', 'PT Fiktif', '2026-08-11', 'Barang A', '1', '50000'],
+            ['BILL-001', 'PT Fiktif', '11/08/2026', 'Barang A', '1', '50000'],
         ]);
 
         $res = $this->patchJson('/api/imports/'.$batch['uuid'].'/mapping', [
@@ -98,8 +101,8 @@ class VendorBillImportTest extends TestCase
 
         $batch = $this->uploadCsv($ctx, [
             ['Ref', 'Vendor', 'Bill Date', 'Item', 'Quantity', 'Unit Cost', 'Warehouse'],
-            ['BILL-001', 'PT Supplier', '2026-08-11', 'Barang A', '1', '50000', (string) $this->warehouseId],
-            ['BILL-001', 'PT Other', '2026-08-11', 'Barang B', '2', '75000', (string) $this->warehouseId],
+            ['BILL-001', 'PT Supplier', '11/08/2026', 'Barang A', '1', '50000', (string) $this->warehouseId],
+            ['BILL-001', 'PT Other', '11/08/2026', 'Barang B', '2', '75000', (string) $this->warehouseId],
         ]);
 
         $res = $this->patchJson('/api/imports/'.$batch['uuid'].'/mapping', [
@@ -118,10 +121,10 @@ class VendorBillImportTest extends TestCase
             'contact_code' => 'PT-SUPPLIER', 'name' => 'PT Supplier', 'contact_type' => 'supplier',
             'is_supplier' => true, 'is_active' => true,
         ]);
-        $unit = \App\Modules\MasterData\Models\Unit::query()->create([
+        $unit = Unit::query()->create([
             'code' => 'PCS', 'name' => 'Pieces', 'precision' => 0, 'is_active' => true,
         ]);
-        $wh = \App\Modules\MasterData\Models\Warehouse::query()->create([
+        $wh = Warehouse::query()->create([
             'code' => 'WH1', 'name' => 'Gudang Utama', 'is_active' => true,
         ]);
         $this->warehouseId = (int) $wh->id;
@@ -164,8 +167,12 @@ class VendorBillImportTest extends TestCase
 
     private function dispatchSync(string $uuid, int $companyId): void
     {
+        // Meniru ImportBatchService::commit(): status di-flip ke 'committing'
+        // sebelum job dijalankan.
+        ImportBatch::query()->where('uuid', $uuid)->update(['status' => 'committing']);
+
         (new ImportBatchJob(['uuid' => $uuid, 'company_id' => $companyId]))
-            ->handle(app(TenantConnectionManager::class), app(ImportCommitterFactory::class));
+            ->handle(app(TenantConnectionManager::class), app(ImportCommitterFactory::class), app(TenantContext::class));
     }
 
     private function setUpTenant(string $role = 'owner'): array
@@ -199,7 +206,9 @@ class VendorBillImportTest extends TestCase
     {
         $path = tempnam(sys_get_temp_dir(), 'vb_');
         $h = fopen($path, 'w');
-        foreach ($rows as $r) { fputcsv($h, $r); }
+        foreach ($rows as $r) {
+            fputcsv($h, $r);
+        }
         fclose($h);
 
         return new UploadedFile($path, $name, 'text/csv', null, true);

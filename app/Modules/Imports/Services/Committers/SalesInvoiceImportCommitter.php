@@ -7,6 +7,7 @@ use App\Modules\Imports\Models\ImportRow;
 use App\Modules\Imports\Services\Committers\Concerns\ResolvesModelByCodeOrName;
 use App\Modules\MasterData\Models\Contact;
 use App\Modules\MasterData\Models\Product;
+use App\Modules\Sales\Models\SalesInvoice;
 use App\Modules\Sales\Services\SalesInvoiceService;
 use App\Shared\Exceptions\ApiException;
 use Carbon\CarbonImmutable;
@@ -25,6 +26,7 @@ use Throwable;
  */
 class SalesInvoiceImportCommitter implements ImportProfileCommitter
 {
+    use Concerns\NormalizesImportDates;
     use ResolvesModelByCodeOrName;
 
     public function __construct(private readonly SalesInvoiceService $invoiceService) {}
@@ -55,14 +57,9 @@ class SalesInvoiceImportCommitter implements ImportProfileCommitter
         if ($invoiceDate === '') {
             $errors['invoice_date'][] = 'Invoice Date wajib diisi.';
         } else {
-            try {
-                $parsedDate = CarbonImmutable::createFromFormat('Y-m-d', $invoiceDate);
-                if ($parsedDate === false) {
-                    $errors['invoice_date'][] = 'Invoice Date harus dalam format YYYY-MM-DD.';
-                    $parsedDate = null;
-                }
-            } catch (Throwable) {
-                $errors['invoice_date'][] = 'Invoice Date harus dalam format YYYY-MM-DD.';
+            $parsedDate = $this->parseImportDate($invoiceDate);
+            if ($parsedDate === null) {
+                $errors['invoice_date'][] = 'Invoice Date harus dalam format DD/MM/YYYY dan tanggal valid.';
             }
         }
 
@@ -114,15 +111,11 @@ class SalesInvoiceImportCommitter implements ImportProfileCommitter
 
         // ── Due Date ───────────────────────────────────────────────────
         if ($dueDate !== '') {
-            try {
-                $parsedDue = CarbonImmutable::createFromFormat('Y-m-d', $dueDate);
-                if ($parsedDue === false) {
-                    $errors['due_date'][] = 'Due Date harus dalam format YYYY-MM-DD.';
-                } elseif ($parsedDate instanceof CarbonImmutable && $parsedDue->lt($parsedDate)) {
-                    $errors['due_date'][] = 'Due Date tidak boleh sebelum Invoice Date.';
-                }
-            } catch (Throwable) {
-                $errors['due_date'][] = 'Due Date harus dalam format YYYY-MM-DD.';
+            $parsedDue = $this->parseImportDate($dueDate);
+            if ($parsedDue === null) {
+                $errors['due_date'][] = 'Due Date harus dalam format DD/MM/YYYY dan tanggal valid.';
+            } elseif ($parsedDate instanceof CarbonImmutable && $parsedDue->lt($parsedDate)) {
+                $errors['due_date'][] = 'Due Date tidak boleh sebelum Invoice Date.';
             }
         }
 
@@ -214,8 +207,8 @@ class SalesInvoiceImportCommitter implements ImportProfileCommitter
             return;
         }
 
-        $invoiceDate = trim((string) ($normalized['invoice_date'] ?? ''));
-        $dueDate = trim((string) ($normalized['due_date'] ?? ''));
+        $invoiceDate = $this->normalizeDate(trim((string) ($normalized['invoice_date'] ?? '')));
+        $dueDate = $this->normalizeDate(trim((string) ($normalized['due_date'] ?? '')));
         $notes = trim((string) ($normalized['notes'] ?? ''));
 
         // Bangun lines dari setiap baris.
@@ -259,7 +252,7 @@ class SalesInvoiceImportCommitter implements ImportProfileCommitter
                 $results[$row->id] = [
                     'status' => 'committed',
                     'document_id' => $invoice->id,
-                    'document_type' => \App\Modules\Sales\Models\SalesInvoice::class,
+                    'document_type' => SalesInvoice::class,
                     'error' => null,
                 ];
             }

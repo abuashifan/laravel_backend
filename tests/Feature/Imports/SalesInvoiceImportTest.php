@@ -9,12 +9,12 @@ use App\Modules\Imports\Services\Committers\ImportCommitterFactory;
 use App\Modules\MasterData\Models\Contact;
 use App\Modules\MasterData\Models\Product;
 use App\Modules\Sales\Models\SalesInvoice;
-use App\Modules\Sales\Models\SalesInvoiceLine;
 use App\Shared\Models\Company;
 use App\Shared\Models\CompanyUser;
 use App\Shared\Models\TenantDatabase;
 use App\Shared\Models\User;
 use App\Shared\Tenant\TenantConnectionManager;
+use App\Shared\Tenant\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Artisan;
@@ -50,7 +50,7 @@ class SalesInvoiceImportTest extends TestCase
 
         $batch = $this->createBatch($ctx, [
             ['Ref', 'Customer', 'Invoice Date', 'Due Date', 'Item', 'Quantity', 'Unit Price', 'Tax Code', 'Notes'],
-            ['INV-001', 'PT Alpha', '2026-08-11', '2026-08-25', 'Kertas A4', '5', '50000', 'PPN', 'Catatan'],
+            ['INV-001', 'PT Alpha', '11/08/2026', '25/08/2026', 'Kertas A4', '5', '50000', 'PPN', 'Catatan'],
         ]);
 
         $this->dispatchSync($batch['uuid'], $ctx['company']->id);
@@ -81,8 +81,8 @@ class SalesInvoiceImportTest extends TestCase
 
         $batch = $this->createBatch($ctx, [
             ['Ref', 'Customer', 'Invoice Date', 'Due Date', 'Item', 'Quantity', 'Unit Price', 'Tax Code', 'Notes'],
-            ['INV-001', 'PT Alpha', '2026-08-11', '2026-08-25', 'Kertas A4', '5', '50000', '', ''],
-            ['INV-001', 'PT Alpha', '2026-08-11', '2026-08-25', 'Pulpen', '10', '3500', '', ''],
+            ['INV-001', 'PT Alpha', '11/08/2026', '25/08/2026', 'Kertas A4', '5', '50000', '', ''],
+            ['INV-001', 'PT Alpha', '11/08/2026', '25/08/2026', 'Pulpen', '10', '3500', '', ''],
         ]);
 
         $this->dispatchSync($batch['uuid'], $ctx['company']->id);
@@ -108,8 +108,8 @@ class SalesInvoiceImportTest extends TestCase
 
         $batch = $this->createBatch($ctx, [
             ['Ref', 'Customer', 'Invoice Date', 'Due Date', 'Item', 'Quantity', 'Unit Price', 'Tax Code', 'Notes'],
-            ['INV-001', 'PT Alpha', '2026-08-11', '', 'Kertas A4', '1', '50000', '', ''],
-            ['INV-002', 'PT Alpha', '2026-08-12', '', 'Pulpen', '2', '3500', '', ''],
+            ['INV-001', 'PT Alpha', '11/08/2026', '', 'Kertas A4', '1', '50000', '', ''],
+            ['INV-002', 'PT Alpha', '12/08/2026', '', 'Pulpen', '2', '3500', '', ''],
         ]);
 
         $this->dispatchSync($batch['uuid'], $ctx['company']->id);
@@ -127,8 +127,8 @@ class SalesInvoiceImportTest extends TestCase
 
         $batch = $this->uploadCsv($ctx, [
             ['Ref', 'Customer', 'Invoice Date', 'Due Date', 'Item', 'Quantity', 'Unit Price', 'Tax Code', 'Notes'],
-            ['INV-001', 'PT Alpha', '2026-08-11', '', 'Kertas A4', '1', '50000', '', ''],
-            ['INV-001', 'PT Alpha', '2026-08-12', '', 'Pulpen', '2', '3500', '', ''],
+            ['INV-001', 'PT Alpha', '11/08/2026', '', 'Kertas A4', '1', '50000', '', ''],
+            ['INV-001', 'PT Alpha', '12/08/2026', '', 'Pulpen', '2', '3500', '', ''],
         ]);
 
         $res = $this->patchJson('/api/imports/'.$batch['uuid'].'/mapping', [
@@ -159,8 +159,8 @@ class SalesInvoiceImportTest extends TestCase
 
         $batch = $this->uploadCsv($ctx, [
             ['Ref', 'Customer', 'Invoice Date', 'Due Date', 'Item', 'Quantity', 'Unit Price', 'Tax Code', 'Notes'],
-            ['INV-001', 'PT Alpha', '2026-08-11', '', 'Kertas A4', '1', '50000', '', ''],
-            ['INV-001', 'PT Beta', '2026-08-11', '', 'Pulpen', '2', '3500', '', ''],
+            ['INV-001', 'PT Alpha', '11/08/2026', '', 'Kertas A4', '1', '50000', '', ''],
+            ['INV-001', 'PT Beta', '11/08/2026', '', 'Pulpen', '2', '3500', '', ''],
         ]);
 
         $res = $this->patchJson('/api/imports/'.$batch['uuid'].'/mapping', [
@@ -180,7 +180,7 @@ class SalesInvoiceImportTest extends TestCase
 
         $batch = $this->uploadCsv($ctx, [
             ['Ref', 'Customer', 'Invoice Date', 'Due Date', 'Item', 'Quantity', 'Unit Price', 'Tax Code', 'Notes'],
-            ['INV-001', 'PT Fiktif', '2026-08-11', '', 'Produk Fiktif', '1', '50000', '', ''],
+            ['INV-001', 'PT Fiktif', '11/08/2026', '', 'Produk Fiktif', '1', '50000', '', ''],
         ]);
 
         $res = $this->patchJson('/api/imports/'.$batch['uuid'].'/mapping', [
@@ -206,7 +206,7 @@ class SalesInvoiceImportTest extends TestCase
 
         $first = $this->createBatch($ctx, [
             ['Ref', 'Customer', 'Invoice Date', 'Due Date', 'Item', 'Quantity', 'Unit Price', 'Tax Code', 'Notes'],
-            ['INV-001', 'PT Alpha', '2026-08-11', '', 'Kertas A4', '1', '50000', '', ''],
+            ['INV-001', 'PT Alpha', '11/08/2026', '', 'Kertas A4', '1', '50000', '', ''],
         ]);
         ImportBatch::query()->where('uuid', $first['uuid'])->update(['status' => 'completed']);
 
@@ -214,7 +214,7 @@ class SalesInvoiceImportTest extends TestCase
         // tapi external_ref sama → harus ditolak di validasi.
         $second = $this->uploadCsv($ctx, [
             ['Ref', 'Customer', 'Invoice Date', 'Due Date', 'Item', 'Quantity', 'Unit Price', 'Tax Code', 'Notes'],
-            ['INV-001', 'PT Alpha', '2026-08-11', '', 'Pulpen', '2', '3500', '', ''],
+            ['INV-001', 'PT Alpha', '11/08/2026', '', 'Pulpen', '2', '3500', '', ''],
         ]);
 
         $res = $this->patchJson('/api/imports/'.$second['uuid'].'/mapping', [
@@ -235,7 +235,7 @@ class SalesInvoiceImportTest extends TestCase
 
         $batch = $this->createBatch($ctx, [
             ['Ref', 'Customer', 'Invoice Date', 'Due Date', 'Item', 'Quantity', 'Unit Price', 'Tax Code', 'Notes'],
-            ['INV-001', 'PT Alpha', '2026-08-11', '', 'Kertas A4', '1', '50000', '', ''],
+            ['INV-001', 'PT Alpha', '11/08/2026', '', 'Kertas A4', '1', '50000', '', ''],
         ]);
 
         $this->dispatchSync($batch['uuid'], $ctx['company']->id);
@@ -291,8 +291,12 @@ class SalesInvoiceImportTest extends TestCase
 
     private function dispatchSync(string $uuid, int $companyId): void
     {
+        // Meniru ImportBatchService::commit(): status di-flip ke 'committing'
+        // sebelum job dijalankan.
+        ImportBatch::query()->where('uuid', $uuid)->update(['status' => 'committing']);
+
         $job = new ImportBatchJob(['uuid' => $uuid, 'company_id' => $companyId]);
-        $job->handle(app(TenantConnectionManager::class), app(ImportCommitterFactory::class));
+        $job->handle(app(TenantConnectionManager::class), app(ImportCommitterFactory::class), app(TenantContext::class));
     }
 
     private function setUpTenant(string $role = 'owner'): array
@@ -329,7 +333,9 @@ class SalesInvoiceImportTest extends TestCase
     {
         $path = tempnam(sys_get_temp_dir(), 'import_csv_');
         $handle = fopen($path, 'w');
-        foreach ($rows as $row) { fputcsv($handle, $row); }
+        foreach ($rows as $row) {
+            fputcsv($handle, $row);
+        }
         fclose($handle);
 
         return new UploadedFile($path, $name, 'text/csv', null, true);

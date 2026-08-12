@@ -5,8 +5,11 @@ namespace App\Jobs;
 use App\Modules\Imports\Models\ImportBatch;
 use App\Modules\Imports\Models\ImportRow;
 use App\Modules\Imports\Services\Committers\ImportCommitterFactory;
+use App\Shared\Models\Company;
+use App\Shared\Models\CompanyUser;
 use App\Shared\Models\TenantDatabase;
 use App\Shared\Tenant\TenantConnectionManager;
+use App\Shared\Tenant\TenantContext;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
@@ -33,6 +36,7 @@ class ImportBatchJob implements ShouldQueue
     public function handle(
         TenantConnectionManager $connections,
         ImportCommitterFactory $committers,
+        TenantContext $tenantContext,
     ): void {
         $uuid = (string) ($this->payload['uuid'] ?? '');
         $companyId = (int) ($this->payload['company_id'] ?? 0);
@@ -63,23 +67,54 @@ class ImportBatchJob implements ShouldQueue
         }
 
         try {
-            $this->process($uuid, $committers);
+            $this->process($uuid, $companyId, $committers, $tenantContext, $tenantDatabase);
         } finally {
             $connections->disconnect();
         }
     }
 
-    private function process(string $uuid, ImportCommitterFactory $committers): void
-    {
+    private function process(
+        string $uuid,
+        int $companyId,
+        ImportCommitterFactory $committers,
+        TenantContext $tenantContext,
+        TenantDatabase $tenantDatabase,
+    ): void {
         $batch = ImportBatch::query()->where('uuid', $uuid)->first();
 
         if (! $batch instanceof ImportBatch) {
             throw new \RuntimeException("Batch impor dengan uuid {$uuid} tidak ditemukan.");
         }
 
-        if ($batch->status !== 'previewed') {
-            throw new \RuntimeException("Batch impor harus berstatus 'previewed', saat ini '{$batch->status}'.");
+        // ImportBatchService::commit() sudah mengubah status batch ke 'committing'
+        // secara sinkron SEBELUM men-dispatch job ini — jadi status yang diharapkan
+        // di sini adalah 'committing', bukan 'previewed'.
+        if ($batch->status !== 'committing') {
+            throw new \RuntimeException("Batch impor harus berstatus 'committing', saat ini '{$batch->status}'.");
         }
+
+        // Job berjalan di proses worker terpisah tanpa request HTTP, jadi
+        // TenantContext (dipopulasi middleware EnsureCompanyAccess pada request
+        // biasa) tidak pernah terisi di sini — service seperti JournalEntryService/
+        // SalesInvoiceService/VendorBillService bergantung padanya untuk resolve
+        // company aktif. Harus diisi manual dari company_id + pembuat batch.
+        $company = Company::query()->find($companyId);
+
+        if (! $company instanceof Company) {
+            throw new \RuntimeException("Company dengan id {$companyId} tidak ditemukan.");
+        }
+
+        $companyUser = CompanyUser::query()
+            ->where('company_id', $companyId)
+            ->where('user_id', $batch->created_by)
+            ->where('status', 'active')
+            ->first();
+
+        if (! $companyUser instanceof CompanyUser) {
+            throw new \RuntimeException("Pembuat batch impor tidak lagi punya akses aktif ke company {$companyId}.");
+        }
+
+        $tenantContext->set($company, $companyUser, $tenantDatabase);
 
         if (! $committers->has($batch->profile)) {
             $this->markBatchFailed($uuid, "Profil impor '{$batch->profile}' belum memiliki committer.");
@@ -87,13 +122,12 @@ class ImportBatchJob implements ShouldQueue
             return;
         }
 
-        $batch->update(['status' => 'committing']);
+        $committedCount = 0;
 
         try {
             $committer = $committers->make($batch->profile);
             $results = $committer->commit($batch);
 
-            $committedCount = 0;
             $processedCount = 0;
 
             foreach ($results as $rowId => $result) {
@@ -115,24 +149,66 @@ class ImportBatchJob implements ShouldQueue
             }
 
             // Pembaruan akhir — pastikan pencacah selalu tepat di akhir.
+            $errorMessage = null;
+            if ($committedCount === 0) {
+                $errorMessage = $this->summarizeCommitErrors($results);
+            }
+
             $batch->update([
                 'status' => $committedCount > 0 ? 'completed' : 'failed',
                 'committed_rows' => $committedCount,
+                'error_message' => $errorMessage,
             ]);
         } catch (Throwable $e) {
-            $this->markBatchFailed($uuid, $e->getMessage());
+            $this->markBatchFailed($uuid, $e->getMessage(), $committedCount);
 
             throw $e;
         }
     }
 
-    private function markBatchFailed(string $uuid, string $message): void
+    private function markBatchFailed(string $uuid, string $message, int $committedCount = 0): void
     {
         ImportBatch::query()->where('uuid', $uuid)->update([
             'status' => 'failed',
+            'committed_rows' => $committedCount,
+            'error_message' => $message,
         ]);
 
         logger()->error("ImportBatchJob gagal untuk batch {$uuid}: {$message}");
+    }
+
+    /**
+     * Rangkum pesan error dari hasil commit yang gagal.
+     *
+     * @param  array<int, array{status: string, error: ?string}>  $results
+     */
+    private function summarizeCommitErrors(array $results): string
+    {
+        $errors = [];
+
+        foreach ($results as $result) {
+            $msg = $result['error'] ?? null;
+            if ($msg === null) {
+                continue;
+            }
+
+            $key = md5($msg);
+            if (! isset($errors[$key])) {
+                $errors[$key] = ['message' => $msg, 'count' => 0];
+            }
+            $errors[$key]['count']++;
+        }
+
+        if ($errors === []) {
+            return 'Commit gagal — tidak ada baris yang berhasil di-commit.';
+        }
+
+        $lines = array_map(
+            fn (array $e): string => "{$e['message']} ({$e['count']} baris)",
+            array_values($errors),
+        );
+
+        return implode("\n", $lines);
     }
 
     /**

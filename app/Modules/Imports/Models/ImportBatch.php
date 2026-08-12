@@ -23,6 +23,7 @@ class ImportBatch extends Model
         'valid_rows',
         'failed_rows',
         'committed_rows',
+        'error_message',
         'created_by',
     ];
 

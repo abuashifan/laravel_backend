@@ -4,6 +4,8 @@ namespace Tests\Feature\Imports;
 
 use App\Modules\Imports\Models\ImportBatch;
 use App\Modules\Imports\Models\ImportRow;
+use App\Modules\MasterData\Models\Contact;
+use App\Modules\MasterData\Models\Product;
 use App\Shared\Models\Company;
 use App\Shared\Models\CompanyUser;
 use App\Shared\Models\TenantDatabase;
@@ -66,11 +68,11 @@ class ImportEngineTest extends TestCase
         $ctx = $this->setUpTenant();
 
         // Siapkan kontak dan produk agar lookup committer berhasil.
-        \App\Modules\MasterData\Models\Contact::query()->create([
+        Contact::query()->create([
             'contact_code' => 'PT-A', 'name' => 'PT A', 'contact_type' => 'customer',
             'is_customer' => true, 'is_active' => true,
         ]);
-        \App\Modules\MasterData\Models\Product::query()->create([
+        Product::query()->create([
             'product_code' => 'PRD-001', 'product_name' => 'Produk A', 'product_type' => 'goods',
             'is_active' => true,
         ]);
@@ -79,8 +81,8 @@ class ImportEngineTest extends TestCase
             'profile' => 'sales_invoice',
             'file' => $this->csvFile('sales.csv', [
                 ['Ref', 'Customer', 'Invoice Date', 'Item', 'Quantity', 'Unit Price'],
-                ['INV-20260811-001', 'PT A', '2026-08-11', 'Produk A', '2', '50000'],
-                ['', 'PT B', '2026-08-11', 'Produk A', '1', '75000'],
+                ['INV-20260811-001', 'PT A', '11/08/2026', 'Produk A', '2', '50000'],
+                ['', 'PT B', '11/08/2026', 'Produk A', '1', '75000'],
             ]),
         ], $ctx['headers'])->assertCreated()->json('data.batch');
 

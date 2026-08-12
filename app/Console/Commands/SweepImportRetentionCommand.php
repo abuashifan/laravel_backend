@@ -16,14 +16,14 @@ use Illuminate\Support\Facades\Storage;
  * fisiknya yang lebih tua dari masa simpan tier client itu; `import_rows`
  * ikut terhapus lewat cascade di skema tenant.
  *
- * CAKUPAN SAAT INI TERBATAS ke status `failed` — satu-satunya status
- * terminal yang sungguhan ada hari ini. Modul Imports masih "Fase 0":
- * `commit()` sendiri melempar "belum tersedia" (lihat
- * `ImportBatchService::commit()`), dan `cancel()` menghapus baris + berkas
- * SEKETIKA, bukan menandainya `cancelled` untuk disimpan sampai masa
- * berlaku habis. Begitu commit sungguhan ada dan punya status akhir
- * (`committed`), tambahkan ke daftar status di bawah — jangan tebak nama
- * status yang belum ditulis modul itu.
+ * Mencakup status terminal `failed` dan `completed`. `cancel()` menghapus
+ * baris + berkas SEKETIKA (bukan status terminal yang disimpan), jadi tidak
+ * perlu masuk daftar ini.
+ *
+ * Sekalian mereaper batch yang macet di `committing` melewati
+ * `imports.committing_timeout_minutes` (mis. queue worker mati di tengah
+ * commit) — supaya tidak hanya ketahuan lewat sisi upload berikutnya
+ * (`ImportBatchService::ensureNoActiveBatch()`).
  */
 class SweepImportRetentionCommand extends Command
 {
@@ -31,7 +31,7 @@ class SweepImportRetentionCommand extends Command
 
     protected $description = 'Hapus batch impor + berkasnya yang sudah melewati masa simpan tier client';
 
-    private const TERMINAL_STATUSES = ['failed'];
+    private const TERMINAL_STATUSES = ['failed', 'completed'];
 
     public function handle(TenantConnectionManager $connectionManager, StorageQuotaService $storageQuota): int
     {
@@ -50,6 +50,8 @@ class SweepImportRetentionCommand extends Command
 
         $rows = [];
         $totalDeleted = 0;
+        $totalReaped = 0;
+        $timeoutMinutes = (int) config('imports.committing_timeout_minutes', 30);
 
         foreach ($companies as $company) {
             /** @var TenantDatabase $tenantDatabase */
@@ -58,6 +60,21 @@ class SweepImportRetentionCommand extends Command
             $cutoff = now()->subDays($retentionDays);
 
             $connectionManager->connect($tenantDatabase);
+
+            $stuckCommitting = ImportBatch::query()
+                ->where('status', 'committing')
+                ->where('updated_at', '<', now()->subMinutes($timeoutMinutes))
+                ->get();
+
+            foreach ($stuckCommitting as $batch) {
+                if (! $dryRun) {
+                    $batch->update([
+                        'status' => 'failed',
+                        'error_message' => "Commit dibatalkan otomatis — melebihi batas waktu {$timeoutMinutes} menit. Pastikan queue worker berjalan atau coba ulangi commit.",
+                    ]);
+                }
+                $totalReaped++;
+            }
 
             $stale = ImportBatch::query()
                 ->whereIn('status', self::TERMINAL_STATUSES)
@@ -82,11 +99,11 @@ class SweepImportRetentionCommand extends Command
         $connectionManager->disconnect();
 
         if ($dryRun) {
-            $this->warn('--dry-run: tidak ada berkas atau baris yang benar-benar dihapus.');
+            $this->warn('--dry-run: tidak ada berkas, baris, atau status batch yang benar-benar diubah.');
         }
 
         $this->table(['Company ID', 'Perusahaan', 'Masa simpan (hari)', 'Batch dihapus'], $rows);
-        $this->info(sprintf('Selesai. %d batch impor dihapus.', $totalDeleted));
+        $this->info(sprintf('Selesai. %d batch impor dihapus, %d batch macet di committing ditandai gagal.', $totalDeleted, $totalReaped));
 
         return self::SUCCESS;
     }

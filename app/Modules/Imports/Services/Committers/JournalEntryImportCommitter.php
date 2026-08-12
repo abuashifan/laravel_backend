@@ -4,6 +4,7 @@ namespace App\Modules\Imports\Services\Committers;
 
 use App\Modules\Imports\Models\ImportBatch;
 use App\Modules\Imports\Models\ImportRow;
+use App\Modules\Journal\Models\JournalEntry;
 use App\Modules\Journal\Services\JournalEntryService;
 use App\Modules\MasterData\Models\ChartOfAccount;
 use App\Modules\MasterData\Models\Department;
@@ -23,6 +24,8 @@ use Throwable;
  */
 class JournalEntryImportCommitter implements ImportProfileCommitter
 {
+    use Concerns\NormalizesImportDates;
+
     public function __construct(private readonly JournalEntryService $journalService) {}
 
     /**
@@ -51,14 +54,9 @@ class JournalEntryImportCommitter implements ImportProfileCommitter
         if ($journalDate === '') {
             $errors['journal_date'][] = 'Journal Date wajib diisi.';
         } else {
-            try {
-                $parsedDate = CarbonImmutable::createFromFormat('Y-m-d', $journalDate);
-                if ($parsedDate === false) {
-                    $errors['journal_date'][] = 'Journal Date harus dalam format YYYY-MM-DD.';
-                    $parsedDate = null;
-                }
-            } catch (Throwable) {
-                $errors['journal_date'][] = 'Journal Date harus dalam format YYYY-MM-DD.';
+            $parsedDate = $this->parseImportDate($journalDate);
+            if ($parsedDate === null) {
+                $errors['journal_date'][] = 'Journal Date harus dalam format DD/MM/YYYY dan tanggal valid.';
             }
         }
 
@@ -175,7 +173,7 @@ class JournalEntryImportCommitter implements ImportProfileCommitter
         $first = $rows[0];
         $normalized = (array) ($first->normalized ?? []);
 
-        $journalDate = trim((string) ($normalized['journal_date'] ?? ''));
+        $journalDate = $this->normalizeDate(trim((string) ($normalized['journal_date'] ?? '')));
         $description = trim((string) ($normalized['description'] ?? ''));
 
         // Bangun lines dari setiap baris.
@@ -208,7 +206,7 @@ class JournalEntryImportCommitter implements ImportProfileCommitter
                 'account_id' => $this->accountId($accountCode),
                 'description' => trim((string) ($n['description'] ?? '')) !== ''
                     ? trim((string) ($n['description'] ?? ''))
-                    : "Baris impor ".($row->row_number),
+                    : 'Baris impor '.($row->row_number),
                 'debit' => $debit,
                 'credit' => $credit,
                 'department_id' => $departmentId,
@@ -246,7 +244,7 @@ class JournalEntryImportCommitter implements ImportProfileCommitter
                 $results[$row->id] = [
                     'status' => 'committed',
                     'document_id' => $journal->id,
-                    'document_type' => \App\Modules\Journal\Models\JournalEntry::class,
+                    'document_type' => JournalEntry::class,
                     'error' => null,
                 ];
             }

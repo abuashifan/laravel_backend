@@ -7,11 +7,13 @@ use App\Modules\Imports\Models\ImportBatch;
 use App\Modules\Imports\Models\ImportRow;
 use App\Modules\Imports\Services\Committers\ImportCommitterFactory;
 use App\Modules\MasterData\Models\Contact;
+use App\Modules\MasterData\Models\Product;
 use App\Shared\Models\Company;
 use App\Shared\Models\CompanyUser;
 use App\Shared\Models\TenantDatabase;
 use App\Shared\Models\User;
 use App\Shared\Tenant\TenantConnectionManager;
+use App\Shared\Tenant\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Artisan;
@@ -219,11 +221,11 @@ class ImportBatchJobTest extends TestCase
 
         // Profil async (vendor_bill) — punya committer sejak Fase 4,
         // jadi harus dispatch job ke antrean.
-        \App\Modules\MasterData\Models\Contact::query()->create([
+        Contact::query()->create([
             'contact_code' => 'PT-A', 'name' => 'PT A', 'contact_type' => 'supplier',
             'is_supplier' => true, 'is_active' => true,
         ]);
-        \App\Modules\MasterData\Models\Product::query()->create([
+        Product::query()->create([
             'product_code' => 'PRD', 'product_name' => 'Produk', 'product_type' => 'goods',
             'is_active' => true,
         ]);
@@ -232,7 +234,7 @@ class ImportBatchJobTest extends TestCase
             'profile' => 'vendor_bill',
             'file' => $this->csvFile('bill.csv', [
                 ['Ref', 'Vendor', 'Bill Date', 'Item', 'Quantity', 'Unit Cost'],
-                ['BILL-001', 'PT A', '2026-08-11', 'Produk', '2', '50000'],
+                ['BILL-001', 'PT A', '11/08/2026', 'Produk', '2', '50000'],
             ]),
         ], $ctx['headers'])->assertCreated()->json('data.batch');
 
@@ -258,6 +260,15 @@ class ImportBatchJobTest extends TestCase
      */
     private function dispatchSync(string $uuid, int $companyId): void
     {
+        // Meniru ImportBatchService::commit(): status batch di-flip ke
+        // 'committing' SEBELUM job dijalankan — ImportBatchJob mengharapkan
+        // status itu, bukan 'previewed'. Koneksi tenant harus disambungkan
+        // dulu ke perusahaan yang benar (bisa beda dari koneksi tenant yang
+        // sedang aktif, mis. test dua perusahaan berurutan).
+        $tenantDb = TenantDatabase::query()->where('company_id', $companyId)->firstOrFail();
+        app(TenantConnectionManager::class)->connect($tenantDb);
+        ImportBatch::query()->where('uuid', $uuid)->update(['status' => 'committing']);
+
         $job = new ImportBatchJob([
             'uuid' => $uuid,
             'company_id' => $companyId,
@@ -266,6 +277,7 @@ class ImportBatchJobTest extends TestCase
         $job->handle(
             app(TenantConnectionManager::class),
             app(ImportCommitterFactory::class),
+            app(TenantContext::class),
         );
     }
 

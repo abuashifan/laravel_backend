@@ -72,6 +72,11 @@ class ModuleBoundariesTest extends TestCase
         'Imports → App\\Modules\\MasterData\\Services\\ContactService',
         'Imports → App\\Modules\\MasterData\\Services\\ProductService',
         'Imports → App\\Modules\\MasterData\\Services\\ChartOfAccountService',
+        // Committer profil transaksi (Fase 4) memanggil service modul lain untuk
+        // benar-benar membuat dokumen — sama seperti coupling MasterData di atas.
+        'Imports → App\\Modules\\Journal\\Services\\JournalEntryService',
+        'Imports → App\\Modules\\Sales\\Services\\SalesInvoiceService',
+        'Imports → App\\Modules\\Purchase\\Services\\VendorBillService',
     ];
 
     /**
