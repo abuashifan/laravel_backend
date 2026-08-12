@@ -6,6 +6,9 @@ return [
         'UNAUTHENTICATED' => 'Unauthenticated.',
         'FORBIDDEN' => 'Forbidden.',
         'PERMISSION_DENIED' => 'You do not have permission to perform this action.',
+        'FEATURE_NOT_IN_PLAN' => 'Fitur ini tidak termasuk dalam paket langganan Anda. Hubungi penyedia aplikasi untuk meningkatkan paket.',
+        'SUBSCRIPTION_EXPIRED' => 'Langganan Anda sudah berakhir. Hubungi penyedia aplikasi untuk memperpanjang.',
+        'STORAGE_QUOTA_EXCEEDED' => 'Kuota penyimpanan perusahaan ini sudah penuh. Hapus data lama atau hubungi penyedia aplikasi.',
         'COMPANY_ACCESS_DENIED' => 'You do not have access to this company.',
         'COMPANY_NOT_FOUND' => 'Company tidak ditemukan.',
         'X_COMPANY_ID_REQUIRED' => 'X-Company-ID wajib dikirim.',
@@ -42,10 +45,14 @@ return [
         'EDIT_REASON_REQUIRED' => 'Edit reason is required.',
         'JOURNAL_REQUIRES_APPROVAL' => 'Journal must be approved before posting.',
 
+        'IMPORT_FILE_INVALID' => 'Import file is invalid.',
+        'IMPORT_ACTIVE_BATCH_EXISTS' => 'An import batch is already active.',
+
         'UNKNOWN_ERROR' => 'Unknown error.',
     ],
 
     'warnings' => [
+        'IMPORT_FILE_DUPLICATE' => 'Import file has already been uploaded.',
         'FUTURE_TRANSACTION_DATE_WARNING' => 'Transaction date is in the future.',
         'DIFFERENT_PERIOD_DATE_WARNING' => 'Transaction date is in a different period.',
         'BACKDATED_TRANSACTION_WARNING' => 'Transaction date is backdated.',

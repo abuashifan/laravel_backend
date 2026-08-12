@@ -56,18 +56,6 @@ class Company extends Model
         return $this->hasOne(TenantDatabase::class);
     }
 
-    public function subscriptions(): HasMany
-    {
-        return $this->hasMany(Subscription::class);
-    }
-
-    public function activeSubscription(): HasOne
-    {
-        return $this->hasOne(Subscription::class)
-            ->whereIn('status', ['trial', 'active'])
-            ->latestOfMany();
-    }
-
     public function invitations(): HasMany
     {
         return $this->hasMany(CompanyInvitation::class);

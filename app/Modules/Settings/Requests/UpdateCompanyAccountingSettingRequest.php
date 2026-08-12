@@ -2,6 +2,8 @@
 
 namespace App\Modules\Settings\Requests;
 
+use App\Shared\Subscription\PlanPermissionResolver;
+use App\Shared\Tenant\TenantContext;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
 
@@ -57,6 +59,38 @@ class UpdateCompanyAccountingSettingRequest extends FormRequest
             if ($approval === false && $mode === 'draft_approve_post') {
                 $validator->errors()->add('transaction_workflow_mode', 'approval_enabled false tidak boleh transaction_workflow_mode draft_approve_post.');
             }
+
+            // Pengaturan bertingkat, bukan izin — digerbangi di validasi request,
+            // bukan di peta izin (`config/plan_features.php`). Perusahaan yang
+            // SUDAH memakai draft_approve_post lalu turun tier tidak dipaksa
+            // berpindah; yang ditahan hanya memilihnya lagi dari sini.
+            if ($mode === 'draft_approve_post' && ! $this->planAllowsTransactionApproval()) {
+                $validator->errors()->add(
+                    'transaction_workflow_mode',
+                    'Alur persetujuan transaksi (draft_approve_post) memerlukan paket Pro ke atas.'
+                );
+            }
         });
+    }
+
+    private function planAllowsTransactionApproval(): bool
+    {
+        $resolver = app(PlanPermissionResolver::class);
+
+        // Saklar mati → perilaku identik dengan sebelum Fase 2 ada, sama
+        // seperti janji `blockedKeysFor()`. Tanpa baris ini, gate BARU ini
+        // (tidak lewat `blockedKeysFor()`) akan tetap menahan Basic bahkan
+        // saat `plan_features.enforce = false`.
+        if (! $resolver->enforcing()) {
+            return true;
+        }
+
+        $company = app(TenantContext::class)->company();
+
+        if (! $company) {
+            return false;
+        }
+
+        return in_array('transaction_approval', $resolver->featuresFor($company), true);
     }
 }

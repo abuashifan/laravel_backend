@@ -3,8 +3,6 @@
 namespace Database\Seeders;
 
 use App\Shared\Models\Company;
-use App\Shared\Models\Plan;
-use App\Shared\Models\Subscription;
 use App\Shared\Models\TenantDatabase;
 use App\Shared\Models\User;
 use Illuminate\Database\Seeder;
@@ -112,33 +110,11 @@ class DemoCentralSeeder extends Seeder
             ]
         );
 
-        $freePlan = Plan::where('code', 'free')->first();
-
-        if ($freePlan) {
-            Subscription::updateOrCreate(
-                ['company_id' => $company1->id],
-                [
-                    'plan_id' => $freePlan->id,
-                    'status' => 'trial',
-                    'billing_cycle' => 'free',
-                    'price' => 0,
-                    'starts_at' => $now,
-                    'trial_ends_at' => $now->copy()->addDays(14),
-                ]
-            );
-
-            Subscription::updateOrCreate(
-                ['company_id' => $company2->id],
-                [
-                    'plan_id' => $freePlan->id,
-                    'status' => 'trial',
-                    'billing_cycle' => 'free',
-                    'price' => 0,
-                    'starts_at' => $now,
-                    'trial_ends_at' => $now->copy()->addDays(14),
-                ]
-            );
-        }
+        // Tidak ada lagi langganan demo trial/free — Fase 3 membuang konsep
+        // trial, dan langganan sekarang menempel di client (`SubscriptionService`),
+        // bukan dibuat langsung di sini per perusahaan. Client tanpa baris
+        // `subscriptions` sama sekali dianggap "belum dibackfill", bukan
+        // terkunci — lihat SubscriptionService::stateFor().
     }
 
     private function ensureSqliteFileExists(string $path): void

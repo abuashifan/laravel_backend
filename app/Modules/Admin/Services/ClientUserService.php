@@ -2,8 +2,11 @@
 
 namespace App\Modules\Admin\Services;
 
+use App\Shared\Models\Subscription;
 use App\Shared\Models\User;
 use App\Shared\Subscription\CompanyQuotaService;
+use App\Shared\Subscription\StorageQuotaService;
+use App\Shared\Subscription\SubscriptionService;
 use App\Shared\Subscription\UserQuotaService;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
@@ -20,6 +23,8 @@ class ClientUserService
     public function __construct(
         private readonly CompanyQuotaService $quotaService,
         private readonly UserQuotaService $userQuotaService,
+        private readonly SubscriptionService $subscriptionService,
+        private readonly StorageQuotaService $storageQuotaService,
     ) {}
 
     /**
@@ -118,6 +123,120 @@ class ClientUserService
             'over_quota' => (int) $owned > $limit,
             'last_login_at' => $user->last_login_at?->toISOString(),
             'created_at' => $user->created_at?->toISOString(),
+            'subscription' => $this->subscriptionPayload($user),
         ];
+    }
+
+    /**
+     * Fase 3 — siklus langganan. `state` NULL berarti client belum pernah
+     * berlangganan sama sekali (belum di-backfill); tidak sama dengan
+     * `expired`. `history` diurutkan terbaru dulu untuk tab riwayat penagihan.
+     *
+     * @return array{state:string, ends_at:?string, days_remaining:?int, billing_cycle:?string, price:?string, plan_name:?string, history:list<array<string,mixed>>}
+     */
+    private function subscriptionPayload(User $user): array
+    {
+        $current = $this->subscriptionService->currentFor($user);
+
+        $history = Subscription::query()
+            ->with('plan:id,name,code')
+            ->where('user_id', $user->id)
+            ->orderByDesc('ends_at')
+            ->get()
+            ->map(fn (Subscription $s) => [
+                'id' => $s->id,
+                'plan_name' => $s->plan?->name,
+                'billing_cycle' => $s->billing_cycle,
+                'price' => $s->price,
+                'starts_at' => $s->starts_at?->toISOString(),
+                'ends_at' => $s->ends_at?->toISOString(),
+                'cancelled_at' => $s->cancelled_at?->toISOString(),
+            ])
+            ->values()
+            ->all();
+
+        return [
+            'state' => $this->subscriptionService->stateFor($user),
+            'ends_at' => $current?->ends_at?->toISOString(),
+            'days_remaining' => $this->subscriptionService->daysRemaining($user),
+            'billing_cycle' => $current?->billing_cycle,
+            'price' => $current?->price,
+            'plan_name' => $current?->plan?->name,
+            'history' => $history,
+        ];
+    }
+
+    /**
+     * Pemakaian penyimpanan tiap perusahaan milik client ini (Fase 4, skema
+     * tier §"Area admin"). Angkanya seakurat pengukuran harian TERAKHIR
+     * (`storage:measure`), bisa basi sampai satu hari — sama seperti yang
+     * dipakai `StorageQuotaService` untuk menggerbangi unggahan impor.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function companiesWithStorage(User $client): array
+    {
+        return $client->ownedCompanies()
+            ->with('tenantDatabase')
+            ->get()
+            ->map(function ($company) {
+                $summary = $this->storageQuotaService->summaryFor($company);
+
+                return [
+                    'id' => $company->id,
+                    'name' => $company->name,
+                    'status' => $company->status,
+                    ...$summary,
+                    // 90% bukan batas keras — cuma penanda "mendekati" untuk
+                    // area admin, supaya kelihatan sebelum client benar-benar
+                    // mentok dan mulai gagal mengunggah.
+                    'near_limit' => $summary['percent_used'] >= 90,
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Client yang akan jatuh tempo ≤14 hari (H-14) atau sedang dalam masa
+     * tenggang — daftar untuk dihubungi lewat WhatsApp (§4d).
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function dueSoon(): array
+    {
+        $clientIds = Subscription::query()->distinct()->pluck('user_id');
+
+        return User::query()
+            ->whereIn('id', $clientIds)
+            ->where('is_platform_admin', false)
+            ->get()
+            ->map(function (User $user) {
+                $state = $this->subscriptionService->stateFor($user);
+                $days = $this->subscriptionService->daysRemaining($user);
+
+                return [$user, $state, $days];
+            })
+            ->filter(function (array $row) {
+                [, $state, $days] = $row;
+
+                return $state === SubscriptionService::STATE_GRACE
+                    || ($state === SubscriptionService::STATE_ACTIVE && $days !== null && $days <= 14);
+            })
+            ->map(function (array $row) {
+                [$user, $state, $days] = $row;
+
+                return [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'phone' => $user->phone,
+                    'state' => $state,
+                    'days_remaining' => $days,
+                ];
+            })
+            ->sortBy('days_remaining')
+            ->values()
+            ->all();
     }
 }

@@ -70,6 +70,38 @@ class PermissionService
         return ! $this->can($permission);
     }
 
+    /**
+     * Alasan sebuah izin lolos atau ditolak. Dipakai `EnsurePermission` untuk
+     * memilih kode error: ditolak paket dan ditolak izin mengarahkan user ke
+     * dua orang yang berbeda.
+     *
+     * @return array{permission:string, allowed:bool, source:string}
+     */
+    public function explain(string $permission): array
+    {
+        $companyUser = $this->tenantContext->companyUser();
+
+        if (! $companyUser) {
+            return ['permission' => $permission, 'allowed' => false, 'source' => 'no_company'];
+        }
+
+        return $this->effectivePermissionService->explainPermission($companyUser, $permission);
+    }
+
+    /**
+     * Fitur yang dibuka paket perusahaan aktif.
+     *
+     * @return list<string>
+     */
+    public function planFeatures(): array
+    {
+        $companyUser = $this->tenantContext->companyUser();
+
+        return $companyUser
+            ? $this->effectivePermissionService->planFeaturesFor($companyUser)
+            : [];
+    }
+
     protected function resolveRolePermissions(?string $role): array
     {
         return $this->permissionsForRole($role);

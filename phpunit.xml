@@ -12,6 +12,11 @@
             <directory>tests/Feature</directory>
         </testsuite>
     </testsuites>
+    <!-- Fase 5, skema tier §5d: tripwire kebocoran berkas tenant test. Lihat
+         tests/Support/TenantFileLeakGuardExtension.php. -->
+    <extensions>
+        <bootstrap class="Tests\Support\TenantFileLeakGuardExtension"/>
+    </extensions>
     <source>
         <include>
             <directory>app</directory>
@@ -33,5 +38,12 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <!-- Fase 2 skema tier: default produksi jadi true, tapi UserFactory
+             tidak menyetel plan_id, jadi test lama jatuh ke Free (tanpa fitur
+             gated) dan gagal massal kalau saklar ini ikut menyala di sini.
+             tests/Feature/Subscription/* menyalakannya sendiri lewat
+             TestCase::enforcePlanFeatures() saat memang menguji lapis paket —
+             lihat phase-2-peta-tier-dan-peluncuran.md §8. -->
+        <env name="PLAN_FEATURES_ENFORCE" value="false"/>
     </php>
 </phpunit>

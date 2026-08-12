@@ -222,6 +222,8 @@ return [
         // Reports
         'reports.view',
         'reports.export',
+        'reports.save',
+        'reports.multi_period',
 
         // Fiscal year closing / locking
         'fiscal_year.view',
@@ -241,6 +243,14 @@ return [
         'opening_balance.post',
         'opening_balance.lock',
         'opening_balance.reopen',
+
+        // Imports
+        'imports.view',
+        'imports.upload',
+        'imports.map',
+        'imports.commit',
+        'imports.cancel',
+        'imports.templates.view',
 
         // Budget
         'budgets.view',
@@ -309,10 +319,18 @@ return [
             'cash_bank.transfer',
             'reports.view',
             'reports.export',
+            'reports.save',
+            'reports.multi_period',
             'audit.view',
             'fiscal_year.view',
             'fiscal_year.close',
             'fiscal_year.closing_wizard',
+            'imports.view',
+            'imports.upload',
+            'imports.map',
+            'imports.commit',
+            'imports.cancel',
+            'imports.templates.view',
             'budgets.view',
             'budgets.submit',
             'budgets.approve_head',
@@ -345,8 +363,15 @@ return [
             'journal.post',
             'reports.view',
             'reports.export',
+            'reports.save',
+            'reports.multi_period',
             'audit.view',
             'fiscal_year.view',
+            'imports.view',
+            'imports.upload',
+            'imports.map',
+            'imports.cancel',
+            'imports.templates.view',
         ],
         'sales' => [
             'dashboard.view',
@@ -395,6 +420,11 @@ return [
             'sales.returns.create',
             'sales.ar.view',
             'reports.view',
+            'imports.view',
+            'imports.upload',
+            'imports.map',
+            'imports.cancel',
+            'imports.templates.view',
         ],
         'purchasing' => [
             'dashboard.view',
@@ -436,6 +466,11 @@ return [
             'purchase.returns.create',
             'purchase.ap.view',
             'reports.view',
+            'imports.view',
+            'imports.upload',
+            'imports.map',
+            'imports.cancel',
+            'imports.templates.view',
         ],
         'warehouse' => [
             'dashboard.view',

@@ -39,6 +39,12 @@ class PermissionController extends Controller
             'role' => $role,
             'permission_mode' => $permissionMode,
             'permissions' => $this->permissionService->userPermissions(),
+            // Dua daftar, bukan satu. `permissions` sudah disaring paket dan
+            // dipakai guard; `plan_features` menjawab KENAPA sesuatu hilang —
+            // tanpa itu UI tidak bisa membedakan "minta ke admin perusahaan"
+            // dari "naikkan paket", dan kehilangan satu-satunya tempat wajar
+            // untuk menawarkan upgrade.
+            'plan_features' => $this->permissionService->planFeatures(),
         ], 'Permissions retrieved successfully');
     }
 }

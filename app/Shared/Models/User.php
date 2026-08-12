@@ -33,6 +33,8 @@ class User extends Authenticatable
         'company_quota',
         'user_quota',
         'extra_users',
+        'storage_quota_mb',
+        'import_retention_days',
         'company_name',
         'job_title',
         'address',

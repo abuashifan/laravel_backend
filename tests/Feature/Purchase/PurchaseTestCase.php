@@ -62,6 +62,7 @@ abstract class PurchaseTestCase extends TestCase
         $tenantPath = database_path('tenants/test_purchase_'.$company->id.'_'.uniqid().'.sqlite');
         File::ensureDirectoryExists(dirname($tenantPath));
         File::put($tenantPath, '');
+        $this->registerTenantFile($tenantPath);
 
         TenantDatabase::query()->create([
             'company_id' => $company->id,

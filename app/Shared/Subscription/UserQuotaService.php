@@ -4,7 +4,6 @@ namespace App\Shared\Subscription;
 
 use App\Shared\Models\Company;
 use App\Shared\Models\CompanyUser;
-use App\Shared\Models\Plan;
 use App\Shared\Models\User;
 
 /**
@@ -18,6 +17,10 @@ use App\Shared\Models\User;
 class UserQuotaService
 {
     private const FALLBACK_LIMIT = 1;
+
+    public function __construct(
+        private readonly PlanOwnerResolver $planOwnerResolver,
+    ) {}
 
     /**
      * Owner ikut dihitung. Paket Free dengan `max_users = 1` berarti pemilik
@@ -53,7 +56,7 @@ class UserQuotaService
      */
     private function baseLimitFor(User $owner): int
     {
-        $plan = $owner->plan ?? Plan::query()->where('code', CompanyQuotaService::DEFAULT_PLAN_CODE)->first();
+        $plan = $this->planOwnerResolver->planFor($owner);
 
         if ($plan?->isCustom()) {
             return $owner->user_quota !== null
@@ -101,17 +104,8 @@ class UserQuotaService
         ];
     }
 
-    /**
-     * Pemilik dibaca dari `companies.created_by`, bukan dari baris ber-role
-     * owner di `company_users`: baris owner bisa lebih dari satu kalau ada
-     * owner kedua yang di-assign, dan paket siapa yang berlaku jadi ambigu.
-     */
     private function ownerOf(Company $company): ?User
     {
-        if (! $company->created_by) {
-            return null;
-        }
-
-        return User::query()->with('plan')->find($company->created_by);
+        return $this->planOwnerResolver->ownerOf($company);
     }
 }

@@ -35,4 +35,11 @@ return [
         ],
     ],
 
+    // Nomor WhatsApp penyedia aplikasi. Dipakai `UpgradeLinkBuilder` untuk
+    // tautan "minta upgrade" di layar FEATURE_NOT_IN_PLAN dan editor role
+    // (skema tier, Fase 2). Format E.164 tanpa `+` (mis. `6281234567890`).
+    'support' => [
+        'whatsapp_number' => env('SUPPORT_WHATSAPP_NUMBER'),
+    ],
+
 ];

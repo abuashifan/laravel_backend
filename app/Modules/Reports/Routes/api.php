@@ -27,9 +27,9 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('reports')->group(
     Route::get('/account-ledger/{account}', [AccountLedgerDetailController::class, 'show'])->middleware('permission:reports.view');
     Route::get('/trial-balance', [TrialBalanceController::class, 'index'])->middleware('permission:reports.view');
     Route::get('/profit-loss', [ProfitLossController::class, 'index'])->middleware('permission:reports.view');
-    Route::get('/profit-loss/multi-period', [MultiPeriodReportController::class, 'profitLoss'])->middleware('permission:reports.view');
+    Route::get('/profit-loss/multi-period', [MultiPeriodReportController::class, 'profitLoss'])->middleware('permission:reports.multi_period');
     Route::get('/balance-sheet', [BalanceSheetController::class, 'index'])->middleware('permission:reports.view');
-    Route::get('/balance-sheet/multi-period', [MultiPeriodReportController::class, 'balanceSheet'])->middleware('permission:reports.view');
+    Route::get('/balance-sheet/multi-period', [MultiPeriodReportController::class, 'balanceSheet'])->middleware('permission:reports.multi_period');
     Route::get('/cash-flow', [CashFlowController::class, 'index'])->middleware('permission:reports.view');
     Route::get('/cash-flow-direct', [CashFlowDirectController::class, 'index'])->middleware('permission:reports.view');
     Route::get('/retained-earnings', [RetainedEarningsController::class, 'index'])->middleware('permission:reports.view');
@@ -58,7 +58,7 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('reports')->group(
         Route::get('/by-product', [PurchaseReportController::class, 'byProduct']);
     });
 
-    Route::prefix('saved')->middleware('permission:reports.view')->group(function () {
+    Route::prefix('saved')->middleware('permission:reports.save')->group(function () {
         Route::get('/', [SavedReportController::class, 'index']);
         Route::get('/shareable-users', [SavedReportController::class, 'shareableUsers']);
         Route::post('/', [SavedReportController::class, 'store']);

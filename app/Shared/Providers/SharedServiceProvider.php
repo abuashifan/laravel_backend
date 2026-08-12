@@ -94,6 +94,7 @@ use App\Shared\Models\TenantAuditLog;
 use App\Shared\Models\TenantDatabase;
 use App\Shared\Models\TransactionRevision;
 use App\Shared\Models\User;
+use App\Shared\Subscription\PlanPermissionResolver;
 use App\Shared\Tenant\TenantContext;
 use App\Shared\TransactionLifecycle\Contracts\TransactionDateGuard;
 use App\Shared\TransactionLifecycle\Contracts\TransactionDependencyChecker;
@@ -116,6 +117,12 @@ class SharedServiceProvider extends ServiceProvider
         // Phase 4D placeholders (replaced by real implementations in Phase 4E/4F)
         $this->app->bind(TransactionDependencyChecker::class, TransactionDependencyService::class);
         $this->app->bind(TransactionDateGuard::class, TransactionDateGuardService::class);
+
+        // Lapis paket (Fase 1 skema tier). Singleton supaya cache resolusi
+        // paketnya berumur satu request: `EnsurePermission` memanggil `can()`
+        // di setiap request, dan tanpa cache tiap pemeriksaan menambah dua
+        // query untuk menemukan paket yang sama berulang kali.
+        $this->app->singleton(PlanPermissionResolver::class);
     }
 
     /**

@@ -230,6 +230,7 @@ class JournalEntryTest extends JournalTestCase
         $tenantPath2 = database_path('tenants/test_company_'.$company2->id.'_'.uniqid().'.sqlite');
         File::ensureDirectoryExists(dirname($tenantPath2));
         File::put($tenantPath2, '');
+        $this->registerTenantFile($tenantPath2);
         TenantDatabase::query()->create([
             'company_id' => $company2->id,
             'database_name' => basename($tenantPath2),

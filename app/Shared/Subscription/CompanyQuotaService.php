@@ -16,13 +16,17 @@ use App\Shared\Models\User;
 class CompanyQuotaService
 {
     /**
-     * Paket yang dipakai kalau client belum diberi paket. Sengaja paket
-     * terbatas, bukan tanpa batas — kalau owner aplikasi lupa mengaturnya,
-     * efeknya menahan, bukan membuka.
+     * Paket bawaan tinggal di `PlanOwnerResolver`, satu-satunya tempat rantai
+     * "pemilik → paket" ditulis. Alias ini dipertahankan supaya pemanggil lama
+     * tidak perlu tahu perpindahannya.
      */
-    public const DEFAULT_PLAN_CODE = 'free';
+    public const DEFAULT_PLAN_CODE = PlanOwnerResolver::DEFAULT_PLAN_CODE;
 
     private const FALLBACK_LIMIT = 1;
+
+    public function __construct(
+        private readonly PlanOwnerResolver $planOwnerResolver,
+    ) {}
 
     /**
      * Hanya perusahaan yang di-owner-i yang dihitung. Client bisa saja
@@ -70,7 +74,7 @@ class CompanyQuotaService
 
     private function planFor(User $user): ?Plan
     {
-        return $user->plan ?? Plan::query()->where('code', self::DEFAULT_PLAN_CODE)->first();
+        return $this->planOwnerResolver->planFor($user);
     }
 
     public function canCreate(User $user): bool

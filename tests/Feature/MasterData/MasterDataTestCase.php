@@ -46,6 +46,7 @@ abstract class MasterDataTestCase extends TestCase
         if (! File::exists($tenantPath)) {
             File::put($tenantPath, '');
         }
+        $this->registerTenantFile($tenantPath);
 
         TenantDatabase::query()->create([
             'company_id' => $company->id,

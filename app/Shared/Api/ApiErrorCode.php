@@ -12,6 +12,27 @@ class ApiErrorCode
 
     public const PERMISSION_DENIED = 'PERMISSION_DENIED';
 
+    /**
+     * Ditolak paket, bukan izin. Jalan keluarnya berbeda dari PERMISSION_DENIED:
+     * yang ini hanya bisa dibuka penyedia aplikasi, bukan admin perusahaan.
+     */
+    public const FEATURE_NOT_IN_PLAN = 'FEATURE_NOT_IN_PLAN';
+
+    /**
+     * Langganan client sudah lewat tenggang 7 hari — kunci penuh, login ditolak
+     * (Fase 3, skema tier). Berbeda dari FEATURE_NOT_IN_PLAN: ini menahan
+     * SELURUH akses, bukan satu kemampuan, dan jalan keluarnya perpanjangan
+     * atau admin membuka kunci — bukan naik tier.
+     */
+    public const SUBSCRIPTION_EXPIRED = 'SUBSCRIPTION_EXPIRED';
+
+    /**
+     * Kuota penyimpanan perusahaan sudah penuh (Fase 4, skema tier). Menahan
+     * penambahan data baru — bukan mengunci akses baca, sejalan dengan aturan
+     * yang berlaku di seluruh rencana ini.
+     */
+    public const STORAGE_QUOTA_EXCEEDED = 'STORAGE_QUOTA_EXCEEDED';
+
     public const COMPANY_ACCESS_DENIED = 'COMPANY_ACCESS_DENIED';
 
     public const COMPANY_NOT_FOUND = 'COMPANY_NOT_FOUND';
@@ -75,6 +96,12 @@ class ApiErrorCode
     public const EDIT_REASON_REQUIRED = 'EDIT_REASON_REQUIRED';
 
     public const JOURNAL_REQUIRES_APPROVAL = 'JOURNAL_REQUIRES_APPROVAL';
+
+    public const IMPORT_FILE_INVALID = 'IMPORT_FILE_INVALID';
+
+    public const IMPORT_ACTIVE_BATCH_EXISTS = 'IMPORT_ACTIVE_BATCH_EXISTS';
+
+    public const IMPORT_FILE_DUPLICATE = 'IMPORT_FILE_DUPLICATE';
 
     public const UNKNOWN_ERROR = 'UNKNOWN_ERROR';
 

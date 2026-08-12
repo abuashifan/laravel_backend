@@ -1,13 +1,13 @@
 # Backend Directory Tree
 
-Generated: 2026-07-08 (regenerated setelah modularisasi DDD Fase 0–8)
+Generated: 2026-08-11 (regenerated setelah penambahan modul Imports)
 
 Purpose: entry-point directory map for backend agents. Read this before broad filesystem searches.
 
 Command (jika `tree` tersedia):
 
 ```bash
-tree -a -d -I '.git|vendor|node_modules|storage|bootstrap/cache|.phpunit.cache|coverage|dist|build|.idea|.vscode' -L 6 .
+tree -a -d -I '.git|.claude|vendor|node_modules|storage|cache|.phpunit.cache|coverage|dist|build|.idea|.vscode' -L 6 .
 ```
 
 Jika `tree` tidak tersedia, gunakan `find` + renderer (lihat "Cara regenerasi" di bawah).
@@ -36,6 +36,10 @@ Excluded intentionally: `.git`, `vendor`, `node_modules`, `storage`, `bootstrap/
 │   │   │   ├── Requests
 │   │   │   ├── Routes
 │   │   │   └── Services
+│   │   ├── Admin
+│   │   │   ├── Controllers
+│   │   │   ├── Routes
+│   │   │   └── Services
 │   │   ├── Auth
 │   │   │   ├── Controllers
 │   │   │   ├── Providers
@@ -44,7 +48,6 @@ Excluded intentionally: `.git`, `vendor`, `node_modules`, `storage`, `bootstrap/
 │   │   ├── Budget
 │   │   │   ├── Controllers
 │   │   │   ├── Models
-│   │   │   ├── Providers
 │   │   │   ├── Requests
 │   │   │   ├── Routes
 │   │   │   └── Services
@@ -70,11 +73,18 @@ Excluded intentionally: `.git`, `vendor`, `node_modules`, `storage`, `bootstrap/
 │   │   │   ├── Requests
 │   │   │   ├── Routes
 │   │   │   └── Services
+│   │   ├── Imports
+│   │   │   ├── Controllers
+│   │   │   ├── Models
+│   │   │   ├── Requests
+│   │   │   ├── Routes
+│   │   │   └── Services
 │   │   ├── Inventory
 │   │   │   ├── Controllers
 │   │   │   ├── Models
 │   │   │   ├── Providers
 │   │   │   ├── Requests
+│   │   │   │   └── Reports
 │   │   │   ├── Routes
 │   │   │   ├── Services
 │   │   │   │   └── Reports
@@ -93,6 +103,7 @@ Excluded intentionally: `.git`, `vendor`, `node_modules`, `storage`, `bootstrap/
 │   │   │   ├── Requests
 │   │   │   ├── Routes
 │   │   │   └── Services
+│   │   │       └── Concerns
 │   │   ├── OpeningBalance
 │   │   │   ├── Controllers
 │   │   │   ├── Models
@@ -111,16 +122,20 @@ Excluded intentionally: `.git`, `vendor`, `node_modules`, `storage`, `bootstrap/
 │   │   ├── Reports
 │   │   │   ├── Controllers
 │   │   │   │   ├── Purchase
-│   │   │   │   └── Sales
+│   │   │   │   ├── Sales
+│   │   │   │   └── Tax
+│   │   │   ├── Models
 │   │   │   ├── Providers
 │   │   │   ├── Requests
 │   │   │   │   ├── Concerns
 │   │   │   │   ├── Purchase
-│   │   │   │   └── Sales
+│   │   │   │   ├── Sales
+│   │   │   │   └── Tax
 │   │   │   ├── Routes
 │   │   │   └── Services
 │   │   │       ├── Purchase
-│   │   │       └── Sales
+│   │   │       ├── Sales
+│   │   │       └── Tax
 │   │   ├── Sales
 │   │   │   ├── Controllers
 │   │   │   ├── Models
@@ -149,6 +164,7 @@ Excluded intentionally: `.git`, `vendor`, `node_modules`, `storage`, `bootstrap/
 │       ├── AccountMapping
 │       ├── Api
 │       ├── Audit
+│       ├── Auth
 │       ├── DataRetention
 │       ├── DocumentNumbering
 │       ├── Enums
@@ -162,10 +178,12 @@ Excluded intentionally: `.git`, `vendor`, `node_modules`, `storage`, `bootstrap/
 │       ├── Reports
 │       │   └── Data
 │       ├── SourceDocument
+│       ├── Subscription
 │       ├── Tenant
 │       ├── TransactionLifecycle
 │       │   ├── Checkers
 │       │   └── Contracts
+│       ├── Users
 │       └── Validation
 ├── bootstrap
 ├── config
@@ -190,13 +208,16 @@ Excluded intentionally: `.git`, `vendor`, `node_modules`, `storage`, `bootstrap/
     ├── Feature
     │   ├── Access
     │   ├── Accounting
+    │   ├── Admin
     │   ├── Architecture
     │   ├── Budget
     │   ├── CashBank
+    │   ├── Companies
     │   ├── Dashboard
     │   ├── Demo
     │   ├── DocumentNumbering
     │   ├── FixedAssets
+    │   ├── Imports
     │   ├── Inventory
     │   ├── Journal
     │   ├── MasterData
@@ -207,6 +228,8 @@ Excluded intentionally: `.git`, `vendor`, `node_modules`, `storage`, `bootstrap/
     │   ├── Sales
     │   ├── Settings
     │   ├── Setup
+    │   ├── Shared
+    │   ├── Subscription
     │   └── Tenant
     └── Unit
         ├── Enums
@@ -216,7 +239,7 @@ Excluded intentionally: `.git`, `vendor`, `node_modules`, `storage`, `bootstrap/
         ├── Reports
         └── Sales
 
-191 directories
+220 directories
 ```
 
 ## WAJIB: jaga file ini tetap terbaru
@@ -232,8 +255,8 @@ Bila `tree` tersedia, jalankan command di atas. Bila tidak, pakai `find`:
 ```bash
 cd laravel_backend
 find . -type d \
-  -not -path './.git*' -not -path './vendor*' -not -path './node_modules*' \
-  -not -path './storage*' -not -path './bootstrap/cache*' -not -path './.phpunit.cache*' \
+  -not -path './.git*' -not -path './.claude*' -not -path './vendor*' -not -path './node_modules*' \
+  -not -path './storage*' -not -path '*/cache*' -not -path './.phpunit.cache*' \
   -not -path '*/coverage*' -not -path './dist*' -not -path './build*' \
   -not -path './.idea*' -not -path './.vscode*' \
   | sort | awk -F/ 'NF-1<=6'

@@ -20,12 +20,14 @@ class TenantDatabase extends Model
         'last_migrated_at',
         'last_backup_at',
         'size_bytes',
+        'measured_at',
         'metadata',
     ];
 
     protected $casts = [
         'last_migrated_at' => 'datetime',
         'last_backup_at' => 'datetime',
+        'measured_at' => 'datetime',
         'metadata' => 'array',
     ];
 

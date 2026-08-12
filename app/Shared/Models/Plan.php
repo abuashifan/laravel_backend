@@ -23,6 +23,8 @@ class Plan extends Model
         'max_users',
         'max_companies',
         'max_transactions_per_month',
+        'storage_quota_mb',
+        'import_retention_days',
         'can_use_sales',
         'can_use_purchases',
         'can_use_inventory',

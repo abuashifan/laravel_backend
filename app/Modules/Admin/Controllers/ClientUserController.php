@@ -7,10 +7,12 @@ use App\Modules\Admin\Services\ClientUserService;
 use App\Shared\Api\ApiResponse;
 use App\Shared\Models\Plan;
 use App\Shared\Models\User;
+use App\Shared\Subscription\SubscriptionService;
 use App\Shared\Users\UserRegistrationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use InvalidArgumentException;
 
 class ClientUserController extends Controller
 {
@@ -193,6 +195,87 @@ class ClientUserController extends Controller
         $user->tokens()->delete();
 
         return $this->successResponse(null, 'Password client berhasil direset');
+    }
+
+    /**
+     * Langganan pertama client. Menolak (422) kalau sudah ada yang
+     * aktif/tenggang — pakai `renew` untuk memperpanjang itu.
+     */
+    public function subscribe(Request $request, int $id, SubscriptionService $subscriptions): JsonResponse
+    {
+        $user = $this->client($id);
+
+        $data = $request->validate([
+            'plan_id' => ['required', 'integer', 'exists:plans,id'],
+            'billing_cycle' => ['required', Rule::in(['monthly', 'yearly'])],
+        ]);
+
+        try {
+            $subscriptions->subscribe($user, Plan::query()->findOrFail($data['plan_id']), $data['billing_cycle']);
+        } catch (InvalidArgumentException $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+
+        return $this->successResponse($this->service->payload($user->refresh()), 'Client subscribed successfully');
+    }
+
+    /**
+     * Baris baru yang mulai TEPAT di `ends_at` langganan sebelumnya — bukan
+     * hari ini. `plan_id`/`billing_cycle` kosong berarti melanjutkan yang
+     * sama dengan langganan sebelumnya.
+     */
+    public function renew(Request $request, int $id, SubscriptionService $subscriptions): JsonResponse
+    {
+        $user = $this->client($id);
+
+        $data = $request->validate([
+            'plan_id' => ['sometimes', 'nullable', 'integer', 'exists:plans,id'],
+            'billing_cycle' => ['sometimes', 'nullable', Rule::in(['monthly', 'yearly'])],
+        ]);
+
+        try {
+            $subscriptions->renew(
+                $user,
+                ! empty($data['plan_id']) ? Plan::query()->findOrFail($data['plan_id']) : null,
+                $data['billing_cycle'] ?? null,
+            );
+        } catch (InvalidArgumentException $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+
+        return $this->successResponse($this->service->payload($user->refresh()), 'Client subscription renewed successfully');
+    }
+
+    /**
+     * Jalur pemulihan — bukan perpanjangan penuh. Lihat
+     * `SubscriptionService::unlock()`.
+     */
+    public function unlock(int $id, SubscriptionService $subscriptions): JsonResponse
+    {
+        $user = $this->client($id);
+
+        try {
+            $subscriptions->unlock($user);
+        } catch (InvalidArgumentException $e) {
+            return $this->errorResponse($e->getMessage(), 422);
+        }
+
+        return $this->successResponse($this->service->payload($user->refresh()), 'Client unlocked successfully');
+    }
+
+    /** Client yang akan jatuh tempo ≤14 hari atau sedang tenggang — untuk dihubungi manual. */
+    public function dueSoon(): JsonResponse
+    {
+        return $this->successResponse($this->service->dueSoon(), 'Clients due soon retrieved successfully');
+    }
+
+    /** Pemakaian penyimpanan tiap perusahaan milik client ini (Fase 4, skema tier). */
+    public function storage(int $id): JsonResponse
+    {
+        return $this->successResponse(
+            $this->service->companiesWithStorage($this->client($id)),
+            'Client storage usage retrieved successfully'
+        );
     }
 
     public function plans(): JsonResponse
