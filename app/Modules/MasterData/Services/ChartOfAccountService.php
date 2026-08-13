@@ -93,7 +93,35 @@ class ChartOfAccountService
         }
 
         if (array_key_exists('is_cash_bank', $filters)) {
-            $query->where('is_cash_bank', $this->toBool($filters['is_cash_bank']));
+            if ($this->toBool($filters['is_cash_bank'])) {
+                // Bukan kolom literal -- lihat ChartOfAccount::effectiveCashBankIds():
+                // akun anak yang tidak ditandai satu-satu ikut cash/bank kalau
+                // salah satu induknya ditandai.
+                $query->whereIn('chart_of_accounts.id', ChartOfAccount::effectiveCashBankIds());
+            } else {
+                $query->where('is_cash_bank', false);
+            }
+        }
+
+        // Dipakai pemilih akun transaksi (AccountPickerDialog, form kas/bank,
+        // baris jurnal) untuk menyembunyikan akun induk -- akun induk hanya
+        // untuk rekap saldo di laporan, tidak boleh diposting transaksi.
+        //
+        // Sengaja BUKAN whereDoesntHave('children'): itu correlated subquery
+        // yang butuh Eloquent mengenali self-join lewat pembanding `from`
+        // outer vs inner. `hierarchicalQuery()` memakai `fromRaw()` (raw
+        // Expression), jadi perbandingan itu selalu tidak cocok dengan `from`
+        // biasa milik relasi -- Eloquent gagal memberi alias `laravel_reserved_N`
+        // dan subquery-nya jadi merujuk dirinya sendiri (SQLite tidak
+        // mengoreksinya jadi outer reference), sehingga NOT EXISTS selalu
+        // true dan filternya diam-diam tidak berefek. `whereNotIn` dengan
+        // subquery TIDAK berkorelasi menghindari masalah itu sama sekali.
+        if ($this->toBool($filters['postable_only'] ?? false)) {
+            $query->whereNotIn('chart_of_accounts.id', function ($sub) {
+                $sub->select('parent_account_id')
+                    ->from('chart_of_accounts')
+                    ->whereNotNull('parent_account_id');
+            });
         }
 
         if ($hierarkis) {

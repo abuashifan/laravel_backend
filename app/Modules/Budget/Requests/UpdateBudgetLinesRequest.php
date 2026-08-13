@@ -2,6 +2,7 @@
 
 namespace App\Modules\Budget\Requests;
 
+use App\Shared\Rules\PostableAccount;
 use Illuminate\Foundation\Http\FormRequest;
 
 class UpdateBudgetLinesRequest extends FormRequest
@@ -15,7 +16,7 @@ class UpdateBudgetLinesRequest extends FormRequest
     {
         return [
             'lines' => ['required', 'array'],
-            'lines.*.account_id' => ['required', 'integer'],
+            'lines.*.account_id' => ['required', 'integer', 'exists:tenant.chart_of_accounts,id', new PostableAccount],
             'lines.*.project_id' => ['nullable', 'integer'],
             'lines.*.period' => ['nullable', 'string', 'regex:/^\d{4}-\d{2}$/'],
             'lines.*.amount' => ['required', 'numeric', 'min:0'],

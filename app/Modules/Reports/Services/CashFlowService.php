@@ -97,9 +97,10 @@ class CashFlowService
      */
     public function getCashAccounts(): array
     {
+        // Lihat catatan senada di CashFlowDirectService::getCashAccounts().
         $accounts = ChartOfAccount::query()
             ->select(['id', 'account_code', 'account_name', 'normal_balance', 'is_active'])
-            ->where('is_cash_bank', '=', 1)
+            ->whereIn('id', ChartOfAccount::effectiveCashBankIds())
             ->orderBy('account_code', 'asc')
             ->orderBy('id', 'asc')
             ->get();

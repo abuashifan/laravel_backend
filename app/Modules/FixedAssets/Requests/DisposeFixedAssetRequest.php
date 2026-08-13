@@ -2,6 +2,7 @@
 
 namespace App\Modules\FixedAssets\Requests;
 
+use App\Shared\Rules\PostableAccount;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
 
@@ -19,8 +20,8 @@ class DisposeFixedAssetRequest extends FormRequest
             'disposal_type' => ['required', 'in:sale,write_off,scrap,lost'],
             'disposed_quantity' => ['required', 'numeric', 'gt:0'],
             'proceeds_amount' => ['nullable', 'numeric', 'min:0'],
-            'cash_bank_account_id' => ['nullable', 'integer', 'exists:tenant.chart_of_accounts,id'],
-            'receivable_account_id' => ['nullable', 'integer', 'exists:tenant.chart_of_accounts,id'],
+            'cash_bank_account_id' => ['nullable', 'integer', 'exists:tenant.chart_of_accounts,id', new PostableAccount],
+            'receivable_account_id' => ['nullable', 'integer', 'exists:tenant.chart_of_accounts,id', new PostableAccount],
             'metadata' => ['nullable', 'array'],
         ];
     }

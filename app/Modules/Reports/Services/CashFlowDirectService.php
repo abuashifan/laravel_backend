@@ -282,9 +282,15 @@ class CashFlowDirectService
      */
     private function getCashAccounts(): array
     {
+        // `effectiveCashBankIds()`, bukan kolom `is_cash_bank` literal -- akun
+        // anak yang mewarisi sifat cash/bank dari induknya (lihat
+        // ChartOfAccount::effectiveCashBankIds()) ikut disertakan supaya
+        // mutasi historis yang diposting ke akun itu tidak hilang dari
+        // laporan. Tidak dibatasi postable karena data lama bisa saja pernah
+        // diposting ke akun induk sebelum aturan akun-induk-tidak-postable ada.
         return ChartOfAccount::query()
             ->select(['id', 'account_code', 'account_name', 'normal_balance', 'is_active'])
-            ->where('is_cash_bank', '=', 1)
+            ->whereIn('id', ChartOfAccount::effectiveCashBankIds())
             ->orderBy('account_code')
             ->get()
             ->map(fn ($a) => [

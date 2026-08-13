@@ -2,6 +2,7 @@
 
 namespace App\Modules\Purchase\Requests;
 
+use App\Shared\Rules\PostableAccount;
 use Closure;
 use Illuminate\Foundation\Http\FormRequest;
 
@@ -37,7 +38,7 @@ class StorePurchaseOrderRequest extends FormRequest
             'has_down_payment' => ['nullable', 'boolean'],
             'vendor_deposit' => ['nullable', 'array'],
             'vendor_deposit.deposit_date' => ['required_with:vendor_deposit', 'date'],
-            'vendor_deposit.cash_bank_account_id' => ['required_with:vendor_deposit', 'integer'],
+            'vendor_deposit.cash_bank_account_id' => ['required_with:vendor_deposit', 'integer', 'exists:tenant.chart_of_accounts,id', new PostableAccount],
             'vendor_deposit.amount' => ['required_with:vendor_deposit', 'numeric', 'gt:0'],
             'vendor_deposit.notes' => ['nullable', 'string'],
             'header_discount_type' => ['nullable', 'in:percent,fixed_amount'],
@@ -63,7 +64,7 @@ class StorePurchaseOrderRequest extends FormRequest
             'lines.*.warehouse_id' => ['nullable', 'integer'],
             'lines.*.department_id' => ['nullable', 'integer'],
             'lines.*.project_id' => ['nullable', 'integer'],
-            'lines.*.expense_account_id' => ['nullable', 'integer'],
+            'lines.*.expense_account_id' => ['nullable', 'integer', 'exists:tenant.chart_of_accounts,id', new PostableAccount],
             'lines.*.source_line_type' => ['nullable', 'string'],
             'lines.*.source_line_id' => ['nullable', 'integer'],
         ];

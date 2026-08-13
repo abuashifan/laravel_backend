@@ -2,6 +2,7 @@
 
 namespace App\Modules\FixedAssets\Requests;
 
+use App\Shared\Rules\PostableAccount;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -39,6 +40,7 @@ class StoreFixedAssetCategoryRequest extends FormRequest
             Rule::exists('tenant.chart_of_accounts', 'id')
                 ->where('account_type', $accountType)
                 ->where('is_active', true),
+            new PostableAccount,
         ];
     }
 }

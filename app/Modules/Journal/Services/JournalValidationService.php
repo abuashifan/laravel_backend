@@ -190,6 +190,7 @@ class JournalValidationService
 
         $accounts = ChartOfAccount::query()
             ->whereIn('id', $ids)
+            ->withCount('children')
             ->get(['id', 'is_active'])
             ->keyBy('id');
 
@@ -202,6 +203,11 @@ class JournalValidationService
             }
             if ($requireActive && ! (bool) $acc->is_active) {
                 $errors['accounts'][] = "Account inactive: $id";
+            }
+            // Akun induk (punya anak) hanya untuk rekap saldo -- tidak boleh
+            // diposting jurnal. Pola sama dengan JournalEntryImportCommitter.
+            if ((int) $acc->children_count > 0) {
+                $errors['accounts'][] = "Account '{$id}' is a parent account and cannot be posted to. Choose a leaf account.";
             }
         }
 

@@ -2,6 +2,7 @@
 
 namespace App\Modules\CashBank\Requests;
 
+use App\Shared\Rules\PostableAccount;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StoreBankTransferRequest extends FormRequest
@@ -15,8 +16,8 @@ class StoreBankTransferRequest extends FormRequest
     {
         return [
             'transfer_date' => ['required', 'date'],
-            'from_cash_bank_account_id' => ['required', 'exists:tenant.chart_of_accounts,id'],
-            'to_cash_bank_account_id' => ['required', 'exists:tenant.chart_of_accounts,id', 'different:from_cash_bank_account_id'],
+            'from_cash_bank_account_id' => ['required', 'exists:tenant.chart_of_accounts,id', new PostableAccount],
+            'to_cash_bank_account_id' => ['required', 'exists:tenant.chart_of_accounts,id', 'different:from_cash_bank_account_id', new PostableAccount],
             'currency_code' => ['nullable', 'string', 'size:3'],
             'exchange_rate' => ['nullable', 'numeric', 'gt:0'],
             'amount' => ['required', 'numeric', 'gt:0'],

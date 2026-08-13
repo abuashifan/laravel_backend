@@ -8,12 +8,17 @@ use Illuminate\Database\Eloquent\Collection;
 class CashBankAccountService
 {
     /**
+     * Akun yang boleh dipakai sebagai akun kas/bank di transaksi: efektif
+     * cash/bank (lihat `ChartOfAccount::effectiveCashBankIds()`) DAN postable
+     * (bukan akun induk). Akun induk cuma untuk rekap saldo di laporan.
+     *
      * @return Collection<int,ChartOfAccount>
      */
     public function getCashBankAccounts(bool $includeInactive = false): Collection
     {
         $q = ChartOfAccount::query()
-            ->where('is_cash_bank', true);
+            ->whereIn('id', ChartOfAccount::effectiveCashBankIds())
+            ->whereDoesntHave('children');
 
         if (! $includeInactive) {
             $q->where('is_active', true);
@@ -26,7 +31,8 @@ class CashBankAccountService
     {
         return ChartOfAccount::query()
             ->whereKey($accountId)
-            ->where('is_cash_bank', true)
+            ->whereIn('id', ChartOfAccount::effectiveCashBankIds())
+            ->whereDoesntHave('children')
             ->exists();
     }
 }

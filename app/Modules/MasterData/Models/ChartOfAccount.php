@@ -143,4 +143,66 @@ class ChartOfAccount extends Model
     {
         return (bool) $this->is_active;
     }
+
+    /**
+     * Akun induk (punya anak) tidak postable -- hanya akun daun (leaf) yang
+     * boleh dipakai untuk transaksi. Induk cuma untuk merangkum saldo di
+     * laporan.
+     */
+    public function isPostable(): bool
+    {
+        return $this->children()->doesntExist();
+    }
+
+    /**
+     * Id akun yang "efektif" cash/bank: ditandai `is_cash_bank` sendiri, atau
+     * keturunan dari akun yang ditandai begitu. Sifat cash/bank mengalir
+     * turun hierarki -- akun induk "Kas"/"Bank" biasa yang ditandai, sementara
+     * akun anak per-lokasi/per-rekening di bawahnya tidak ditandai satu-satu,
+     * jadi tanpa pewarisan ini mereka lenyap dari pilihan akun kas/bank.
+     * Dibatasi ke `account_type=asset` karena itu satu-satunya tipe yang
+     * boleh ditandai `is_cash_bank` (lihat
+     * `ChartOfAccountService::validateCashBank()`).
+     *
+     * @return array<int,int>
+     */
+    public static function effectiveCashBankIds(): array
+    {
+        $accounts = self::query()
+            ->where('account_type', 'asset')
+            ->get(['id', 'parent_account_id', 'is_cash_bank'])
+            ->keyBy('id');
+
+        $resolved = [];
+
+        $isEffectiveCashBank = function (int $id, int $depth = 0) use (&$isEffectiveCashBank, &$resolved, $accounts): bool {
+            if (array_key_exists($id, $resolved)) {
+                return $resolved[$id];
+            }
+
+            // Jaga-jaga terhadap siklus induk yang lolos dari validasi normal
+            // (mis. lewat seeder/factory yang menulis langsung ke tabel).
+            if ($depth > 20) {
+                return $resolved[$id] = false;
+            }
+
+            $account = $accounts->get($id);
+            if (! $account) {
+                return $resolved[$id] = false;
+            }
+
+            if ($account->is_cash_bank) {
+                return $resolved[$id] = true;
+            }
+
+            $parentId = $account->parent_account_id;
+
+            return $resolved[$id] = $parentId ? $isEffectiveCashBank((int) $parentId, $depth + 1) : false;
+        };
+
+        return $accounts->keys()
+            ->filter(fn (int $id) => $isEffectiveCashBank($id))
+            ->values()
+            ->all();
+    }
 }

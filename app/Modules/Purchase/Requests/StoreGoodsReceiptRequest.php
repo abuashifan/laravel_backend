@@ -2,6 +2,7 @@
 
 namespace App\Modules\Purchase\Requests;
 
+use App\Shared\Rules\PostableAccount;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StoreGoodsReceiptRequest extends FormRequest
@@ -36,7 +37,7 @@ class StoreGoodsReceiptRequest extends FormRequest
             'lines.*.warehouse_id' => ['nullable', 'integer'],
             'lines.*.department_id' => ['nullable', 'integer'],
             'lines.*.project_id' => ['nullable', 'integer'],
-            'lines.*.expense_account_id' => ['nullable', 'integer'],
+            'lines.*.expense_account_id' => ['nullable', 'integer', 'exists:tenant.chart_of_accounts,id', new PostableAccount],
             'lines.*.source_line_type' => ['nullable', 'string'],
             'lines.*.source_line_id' => ['nullable', 'integer'],
             'lines.*.metadata' => ['nullable', 'array'],

@@ -38,10 +38,11 @@ class StoreSalesInvoiceRequest extends FormRequest
                     ->whereKey((int) $value)
                     ->where('account_type', 'asset')
                     ->where('is_active', true)
+                    ->whereDoesntHave('children')
                     ->exists();
 
                 if (! $exists) {
-                    $fail('The selected receivable account must be an active asset account.');
+                    $fail('The selected receivable account must be an active, postable (non-parent) asset account.');
                 }
             }],
             'salesperson_id' => ['nullable', 'integer'],

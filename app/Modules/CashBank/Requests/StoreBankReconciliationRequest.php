@@ -2,6 +2,7 @@
 
 namespace App\Modules\CashBank\Requests;
 
+use App\Shared\Rules\PostableAccount;
 use Closure;
 use Illuminate\Foundation\Http\FormRequest;
 
@@ -15,7 +16,7 @@ class StoreBankReconciliationRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'cash_bank_account_id' => ['required', 'exists:tenant.chart_of_accounts,id'],
+            'cash_bank_account_id' => ['required', 'exists:tenant.chart_of_accounts,id', new PostableAccount],
             'statement_start_date' => ['required', 'date_format:Y-m-d'],
             'statement_end_date' => ['required', 'date_format:Y-m-d', function (string $attribute, mixed $value, Closure $fail): void {
                 $startDate = $this->input('statement_start_date');

@@ -38,10 +38,11 @@ class StoreVendorBillRequest extends FormRequest
                     ->whereKey((int) $value)
                     ->where('account_type', 'liability')
                     ->where('is_active', true)
+                    ->whereDoesntHave('children')
                     ->exists();
 
                 if (! $exists) {
-                    $fail('The selected payable account must be an active liability account.');
+                    $fail('The selected payable account must be an active, postable (non-parent) liability account.');
                 }
             }],
             'buyer_id' => ['nullable', 'integer'],

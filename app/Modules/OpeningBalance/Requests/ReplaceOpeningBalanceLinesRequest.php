@@ -2,6 +2,7 @@
 
 namespace App\Modules\OpeningBalance\Requests;
 
+use App\Shared\Rules\PostableAccount;
 use Illuminate\Foundation\Http\FormRequest;
 
 class ReplaceOpeningBalanceLinesRequest extends FormRequest
@@ -15,7 +16,7 @@ class ReplaceOpeningBalanceLinesRequest extends FormRequest
     {
         return [
             'lines' => ['required', 'array'],
-            'lines.*.account_id' => ['required', 'integer', 'exists:tenant.chart_of_accounts,id'],
+            'lines.*.account_id' => ['required', 'integer', 'exists:tenant.chart_of_accounts,id', new PostableAccount],
             'lines.*.debit' => ['nullable', 'numeric', 'min:0'],
             'lines.*.credit' => ['nullable', 'numeric', 'min:0'],
             'lines.*.description' => ['nullable', 'string', 'max:1000'],

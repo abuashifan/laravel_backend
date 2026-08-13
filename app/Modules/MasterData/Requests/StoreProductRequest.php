@@ -2,6 +2,7 @@
 
 namespace App\Modules\MasterData\Requests;
 
+use App\Shared\Rules\PostableAccount;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -23,13 +24,13 @@ class StoreProductRequest extends FormRequest
             'is_stock_item' => ['nullable', 'boolean'],
             'is_active' => ['nullable', 'boolean'],
             'description' => ['nullable', 'string'],
-            'sales_account_id' => ['nullable', 'integer', Rule::exists('tenant.chart_of_accounts', 'id')->where('account_type', 'revenue')->where('is_active', true)],
-            'sales_discount_account_id' => ['nullable', 'integer', Rule::exists('tenant.chart_of_accounts', 'id')->where('account_type', 'revenue')->where('is_active', true)],
-            'sales_return_account_id' => ['nullable', 'integer', Rule::exists('tenant.chart_of_accounts', 'id')->whereIn('account_type', ['revenue', 'expense'])->where('is_active', true)],
-            'purchase_return_account_id' => ['nullable', 'integer', Rule::exists('tenant.chart_of_accounts', 'id')->whereIn('account_type', ['revenue', 'expense'])->where('is_active', true)],
-            'inventory_account_id' => ['nullable', 'integer', Rule::exists('tenant.chart_of_accounts', 'id')->where('account_type', 'asset')->where('is_active', true)],
-            'inventory_interim_account_id' => ['nullable', 'integer', Rule::exists('tenant.chart_of_accounts', 'id')->where('account_type', 'liability')->where('is_active', true)],
-            'cogs_account_id' => ['nullable', 'integer', Rule::exists('tenant.chart_of_accounts', 'id')->where('account_type', 'expense')->where('is_active', true)],
+            'sales_account_id' => ['nullable', 'integer', Rule::exists('tenant.chart_of_accounts', 'id')->where('account_type', 'revenue')->where('is_active', true), new PostableAccount],
+            'sales_discount_account_id' => ['nullable', 'integer', Rule::exists('tenant.chart_of_accounts', 'id')->where('account_type', 'revenue')->where('is_active', true), new PostableAccount],
+            'sales_return_account_id' => ['nullable', 'integer', Rule::exists('tenant.chart_of_accounts', 'id')->whereIn('account_type', ['revenue', 'expense'])->where('is_active', true), new PostableAccount],
+            'purchase_return_account_id' => ['nullable', 'integer', Rule::exists('tenant.chart_of_accounts', 'id')->whereIn('account_type', ['revenue', 'expense'])->where('is_active', true), new PostableAccount],
+            'inventory_account_id' => ['nullable', 'integer', Rule::exists('tenant.chart_of_accounts', 'id')->where('account_type', 'asset')->where('is_active', true), new PostableAccount],
+            'inventory_interim_account_id' => ['nullable', 'integer', Rule::exists('tenant.chart_of_accounts', 'id')->where('account_type', 'liability')->where('is_active', true), new PostableAccount],
+            'cogs_account_id' => ['nullable', 'integer', Rule::exists('tenant.chart_of_accounts', 'id')->where('account_type', 'expense')->where('is_active', true), new PostableAccount],
         ];
     }
 

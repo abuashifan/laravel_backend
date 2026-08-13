@@ -115,6 +115,10 @@ class ModuleBoundariesTest extends TestCase
         'Validation/BusinessReferenceValidator.php → App\\Modules\\MasterData\\Models\\Unit',
         'Validation/BusinessReferenceValidator.php → App\\Modules\\MasterData\\Models\\Warehouse',
         'Reports/HasReportVisibility.php → App\\Modules\\Reports\\Services\\ReportVisibilityService',
+        // Rule validasi "akun induk tidak boleh dipakai transaksi" -- perlu cek
+        // relasi children() langsung pada model, sama seperti BusinessReferenceValidator
+        // di atas.
+        'Rules/PostableAccount.php → App\\Modules\\MasterData\\Models\\ChartOfAccount',
     ];
 
     public function test_no_legacy_namespaces_remain_in_app(): void

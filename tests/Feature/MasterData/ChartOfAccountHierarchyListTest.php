@@ -283,4 +283,60 @@ class ChartOfAccountHierarchyListTest extends MasterDataTestCase
             ->assertStatus(422)
             ->assertJsonPath('code', 'MAX_ACCOUNT_DEPTH_EXCEEDED');
     }
+
+    /**
+     * `postable_only=1` dipakai semua pemilih akun transaksi untuk
+     * menyembunyikan akun induk -- akun induk hanya boleh dipakai untuk
+     * rekap saldo di laporan, bukan transaksi.
+     */
+    public function test_postable_only_menyembunyikan_akun_induk(): void
+    {
+        ['headers' => $headers] = $this->seedTree();
+
+        $res = $this->getJson(self::URI.'?page=1&per_page=25&postable_only=1', $headers);
+        $res->assertStatus(200);
+
+        // '110', '1100', '1104' punya anak -> disembunyikan. Sisanya leaf.
+        $this->assertSame(
+            ['110.9', '1100.1.1', '1104.01', '2100'],
+            $this->kodeDari($res),
+        );
+    }
+
+    /**
+     * Sifat cash/bank mengalir turun hierarki: akun induk "Kas" ditandai
+     * `is_cash_bank`, akun anak per-lokasi di bawahnya tidak ditandai
+     * satu-satu tapi tetap harus terhitung cash/bank. Dikombinasikan dengan
+     * `postable_only=1` (dipakai form Cash Receipt dst), hasilnya cuma akun
+     * anak -- induknya sendiri sudah tidak postable.
+     */
+    public function test_is_cash_bank_mewarisi_ke_akun_anak(): void
+    {
+        $ctx = $this->setUpTenant();
+        $headers = $ctx['headers'];
+
+        $kasIndukId = (int) ChartOfAccount::query()->create([
+            'account_code' => '1100', 'account_name' => 'Kas', 'account_type' => 'asset',
+            'normal_balance' => 'debit', 'is_active' => true, 'is_cash_bank' => true,
+        ])->id;
+        ChartOfAccount::query()->create([
+            'account_code' => '1100.01', 'account_name' => 'Kas Kecil - Wardi', 'account_type' => 'asset',
+            'normal_balance' => 'debit', 'is_active' => true, 'is_cash_bank' => false, 'parent_account_id' => $kasIndukId,
+        ]);
+        ChartOfAccount::query()->create([
+            'account_code' => '2000', 'account_name' => 'Bukan Kas', 'account_type' => 'asset',
+            'normal_balance' => 'debit', 'is_active' => true, 'is_cash_bank' => false,
+        ]);
+
+        // Tanpa postable_only: induk dan anak sama-sama terhitung cash/bank.
+        $semua = $this->getJson(self::URI.'?page=1&per_page=25&is_cash_bank=1', $headers);
+        $semua->assertStatus(200);
+        $this->assertSame(['1100', '1100.01'], $this->kodeDari($semua));
+
+        // Dikombinasi postable_only (dipakai pemilih akun transaksi): induk
+        // hilang karena bukan leaf, tersisa akun anak yang sungguhan dipakai.
+        $postable = $this->getJson(self::URI.'?page=1&per_page=25&is_cash_bank=1&postable_only=1', $headers);
+        $postable->assertStatus(200);
+        $this->assertSame(['1100.01'], $this->kodeDari($postable));
+    }
 }

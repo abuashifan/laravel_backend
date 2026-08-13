@@ -2,6 +2,7 @@
 
 namespace App\Modules\Purchase\Requests;
 
+use App\Shared\Rules\PostableAccount;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StoreVendorPaymentRequest extends FormRequest
@@ -17,7 +18,7 @@ class StoreVendorPaymentRequest extends FormRequest
             'payment_date' => ['required', 'date'],
             'vendor_id' => ['required', 'exists:tenant.contacts,id'],
             'vendor_bill_id' => ['nullable', 'integer'],
-            'cash_bank_account_id' => ['required', 'integer'],
+            'cash_bank_account_id' => ['required', 'integer', 'exists:tenant.chart_of_accounts,id', new PostableAccount],
             'currency_code' => ['nullable', 'string', 'size:3'],
             'exchange_rate' => ['nullable', 'numeric', 'gt:0'],
             'amount' => ['required', 'numeric', 'gt:0'],

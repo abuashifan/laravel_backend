@@ -94,6 +94,10 @@ class AccountMappingStorageService
                 throw ApiException::make('ACCOUNT_INACTIVE', 'Account must be active.', 422);
             }
 
+            if ($account->children()->exists()) {
+                throw ApiException::make('ACCOUNT_NOT_POSTABLE', 'Akun induk tidak bisa dipakai sebagai account mapping -- pilih akun anak (leaf).', 422);
+            }
+
             $this->validateMappingAccountType($key, $account);
         }
 
