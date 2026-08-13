@@ -5,6 +5,7 @@ namespace App\Modules\CashBank\Services;
 use App\Modules\CashBank\Models\CashReceipt;
 use App\Modules\Journal\Models\JournalEntry;
 use App\Shared\Api\AppliesListQuery;
+use App\Shared\Api\AttachesCreatorNames;
 use App\Shared\Audit\AuditLogService;
 use App\Shared\DocumentNumbering\DocumentNumberService;
 use App\Shared\DocumentNumbering\DocumentType;
@@ -19,6 +20,7 @@ use Illuminate\Support\Facades\DB;
 class CashReceiptService
 {
     use AppliesListQuery;
+    use AttachesCreatorNames;
 
     /**
      * Rencana Fase 4 menyebut `description`; kolom itu tidak ada di
@@ -62,7 +64,10 @@ class CashReceiptService
             $query->where('cash_bank_account_id', (int) $filters['cash_bank_account_id']);
         }
 
-        return $this->applyListQuery($query, $filters);
+        $result = $this->applyListQuery($query, $filters);
+        $this->attachCreatorNames($result instanceof LengthAwarePaginator ? $result->getCollection() : $result);
+
+        return $result;
     }
 
     public function find(int $id): CashReceipt
@@ -82,12 +87,17 @@ class CashReceiptService
             throw ApiException::make('CASH_BANK_ACCOUNT_REQUIRED', 'Cash/bank account must be a cash/bank marked COA.', 422);
         }
 
-        return DB::connection('tenant')->transaction(function () use ($company, $data) {
+        // Kosong/tidak dikirim -> nomor digenerate otomatis. Keunikan nomor
+        // manual sudah dicek StoreCashReceiptRequest (unique:cash_receipts),
+        // jadi di sini cukup pakai apa adanya kalau diisi.
+        $manualNumber = trim((string) ($data['receipt_number'] ?? ''));
+
+        return DB::connection('tenant')->transaction(function () use ($company, $data, $manualNumber) {
             $header = $data;
-            unset($header['lines']);
+            unset($header['lines'], $header['receipt_number']);
 
             $receipt = CashReceipt::query()->create(array_merge($header, [
-                'receipt_number' => $this->documentNumberService->generate($company, DocumentType::CASH_RECEIPT, (string) $data['receipt_date']),
+                'receipt_number' => $manualNumber !== '' ? $manualNumber : $this->documentNumberService->generate($company, DocumentType::CASH_RECEIPT, (string) $data['receipt_date']),
                 'status' => 'draft',
                 'created_by' => auth()->id(),
             ]));

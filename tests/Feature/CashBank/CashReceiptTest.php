@@ -89,6 +89,46 @@ class CashReceiptTest extends JournalTestCase
         $res->assertJsonPath('code', 'AMOUNT_MISMATCH');
     }
 
+    public function test_can_create_with_manual_receipt_number(): void
+    {
+        $ctx = $this->setUpTenant(role: 'finance');
+
+        $payload = [
+            'receipt_number' => 'RC-MANUAL-0001',
+            'receipt_date' => '2026-01-10',
+            'cash_bank_account_id' => (int) $ctx['accounts']['debit'],
+            'amount' => 1000,
+            'lines' => [
+                ['account_id' => (int) $ctx['accounts']['credit'], 'amount' => 1000, 'description' => 'Income', 'line_order' => 1],
+            ],
+        ];
+
+        $res = $this->postJson('/api/cash-bank/cash-receipts', $payload, $ctx['headers']);
+        $res->assertStatus(201);
+        $res->assertJsonPath('data.receipt_number', 'RC-MANUAL-0001');
+    }
+
+    public function test_rejects_duplicate_manual_receipt_number(): void
+    {
+        $ctx = $this->setUpTenant(role: 'finance');
+
+        $payload = [
+            'receipt_number' => 'RC-MANUAL-0002',
+            'receipt_date' => '2026-01-10',
+            'cash_bank_account_id' => (int) $ctx['accounts']['debit'],
+            'amount' => 1000,
+            'lines' => [
+                ['account_id' => (int) $ctx['accounts']['credit'], 'amount' => 1000, 'description' => 'Income', 'line_order' => 1],
+            ],
+        ];
+
+        $this->postJson('/api/cash-bank/cash-receipts', $payload, $ctx['headers'])->assertStatus(201);
+
+        $res = $this->postJson('/api/cash-bank/cash-receipts', $payload, $ctx['headers']);
+        $res->assertStatus(422);
+        $res->assertJsonValidationErrors('receipt_number');
+    }
+
     public function test_requires_cash_bank_account_marker(): void
     {
         $ctx = $this->setUpTenant(role: 'finance');

@@ -5,6 +5,7 @@ namespace App\Modules\CashBank\Services;
 use App\Modules\CashBank\Models\CashPayment;
 use App\Modules\Journal\Models\JournalEntry;
 use App\Shared\Api\AppliesListQuery;
+use App\Shared\Api\AttachesCreatorNames;
 use App\Shared\Audit\AuditLogService;
 use App\Shared\DocumentNumbering\DocumentNumberService;
 use App\Shared\DocumentNumbering\DocumentType;
@@ -19,6 +20,7 @@ use Illuminate\Support\Facades\DB;
 class CashPaymentService
 {
     use AppliesListQuery;
+    use AttachesCreatorNames;
 
     /** `notes`, bukan `description` -- lihat catatan di CashReceiptService. */
     protected array $listSearchable = ['payment_number', 'notes'];
@@ -54,7 +56,10 @@ class CashPaymentService
             $query->where('cash_bank_account_id', (int) $filters['cash_bank_account_id']);
         }
 
-        return $this->applyListQuery($query, $filters);
+        $result = $this->applyListQuery($query, $filters);
+        $this->attachCreatorNames($result instanceof LengthAwarePaginator ? $result->getCollection() : $result);
+
+        return $result;
     }
 
     public function find(int $id): CashPayment

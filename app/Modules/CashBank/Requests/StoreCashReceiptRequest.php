@@ -3,6 +3,7 @@
 namespace App\Modules\CashBank\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class StoreCashReceiptRequest extends FormRequest
 {
@@ -14,6 +15,11 @@ class StoreCashReceiptRequest extends FormRequest
     public function rules(): array
     {
         return [
+            // Kosong/tidak dikirim -> nomor digenerate otomatis di
+            // CashReceiptService::create(). User bisa memilih isi manual lewat
+            // form, jadi harus unik terhadap nomor yang sudah ada (termasuk
+            // hasil generate otomatis, satu kolom yang sama dipakai keduanya).
+            'receipt_number' => ['nullable', 'string', 'max:190', Rule::unique('tenant.cash_receipts', 'receipt_number')],
             'receipt_date' => ['required', 'date'],
             'cash_bank_account_id' => ['required', 'exists:tenant.chart_of_accounts,id'],
             'contact_id' => ['nullable', 'exists:tenant.contacts,id'],

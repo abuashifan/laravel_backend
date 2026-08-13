@@ -6,6 +6,7 @@ use App\Modules\CashBank\Models\BankReconciliation;
 use App\Modules\CashBank\Models\BankReconciliationLine;
 use App\Modules\Journal\Models\JournalEntryLine;
 use App\Shared\Api\AppliesListQuery;
+use App\Shared\Api\AttachesCreatorNames;
 use App\Shared\DocumentNumbering\DocumentNumberService;
 use App\Shared\DocumentNumbering\DocumentType;
 use App\Shared\Exceptions\ApiException;
@@ -18,6 +19,7 @@ use Illuminate\Support\Facades\DB;
 class BankReconciliationService
 {
     use AppliesListQuery;
+    use AttachesCreatorNames;
 
     protected array $listSearchable = ['reconciliation_number'];
 
@@ -33,7 +35,7 @@ class BankReconciliationService
 
     protected array $listDefaultSort = ['statement_end_date' => 'desc', 'id' => 'desc'];
 
-    protected array $listSortable = ['reconciliation_number', 'statement_start_date', 'statement_end_date', 'status', 'created_at'];
+    protected array $listSortable = ['reconciliation_number', 'statement_start_date', 'statement_end_date', 'statement_ending_balance', 'status', 'created_at'];
 
     public function __construct(
         private readonly TenantContext $tenantContext,
@@ -53,7 +55,10 @@ class BankReconciliationService
             $query->where('cash_bank_account_id', (int) $filters['cash_bank_account_id']);
         }
 
-        return $this->applyListQuery($query, $filters);
+        $result = $this->applyListQuery($query, $filters);
+        $this->attachCreatorNames($result instanceof LengthAwarePaginator ? $result->getCollection() : $result);
+
+        return $result;
     }
 
     public function find(int $id): BankReconciliation
