@@ -18,16 +18,20 @@ class BudgetPeriod extends Model
         'company_id',
         'name',
         'fiscal_year',
+        'fiscal_year_id',
         'period_from',
         'period_to',
         'status',
+        'beginning_cash_override',
         'created_by',
     ];
 
     protected $casts = [
         'fiscal_year' => 'integer',
+        'fiscal_year_id' => 'integer',
         'period_from' => 'date',
         'period_to' => 'date',
+        'beginning_cash_override' => 'decimal:2',
     ];
 
     public function submissions(): HasMany

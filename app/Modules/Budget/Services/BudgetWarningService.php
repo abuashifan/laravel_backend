@@ -3,48 +3,65 @@
 namespace App\Modules\Budget\Services;
 
 use App\Modules\Budget\Models\BudgetLine;
-use Illuminate\Support\Facades\DB;
+use App\Modules\Budget\Support\BudgetState;
 
+/**
+ * Peringatan over-budget saat sebuah baris jurnal akan diposting.
+ *
+ * Service ini sengaja TIDAK punya logika pencocokan atau agregasi sendiri lagi.
+ * Akar empat cacat lama adalah peringatan dan laporan perbandingan memakai
+ * logika yang berbeda; keduanya kini memakai `BudgetMatchResolver`,
+ * `BudgetAllocationResolver`, dan `BudgetActualService` yang sama — satu logika,
+ * dua pemakai.
+ *
+ * Kontrak publiknya dipertahankan persis supaya `JournalEntryController` tidak
+ * perlu ikut berubah.
+ */
 class BudgetWarningService
 {
+    public function __construct(
+        private readonly BudgetMatchResolver $matchResolver,
+        private readonly BudgetAllocationResolver $allocationResolver,
+        private readonly BudgetActualService $actualService,
+    ) {}
+
     /**
-     * Check if posting a transaction would exceed the approved budget.
-     * Returns a warning array or null if within budget.
-     *
-     * @return array{account_id:int,account_name:string,budget_amount:float,actual_amount:float,new_total:float}|null
+     * @param  string  $period  'YYYY-MM' bulan transaksi
+     * @return array{account_id:int,budget_amount:float,actual_amount:float,new_total:float,overage:float,state:string,direction:string,matched_scope:string}|null
      */
     public function check(int $companyId, int $accountId, ?int $departmentId, ?int $projectId, string $period, float $amountToPost): ?array
     {
-        // Find matching approved budget line (exact match or annual)
-        $budgetLine = BudgetLine::query()
-            ->whereHas('submission', function ($q) use ($companyId, $departmentId) {
-                $q->where('company_id', $companyId)
-                    ->where('status', 'approved')
-                    ->when($departmentId, fn ($q2) => $q2->where('department_id', $departmentId));
-            })
-            ->where('account_id', $accountId)
-            ->when($projectId, fn ($q) => $q->where('project_id', $projectId), fn ($q) => $q->whereNull('project_id'))
-            ->where(function ($q) use ($period) {
-                $q->where('period', $period)->orWhereNull('period');
-            })
-            ->orderByRaw('CASE WHEN period IS NOT NULL THEN 0 ELSE 1 END')
-            ->first();
+        $budgetLine = $this->matchResolver->resolve($accountId, $departmentId, $projectId, $period);
 
-        if (! $budgetLine) {
+        if ($budgetLine === null) {
             return null;
         }
 
-        // Sum actual JE lines already posted for this combination
-        $actual = (float) DB::connection('tenant')
-            ->table('journal_entry_lines as jel')
-            ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
-            ->where('je.status', 'posted')
-            ->where('jel.account_id', $accountId)
-            ->when($departmentId, fn ($q) => $q->where('jel.department_id', $departmentId))
-            ->when($projectId, fn ($q) => $q->where('jel.project_id', $projectId))
-            ->whereRaw("strftime('%Y-%m', je.journal_date) = ?", [$period])
-            ->selectRaw('COALESCE(SUM(jel.debit - jel.credit), 0) as total')
-            ->value('total');
+        $budgetPeriod = $budgetLine->submission?->period;
+
+        if ($budgetPeriod === null) {
+            return null;
+        }
+
+        [$dateFrom, $dateTo] = $this->allocationResolver->comparableRange($budgetLine, $budgetPeriod, $period);
+
+        // Cakupan actual mengikuti dimensi BARIS ANGGARAN, bukan dimensi baris
+        // jurnal: anggaran departemen tanpa proyek dikonsumsi oleh belanja proyek
+        // mana pun di departemen itu (G7). Dimensi yang NULL di baris anggaran
+        // berarti "tidak dibatasi", jadi filternya tidak dipasang.
+        //
+        // Catatan: anggaran tingkat perusahaan (departemen NULL) dan anggaran
+        // departemen bisa sama-sama mengklaim belanja yang sama. Itu sifat
+        // anggaran berjenjang, bukan bug pencocokan — penyelesaiannya (mis.
+        // anggaran induk hanya menghitung sisa anak) di luar cakupan fase ini.
+        $actual = $this->actualService->sumFor(
+            accountId: $accountId,
+            departmentId: $budgetLine->department_id,
+            projectId: $budgetLine->project_id,
+            dateFrom: $dateFrom,
+            dateTo: $dateTo,
+            matchNullDimensionsExactly: false,
+        );
 
         $budgetAmount = (float) $budgetLine->amount;
         $newTotal = $actual + $amountToPost;
@@ -59,6 +76,27 @@ class BudgetWarningService
             'actual_amount' => $actual,
             'new_total' => $newTotal,
             'overage' => $newTotal - $budgetAmount,
+            // Untuk pendapatan, "melampaui" berarti target terlampaui — kabar
+            // baik. UI wajib mewarnainya hijau, bukan merah.
+            'state' => BudgetState::resolve($budgetAmount, $newTotal, $budgetLine->direction),
+            'direction' => $budgetLine->direction,
+            // Menjelaskan anggaran mana yang tersentuh. Tanpa ini user melihat
+            // peringatan tanpa tahu ia berasal dari anggaran departemen, proyek,
+            // atau perusahaan — pertanyaan pertama yang selalu muncul.
+            'matched_scope' => $this->describeScope($budgetLine),
         ];
+    }
+
+    /**
+     * Ringkasan dimensi baris anggaran yang cocok, mis.
+     * `department:7|project:all|period:annual`.
+     */
+    private function describeScope(BudgetLine $line): string
+    {
+        return implode('|', [
+            'department:'.($line->department_id ?? 'all'),
+            'project:'.($line->project_id ?? 'all'),
+            'period:'.($line->period_month ?? 'annual'),
+        ]);
     }
 }

@@ -103,6 +103,38 @@ class ApiErrorCode
 
     public const IMPORT_FILE_DUPLICATE = 'IMPORT_FILE_DUPLICATE';
 
+    /**
+     * Hanya akun laba-rugi yang bisa dianggarkan — arah anggaran (revenue /
+     * expense) diturunkan dari `account_type`, dan akun neraca tidak punya arah
+     * yang masuk akal. Dipisah dari VALIDATION_ERROR biasa supaya UI bisa
+     * menjelaskan sebabnya, bukan sekadar "isian tidak valid".
+     */
+    public const BUDGET_ACCOUNT_DIRECTION_MISMATCH = 'BUDGET_ACCOUNT_DIRECTION_MISMATCH';
+
+    /** Hierarki cost center: induk tidak boleh menunjuk dirinya sendiri atau keturunannya. */
+    public const DEPARTMENT_HIERARCHY_CYCLE = 'DEPARTMENT_HIERARCHY_CYCLE';
+
+    /** Hierarki cost center dibatasi 5 level supaya drill-down tetap terbaca. */
+    public const DEPARTMENT_HIERARCHY_TOO_DEEP = 'DEPARTMENT_HIERARCHY_TOO_DEEP';
+
+    /** Dimensi `group_by` di luar allowlist — ditolak sebelum menyentuh SQL. */
+    public const BUDGET_INVALID_GROUP_BY = 'BUDGET_INVALID_GROUP_BY';
+
+    /** Revisi hanya berlaku untuk anggaran yang sudah disetujui. */
+    public const BUDGET_ALREADY_APPROVED = 'BUDGET_ALREADY_APPROVED';
+
+    /** Versi yang dirujuk bukan versi yang berlaku. */
+    public const BUDGET_VERSION_NOT_ACTIVE = 'BUDGET_VERSION_NOT_ACTIVE';
+
+    /** Dua periode anggaran `open` pada fiscal year sama tidak boleh beririsan tanggal. */
+    public const BUDGET_PERIOD_OVERLAP = 'BUDGET_PERIOD_OVERLAP';
+
+    /** Anggaran 0 sah ("tidak boleh belanja"); anggaran negatif tidak. Turunkan lewat revisi. */
+    public const BUDGET_NEGATIVE_AMOUNT = 'BUDGET_NEGATIVE_AMOUNT';
+
+    /** Proyek yang sudah selesai/nonaktif tidak bisa dianggarkan lagi. */
+    public const BUDGET_PROJECT_NOT_ACTIVE = 'BUDGET_PROJECT_NOT_ACTIVE';
+
     public const UNKNOWN_ERROR = 'UNKNOWN_ERROR';
 
     public static function all(): array

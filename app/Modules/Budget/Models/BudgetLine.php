@@ -3,6 +3,7 @@
 namespace App\Modules\Budget\Models;
 
 use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\MasterData\Models\Department;
 use App\Modules\MasterData\Models\Project;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
@@ -17,8 +18,10 @@ class BudgetLine extends Model
     protected $fillable = [
         'budget_submission_id',
         'account_id',
+        'department_id',
         'project_id',
-        'period',
+        'period_month',
+        'direction',
         'amount',
         'notes',
     ];
@@ -35,6 +38,7 @@ class BudgetLine extends Model
     protected $appends = [
         'account_code',
         'account_name',
+        'department_name',
         'project_name',
     ];
 
@@ -46,6 +50,11 @@ class BudgetLine extends Model
     protected function accountName(): Attribute
     {
         return Attribute::get(fn () => $this->account?->account_name);
+    }
+
+    protected function departmentName(): Attribute
+    {
+        return Attribute::get(fn () => $this->department?->name);
     }
 
     protected function projectName(): Attribute
@@ -61,6 +70,15 @@ class BudgetLine extends Model
     public function account(): BelongsTo
     {
         return $this->belongsTo(ChartOfAccount::class, 'account_id');
+    }
+
+    /**
+     * Departemen di sini adalah *dimensi* baris, bukan pemilik dokumen.
+     * Pemiliknya tetap `submission->department_id` — itulah unit persetujuan.
+     */
+    public function department(): BelongsTo
+    {
+        return $this->belongsTo(Department::class, 'department_id');
     }
 
     public function project(): BelongsTo

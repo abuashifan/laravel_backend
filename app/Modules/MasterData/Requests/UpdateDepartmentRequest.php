@@ -14,6 +14,7 @@ class UpdateDepartmentRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'parent_id' => ['nullable', 'integer', 'exists:tenant.departments,id'],
             'code' => ['sometimes', 'required', 'string', 'max:50'],
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],

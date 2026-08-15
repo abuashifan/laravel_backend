@@ -89,6 +89,10 @@ return [
             'budgets.approve_head',
             'budgets.approve_finance',
             'budgets.manage',
+            'budgets.revise',
+            'budgets.export',
+            // `budgets.view` sengaja TIDAK di-gate: akses baca harus bertahan
+            // saat paket diturunkan.
         ],
 
         'dimensions' => [

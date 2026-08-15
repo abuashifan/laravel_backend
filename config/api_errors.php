@@ -48,6 +48,16 @@ return [
         'IMPORT_FILE_INVALID' => 'Import file is invalid.',
         'IMPORT_ACTIVE_BATCH_EXISTS' => 'An import batch is already active.',
 
+        'BUDGET_ACCOUNT_DIRECTION_MISMATCH' => 'Hanya akun pendapatan atau beban yang bisa dianggarkan.',
+        'BUDGET_INVALID_GROUP_BY' => 'Dimensi pengelompokan tidak dikenal.',
+        'BUDGET_ALREADY_APPROVED' => 'Hanya anggaran yang sudah disetujui yang bisa direvisi.',
+        'BUDGET_VERSION_NOT_ACTIVE' => 'Versi anggaran ini bukan versi yang berlaku.',
+        'BUDGET_PERIOD_OVERLAP' => 'Periode anggaran beririsan dengan periode lain yang masih terbuka.',
+        'BUDGET_NEGATIVE_AMOUNT' => 'Nominal anggaran tidak boleh negatif. Turunkan lewat revisi anggaran.',
+        'BUDGET_PROJECT_NOT_ACTIVE' => 'Proyek sudah tidak aktif sehingga tidak bisa dianggarkan.',
+        'DEPARTMENT_HIERARCHY_CYCLE' => 'Departemen tidak boleh menjadi induk dari dirinya sendiri.',
+        'DEPARTMENT_HIERARCHY_TOO_DEEP' => 'Hierarki departemen maksimal 5 tingkat.',
+
         'UNKNOWN_ERROR' => 'Unknown error.',
     ],
 

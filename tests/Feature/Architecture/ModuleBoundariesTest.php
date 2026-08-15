@@ -64,6 +64,11 @@ class ModuleBoundariesTest extends TestCase
         'Dashboard → App\\Modules\\Reports\\Services\\CashFlowService',
         'Dashboard → App\\Modules\\Reports\\Services\\FinancialSummaryService',
         'Budget → App\\Modules\\Settings\\Services\\CompanySettingService',
+        // Actual anggaran WAJIB lahir dari query yang sama dengan seluruh
+        // laporan lain (posted + bukan obsolete). Membangun ulang querynya di
+        // dalam modul Budget persis kesalahan yang menghasilkan G4.
+        // Preseden arah sebaliknya sudah ada: Reports → BudgetComparisonService.
+        'Budget → App\\Modules\\Reports\\Services\\ReportQueryService',
         // Rencana impor data, Fase 1: aturan tunggal yang tidak boleh
         // dilanggar adalah importer WAJIB lewat service dokumen yang sudah
         // ada, bukan menulis model langsung -- lihat

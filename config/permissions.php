@@ -262,6 +262,8 @@ return [
         'budgets.approve_head',
         'budgets.approve_finance',
         'budgets.manage',
+        'budgets.revise',
+        'budgets.export',
 
         // Audit
         'audit.view',
@@ -342,6 +344,8 @@ return [
             'budgets.approve_head',
             'budgets.approve_finance',
             'budgets.manage',
+            'budgets.revise',
+            'budgets.export',
         ],
         'accountant' => [
             'dashboard.view',

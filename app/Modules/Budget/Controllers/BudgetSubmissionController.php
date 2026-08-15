@@ -4,10 +4,12 @@ namespace App\Modules\Budget\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Budget\Requests\BudgetApprovalRequest;
+use App\Modules\Budget\Requests\ReviseBudgetSubmissionRequest;
 use App\Modules\Budget\Requests\StoreBudgetSubmissionRequest;
 use App\Modules\Budget\Requests\UpdateBudgetLinesRequest;
 use App\Modules\Budget\Requests\UpdateBudgetSubmissionRequest;
 use App\Modules\Budget\Services\BudgetPeriodService;
+use App\Modules\Budget\Services\BudgetRevisionService;
 use App\Modules\Budget\Services\BudgetSubmissionService;
 use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -20,6 +22,7 @@ class BudgetSubmissionController extends Controller
     public function __construct(
         private readonly BudgetSubmissionService $service,
         private readonly BudgetPeriodService $periodService,
+        private readonly BudgetRevisionService $revisionService,
     ) {}
 
     public function index(int $periodId, Request $request): JsonResponse
@@ -91,5 +94,23 @@ class BudgetSubmissionController extends Controller
         $submission = $this->service->reject($submission, $request->validated()['rejection_note']);
 
         return $this->successResponse($submission, 'Budget submission rejected');
+    }
+
+    public function versions(int $id): JsonResponse
+    {
+        $submission = $this->service->find($id);
+
+        return $this->successResponse(
+            $this->revisionService->versions($submission),
+            'Budget submission versions retrieved successfully',
+        );
+    }
+
+    public function revise(ReviseBudgetSubmissionRequest $request, int $id): JsonResponse
+    {
+        $submission = $this->service->find($id);
+        $revised = $this->revisionService->revise($submission, $request->validated()['revision_reason']);
+
+        return $this->successResponse($revised, 'Budget submission revised successfully', 201);
     }
 }

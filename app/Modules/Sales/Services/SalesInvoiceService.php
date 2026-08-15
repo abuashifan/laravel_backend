@@ -462,9 +462,17 @@ class SalesInvoiceService
                 $line->sales_discount_account_id = $discountAccountId;
                 $line->save();
             }
-            $revenueGrouped[$revenueAccountId] = ($revenueGrouped[$revenueAccountId] ?? 0.0) + (float) $line->gross_amount;
+
+            // Kunci grouping komposit — bukan hanya akun. Tanpa dimensi di
+            // kuncinya, `department_id` dan `project_id` yang sudah dibawa
+            // `sales_invoice_lines` hilang tepat di langkah terakhir, dan Actual
+            // Revenue per proyek selalu 0 (G11).
+            $revenueKey = $this->dimensionKey($revenueAccountId, $line);
+            $revenueGrouped[$revenueKey] = ($revenueGrouped[$revenueKey] ?? 0.0) + (float) $line->gross_amount;
+
             if ($discountAccountId !== null) {
-                $discountGrouped[$discountAccountId] = ($discountGrouped[$discountAccountId] ?? 0.0) + (float) $line->discount_amount;
+                $discountKey = $this->dimensionKey((int) $discountAccountId, $line);
+                $discountGrouped[$discountKey] = ($discountGrouped[$discountKey] ?? 0.0) + (float) $line->discount_amount;
             }
         }
 
@@ -474,27 +482,28 @@ class SalesInvoiceService
 
         if ($totalDiscount > 0.0 && $discountGrouped === []) {
             // Header-level discount with no line-level discount to attribute it to.
-            $discountGrouped[$this->accountResolver->getDiscountAccountIdForLine([])] = $totalDiscount;
+            // Diskon tingkat header tidak punya dimensi untuk diwarisi.
+            $discountGrouped[$this->dimensionKey($this->accountResolver->getDiscountAccountIdForLine([]), null)] = $totalDiscount;
         }
         $discountGrouped = $totalDiscount > 0.0 ? $this->scaleGroupedAmounts($discountGrouped, $totalDiscount) : [];
 
         $order = 2;
-        $lines = array_map(function (int $accountId, float $amount) use (&$order): array {
-            return [
-                'account_id' => $accountId,
+        $lines = [];
+
+        foreach ($revenueGrouped as $key => $amount) {
+            $lines[] = $this->parseDimensionKey($key) + [
                 'description' => 'Sales Revenue',
                 'debit' => 0,
                 'credit' => $amount,
                 'line_order' => $order++,
             ];
-        }, array_keys($revenueGrouped), array_values($revenueGrouped));
+        }
 
-        foreach ($discountGrouped as $accountId => $amount) {
+        foreach ($discountGrouped as $key => $amount) {
             if (abs($amount) < 0.005) {
                 continue;
             }
-            $lines[] = [
-                'account_id' => $accountId,
+            $lines[] = $this->parseDimensionKey($key) + [
                 'description' => 'Sales Discount',
                 'debit' => $amount,
                 'credit' => 0,
@@ -506,8 +515,35 @@ class SalesInvoiceService
     }
 
     /**
-     * @param  array<int,float>  $grouped
-     * @return array<int,float>
+     * Kunci grouping baris jurnal: akun + dimensi. `$line` null untuk nominal
+     * tingkat header yang tidak punya dimensi untuk diwarisi.
+     */
+    private function dimensionKey(int $accountId, mixed $line): string
+    {
+        return $accountId.'|'.($line?->department_id ?? '').'|'.($line?->project_id ?? '');
+    }
+
+    /**
+     * @return array{account_id:int,department_id:?int,project_id:?int}
+     */
+    private function parseDimensionKey(string $key): array
+    {
+        [$accountId, $departmentId, $projectId] = explode('|', $key);
+
+        return [
+            'account_id' => (int) $accountId,
+            'department_id' => $departmentId === '' ? null : (int) $departmentId,
+            'project_id' => $projectId === '' ? null : (int) $projectId,
+        ];
+    }
+
+    /**
+     * Kuncinya bisa berupa id akun (int) maupun kunci komposit akun|dept|proyek
+     * (string) — proses penskalaannya tidak peduli, ia hanya membagi rata selisih
+     * pembulatan ke kunci terakhir.
+     *
+     * @param  array<array-key,float>  $grouped
+     * @return array<array-key,float>
      */
     private function scaleGroupedAmounts(array $grouped, float $targetTotal): array
     {

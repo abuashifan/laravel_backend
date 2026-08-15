@@ -120,9 +120,28 @@ Recommended backend scope:
 - Approve/reject history
 - Delegation or substitute approver support
 
-### 6. Budgeting And Budget Requests
+### 6. Budgeting And Budget Requests — ✅ SUDAH DIBANGUN (bukan lagi gap)
 
-Priority: medium.
+> **Koreksi 2026-08-14.** Bagian ini menyatakan *"No tenant tables or API routes exist for
+> budgets"* dan **sudah salah sejak 2026-06-29**, saat modul Budget dibuat. Isi lamanya
+> dipertahankan di bawah sebagai catatan sejarah, bukan sebagai temuan yang masih berlaku.
+
+Keadaan sekarang:
+
+- Tabel tenant: `budget_periods`, `budget_submissions`, `budget_lines` (grain multidimensi —
+  akun × cost center × proyek × bulan, dengan unique index berbasis ekspresi).
+- Modul: `app/Modules/Budget/` — 6 controller, 3 model, 9 request, 9 service, 2 support class,
+  `README.md` modul.
+- Route: 16 endpoint lama + 13 endpoint analisis/laporan/versi.
+- Laporan: satu mesin (`BudgetAnalysisService`) melahirkan seluruh view lewat `group_by`,
+  plus Cash Budget dan Project Profitability.
+- Test: `tests/Feature/Budget/` (81 test).
+
+Rencana lengkap dan riwayat keputusannya:
+`Finlite_knowladge/plans/budget-module/New_Fitures/`.
+
+<details>
+<summary>Isi audit lama (2026-06-15) — sudah tidak berlaku</summary>
 
 Evidence:
 
@@ -136,6 +155,8 @@ Recommended backend scope:
 - Budget request workflow
 - Budget approval
 - Budget vs actual reports
+
+</details>
 
 ### 7. Employee Portal / HR Lite
 

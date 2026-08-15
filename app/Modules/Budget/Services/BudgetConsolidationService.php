@@ -2,162 +2,144 @@
 
 namespace App\Modules\Budget\Services;
 
-use App\Modules\Budget\Models\BudgetLine;
 use App\Modules\Budget\Models\BudgetPeriod;
-use App\Modules\Budget\Models\BudgetSubmission;
-use App\Shared\Tenant\TenantContext;
-use Illuminate\Support\Facades\DB;
 
+/**
+ * Konsolidasi anggaran per cost center / proyek.
+ *
+ * Sejak fase 2 ini pembungkus `BudgetAnalysisService` dengan preset
+ * `group_by=[department,account]`, `[project,account]`, atau
+ * `[department,project,account]`. Bentuk balasannya dipertahankan persis
+ * (akun bersarang di dalam dimensi + `grand_total`) supaya
+ * `BudgetConsolidationTable.tsx` tidak rusak.
+ *
+ * Perbedaan penting dari versi lama: departemen kini dibaca dari **dimensi
+ * baris** (`budget_lines.department_id`), bukan dari header pengajuan. Baris
+ * yang tidak menyebut departemen mewarisi departemen pemilik dokumen, jadi
+ * angka untuk anggaran satu-departemen tetap sama.
+ */
 class BudgetConsolidationService
 {
-    public function __construct(private readonly TenantContext $tenantContext) {}
+    public function __construct(private readonly BudgetAnalysisService $analysisService) {}
 
     public function query(BudgetPeriod $period, array $filters = []): array
     {
-        $companyId = $this->tenantContext->companyId();
         $by = $filters['by'] ?? 'department';
 
-        // Approved submission IDs for this period
-        $submissionIds = BudgetSubmission::query()
-            ->forCompany($companyId)
-            ->where('budget_period_id', $period->id)
-            ->where('status', 'approved')
-            ->pluck('id');
-
-        if ($submissionIds->isEmpty()) {
-            return [
-                'budget_period' => ['id' => $period->id, 'name' => $period->name, 'fiscal_year' => $period->fiscal_year],
-                'breakdown_by' => $by,
-                'rows' => [],
-                'grand_total' => '0.00',
-            ];
-        }
-
-        $query = BudgetLine::query()
-            ->whereIn('budget_submission_id', $submissionIds)
-            ->join('budget_submissions as bs', 'bs.id', '=', 'budget_lines.budget_submission_id')
-            ->join('chart_of_accounts as coa', 'coa.id', '=', 'budget_lines.account_id')
-            ->leftJoin('projects as proj', 'proj.id', '=', 'budget_lines.project_id')
-            ->leftJoin('departments as dept', 'dept.id', '=', 'bs.department_id');
-
-        if (! empty($filters['department_id'])) {
-            $query->where('bs.department_id', (int) $filters['department_id']);
-        }
-        if (! empty($filters['project_id'])) {
-            $query->where('budget_lines.project_id', (int) $filters['project_id']);
-        }
-        if (! empty($filters['account_id'])) {
-            $query->where('budget_lines.account_id', (int) $filters['account_id']);
-        }
-
-        $rows = match ($by) {
-            'project' => $this->groupByProject($query),
-            'project_department' => $this->groupByProjectDepartment($query),
-            default => $this->groupByDepartment($query),
+        $groupBy = match ($by) {
+            'project' => ['project', 'account'],
+            'project_department' => ['department', 'project', 'account'],
+            default => ['department', 'account'],
         };
 
-        $grandTotal = collect($rows)->sum('total_amount');
+        $analysis = $this->analysisService->analyze([
+            'budget_period_id' => $period->id,
+            'group_by' => $groupBy,
+            'department_id' => $filters['department_id'] ?? null,
+            'project_id' => $filters['project_id'] ?? null,
+            'account_id' => $filters['account_id'] ?? null,
+        ]);
+
+        // Baris tanpa anggaran (hanya punya actual) tidak termasuk konsolidasi —
+        // laporan ini menjawab "berapa yang dianggarkan", bukan realisasinya.
+        $rows = array_values(array_filter(
+            $analysis['rows'],
+            fn (array $row) => (float) $row['budget_amount'] !== 0.0,
+        ));
+
+        $nested = match ($by) {
+            'project' => $this->nestByProject($rows),
+            'project_department' => $this->nestByDepartmentProject($rows),
+            default => $this->nestByDepartment($rows),
+        };
+
+        $grandTotal = array_sum(array_map(fn (array $row) => (float) $row['budget_amount'], $rows));
 
         return [
             'budget_period' => ['id' => $period->id, 'name' => $period->name, 'fiscal_year' => $period->fiscal_year],
             'breakdown_by' => $by,
-            'rows' => $rows,
+            'rows' => $nested,
             'grand_total' => number_format($grandTotal, 2, '.', ''),
         ];
     }
 
-    private function groupByDepartment($query): array
+    private function nestByDepartment(array $rows): array
     {
-        $lines = (clone $query)
-            ->select(
-                'bs.department_id',
-                DB::raw('MAX(dept.name) as department_name'),
-                'budget_lines.account_id',
-                DB::raw('MAX(coa.account_name) as account_name'),
-                DB::raw('SUM(budget_lines.amount) as total_amount')
-            )
-            ->groupBy('bs.department_id', 'budget_lines.account_id')
-            ->orderBy('bs.department_id')
-            ->get();
-
-        return $lines->groupBy('department_id')->map(function ($group, $deptId) {
-            return [
-                'department_id' => $deptId,
-                'department_name' => $group->first()->department_name,
-                'accounts' => $group->map(fn ($r) => [
-                    'account_id' => $r->account_id,
-                    'account_name' => $r->account_name,
-                    'total_amount' => number_format((float) $r->total_amount, 2, '.', ''),
-                ])->values()->all(),
-                'total_amount' => number_format($group->sum('total_amount'), 2, '.', ''),
-            ];
-        })->values()->all();
+        return $this->groupRows($rows, 'department_id', fn (array $group, $key) => [
+            'department_id' => $key,
+            'department_name' => $group[0]['department_name'] ?? null,
+            'accounts' => $this->accountRows($group),
+            'total_amount' => $this->sum($group),
+        ]);
     }
 
-    private function groupByProject($query): array
+    private function nestByProject(array $rows): array
     {
-        $lines = (clone $query)
-            ->select(
-                'budget_lines.project_id',
-                DB::raw('MAX(proj.name) as project_name'),
-                'budget_lines.account_id',
-                DB::raw('MAX(coa.account_name) as account_name'),
-                DB::raw('SUM(budget_lines.amount) as total_amount')
-            )
-            ->groupBy('budget_lines.project_id', 'budget_lines.account_id')
-            ->orderBy('budget_lines.project_id')
-            ->get();
-
-        return $lines->groupBy('project_id')->map(function ($group, $projectId) {
-            return [
-                'project_id' => $projectId,
-                'project_name' => $group->first()->project_name ?? 'Tanpa Proyek',
-                'accounts' => $group->map(fn ($r) => [
-                    'account_id' => $r->account_id,
-                    'account_name' => $r->account_name,
-                    'total_amount' => number_format((float) $r->total_amount, 2, '.', ''),
-                ])->values()->all(),
-                'total_amount' => number_format($group->sum('total_amount'), 2, '.', ''),
-            ];
-        })->values()->all();
+        return $this->groupRows($rows, 'project_id', fn (array $group, $key) => [
+            'project_id' => $key,
+            'project_name' => $group[0]['project_name'] ?? 'Tanpa Proyek',
+            'accounts' => $this->accountRows($group),
+            'total_amount' => $this->sum($group),
+        ]);
     }
 
-    private function groupByProjectDepartment($query): array
+    private function nestByDepartmentProject(array $rows): array
     {
-        $lines = (clone $query)
-            ->select(
-                'bs.department_id',
-                DB::raw('MAX(dept.name) as department_name'),
-                'budget_lines.project_id',
-                DB::raw('MAX(proj.name) as project_name'),
-                'budget_lines.account_id',
-                DB::raw('MAX(coa.account_name) as account_name'),
-                DB::raw('SUM(budget_lines.amount) as total_amount')
-            )
-            ->groupBy('bs.department_id', 'budget_lines.project_id', 'budget_lines.account_id')
-            ->orderBy('bs.department_id')
-            ->get();
+        return $this->groupRows($rows, 'department_id', fn (array $group, $key) => [
+            'department_id' => $key,
+            'department_name' => $group[0]['department_name'] ?? null,
+            'projects' => $this->nestByProject($group),
+            'total_amount' => $this->sum($group),
+        ]);
+    }
 
-        return $lines->groupBy('department_id')->map(function ($deptGroup, $deptId) {
-            $byProject = $deptGroup->groupBy('project_id')->map(function ($projGroup, $projectId) {
-                return [
-                    'project_id' => $projectId,
-                    'project_name' => $projGroup->first()->project_name ?? 'Tanpa Proyek',
-                    'accounts' => $projGroup->map(fn ($r) => [
-                        'account_id' => $r->account_id,
-                        'account_name' => $r->account_name,
-                        'total_amount' => number_format((float) $r->total_amount, 2, '.', ''),
-                    ])->values()->all(),
-                    'total_amount' => number_format($projGroup->sum('total_amount'), 2, '.', ''),
-                ];
-            })->values()->all();
+    /**
+     * @param  callable(array<int,array<string,mixed>>, mixed):array<string,mixed>  $build
+     */
+    private function groupRows(array $rows, string $key, callable $build): array
+    {
+        $groups = [];
+        foreach ($rows as $row) {
+            // Kunci null dinormalkan ke string kosong supaya urutan array tetap
+            // stabil; nilai aslinya diambil kembali dari baris pertama grup.
+            $groups[(string) ($row[$key] ?? '')][] = $row;
+        }
 
-            return [
-                'department_id' => $deptId,
-                'department_name' => $deptGroup->first()->department_name,
-                'projects' => $byProject,
-                'total_amount' => number_format($deptGroup->sum('total_amount'), 2, '.', ''),
+        $result = [];
+        foreach ($groups as $group) {
+            $result[] = $build($group, $group[0][$key] ?? null);
+        }
+
+        return $result;
+    }
+
+    private function accountRows(array $group): array
+    {
+        $byAccount = [];
+        foreach ($group as $row) {
+            $accountId = $row['account_id'];
+            $byAccount[$accountId] ??= [
+                'account_id' => $accountId,
+                'account_name' => $row['account_name'] ?? null,
+                'total' => 0.0,
             ];
-        })->values()->all();
+            $byAccount[$accountId]['total'] += (float) $row['budget_amount'];
+        }
+
+        return array_values(array_map(fn (array $account) => [
+            'account_id' => $account['account_id'],
+            'account_name' => $account['account_name'],
+            'total_amount' => number_format($account['total'], 2, '.', ''),
+        ], $byAccount));
+    }
+
+    private function sum(array $group): string
+    {
+        return number_format(
+            array_sum(array_map(fn (array $row) => (float) $row['budget_amount'], $group)),
+            2,
+            '.',
+            ''
+        );
     }
 }

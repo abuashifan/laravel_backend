@@ -1,7 +1,10 @@
 <?php
 
+use App\Modules\Budget\Controllers\BudgetAnalysisController;
+use App\Modules\Budget\Controllers\BudgetCashController;
 use App\Modules\Budget\Controllers\BudgetConsolidationController;
 use App\Modules\Budget\Controllers\BudgetPeriodController;
+use App\Modules\Budget\Controllers\BudgetProjectController;
 use App\Modules\Budget\Controllers\BudgetSubmissionController;
 use App\Modules\Reports\Controllers\BudgetComparisonController;
 use Illuminate\Support\Facades\Route;
@@ -31,8 +34,31 @@ Route::middleware(['auth:sanctum', 'company.access'])->group(function () {
         // salah satu permission cukup — tanpa itu role yang hanya memegang
         // budgets.approve_finance tidak bisa menolak di tahapnya sendiri.
         Route::post('/{id}/reject', [BudgetSubmissionController::class, 'reject'])->middleware('permission:budgets.approve_head|budgets.approve_finance');
+        Route::get('/{id}/versions', [BudgetSubmissionController::class, 'versions'])->middleware('permission:budgets.view');
+        Route::post('/{id}/revise', [BudgetSubmissionController::class, 'revise'])->middleware('permission:budgets.revise');
     });
 
-    Route::get('/reports/budget/comparison', [BudgetComparisonController::class, 'show'])->middleware('permission:budgets.view');
+    // Mesin analisis. Semua rute di bawah ini preset di atas
+    // `BudgetAnalysisService` — nol logika agregasi di controller.
+    Route::prefix('budget')->group(function () {
+        Route::get('/analysis', [BudgetAnalysisController::class, 'analysis'])->middleware('permission:budgets.view');
+        Route::get('/summary', [BudgetAnalysisController::class, 'summary'])->middleware('permission:budgets.view');
+        Route::get('/cash', [BudgetCashController::class, 'show'])->middleware('permission:budgets.view');
+        Route::get('/projects/{id}/summary', [BudgetProjectController::class, 'summary'])->middleware('permission:budgets.view');
+        Route::get('/projects/{id}/profitability', [BudgetProjectController::class, 'profitability'])->middleware('permission:budgets.view');
+        Route::get('/projects/{id}/cash-flow', [BudgetProjectController::class, 'cashFlow'])->middleware('permission:budgets.view');
+    });
+
+    Route::prefix('reports/budget')->group(function () {
+        Route::get('/by-account', [BudgetAnalysisController::class, 'byAccount'])->middleware('permission:budgets.view');
+        Route::get('/by-cost-center', [BudgetAnalysisController::class, 'byCostCenter'])->middleware('permission:budgets.view');
+        Route::get('/by-project', [BudgetAnalysisController::class, 'byProject'])->middleware('permission:budgets.view');
+        Route::get('/by-period', [BudgetAnalysisController::class, 'byPeriod'])->middleware('permission:budgets.view');
+        Route::get('/utilization', [BudgetAnalysisController::class, 'utilization'])->middleware('permission:budgets.view');
+        Route::get('/variance', [BudgetAnalysisController::class, 'variance'])->middleware('permission:budgets.view');
+        // Dipertahankan sebagai alias tipis ke by-account&mode=variance supaya
+        // `BudgetComparisonPage` yang sudah jalan tidak rusak.
+        Route::get('/comparison', [BudgetComparisonController::class, 'show'])->middleware('permission:budgets.view');
+    });
 
 });

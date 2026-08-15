@@ -51,6 +51,30 @@ class AuditEvent
 
     public const PURCHASE_INVOICE_VOIDED = 'purchase_invoice.voided';
 
+    // Budget — modul ini sebelumnya tidak menulis satu pun entri audit (G12),
+    // padahal seluruh modul transaksi lain melakukannya.
+    public const BUDGET_PERIOD_CREATED = 'budget.period.created';
+
+    public const BUDGET_PERIOD_UPDATED = 'budget.period.updated';
+
+    public const BUDGET_PERIOD_CLOSED = 'budget.period.closed';
+
+    public const BUDGET_SUBMISSION_CREATED = 'budget.submission.created';
+
+    public const BUDGET_SUBMISSION_UPDATED = 'budget.submission.updated';
+
+    public const BUDGET_SUBMISSION_LINES_UPDATED = 'budget.submission.lines_updated';
+
+    public const BUDGET_SUBMISSION_SUBMITTED = 'budget.submission.submitted';
+
+    public const BUDGET_SUBMISSION_APPROVED_HEAD = 'budget.submission.approved_head';
+
+    public const BUDGET_SUBMISSION_APPROVED = 'budget.submission.approved';
+
+    public const BUDGET_SUBMISSION_REJECTED = 'budget.submission.rejected';
+
+    public const BUDGET_SUBMISSION_REVISED = 'budget.submission.revised';
+
     // Fiscal/Closing
     public const FISCAL_YEAR_CLOSING_STARTED = 'fiscal_year.closing_started';
 
@@ -95,6 +119,17 @@ class AuditEvent
             self::PURCHASE_INVOICE_UPDATED,
             self::PURCHASE_INVOICE_POSTED,
             self::PURCHASE_INVOICE_VOIDED,
+            self::BUDGET_PERIOD_CREATED,
+            self::BUDGET_PERIOD_UPDATED,
+            self::BUDGET_PERIOD_CLOSED,
+            self::BUDGET_SUBMISSION_CREATED,
+            self::BUDGET_SUBMISSION_UPDATED,
+            self::BUDGET_SUBMISSION_LINES_UPDATED,
+            self::BUDGET_SUBMISSION_SUBMITTED,
+            self::BUDGET_SUBMISSION_APPROVED_HEAD,
+            self::BUDGET_SUBMISSION_APPROVED,
+            self::BUDGET_SUBMISSION_REJECTED,
+            self::BUDGET_SUBMISSION_REVISED,
             self::FISCAL_YEAR_CLOSING_STARTED,
             self::FISCAL_YEAR_CLOSED,
             self::CLOSING_JOURNAL_GENERATED,

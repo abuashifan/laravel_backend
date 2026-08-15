@@ -14,7 +14,9 @@ class StoreBudgetSubmissionRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'department_id' => ['required', 'integer'],
+            // NULL = anggaran tingkat perusahaan yang diajukan Finance tanpa
+            // melewati tahap kepala departemen.
+            'department_id' => ['nullable', 'integer', 'exists:tenant.departments,id'],
             'notes' => ['nullable', 'string'],
         ];
     }

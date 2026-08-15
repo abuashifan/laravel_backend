@@ -2,104 +2,62 @@
 
 namespace App\Modules\Budget\Services;
 
-use App\Modules\Budget\Models\BudgetLine;
-use App\Modules\Budget\Models\BudgetPeriod;
-use App\Modules\Budget\Models\BudgetSubmission;
-use App\Shared\Tenant\TenantContext;
-use Illuminate\Support\Facades\DB;
+use App\Modules\Budget\Support\BudgetState;
 
+/**
+ * Laporan Budget vs Actual per akun.
+ *
+ * Sejak fase 2 ini hanya pembungkus tipis `BudgetAnalysisService` dengan preset
+ * `group_by=[account]` + `mode=variance`. Logika lamanya DIBUANG, bukan
+ * dibiarkan hidup berdampingan — dua jalur agregasi yang mirip tapi tidak sama
+ * persis adalah akar empat cacat perilaku yang ditutup rencana ini.
+ *
+ * Bentuk balasan dipertahankan supaya `BudgetComparisonController` dan
+ * frontend-nya tidak ikut berubah; `direction` dan `state` ditambahkan sebagai
+ * field baru (aditif).
+ */
 class BudgetComparisonService
 {
-    public function __construct(private readonly TenantContext $tenantContext) {}
+    public function __construct(private readonly BudgetAnalysisService $analysisService) {}
 
     public function compare(array $filters): array
     {
-        $companyId = $this->tenantContext->companyId();
-        $periodId = (int) $filters['budget_period_id'];
+        $analysis = $this->analysisService->analyze([
+            'budget_period_id' => $filters['budget_period_id'] ?? null,
+            'group_by' => ['account'],
+            'mode' => 'variance',
+            'department_id' => $filters['department_id'] ?? null,
+            'project_id' => $filters['project_id'] ?? null,
+            // Nama filter lama: `period_from`/`period_to`.
+            'date_from' => $filters['period_from'] ?? null,
+            'date_to' => $filters['period_to'] ?? null,
+        ]);
 
-        $period = BudgetPeriod::query()
-            ->forCompany($companyId)
-            ->findOrFail($periodId);
-
-        $submissionIds = BudgetSubmission::query()
-            ->forCompany($companyId)
-            ->where('budget_period_id', $period->id)
-            ->where('status', 'approved')
-            ->when(! empty($filters['department_id']), fn ($q) => $q->where('department_id', (int) $filters['department_id']))
-            ->pluck('id');
-
-        $budgetQuery = BudgetLine::query()
-            ->whereIn('budget_submission_id', $submissionIds)
-            ->join('chart_of_accounts as coa', 'coa.id', '=', 'budget_lines.account_id')
-            ->when(! empty($filters['project_id']), fn ($q) => $q->where('project_id', (int) $filters['project_id']))
-            ->select(
-                'budget_lines.account_id',
-                DB::raw('MAX(coa.account_name) as account_name'),
-                DB::raw('MAX(coa.account_code) as account_code'),
-                DB::raw('SUM(budget_lines.amount) as budget_amount')
-            )
-            ->groupBy('budget_lines.account_id');
-
-        $budgetRows = $budgetQuery->get()->keyBy('account_id');
-
-        $jeQuery = DB::connection('tenant')
-            ->table('journal_entry_lines as jel')
-            ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
-            ->where('je.status', 'posted')
-            ->whereBetween('je.journal_date', [$period->period_from, $period->period_to]);
-
-        if (! empty($filters['department_id'])) {
-            $jeQuery->where('jel.department_id', (int) $filters['department_id']);
-        }
-        if (! empty($filters['project_id'])) {
-            $jeQuery->where('jel.project_id', (int) $filters['project_id']);
-        }
-        if (! empty($filters['period_from'])) {
-            $jeQuery->where('je.journal_date', '>=', $filters['period_from']);
-        }
-        if (! empty($filters['period_to'])) {
-            $jeQuery->where('je.journal_date', '<=', $filters['period_to']);
-        }
-
-        $actualRows = $jeQuery
-            ->select('jel.account_id', DB::raw('SUM(jel.debit - jel.credit) as actual_amount'))
-            ->groupBy('jel.account_id')
-            ->get()
-            ->keyBy('account_id');
-
-        $allAccountIds = $budgetRows->keys()->merge($actualRows->keys())->unique();
-
-        $rows = $allAccountIds->map(function ($accountId) use ($budgetRows, $actualRows) {
-            $budget = $budgetRows->get($accountId);
-            $actual = $actualRows->get($accountId);
-            $budgetAmount = (float) ($budget->budget_amount ?? 0);
-            $actualAmount = (float) ($actual->actual_amount ?? 0);
-            $variance = $budgetAmount - $actualAmount;
-            $variancePct = $budgetAmount != 0 ? round(($variance / $budgetAmount) * 100, 2) : null;
-
-            return [
-                'account_id' => $accountId,
-                'account_code' => $budget->account_code ?? null,
-                'account_name' => $budget->account_name ?? null,
-                'budget_amount' => number_format($budgetAmount, 2, '.', ''),
-                'actual_amount' => number_format($actualAmount, 2, '.', ''),
-                'variance' => number_format($variance, 2, '.', ''),
-                'variance_pct' => $variancePct,
-                'over_budget' => $actualAmount > $budgetAmount,
-            ];
-        })->values()->all();
-
-        $totalBudget = collect($rows)->sum(fn ($r) => (float) $r['budget_amount']);
-        $totalActual = collect($rows)->sum(fn ($r) => (float) $r['actual_amount']);
+        $rows = array_map(fn (array $row) => [
+            'account_id' => $row['account_id'],
+            'account_code' => $row['account_code'] ?? null,
+            'account_name' => $row['account_name'] ?? null,
+            'budget_amount' => $row['budget_amount'],
+            'actual_amount' => $row['actual_amount'],
+            'variance' => $row['variance'],
+            'variance_pct' => $row['variance_pct'],
+            'over_budget' => $row['state'] === BudgetState::OVER_BUDGET,
+            'direction' => $row['direction'],
+            'state' => $row['state'],
+        ], $analysis['rows']);
 
         return [
-            'period' => ['budget_period_id' => $period->id, 'name' => $period->name],
+            'period' => [
+                'budget_period_id' => $analysis['period']['budget_period_id'],
+                'name' => $analysis['period']['name'],
+            ],
             'rows' => $rows,
             'totals' => [
-                'budget_amount' => number_format($totalBudget, 2, '.', ''),
-                'actual_amount' => number_format($totalActual, 2, '.', ''),
-                'variance' => number_format($totalBudget - $totalActual, 2, '.', ''),
+                'budget_amount' => $analysis['totals']['budget_amount'],
+                'actual_amount' => $analysis['totals']['actual_amount'],
+                'variance' => $analysis['totals']['variance'],
             ],
+            'meta' => $analysis['meta'],
         ];
     }
 }
