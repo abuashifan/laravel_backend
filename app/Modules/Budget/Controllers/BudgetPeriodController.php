@@ -8,6 +8,7 @@ use App\Modules\Budget\Requests\UpdateBudgetPeriodRequest;
 use App\Modules\Budget\Services\BudgetPeriodService;
 use App\Shared\Api\ApiResponse;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class BudgetPeriodController extends Controller
 {
@@ -15,11 +16,15 @@ class BudgetPeriodController extends Controller
 
     public function __construct(private readonly BudgetPeriodService $service) {}
 
-    public function index(): JsonResponse
+    /**
+     * `listResponse()` (bukan `successResponse()`) supaya bentuk balasannya
+     * mengikuti kontrak daftar yang sama dengan modul lain: terpaginasi beserta
+     * `meta.total` saat request membawa `page`/`per_page`, dan koleksi utuh saat
+     * tidak — yang dipakai dropdown pemilih pagu.
+     */
+    public function index(Request $request): JsonResponse
     {
-        $periods = $this->service->list();
-
-        return $this->successResponse($periods, 'Budget periods retrieved successfully');
+        return $this->listResponse($this->service->list($request->query()), $request, 'Budget periods retrieved successfully');
     }
 
     public function store(StoreBudgetPeriodRequest $request): JsonResponse

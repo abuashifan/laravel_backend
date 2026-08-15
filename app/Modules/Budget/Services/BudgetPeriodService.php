@@ -4,15 +4,31 @@ namespace App\Modules\Budget\Services;
 
 use App\Modules\Budget\Models\BudgetPeriod;
 use App\Shared\Api\ApiErrorCode;
+use App\Shared\Api\AppliesListQuery;
 use App\Shared\Audit\AuditEvent;
 use App\Shared\Audit\AuditLogService;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 class BudgetPeriodService
 {
+    use AppliesListQuery;
+
+    protected array $listSearchable = ['name', 'fiscal_year'];
+
+    protected array $listSearchableRelations = [];
+
+    protected string $listDateColumn = 'period_from';
+
+    protected string $listStatusColumn = 'status';
+
+    protected array $listDefaultSort = ['fiscal_year' => 'desc', 'period_from' => 'desc'];
+
+    protected array $listSortable = ['name', 'fiscal_year', 'period_from', 'period_to', 'status', 'created_at'];
+
     public function __construct(
         private readonly TenantContext $tenantContext,
         // Wajib — lihat catatan di BudgetSubmissionService: varian nullable
@@ -21,16 +37,27 @@ class BudgetPeriodService
         private readonly BudgetAllocationService $allocationService,
     ) {}
 
-    /** @return Collection<int,BudgetPeriod> */
-    public function list(array $filters = []): Collection
+    /**
+     * Search/filter/sort/paginate dikerjakan di SQL lewat `AppliesListQuery`,
+     * bukan di klien. Sebelumnya method ini selalu mengembalikan SELURUH koleksi
+     * dan `BudgetPeriodListPage` menyaring serta memotong halaman di browser —
+     * artinya sort "tahun terbesar" hanya berlaku untuk baris yang kebetulan
+     * sudah terunduh, dan tiap pagu baru menambah beban transfer.
+     *
+     * Kontrak `listResponse()` tetap dihormati: tanpa `page`/`per_page` di
+     * request, hasilnya Collection utuh — dipakai `BudgetPeriodSelect` dan
+     * beberapa halaman analisis yang memang butuh semua periode untuk dropdown.
+     *
+     * @param  array<string,mixed>  $filters
+     * @return LengthAwarePaginator|Collection<int,BudgetPeriod>
+     */
+    public function list(array $filters = []): LengthAwarePaginator|Collection
     {
-        $companyId = $this->tenantContext->companyId();
+        $query = BudgetPeriod::query()
+            ->forCompany($this->tenantContext->companyId())
+            ->withCount('submissions');
 
-        return BudgetPeriod::query()
-            ->forCompany($companyId)
-            ->withCount('submissions')
-            ->orderByDesc('fiscal_year')
-            ->get();
+        return $this->applyListQuery($query, $filters);
     }
 
     public function create(array $data): BudgetPeriod
