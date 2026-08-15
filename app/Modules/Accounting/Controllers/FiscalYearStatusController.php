@@ -30,6 +30,7 @@ class FiscalYearStatusController extends Controller
 
         return $this->successResponse([
             'active_fiscal_year' => [
+                'id' => $fy->id,
                 'year' => $fy->year,
                 'start_date' => $fy->start_date?->toDateString(),
                 'end_date' => $fy->end_date?->toDateString(),

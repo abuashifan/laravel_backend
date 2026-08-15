@@ -24,7 +24,7 @@ class BudgetPeriodController extends Controller
 
     public function store(StoreBudgetPeriodRequest $request): JsonResponse
     {
-        $period = $this->service->create($request->validated());
+        $period = $this->service->createWithAllocations($request->validated());
 
         return $this->successResponse($period, 'Budget period created successfully', 201);
     }

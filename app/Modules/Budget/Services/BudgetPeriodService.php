@@ -9,6 +9,7 @@ use App\Shared\Audit\AuditLogService;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\DB;
 
 class BudgetPeriodService
 {
@@ -17,6 +18,7 @@ class BudgetPeriodService
         // Wajib — lihat catatan di BudgetSubmissionService: varian nullable
         // dengan nilai default tidak pernah diisi container.
         private readonly AuditLogService $auditLogService,
+        private readonly BudgetAllocationService $allocationService,
     ) {}
 
     /** @return Collection<int,BudgetPeriod> */
@@ -44,7 +46,9 @@ class BudgetPeriodService
 
         $period = BudgetPeriod::query()->create([
             'company_id' => $companyId,
-            'name' => $data['name'],
+            'name' => trim((string) ($data['name'] ?? '')) !== ''
+                ? $data['name']
+                : "Pagu Anggaran {$data['fiscal_year']}",
             'fiscal_year' => $data['fiscal_year'],
             'fiscal_year_id' => $data['fiscal_year_id'] ?? null,
             'period_from' => $data['period_from'],
@@ -57,6 +61,57 @@ class BudgetPeriodService
         $this->audit(AuditEvent::BUDGET_PERIOD_CREATED, $period);
 
         return $period;
+    }
+
+    /**
+     * Form gabungan pagu+periode: satu periode DAN pagu per departemennya
+     * dibuat dalam satu transaksi, bukan periode dulu lalu alokasi menyusul
+     * lewat panggilan terpisah — supaya tidak ada periode yang "nyangkut"
+     * tanpa pagu kalau salah satu baris departemen gagal validasi.
+     *
+     * Pagu tingkat perusahaan (root) TIDAK diinput manual — nilainya SELALU
+     * SUM dari baris departemen yang dikirim, supaya validasi
+     * `BudgetAllocationService::assertWithinParent()` (anak tidak boleh
+     * melebihi induk) otomatis terpenuhi by construction, bukan sesuatu yang
+     * bisa gagal karena user salah menghitung total lebih dulu.
+     *
+     * @param  array<string,mixed>  $data
+     */
+    public function createWithAllocations(array $data): BudgetPeriod
+    {
+        // `DB::transaction()` biasa membungkus koneksi DEFAULT, bukan
+        // 'tenant' — dan BudgetPeriod/BudgetAllocation keduanya
+        // `protected $connection = 'tenant'`. Tanpa connection('tenant')
+        // eksplisit di sini, exception di tengah loop alokasi TIDAK
+        // membatalkan periode yang sudah terlanjur dibuat (dibuktikan lewat
+        // BudgetPeriodWithAllocationsTest::test_a_failed_allocation_rolls_back_the_whole_period).
+        return DB::connection('tenant')->transaction(function () use ($data) {
+            $period = $this->create($data);
+
+            $rows = $data['department_allocations'] ?? [];
+            if ($rows === []) {
+                return $period;
+            }
+
+            $total = array_sum(array_map(static fn ($row) => (float) $row['amount'], $rows));
+
+            $root = $this->allocationService->create($period, [
+                'department_id' => null,
+                'parent_allocation_id' => null,
+                'amount' => $total,
+            ]);
+
+            foreach ($rows as $row) {
+                $this->allocationService->create($period, [
+                    'department_id' => $row['department_id'],
+                    'parent_allocation_id' => $root->id,
+                    'amount' => $row['amount'],
+                    'notes' => $row['notes'] ?? null,
+                ]);
+            }
+
+            return $period;
+        });
     }
 
     public function find(int $id): BudgetPeriod
