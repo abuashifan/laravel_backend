@@ -23,6 +23,8 @@ Route::middleware(['auth:sanctum', 'company.access'])->group(function () {
     });
 
     Route::prefix('budget-submissions')->group(function () {
+        // Terdaftar sebelum `/{id}` supaya tidak tertelan sebagai id bernilai kosong.
+        Route::get('/', [BudgetSubmissionController::class, 'indexAll'])->middleware('permission:budgets.view');
         Route::get('/{id}', [BudgetSubmissionController::class, 'show'])->middleware('permission:budgets.view');
         Route::put('/{id}', [BudgetSubmissionController::class, 'update'])->middleware('permission:budgets.submit');
         Route::put('/{id}/lines', [BudgetSubmissionController::class, 'updateLines'])->middleware('permission:budgets.submit');
@@ -47,6 +49,7 @@ Route::middleware(['auth:sanctum', 'company.access'])->group(function () {
         Route::get('/projects/{id}/summary', [BudgetProjectController::class, 'summary'])->middleware('permission:budgets.view');
         Route::get('/projects/{id}/profitability', [BudgetProjectController::class, 'profitability'])->middleware('permission:budgets.view');
         Route::get('/projects/{id}/cash-flow', [BudgetProjectController::class, 'cashFlow'])->middleware('permission:budgets.view');
+        Route::get('/projects/{id}/transactions', [BudgetProjectController::class, 'transactions'])->middleware('permission:budgets.view');
     });
 
     Route::prefix('reports/budget')->group(function () {

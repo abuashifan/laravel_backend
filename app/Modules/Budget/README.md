@@ -63,6 +63,20 @@ supaya filter `direction=revenue` bisa memakai index.
 | `BudgetWarningService` | Peringatan over-budget saat posting jurnal. **Tanpa logika sendiri** — memakai ketiga service di atas. |
 | `BudgetComparisonService` | Pembungkus tipis: `group_by=[account]`, `mode=variance`. |
 | `BudgetConsolidationService` | Pembungkus: `group_by=[department\|project, account]`, dinormalkan ke bentuk bersarang lama. |
+| `BudgetProjectService` | Project budget/actual/profitability/margin, plus daftar transaksi penyusun actual. |
+| `BudgetCashService` | Cash Budget. Tanpa cash ledger — dari baris anggaran yang sama. |
+
+### Dua jalur daftar submission, sengaja dipisah
+
+| Method | Dipakai | Bentuk |
+|---|---|---|
+| `list(BudgetPeriod, filters)` | `GET /budget-periods/{id}/submissions` — daftar pendek di dalam satu periode | Collection, tanpa paginasi |
+| `listAll(filters)` | `GET /budget-submissions` — halaman "Daftar Budget" lintas periode | Paginator lewat `AppliesListQuery` |
+
+`listAll()` **tidak** mengagregasi budget-vs-actual. `total_amount` hanya
+`withSum` baris anggaran; realisasi tetap urusan `BudgetAnalysisService` di
+halaman detail. Defaultnya hanya versi aktif — tanpa itu daftar penuh versi
+`superseded` yang tidak bisa dibedakan sekilas.
 
 **Aturan yang tidak boleh dilanggar:** peringatan over-budget dan laporan
 perbandingan wajib memakai resolver dan agregasi yang sama. Perbedaan di antara

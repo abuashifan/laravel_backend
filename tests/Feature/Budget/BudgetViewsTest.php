@@ -178,6 +178,73 @@ class BudgetViewsTest extends BudgetAnalysisTestCase
         $this->assertEqualsWithDelta(0.0, $summary['cost_utilization_pct'], 0.01);
     }
 
+    public function test_project_transactions_lists_the_journal_lines_behind_the_actual_totals(): void
+    {
+        $this->bootScenario();
+        $project = $this->makeProject('PRJ-1', 'Renovasi Kantor');
+        $revenue = $this->makeAccount('4000', 'Pendapatan Jasa', 'revenue');
+
+        $this->postJournalLine($revenue->id, '2026-03-05', credit: 4_000_000, departmentId: $this->dept->id, projectId: $project->id);
+        $this->postJournalLine($this->account->id, '2026-03-10', debit: 1_200_000, departmentId: $this->dept->id, projectId: $project->id);
+        // Baris tanpa proyek ini tidak boleh ikut — proyek filternya jadi tidak berarti.
+        $this->postJournalLine($this->account->id, '2026-03-11', debit: 999_999, departmentId: $this->dept->id);
+
+        $result = $this->getJson(
+            "/api/budget/projects/{$project->id}/transactions?budget_period_id={$this->period->id}",
+            $this->headers,
+        )->assertStatus(200)->json('data');
+
+        $this->assertCount(2, $result['lines']);
+        $this->assertSame('4000000.00', $result['totals']['revenue']);
+        $this->assertSame('1200000.00', $result['totals']['cost']);
+        $this->assertSame('2800000.00', $result['totals']['net']);
+        $this->assertSame(2, $result['total_lines']);
+        $this->assertFalse($result['truncated']);
+
+        // Total di sini wajib cocok dengan `actual.revenue`/`actual.cost` pada summary() untuk filter yang sama.
+        $summary = $this->getJson(
+            "/api/budget/projects/{$project->id}/summary?budget_period_id={$this->period->id}",
+            $this->headers,
+        )->assertStatus(200)->json('data');
+        $this->assertSame($summary['actual']['revenue'], $result['totals']['revenue']);
+        $this->assertSame($summary['actual']['cost'], $result['totals']['cost']);
+    }
+
+    public function test_project_transactions_can_be_filtered_by_direction(): void
+    {
+        $this->bootScenario();
+        $project = $this->makeProject('PRJ-1', 'Renovasi Kantor');
+        $revenue = $this->makeAccount('4000', 'Pendapatan Jasa', 'revenue');
+
+        $this->postJournalLine($revenue->id, '2026-03-05', credit: 4_000_000, departmentId: $this->dept->id, projectId: $project->id);
+        $this->postJournalLine($this->account->id, '2026-03-10', debit: 1_200_000, departmentId: $this->dept->id, projectId: $project->id);
+
+        $result = $this->getJson(
+            "/api/budget/projects/{$project->id}/transactions?budget_period_id={$this->period->id}&direction=revenue",
+            $this->headers,
+        )->assertStatus(200)->json('data');
+
+        $this->assertCount(1, $result['lines']);
+        $this->assertSame('revenue', $result['lines'][0]['direction']);
+    }
+
+    public function test_project_transactions_ignores_journals_that_are_obsolete_or_not_posted(): void
+    {
+        $this->bootScenario();
+        $project = $this->makeProject('PRJ-1', 'Renovasi Kantor');
+
+        $this->postJournalLine($this->account->id, '2026-03-05', debit: 1_000, departmentId: $this->dept->id, projectId: $project->id, overrides: ['status' => 'draft']);
+        $this->postJournalLine($this->account->id, '2026-03-06', debit: 2_000, departmentId: $this->dept->id, projectId: $project->id, overrides: ['is_obsolete' => true]);
+
+        $result = $this->getJson(
+            "/api/budget/projects/{$project->id}/transactions?budget_period_id={$this->period->id}",
+            $this->headers,
+        )->assertStatus(200)->json('data');
+
+        $this->assertSame([], $result['lines']);
+        $this->assertSame('0.00', $result['totals']['cost']);
+    }
+
     // -------------------------------------------------------- business rules
 
     public function test_overlapping_open_budget_periods_are_rejected(): void

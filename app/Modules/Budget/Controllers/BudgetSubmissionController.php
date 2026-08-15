@@ -4,6 +4,7 @@ namespace App\Modules\Budget\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Budget\Requests\BudgetApprovalRequest;
+use App\Modules\Budget\Requests\ListBudgetSubmissionsRequest;
 use App\Modules\Budget\Requests\ReviseBudgetSubmissionRequest;
 use App\Modules\Budget\Requests\StoreBudgetSubmissionRequest;
 use App\Modules\Budget\Requests\UpdateBudgetLinesRequest;
@@ -31,6 +32,17 @@ class BudgetSubmissionController extends Controller
         $submissions = $this->service->list($period, $request->query());
 
         return $this->successResponse($submissions, 'Budget submissions retrieved successfully');
+    }
+
+    /**
+     * Daftar lintas periode. `index()` di atas tetap ada dan tetap terikat satu
+     * periode — dipakai halaman detail periode, kontraknya tidak berubah.
+     */
+    public function indexAll(ListBudgetSubmissionsRequest $request): JsonResponse
+    {
+        $submissions = $this->service->listAll($request->query());
+
+        return $this->listResponse($submissions, $request, 'Budget submissions retrieved successfully');
     }
 
     public function store(StoreBudgetSubmissionRequest $request, int $periodId): JsonResponse

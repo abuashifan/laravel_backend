@@ -10,15 +10,35 @@ use App\Modules\MasterData\Models\ChartOfAccount;
 use App\Modules\MasterData\Models\Project;
 use App\Modules\Settings\Services\CompanySettingService;
 use App\Shared\Api\ApiErrorCode;
+use App\Shared\Api\AppliesListQuery;
 use App\Shared\Audit\AuditEvent;
 use App\Shared\Audit\AuditLogService;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 class BudgetSubmissionService
 {
+    use AppliesListQuery;
+
+    /**
+     * Departemen ikut dicari lewat relasi; `revision_reason` ada di tabel sendiri.
+     * Keduanya yang dilihat pengguna saat mencari "anggaran mana ini".
+     */
+    protected array $listSearchable = ['revision_reason'];
+
+    protected array $listSearchableRelations = ['department' => ['name', 'code']];
+
+    protected string $listDateColumn = '';
+
+    protected string $listStatusColumn = 'status';
+
+    protected array $listDefaultSort = ['budget_period_id' => 'desc', 'department_id' => 'asc', 'version_no' => 'desc'];
+
+    protected array $listSortable = ['created_at', 'version_no', 'status', 'budget_period_id', 'department_id'];
+
     public function __construct(
         private readonly TenantContext $tenantContext,
         private readonly CompanySettingService $companySettingService,
@@ -60,6 +80,51 @@ class BudgetSubmissionService
         }
 
         return $query->orderBy('department_id')->get();
+    }
+
+    /**
+     * Daftar submission **lintas periode** — sumber halaman "Daftar Budget".
+     *
+     * Dipisah dari `list()` yang di atas, bukan menggantikannya: `list()` melayani
+     * daftar pendek di dalam satu periode (`BudgetPeriodDetailPage`) dan kontraknya
+     * mengembalikan Collection tanpa paginasi. Menggabungkan keduanya berarti salah
+     * satu pemanggil harus berubah tanpa alasan.
+     *
+     * Tidak ada agregasi anggaran-vs-realisasi di sini. `total_amount` hanya jumlah
+     * baris anggaran (satu subquery), karena daftar tidak butuh tahu realisasi —
+     * itu pekerjaan `BudgetAnalysisService` di halaman detail.
+     *
+     * @param  array<string,mixed>  $filters
+     * @return LengthAwarePaginator|Collection<int,BudgetSubmission>
+     */
+    public function listAll(array $filters = []): LengthAwarePaginator|Collection
+    {
+        $query = BudgetSubmission::query()
+            ->forCompany($this->tenantContext->companyId())
+            ->with(['department:id,code,name', 'period:id,name,fiscal_year'])
+            ->withSum('lines as total_amount', 'amount');
+
+        if (! empty($filters['budget_period_id'])) {
+            $query->where('budget_period_id', (int) $filters['budget_period_id']);
+        }
+        if (! empty($filters['department_id'])) {
+            $query->where('department_id', (int) $filters['department_id']);
+        }
+
+        // Default hanya versi aktif. Tanpa ini daftar menampilkan setiap versi lama
+        // dari setiap submission yang pernah direvisi, dan pengguna melihat duplikat
+        // yang tidak bisa dibedakan sekilas. Versi lama dilihat lewat riwayat versi,
+        // atau dengan mengirim `is_active=false` secara sadar.
+        if (array_key_exists('is_active', $filters) && $filters['is_active'] !== '') {
+            $wantsActive = filter_var($filters['is_active'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+            if ($wantsActive === true) {
+                $query->where('is_active', true);
+            }
+        } else {
+            $query->where('is_active', true);
+        }
+
+        return $this->applyListQuery($query, $filters);
     }
 
     public function create(BudgetPeriod $period, array $data): BudgetSubmission

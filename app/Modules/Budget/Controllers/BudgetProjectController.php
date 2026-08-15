@@ -4,6 +4,7 @@ namespace App\Modules\Budget\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Budget\Requests\BudgetCashRequest;
+use App\Modules\Budget\Requests\BudgetProjectTransactionsRequest;
 use App\Modules\Budget\Services\BudgetCashService;
 use App\Modules\Budget\Services\BudgetProjectService;
 use App\Shared\Api\ApiResponse;
@@ -52,6 +53,15 @@ class BudgetProjectController extends Controller
         return $this->successResponse(
             $this->cashService->summary($request->validated() + ['project_id' => $id]),
             'Project cash flow retrieved successfully',
+        );
+    }
+
+    /** Daftar transaksi mentah yang menyusun Actual Revenue/Cost proyek ini. */
+    public function transactions(BudgetProjectTransactionsRequest $request, int $id): JsonResponse
+    {
+        return $this->successResponse(
+            $this->service->transactions($id, $request->validated()),
+            'Project transactions retrieved successfully',
         );
     }
 }
