@@ -55,6 +55,7 @@ return [
         'BUDGET_PERIOD_OVERLAP' => 'Periode anggaran beririsan dengan periode lain yang masih terbuka.',
         'BUDGET_NEGATIVE_AMOUNT' => 'Nominal anggaran tidak boleh negatif. Turunkan lewat revisi anggaran.',
         'BUDGET_PROJECT_NOT_ACTIVE' => 'Proyek sudah tidak aktif sehingga tidak bisa dianggarkan.',
+        'BUDGET_ALLOCATION_EXCEEDS_PARENT' => 'Total pagu melebihi pagu induknya.',
         'DEPARTMENT_HIERARCHY_CYCLE' => 'Departemen tidak boleh menjadi induk dari dirinya sendiri.',
         'DEPARTMENT_HIERARCHY_TOO_DEEP' => 'Hierarki departemen maksimal 5 tingkat.',
 

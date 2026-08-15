@@ -1,5 +1,6 @@
 <?php
 
+use App\Modules\Budget\Controllers\BudgetAllocationController;
 use App\Modules\Budget\Controllers\BudgetAnalysisController;
 use App\Modules\Budget\Controllers\BudgetCashController;
 use App\Modules\Budget\Controllers\BudgetConsolidationController;
@@ -20,6 +21,15 @@ Route::middleware(['auth:sanctum', 'company.access'])->group(function () {
         Route::get('/{id}/submissions', [BudgetSubmissionController::class, 'index'])->middleware('permission:budgets.view');
         Route::post('/{id}/submissions', [BudgetSubmissionController::class, 'store'])->middleware('permission:budgets.submit');
         Route::get('/{id}/consolidation', [BudgetConsolidationController::class, 'show'])->middleware('permission:budgets.view');
+        // Gap A — pagu top-down. Wewenang yang sama dengan membuat/menutup
+        // periode: menetapkan plafon adalah keputusan Finance, bukan pengaju.
+        Route::get('/{id}/allocations', [BudgetAllocationController::class, 'index'])->middleware('permission:budgets.view');
+        Route::post('/{id}/allocations', [BudgetAllocationController::class, 'store'])->middleware('permission:budgets.manage');
+    });
+
+    Route::prefix('budget-allocations')->group(function () {
+        Route::get('/{id}', [BudgetAllocationController::class, 'show'])->middleware('permission:budgets.view');
+        Route::put('/{id}', [BudgetAllocationController::class, 'update'])->middleware('permission:budgets.manage');
     });
 
     Route::prefix('budget-submissions')->group(function () {

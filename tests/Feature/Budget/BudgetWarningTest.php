@@ -49,6 +49,28 @@ class BudgetWarningTest extends BudgetAnalysisTestCase
     }
 
     /**
+     * `budget_periods.period_from`/`period_to` tersimpan dengan sufiks waktu
+     * ('2026-01-01 00:00:00'), sedangkan bulan yang dicek dibandingkan sebagai
+     * tanggal polos ('2026-01-01'). Perbandingan string biasa (`where` tanpa
+     * `whereDate`) membuat string yang lebih panjang selalu tersortir lebih
+     * besar meski tanggalnya identik — jadi periode yang MULAI PERSIS di hari
+     * pertama bulan yang dicek gagal cocok, dan peringatan tidak pernah
+     * menyala untuk transaksi di bulan pertama periode. `bootScenario()`
+     * membuat periode mulai `2026-01-01`, jadi menguji bulan `2026-01` di sini
+     * PERSIS menyentuh batas itu.
+     */
+    public function test_warning_fires_for_a_transaction_in_the_first_month_of_the_period(): void
+    {
+        $this->bootScenario();
+        $this->budgetLine($this->account, amount: 100, departmentId: $this->dept->id, periodMonth: '2026-01');
+
+        $warning = $this->warn($this->dept->id, null, '2026-01', 500);
+
+        $this->assertNotNull($warning, 'Periode yang mulai persis di bulan yang dicek wajib tetap cocok.');
+        $this->assertSame(500.0, $warning['new_total']);
+    }
+
+    /**
      * G6 — anggaran tahunan dulu dibandingkan dengan actual SATU bulan, sehingga
      * anggaran 12.000 setahun baru menyala kalau satu bulan saja tembus 12.000.
      */

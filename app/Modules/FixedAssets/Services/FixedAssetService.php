@@ -2,6 +2,8 @@
 
 namespace App\Modules\FixedAssets\Services;
 
+use App\Modules\Budget\Services\BudgetWarningService;
+use App\Modules\Budget\Support\CollectsBudgetWarnings;
 use App\Modules\FixedAssets\Models\FixedAsset;
 use App\Modules\FixedAssets\Models\FixedAssetCategory;
 use App\Modules\FixedAssets\Models\FixedAssetDepreciationRun;
@@ -22,11 +24,14 @@ use Illuminate\Support\Facades\DB;
 
 class FixedAssetService
 {
+    use CollectsBudgetWarnings;
+
     public function __construct(
         private readonly TenantContext $tenantContext,
         private readonly DocumentNumberService $documentNumberService,
         private readonly AuditLogService $auditLogService,
         private readonly TransactionDateGuardService $dateGuardService,
+        private readonly BudgetWarningService $budgetWarning,
     ) {}
 
     public function categories(array $filters = []): Collection
@@ -349,8 +354,16 @@ class FixedAssetService
             ]);
 
             $journal = null;
+            $budgetWarnings = [];
             if ($schedules->isNotEmpty() && (float) $schedules->sum('depreciation_amount') > 0) {
                 $grouped = [];
+                // Baris per skedul, sebelum digabung per akun — Gap B. Batch ini
+                // menjumlahkan SEMUA aset ke satu baris jurnal per akun beban
+                // (lihat pembentukan $lines di bawah), sehingga department_id/
+                // project_id tiap aset hilang tepat di jurnalnya. Peringatan
+                // budget dihitung DI SINI, per skedul, sebelum peleburan itu
+                // terjadi — bukan dibaca ulang dari jurnal yang sudah kehilangan
+                // dimensinya.
                 foreach ($schedules as $schedule) {
                     $asset = $schedule->asset;
                     if (! $asset) {
@@ -360,6 +373,13 @@ class FixedAssetService
                     $accumulated = $this->accumulatedAccount($asset);
                     $grouped['dr_'.$expense] = ($grouped['dr_'.$expense] ?? 0) + (float) $schedule->depreciation_amount;
                     $grouped['cr_'.$accumulated] = ($grouped['cr_'.$accumulated] ?? 0) + (float) $schedule->depreciation_amount;
+
+                    $budgetWarnings[] = [
+                        'account_id' => $expense,
+                        'department_id' => $asset->department_id,
+                        'project_id' => $asset->project_id,
+                        'amount' => (float) $schedule->depreciation_amount,
+                    ];
                 }
 
                 $lines = [];
@@ -376,6 +396,30 @@ class FixedAssetService
 
                 $journal = $this->journal($period.'-01', 'Fixed asset depreciation '.$period, 'fixed_asset_depreciation', $run->id, $run->run_number, $lines);
             }
+
+            // Disimpan di `metadata`, bukan dikembalikan lewat response terpisah:
+            // proses ini adalah batch periode-akhir (dipanggil `PeriodEndService`),
+            // bukan satu dokumen yang langsung dilihat user lewat satu request
+            // interaktif seperti Journal/Cash Payment/Sales Invoice/Purchase
+            // Order/Stock Movement. Bentuk tiap item warning tetap identik
+            // dengan `meta.warnings` di keempat modul itu — hanya wadahnya beda,
+            // supaya frontend bisa merender dengan cara yang sama begitu
+            // `run.metadata.budget_warnings` mulai dibaca.
+            $run->update([
+                'metadata' => array_merge((array) $run->metadata, [
+                    // postHoc: true — jurnal penyusutan (kalau ada) sudah dibuat
+                    // di atas sebelum baris ini berjalan, jadi `actual` yang
+                    // dibaca `check()` sudah memuat batch ini sendiri. Lihat
+                    // `CollectsBudgetWarnings` untuk penjelasan lengkap.
+                    'budget_warnings' => $this->collectBudgetWarningsFor(
+                        $this->budgetWarning,
+                        (int) $company->id,
+                        $budgetWarnings,
+                        $period,
+                        postHoc: true,
+                    ),
+                ]),
+            ]);
 
             foreach ($schedules as $schedule) {
                 $asset = $schedule->asset;

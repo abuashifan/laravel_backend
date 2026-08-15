@@ -92,9 +92,20 @@ class BudgetMatchResolver
                 $q->where('company_id', $companyId)
                     ->where('status', 'approved')
                     ->where('is_active', true)
+                    // whereDate(), bukan where() biasa — period_from/period_to
+                    // tersimpan dengan sufiks waktu ('2026-01-01 00:00:00'),
+                    // sehingga perbandingan string polos terhadap $monthStart
+                    // ('2026-01-01', tanpa waktu) salah PERSIS saat batas
+                    // periode sama dengan tanggal yang dicek: string yang
+                    // lebih panjang selalu tersortir lebih besar meski
+                    // tanggalnya identik, jadi periode yang MULAI PERSIS di
+                    // hari pertama bulan yang dicek gagal cocok — baris
+                    // anggaran yang berlaku tidak pernah ketemu, dan
+                    // peringatan over-budget tidak pernah menyala untuk
+                    // transaksi di hari pertama itu. Ditemukan lewat test.
                     ->whereHas('period', fn ($p) => $p
-                        ->where('period_from', '<=', $monthStart)
-                        ->where('period_to', '>=', $monthStart));
+                        ->whereDate('period_from', '<=', $monthStart)
+                        ->whereDate('period_to', '>=', $monthStart));
             });
     }
 }

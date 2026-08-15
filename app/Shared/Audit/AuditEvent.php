@@ -75,6 +75,11 @@ class AuditEvent
 
     public const BUDGET_SUBMISSION_REVISED = 'budget.submission.revised';
 
+    // Gap A — pagu top-down, sebelum ada usulan bottom-up.
+    public const BUDGET_ALLOCATION_CREATED = 'budget.allocation.created';
+
+    public const BUDGET_ALLOCATION_UPDATED = 'budget.allocation.updated';
+
     // Fiscal/Closing
     public const FISCAL_YEAR_CLOSING_STARTED = 'fiscal_year.closing_started';
 
@@ -130,6 +135,8 @@ class AuditEvent
             self::BUDGET_SUBMISSION_APPROVED,
             self::BUDGET_SUBMISSION_REJECTED,
             self::BUDGET_SUBMISSION_REVISED,
+            self::BUDGET_ALLOCATION_CREATED,
+            self::BUDGET_ALLOCATION_UPDATED,
             self::FISCAL_YEAR_CLOSING_STARTED,
             self::FISCAL_YEAR_CLOSED,
             self::CLOSING_JOURNAL_GENERATED,

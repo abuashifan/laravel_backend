@@ -47,6 +47,14 @@ class ModuleBoundariesTest extends TestCase
         'Inventory → App\\Modules\\Journal\\Services\\SystemJournalBuilder',
         'Journal → App\\Modules\\Budget\\Services\\BudgetWarningService',
         'Journal → App\\Modules\\Settings\\Services\\CompanySettingService',
+        // Gap B — peringatan over-budget disambungkan ke transaksi non-Journal
+        // dengan pola yang sama (`BudgetWarningService::check()`, warning-only,
+        // tidak pernah memblokir). Preseden arahnya sama dengan Journal di atas.
+        'CashBank → App\\Modules\\Budget\\Services\\BudgetWarningService',
+        'Sales → App\\Modules\\Budget\\Services\\BudgetWarningService',
+        'Purchase → App\\Modules\\Budget\\Services\\BudgetWarningService',
+        'Inventory → App\\Modules\\Budget\\Services\\BudgetWarningService',
+        'FixedAssets → App\\Modules\\Budget\\Services\\BudgetWarningService',
         'OpeningBalance → App\\Modules\\Accounting\\Services\\FiscalYearService',
         'Purchase → App\\Modules\\Settings\\Services\\CompanySettingService',
         'Purchase → App\\Modules\\Inventory\\Services\\InventoryPurchaseIntegrationService',

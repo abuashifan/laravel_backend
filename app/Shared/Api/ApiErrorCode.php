@@ -135,6 +135,13 @@ class ApiErrorCode
     /** Proyek yang sudah selesai/nonaktif tidak bisa dianggarkan lagi. */
     public const BUDGET_PROJECT_NOT_ACTIVE = 'BUDGET_PROJECT_NOT_ACTIVE';
 
+    /**
+     * Gap A — total pagu anak (mis. seluruh departemen) tidak boleh melebihi
+     * pagu induknya (mis. pagu perusahaan). Dipisah dari VALIDATION_ERROR biasa
+     * supaya UI bisa menampilkan sisa pagu, bukan sekadar "isian tidak valid".
+     */
+    public const BUDGET_ALLOCATION_EXCEEDS_PARENT = 'BUDGET_ALLOCATION_EXCEEDS_PARENT';
+
     public const UNKNOWN_ERROR = 'UNKNOWN_ERROR';
 
     public static function all(): array
