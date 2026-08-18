@@ -69,6 +69,12 @@ class ModuleBoundariesTest extends TestCase
         'Sales → App\\Modules\\MasterData\\Services\\AccountMappingStorageService',
         'Sales → App\\Modules\\Inventory\\Services\\InventorySalesIntegrationService',
         'Setup → App\\Modules\\OpeningBalance\\Services\\OpeningBalanceBatchService',
+        // CoaTemplateService (apply COA template dari wizard) sengaja memakai ulang
+        // service MasterData yang sudah divalidasi bisnisnya, bukan menduplikasi logic
+        // create akun/sync mapping -- preseden arah yang sama sudah ada di
+        // Sales/Purchase → AccountMappingStorageService dan Imports → ChartOfAccountService.
+        'Setup → App\\Modules\\MasterData\\Services\\AccountMappingStorageService',
+        'Setup → App\\Modules\\MasterData\\Services\\ChartOfAccountService',
         'Dashboard → App\\Modules\\Reports\\Services\\CashFlowService',
         'Dashboard → App\\Modules\\Reports\\Services\\FinancialSummaryService',
         'Budget → App\\Modules\\Settings\\Services\\CompanySettingService',
