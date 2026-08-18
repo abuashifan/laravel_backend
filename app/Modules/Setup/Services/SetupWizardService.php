@@ -134,6 +134,12 @@ class SetupWizardService
             $state->metadata = $metadata;
         }
 
+        if ($step === 'opening_balance_preview' && array_key_exists('confirm_opening_balance_skipped', $data)) {
+            $metadata = (array) $state->metadata;
+            $metadata['opening_balance_skipped'] = (bool) $data['confirm_opening_balance_skipped'];
+            $state->metadata = $metadata;
+        }
+
         $result = $this->validateStepKey($state, $step);
         $this->applyValidationResult($state, $step, $result);
         if ($state->status === self::STATUS_NOT_STARTED) {
@@ -476,6 +482,11 @@ class SetupWizardService
     private function validateOpeningBalancePreview(CompanySetupState $state): array
     {
         $preview = $this->buildOpeningBalancePreview($state);
+
+        if ($this->openingBalanceSkipped($state) && $preview['opening_balance_batch'] === null) {
+            return $this->validResult(['skipped' => true]);
+        }
+
         if ($preview['blocking_errors'] !== []) {
             return [
                 'valid' => false,
@@ -563,9 +574,29 @@ class SetupWizardService
         ];
     }
 
+    /**
+     * Perusahaan baru yang benar-benar tidak punya saldo historis boleh
+     * menyelesaikan wizard tanpa batch saldo awal -- flag ini diset lewat
+     * `validateStep('opening_balance_preview', {confirm_opening_balance_skipped})`
+     * saat user klik "Lewati, isi nanti" di Step 5. Sama seperti
+     * `opening_fixed_assets_confirmed_none`, hanya berlaku selama belum ada
+     * batch sungguhan -- begitu batch dibuat, validasi normal berlaku lagi.
+     */
+    private function openingBalanceSkipped(CompanySetupState $state): bool
+    {
+        $metadata = (array) $state->metadata;
+
+        return (bool) ($metadata['opening_balance_skipped'] ?? false);
+    }
+
     private function assertOpeningBalanceReadyForFinalization(CompanySetupState $state): void
     {
         $preview = $this->buildOpeningBalancePreview($state);
+
+        if ($this->openingBalanceSkipped($state) && $preview['opening_balance_batch'] === null) {
+            return;
+        }
+
         if ($preview['blocking_errors'] !== []) {
             throw ApiException::make('OPENING_BALANCE_NOT_READY', 'Opening balance is not ready for setup finalization.', 422, [
                 'blocking_errors' => $preview['blocking_errors'],

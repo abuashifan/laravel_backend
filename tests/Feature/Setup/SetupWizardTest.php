@@ -101,6 +101,35 @@ class SetupWizardTest extends JournalTestCase
         $response->assertJsonPath('data.state.status', 'in_progress');
     }
 
+    /**
+     * Wizard menawarkan "Lewati, isi nanti" untuk saldo awal (perusahaan baru tanpa
+     * saldo historis wajar tidak punya apa pun untuk diinput). Tanpa flag skip ini
+     * finalize selalu gagal 422 walau semua step lain valid -- lihat
+     * SetupWizardService::openingBalanceSkipped().
+     */
+    public function test_opening_balance_can_be_explicitly_skipped_for_finalization(): void
+    {
+        $ctx = $this->setUpTenant(role: 'owner');
+        app(CompanySettingService::class)->getOrCreateModuleSetting($ctx['company']);
+        $this->seedSetupCoaAndMappings();
+
+        $this->patchJson('/api/setup/current-step', [
+            'current_step' => 'final_review',
+            'opening_date' => '2026-01-01',
+        ], $ctx['headers'])->assertOk();
+
+        $this->postJson('/api/setup/validate-step', [
+            'step' => 'opening_balance_preview',
+            'confirm_opening_balance_skipped' => true,
+        ], $ctx['headers'])
+            ->assertOk()
+            ->assertJsonPath('data.result.valid', true);
+
+        $response = $this->postJson('/api/setup/finalize', [], $ctx['headers'])->assertOk();
+        $response->assertJsonPath('data.finalized', true);
+        $response->assertJsonPath('data.state.status', 'finalized');
+    }
+
     public function test_finalized_setup_cannot_be_downgraded_by_stale_current_step_request(): void
     {
         $ctx = $this->setUpTenant(role: 'owner');
