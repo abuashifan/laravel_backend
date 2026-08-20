@@ -3,13 +3,16 @@
 namespace App\Modules\Companies\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Companies\Requests\DeleteCompanyRequest;
 use App\Modules\Companies\Services\CompanyCreationService;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Company\CompanyDeletionService;
 use App\Shared\Models\Company;
 use App\Shared\Models\CompanyUser;
 use App\Shared\Subscription\CompanyQuotaService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use InvalidArgumentException;
 use Throwable;
 
@@ -135,8 +138,16 @@ class CompanyController extends Controller
 
     public function select(Request $request): JsonResponse
     {
+        // `exists` dibatasi ke perusahaan yang belum terhapus. Aturan `exists`
+        // biasa memakai query mentah yang tidak mengenal soft delete, sehingga
+        // perusahaan terhapus lolos ke bawah dan baru gagal sebagai 404 dari
+        // findOrFail — pesan yang tidak menjelaskan apa pun ke user.
         $data = $request->validate([
-            'company_id' => ['required', 'integer', 'exists:companies,id'],
+            'company_id' => [
+                'required',
+                'integer',
+                Rule::exists('companies', 'id')->whereNull('deleted_at'),
+            ],
         ]);
 
         $user = $request->user();
@@ -178,5 +189,47 @@ class CompanyController extends Controller
         return $this->successResponse([
             'active_company' => $activeCompany,
         ], 'Company selected successfully');
+    }
+
+    /**
+     * Hapus perusahaan dari halaman pilih perusahaan.
+     *
+     * Hanya owner yang boleh, dan nama perusahaan harus diketik ulang persis
+     * sama — pola konfirmasi yang sama seperti menghapus repository di GitHub —
+     * supaya klik keliru tidak langsung mencabut akses seluruh staf yang
+     * diundang ke tenant ini.
+     */
+    public function destroy(DeleteCompanyRequest $request, int $companyId, CompanyDeletionService $deletionService): JsonResponse
+    {
+        $user = $request->user();
+
+        $companyUser = CompanyUser::query()
+            ->where('company_id', $companyId)
+            ->where('user_id', $user->id)
+            ->where('status', 'active')
+            ->first();
+
+        if (! $companyUser || $companyUser->role !== 'owner') {
+            return $this->errorCodeResponse(
+                'COMPANY_DELETE_NOT_OWNER',
+                'Hanya owner yang dapat menghapus perusahaan.',
+                [],
+                403
+            );
+        }
+
+        $company = Company::query()->findOrFail($companyId);
+        $confirmName = trim((string) $request->validated('confirm_name'));
+
+        if ($company->name !== $confirmName) {
+            return $this->validationErrorResponse(
+                ['confirm_name' => ['Nama perusahaan tidak cocok.']],
+                'Konfirmasi nama perusahaan tidak cocok.'
+            );
+        }
+
+        $deletionService->delete($company, $user);
+
+        return $this->successResponse(null, 'Perusahaan berhasil dihapus.');
     }
 }

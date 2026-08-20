@@ -2,6 +2,7 @@
 
 use App\Modules\Admin\Controllers\AdminAuthController;
 use App\Modules\Admin\Controllers\ClientUserController;
+use App\Modules\Admin\Controllers\DeletedCompanyController;
 use Illuminate\Support\Facades\Route;
 
 /**
@@ -31,5 +32,10 @@ Route::prefix('admin')->group(function () {
         Route::post('/clients/{id}/subscribe', [ClientUserController::class, 'subscribe']);
         Route::post('/clients/{id}/renew', [ClientUserController::class, 'renew']);
         Route::post('/clients/{id}/unlock', [ClientUserController::class, 'unlock']);
+
+        // Pemulihan perusahaan terhapus — hanya super admin, bukan client.
+        Route::get('/companies/deleted', [DeletedCompanyController::class, 'index']);
+        Route::post('/companies/{companyId}/restore', [DeletedCompanyController::class, 'restore']);
+        Route::delete('/companies/{companyId}/purge', [DeletedCompanyController::class, 'purge']);
     });
 });

@@ -166,6 +166,7 @@ Excluded intentionally: `.git`, `vendor`, `node_modules`, `storage`, `bootstrap/
 │       ├── Api
 │       ├── Audit
 │       ├── Auth
+│       ├── Company
 │       ├── DataRetention
 │       ├── DocumentNumbering
 │       ├── Enums
