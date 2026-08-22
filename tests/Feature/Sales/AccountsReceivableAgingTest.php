@@ -2,9 +2,9 @@
 
 namespace Tests\Feature\Sales;
 
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\SalesInvoice;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\Sales\Models\SalesInvoice;
 
 class AccountsReceivableAgingTest extends SalesTestCase
 {

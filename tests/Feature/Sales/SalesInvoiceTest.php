@@ -2,25 +2,24 @@
 
 namespace Tests\Feature\Sales;
 
-use App\Models\FiscalYear;
-use App\Models\CompanyAccountingSetting;
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\Contact;
-use App\Models\Tenant\CustomerDeposit;
-use App\Models\Tenant\CustomerDepositAllocation;
-use App\Models\Tenant\DeliveryOrderLine;
-use App\Models\Tenant\JournalEntry;
-use App\Models\Tenant\Product;
-use App\Models\Tenant\SalesInvoice;
-use App\Models\Tenant\SalesOrder;
-use App\Models\Tenant\SalesOrderLine;
-use App\Models\Tenant\StockMovement;
-use App\Models\Tenant\Unit;
-use App\Services\Tenant\TenantConnectionManager;
-use Illuminate\Support\Facades\DB;
+use App\Modules\Inventory\Models\StockMovement;
+use App\Modules\Journal\Models\JournalEntry;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\MasterData\Models\Contact;
+use App\Modules\MasterData\Models\Product;
+use App\Modules\MasterData\Models\Unit;
+use App\Modules\Sales\Models\CustomerDeposit;
+use App\Modules\Sales\Models\CustomerDepositAllocation;
+use App\Modules\Sales\Models\DeliveryOrderLine;
+use App\Modules\Sales\Models\SalesInvoice;
+use App\Modules\Sales\Models\SalesOrder;
+use App\Modules\Sales\Models\SalesOrderLine;
+use App\Shared\Models\CompanyAccountingSetting;
+use App\Shared\Models\FiscalYear;
+use App\Shared\Tenant\TenantConnectionManager;
 use Illuminate\Support\Facades\Artisan;
-use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 
 class SalesInvoiceTest extends SalesTestCase
 {
@@ -610,11 +609,13 @@ class SalesInvoiceTest extends SalesTestCase
         $tax = $this->account('2100', 'Output Tax', 'liability', 'credit');
         $deposit = $this->account('2200', 'Customer Deposit', 'liability', 'credit');
         $return = $this->account('4200', 'Sales Return', 'revenue', 'credit');
+        $discount = $this->account('4300', 'Sales Discount', 'revenue', 'credit');
 
         $mappings = [
             'sales.tax_output' => $tax,
             'sales.customer_deposit' => $deposit,
             'sales.return' => $return,
+            'sales.discount' => $discount,
         ];
         if ($revenueAccount !== null) {
             $mappings['sales.revenue'] = $revenueAccount;
@@ -636,7 +637,7 @@ class SalesInvoiceTest extends SalesTestCase
             ]);
         }
 
-        return ['ar' => $ar, 'revenue' => $revenueAccount, 'tax' => $tax, 'deposit' => $deposit, 'return' => $return];
+        return ['ar' => $ar, 'revenue' => $revenueAccount, 'tax' => $tax, 'deposit' => $deposit, 'return' => $return, 'discount' => $discount];
     }
 
     private function account(string $code, string $name, string $type, string $normal, bool $cashBank = false): int

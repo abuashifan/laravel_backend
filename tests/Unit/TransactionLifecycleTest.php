@@ -2,8 +2,8 @@
 
 namespace Tests\Unit;
 
-use App\Support\Transaction\TransactionLifecycle;
-use App\Support\Transaction\TransactionStatus;
+use App\Shared\TransactionLifecycle\TransactionLifecycle;
+use App\Shared\TransactionLifecycle\TransactionStatus;
 use Tests\TestCase;
 
 class TransactionLifecycleTest extends TestCase

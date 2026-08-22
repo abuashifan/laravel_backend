@@ -2,8 +2,8 @@
 
 namespace Tests\Feature\CashBank;
 
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\JournalEntry;
+use App\Modules\Journal\Models\JournalEntry;
+use App\Modules\MasterData\Models\ChartOfAccount;
 use Tests\Feature\Journal\JournalTestCase;
 
 class CashPaymentTest extends JournalTestCase
@@ -77,4 +77,3 @@ class CashPaymentTest extends JournalTestCase
         $this->assertSame(2000.0, (float) $lines[1]->credit);
     }
 }
-

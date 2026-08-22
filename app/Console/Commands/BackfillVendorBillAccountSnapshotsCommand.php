@@ -2,11 +2,11 @@
 
 namespace App\Console\Commands;
 
-use App\Models\Tenant\StockMovement;
-use App\Models\Tenant\VendorBill;
-use App\Models\TenantDatabase;
-use App\Services\Purchase\PurchaseAccountResolverService;
-use App\Services\Tenant\TenantConnectionManager;
+use App\Modules\Inventory\Models\StockMovement;
+use App\Modules\Purchase\Models\VendorBill;
+use App\Modules\Purchase\Services\PurchaseAccountResolverService;
+use App\Shared\Models\TenantDatabase;
+use App\Shared\Tenant\TenantConnectionManager;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Schema;
 use Throwable;
@@ -28,10 +28,12 @@ class BackfillVendorBillAccountSnapshotsCommand extends Command
 
         if (($companyId === null || $companyId === '') && ! $all) {
             $this->error('Gunakan --company-id=ID atau --all.');
+
             return self::FAILURE;
         }
         if ($companyId !== null && $companyId !== '' && $all) {
             $this->error('Tidak boleh memakai --company-id dan --all bersamaan.');
+
             return self::FAILURE;
         }
 
@@ -43,6 +45,7 @@ class BackfillVendorBillAccountSnapshotsCommand extends Command
 
         if ($tenants->isEmpty()) {
             $this->error('Tidak ada tenant aktif yang cocok.');
+
             return self::FAILURE;
         }
 

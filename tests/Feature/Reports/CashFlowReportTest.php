@@ -2,14 +2,14 @@
 
 namespace Tests\Feature\Reports;
 
-use App\Models\Company;
-use App\Models\CompanyUser;
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\Department;
-use App\Models\Tenant\JournalEntry;
-use App\Models\Tenant\Project;
-use App\Models\TenantDatabase;
-use App\Services\Tenant\TenantConnectionManager;
+use App\Modules\Journal\Models\JournalEntry;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\MasterData\Models\Department;
+use App\Modules\MasterData\Models\Project;
+use App\Shared\Models\Company;
+use App\Shared\Models\CompanyUser;
+use App\Shared\Models\TenantDatabase;
+use App\Shared\Tenant\TenantConnectionManager;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\File;
 use Tests\Feature\Journal\JournalTestCase;
@@ -313,6 +313,7 @@ class CashFlowReportTest extends JournalTestCase
         $tenantPath2 = database_path('tenants/test_company_'.$company2->id.'_'.uniqid().'.sqlite');
         File::ensureDirectoryExists(dirname($tenantPath2));
         File::put($tenantPath2, '');
+        $this->registerTenantFile($tenantPath2);
 
         TenantDatabase::query()->create([
             'company_id' => $company2->id,

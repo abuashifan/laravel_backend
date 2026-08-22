@@ -1,0 +1,47 @@
+<?php
+
+namespace App\Modules\Sales\Models;
+
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\MasterData\Models\Product;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class SalesReturnLine extends Model
+{
+    use HasFactory;
+
+    protected $connection = 'tenant';
+
+    protected $table = 'sales_return_lines';
+
+    protected $guarded = [];
+
+    protected $casts = ['metadata' => 'array'];
+
+    public function salesReturn(): BelongsTo
+    {
+        return $this->belongsTo(SalesReturn::class, 'sales_return_id');
+    }
+
+    public function salesInvoiceLine(): BelongsTo
+    {
+        return $this->belongsTo(SalesInvoiceLine::class, 'sales_invoice_line_id');
+    }
+
+    public function deliveryOrderLine(): BelongsTo
+    {
+        return $this->belongsTo(DeliveryOrderLine::class, 'delivery_order_line_id');
+    }
+
+    public function product(): BelongsTo
+    {
+        return $this->belongsTo(Product::class, 'product_id');
+    }
+
+    public function salesReturnAccount(): BelongsTo
+    {
+        return $this->belongsTo(ChartOfAccount::class, 'sales_return_account_id');
+    }
+}

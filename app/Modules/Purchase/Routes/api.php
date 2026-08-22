@@ -1,14 +1,14 @@
 <?php
 
-use App\Http\Controllers\Api\Purchase\AccountsPayableController;
-use App\Http\Controllers\Api\Purchase\GoodsReceiptController;
-use App\Http\Controllers\Api\Purchase\PurchaseOrderController;
-use App\Http\Controllers\Api\Purchase\PurchaseRequestController;
-use App\Http\Controllers\Api\Purchase\PurchaseReturnController;
-use App\Http\Controllers\Api\Purchase\VendorBillController;
-use App\Http\Controllers\Api\Purchase\VendorDepositController;
-use App\Http\Controllers\Api\Purchase\VendorPaymentController;
-use App\Http\Controllers\Api\Transactions\SourceDocumentPickerController;
+use App\Modules\Purchase\Controllers\AccountsPayableController;
+use App\Modules\Purchase\Controllers\GoodsReceiptController;
+use App\Modules\Purchase\Controllers\PurchaseOrderController;
+use App\Modules\Purchase\Controllers\PurchaseRequestController;
+use App\Modules\Purchase\Controllers\PurchaseReturnController;
+use App\Modules\Purchase\Controllers\VendorBillController;
+use App\Modules\Purchase\Controllers\VendorDepositController;
+use App\Modules\Purchase\Controllers\VendorPaymentController;
+use App\Shared\SourceDocument\SourceDocumentPickerController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth:sanctum', 'company.access'])->prefix('purchase')->group(function () {
@@ -23,6 +23,8 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('purchase')->group
     Route::get('/ap/reconciliation', [AccountsPayableController::class, 'reconciliation'])->middleware('permission:purchase.ap.reconcile');
 
     Route::get('/requests', [PurchaseRequestController::class, 'index'])->middleware('permission:purchase.requests.view');
+    // Harus sebelum `/requests/{id}` supaya "adjacent" tidak tertangkap sebagai id.
+    Route::get('/requests/adjacent', [PurchaseRequestController::class, 'adjacent'])->middleware('permission:purchase.requests.view');
     Route::post('/requests', [PurchaseRequestController::class, 'store'])->middleware('permission:purchase.requests.create');
     Route::get('/requests/{id}', [PurchaseRequestController::class, 'show'])->middleware('permission:purchase.requests.view');
     Route::patch('/requests/{id}', [PurchaseRequestController::class, 'update'])->middleware('permission:purchase.requests.edit');
@@ -32,6 +34,7 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('purchase')->group
     Route::patch('/requests/{id}/cancel', [PurchaseRequestController::class, 'cancel'])->middleware('permission:purchase.requests.cancel');
 
     Route::get('/orders', [PurchaseOrderController::class, 'index'])->middleware('permission:purchase.orders.view');
+    Route::get('/orders/adjacent', [PurchaseOrderController::class, 'adjacent'])->middleware('permission:purchase.orders.view');
     Route::post('/orders', [PurchaseOrderController::class, 'store'])->middleware('permission:purchase.orders.create');
     Route::get('/orders/{id}', [PurchaseOrderController::class, 'show'])->middleware('permission:purchase.orders.view');
     Route::patch('/orders/{id}', [PurchaseOrderController::class, 'update'])->middleware('permission:purchase.orders.edit');
@@ -42,6 +45,7 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('purchase')->group
     Route::patch('/orders/{id}/close', [PurchaseOrderController::class, 'close'])->middleware('permission:purchase.orders.confirm');
 
     Route::get('/goods-receipts', [GoodsReceiptController::class, 'index'])->middleware('permission:purchase.goods_receipts.view');
+    Route::get('/goods-receipts/adjacent', [GoodsReceiptController::class, 'adjacent'])->middleware('permission:purchase.goods_receipts.view');
     Route::post('/goods-receipts', [GoodsReceiptController::class, 'store'])->middleware('permission:purchase.goods_receipts.create');
     Route::get('/goods-receipts/{id}', [GoodsReceiptController::class, 'show'])->middleware('permission:purchase.goods_receipts.view');
     Route::patch('/goods-receipts/{id}', [GoodsReceiptController::class, 'update'])->middleware('permission:purchase.goods_receipts.edit');
@@ -51,6 +55,7 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('purchase')->group
     Route::patch('/goods-receipts/{id}/void', [GoodsReceiptController::class, 'void'])->middleware('permission:purchase.goods_receipts.void');
 
     Route::get('/bills', [VendorBillController::class, 'index'])->middleware('permission:purchase.bills.view');
+    Route::get('/bills/adjacent', [VendorBillController::class, 'adjacent'])->middleware('permission:purchase.bills.view');
     Route::post('/bills', [VendorBillController::class, 'store'])->middleware('permission:purchase.bills.create');
     Route::get('/bills/{id}', [VendorBillController::class, 'show'])->middleware('permission:purchase.bills.view');
     Route::patch('/bills/{id}', [VendorBillController::class, 'update'])->middleware('permission:purchase.bills.edit');
@@ -61,6 +66,7 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('purchase')->group
     Route::patch('/bills/{id}/void', [VendorBillController::class, 'void'])->middleware('permission:purchase.bills.void');
 
     Route::get('/vendor-deposits', [VendorDepositController::class, 'index'])->middleware('permission:purchase.deposits.view');
+    Route::get('/vendor-deposits/adjacent', [VendorDepositController::class, 'adjacent'])->middleware('permission:purchase.deposits.view');
     Route::post('/vendor-deposits', [VendorDepositController::class, 'store'])->middleware('permission:purchase.deposits.create');
     Route::get('/vendor-deposits/available', [VendorDepositController::class, 'available'])->middleware('permission:purchase.deposits.view|purchase.payments.view');
     Route::get('/vendor-deposits/{id}', [VendorDepositController::class, 'show'])->middleware('permission:purchase.deposits.view');
@@ -70,6 +76,7 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('purchase')->group
     Route::post('/vendor-deposits/{id}/allocate-to-bill/{billId}', [VendorDepositController::class, 'allocateToBill'])->middleware('permission:purchase.deposits.post');
 
     Route::get('/payments', [VendorPaymentController::class, 'index'])->middleware('permission:purchase.payments.view');
+    Route::get('/payments/adjacent', [VendorPaymentController::class, 'adjacent'])->middleware('permission:purchase.payments.view');
     Route::post('/payments', [VendorPaymentController::class, 'store'])->middleware('permission:purchase.payments.create');
     Route::get('/payments/vendor-context', [VendorPaymentController::class, 'vendorContext'])->middleware('permission:purchase.payments.view');
     Route::get('/payments/{id}', [VendorPaymentController::class, 'show'])->middleware('permission:purchase.payments.view');
@@ -77,6 +84,7 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('purchase')->group
     Route::patch('/payments/{id}/void', [VendorPaymentController::class, 'void'])->middleware('permission:purchase.payments.void');
 
     Route::get('/returns', [PurchaseReturnController::class, 'index'])->middleware('permission:purchase.returns.view');
+    Route::get('/returns/adjacent', [PurchaseReturnController::class, 'adjacent'])->middleware('permission:purchase.returns.view');
     Route::post('/returns', [PurchaseReturnController::class, 'store'])->middleware('permission:purchase.returns.create');
     Route::get('/returns/{id}', [PurchaseReturnController::class, 'show'])->middleware('permission:purchase.returns.view');
     Route::patch('/returns/{id}', [PurchaseReturnController::class, 'update'])->middleware('permission:purchase.returns.create');

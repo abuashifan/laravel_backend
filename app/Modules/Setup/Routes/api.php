@@ -1,6 +1,7 @@
 <?php
 
-use App\Http\Controllers\Api\Setup\SetupWizardController;
+use App\Modules\Setup\Controllers\CoaTemplateController;
+use App\Modules\Setup\Controllers\SetupWizardController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth:sanctum', 'company.access'])->prefix('setup')->group(function () {
@@ -8,6 +9,10 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('setup')->group(fu
         ->middleware('permission:setup.view');
     Route::get('/steps', [SetupWizardController::class, 'steps'])
         ->middleware('permission:setup.view');
+    Route::get('/coa-templates', [CoaTemplateController::class, 'index'])
+        ->middleware('permission:setup.view');
+    Route::post('/coa-templates/apply', [CoaTemplateController::class, 'apply'])
+        ->middleware('permission:setup.edit');
     Route::patch('/current-step', [SetupWizardController::class, 'updateCurrentStep'])
         ->middleware('permission:setup.edit');
     Route::post('/validate-step', [SetupWizardController::class, 'validateStep'])

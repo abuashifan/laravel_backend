@@ -2,9 +2,9 @@
 
 namespace Tests\Feature\Purchase;
 
-use App\Models\Tenant\GoodsReceiptLine;
-use App\Models\Tenant\PurchaseOrderLine;
-use App\Models\Tenant\StockMovement;
+use App\Modules\Inventory\Models\StockMovement;
+use App\Modules\Purchase\Models\GoodsReceiptLine;
+use App\Modules\Purchase\Models\PurchaseOrderLine;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
@@ -14,7 +14,7 @@ class PurchaseWorkflowIntegrationTest extends PurchaseTestCase
     public function test_full_purchase_chain_posts_vendor_bill_without_stock_movement(): void
     {
         $ctx = $this->setUpTenant();
-        $this->seedPurchaseMappings();
+        $this->seedPurchaseMappings(interim: true);
 
         $request = $this->postJson('/api/purchase/requests', $this->purchaseRequestPayload(), $ctx['headers'])->assertStatus(201)->json('data');
         $this->patchJson('/api/purchase/requests/'.$request['id'].'/submit', [], $ctx['headers'])->assertStatus(200);
@@ -25,9 +25,12 @@ class PurchaseWorkflowIntegrationTest extends PurchaseTestCase
             'order_date' => '2026-05-20',
             'lines' => [[
                 'purchase_request_line_id' => $request['lines'][0]['id'],
+                'product_id' => $this->defaultStockProductId,
                 'description' => $request['lines'][0]['description'],
                 'quantity' => 2,
+                'unit_id' => $this->defaultUnitId,
                 'unit_price' => 100,
+                'warehouse_id' => $this->defaultWarehouseId,
             ]],
         ], $ctx['headers'])->assertStatus(201)->json('data');
         $receipt = $this->postJson('/api/purchase/goods-receipts/from-purchase-order/'.$order['id'], [], $ctx['headers'])->assertStatus(201)->json('data');
@@ -41,7 +44,10 @@ class PurchaseWorkflowIntegrationTest extends PurchaseTestCase
         $this->assertSame($request['request_number'], $order['source_number']);
         $this->assertSame($receipt['receipt_number'], $bill['source_number']);
         $this->assertSame(1, DB::connection('tenant')->table('journal_entries')->where('source_type', 'vendor_bill')->count());
-        $this->assertSame(0, StockMovement::query()->count());
+        // Stok naik lewat penerimaan barang (goods receipt); bill dari GR memakai jalur GRNI
+        // sehingga TIDAK membuat pergerakan stok tambahan.
+        $this->assertSame(0, StockMovement::query()->where('source_type', 'vendor_bill')->count());
+        $this->assertSame(1, StockMovement::query()->where('source_type', 'goods_receipt')->count());
         $this->assertFalse(Schema::connection('tenant')->hasTable('inventory_valuations'));
     }
 
@@ -103,7 +109,7 @@ class PurchaseWorkflowIntegrationTest extends PurchaseTestCase
     public function test_direct_bill_discount_and_goods_receipt_stock_rule(): void
     {
         $ctx = $this->setUpTenant();
-        $this->seedPurchaseMappings();
+        $this->seedPurchaseMappings(interim: true);
         $bill = $this->postJson('/api/purchase/bills', $this->vendorBillPayload([
             'header_discount_type' => 'fixed_amount',
             'header_discount_value' => 20,
@@ -113,7 +119,7 @@ class PurchaseWorkflowIntegrationTest extends PurchaseTestCase
             'vendor_id' => $bill['vendor_id'],
             'header_discount_type' => 'fixed_amount',
             'header_discount_value' => 10,
-            'lines' => $bill['lines'],
+            'lines' => [['product_id' => $this->defaultStockProductId, 'description' => 'Default stock item', 'quantity' => 2, 'unit_id' => $this->defaultUnitId, 'unit_price' => 100, 'warehouse_id' => $this->defaultWarehouseId, 'tax_rate' => 11]],
         ], $ctx['headers'])->assertStatus(200)->assertJsonPath('data.header_discount_amount', 10);
         $this->patchJson('/api/purchase/bills/'.$bill['id'].'/post', [], $ctx['headers'])->assertStatus(200);
 
@@ -123,7 +129,8 @@ class PurchaseWorkflowIntegrationTest extends PurchaseTestCase
 
         $this->assertSame(2.0, (float) PurchaseOrderLine::query()->findOrFail($order['lines'][0]['id'])->received_quantity);
         $this->assertSame(0.0, (float) GoodsReceiptLine::query()->findOrFail($receipt['lines'][0]['id'])->returned_quantity);
-        $this->assertSame(0, StockMovement::query()->count());
+        // Dua pergerakan purchase_in: satu dari bill stok langsung, satu dari penerimaan barang.
+        $this->assertSame(2, StockMovement::query()->count());
     }
 
     public function test_purchase_routes_require_auth_company_and_permission(): void

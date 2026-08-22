@@ -2,12 +2,11 @@
 
 namespace Tests\Feature\Purchase;
 
-use App\Models\Tenant\GoodsReceiptLine;
-use App\Models\Tenant\StockMovement;
-use App\Models\Tenant\VendorBill;
-use App\Models\Tenant\VendorBillLine;
+use App\Modules\Inventory\Models\StockMovement;
+use App\Modules\Purchase\Models\GoodsReceiptLine;
+use App\Modules\Purchase\Models\VendorBill;
+use App\Modules\Purchase\Models\VendorBillLine;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 
 class PurchaseReturnTest extends PurchaseTestCase
 {
@@ -79,7 +78,9 @@ class PurchaseReturnTest extends PurchaseTestCase
         $this->assertSame(111.0, (float) $freshBill->balance_due);
         $this->assertSame(1.0, (float) VendorBillLine::query()->findOrFail($bill['lines'][0]['id'])->returned_quantity);
         $this->assertSame(1, DB::connection('tenant')->table('journal_entries')->where('source_type', 'purchase_return')->count());
-        $this->assertSame(0, StockMovement::query()->count());
+        // Retur dari vendor bill hanya menyesuaikan AP; tidak membuat pergerakan stok sendiri
+        // (satu-satunya pergerakan berasal dari purchase_in bill stok).
+        $this->assertSame(0, StockMovement::query()->where('source_type', 'purchase_return')->count());
     }
 
     public function test_post_goods_receipt_return_updates_returned_quantity_without_stock_movement(): void

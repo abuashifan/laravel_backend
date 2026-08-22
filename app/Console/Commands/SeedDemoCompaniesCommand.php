@@ -2,10 +2,10 @@
 
 namespace App\Console\Commands;
 
-use App\Models\Company;
-use App\Models\TenantDatabase;
-use App\Models\User;
-use App\Services\Companies\CompanyUserAssignmentService;
+use App\Modules\Companies\Services\CompanyUserAssignmentService;
+use App\Shared\Models\Company;
+use App\Shared\Models\TenantDatabase;
+use App\Shared\Models\User;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Hash;

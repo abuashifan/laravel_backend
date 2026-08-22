@@ -1,11 +1,13 @@
 <?php
 
-use App\Http\Controllers\Api\Auth\AuthController;
-use App\Http\Controllers\Api\Auth\PermissionController;
+use App\Modules\Auth\Controllers\AuthController;
+use App\Modules\Auth\Controllers\PermissionController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('auth')->group(function () {
-    Route::post('/register', [AuthController::class, 'register']);
+    // Sengaja tidak ada route register: akun client dibuat owner aplikasi lewat
+    // `php artisan user:create`. Membuka registrasi mandiri berarti siapa pun
+    // bisa membuat tenant database sendiri lewat POST /companies.
     Route::post('/login', [AuthController::class, 'login']);
 
     Route::middleware('auth:sanctum')->group(function () {

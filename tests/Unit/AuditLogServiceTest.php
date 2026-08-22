@@ -2,15 +2,15 @@
 
 namespace Tests\Unit;
 
-use App\Models\Company;
-use App\Models\CompanyUser;
-use App\Models\TenantDatabase;
-use App\Models\User;
-use App\Services\Audit\AuditLogService;
-use App\Services\Tenant\TenantContext;
-use App\Support\Audit\AuditAction;
-use App\Support\Audit\AuditEvent;
-use App\Support\Audit\AuditResult;
+use App\Shared\Audit\AuditAction;
+use App\Shared\Audit\AuditEvent;
+use App\Shared\Audit\AuditLogService;
+use App\Shared\Audit\AuditResult;
+use App\Shared\Models\Company;
+use App\Shared\Models\CompanyUser;
+use App\Shared\Models\TenantDatabase;
+use App\Shared\Models\User;
+use App\Shared\Tenant\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Config;

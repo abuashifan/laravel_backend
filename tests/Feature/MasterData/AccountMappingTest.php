@@ -2,8 +2,8 @@
 
 namespace Tests\Feature\MasterData;
 
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\ChartOfAccount;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
 
 class AccountMappingTest extends MasterDataTestCase
 {
@@ -54,6 +54,21 @@ class AccountMappingTest extends MasterDataTestCase
         $this->patchJson('/api/master-data/account-mappings/sales.accounts_receivable', [
             'account_id' => $rev['id'],
         ], $ctx['headers'])->assertStatus(422);
+
+        // invalid mapping update: akun induk (AR baru punya anak) tidak boleh
+        // dipakai -- akun mapping harus akun anak (leaf).
+        $this->postJson('/api/master-data/chart-of-accounts', [
+            'account_code' => '1100.01',
+            'account_name' => 'Accounts Receivable - Sub',
+            'account_type' => 'asset',
+            'parent_account_id' => $ar['id'],
+        ], $ctx['headers'])->assertStatus(201);
+
+        $this->patchJson('/api/master-data/account-mappings/sales.accounts_receivable', [
+            'account_id' => $ar['id'],
+        ], $ctx['headers'])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'ACCOUNT_NOT_POSTABLE');
     }
 
     public function test_sync_default_mappings_binds_customer_deposit_to_existing_default_account(): void

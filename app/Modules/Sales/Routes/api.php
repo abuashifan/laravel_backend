@@ -1,15 +1,15 @@
 <?php
 
-use App\Http\Controllers\Api\Sales\AccountsReceivableController;
-use App\Http\Controllers\Api\Sales\CustomerDepositController;
-use App\Http\Controllers\Api\Sales\DeliveryOrderController;
-use App\Http\Controllers\Api\Sales\ProformaInvoiceController;
-use App\Http\Controllers\Api\Sales\SalesInvoiceController;
-use App\Http\Controllers\Api\Sales\SalesOrderController;
-use App\Http\Controllers\Api\Sales\SalesQuotationController;
-use App\Http\Controllers\Api\Sales\SalesReceiptController;
-use App\Http\Controllers\Api\Sales\SalesReturnController;
-use App\Http\Controllers\Api\Transactions\SourceDocumentPickerController;
+use App\Modules\Sales\Controllers\AccountsReceivableController;
+use App\Modules\Sales\Controllers\CustomerDepositController;
+use App\Modules\Sales\Controllers\DeliveryOrderController;
+use App\Modules\Sales\Controllers\ProformaInvoiceController;
+use App\Modules\Sales\Controllers\SalesInvoiceController;
+use App\Modules\Sales\Controllers\SalesOrderController;
+use App\Modules\Sales\Controllers\SalesQuotationController;
+use App\Modules\Sales\Controllers\SalesReceiptController;
+use App\Modules\Sales\Controllers\SalesReturnController;
+use App\Shared\SourceDocument\SourceDocumentPickerController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth:sanctum', 'company.access'])->prefix('sales')->group(function () {
@@ -24,6 +24,8 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('sales')->group(fu
     Route::get('/ar/reconciliation', [AccountsReceivableController::class, 'reconciliation'])->middleware('permission:sales.ar.reconcile');
 
     Route::get('/quotations', [SalesQuotationController::class, 'index'])->middleware('permission:sales.quotations.view');
+    // Harus sebelum `/quotations/{id}` supaya "adjacent" tidak tertangkap sebagai id.
+    Route::get('/quotations/adjacent', [SalesQuotationController::class, 'adjacent'])->middleware('permission:sales.quotations.view');
     Route::post('/quotations', [SalesQuotationController::class, 'store'])->middleware('permission:sales.quotations.create');
     Route::get('/quotations/{id}', [SalesQuotationController::class, 'show'])->middleware('permission:sales.quotations.view');
     Route::patch('/quotations/{id}', [SalesQuotationController::class, 'update'])->middleware('permission:sales.quotations.edit');
@@ -34,6 +36,7 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('sales')->group(fu
     Route::patch('/quotations/{id}/cancel', [SalesQuotationController::class, 'cancel'])->middleware('permission:sales.quotations.cancel');
 
     Route::get('/orders', [SalesOrderController::class, 'index'])->middleware('permission:sales.orders.view');
+    Route::get('/orders/adjacent', [SalesOrderController::class, 'adjacent'])->middleware('permission:sales.orders.view');
     Route::post('/orders', [SalesOrderController::class, 'store'])->middleware('permission:sales.orders.create');
     Route::get('/orders/{id}', [SalesOrderController::class, 'show'])->middleware('permission:sales.orders.view');
     Route::patch('/orders/{id}', [SalesOrderController::class, 'update'])->middleware('permission:sales.orders.edit');
@@ -44,6 +47,7 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('sales')->group(fu
     Route::patch('/orders/{id}/close', [SalesOrderController::class, 'close'])->middleware('permission:sales.orders.confirm');
 
     Route::get('/delivery-orders', [DeliveryOrderController::class, 'index'])->middleware('permission:sales.delivery_orders.view');
+    Route::get('/delivery-orders/adjacent', [DeliveryOrderController::class, 'adjacent'])->middleware('permission:sales.delivery_orders.view');
     Route::post('/delivery-orders', [DeliveryOrderController::class, 'store'])->middleware('permission:sales.delivery_orders.create');
     Route::get('/delivery-orders/{id}', [DeliveryOrderController::class, 'show'])->middleware('permission:sales.delivery_orders.view');
     Route::patch('/delivery-orders/{id}', [DeliveryOrderController::class, 'update'])->middleware('permission:sales.delivery_orders.edit');
@@ -55,6 +59,7 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('sales')->group(fu
     Route::patch('/delivery-orders/{id}/void', [DeliveryOrderController::class, 'void'])->middleware('permission:sales.delivery_orders.void');
 
     Route::get('/proformas', [ProformaInvoiceController::class, 'index'])->middleware('permission:sales.proformas.view');
+    Route::get('/proformas/adjacent', [ProformaInvoiceController::class, 'adjacent'])->middleware('permission:sales.proformas.view');
     Route::post('/proformas', [ProformaInvoiceController::class, 'store'])->middleware('permission:sales.proformas.create');
     Route::get('/proformas/{id}', [ProformaInvoiceController::class, 'show'])->middleware('permission:sales.proformas.view');
     Route::patch('/proformas/{id}', [ProformaInvoiceController::class, 'update'])->middleware('permission:sales.proformas.edit');
@@ -64,6 +69,8 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('sales')->group(fu
     Route::patch('/proformas/{id}/cancel', [ProformaInvoiceController::class, 'cancel'])->middleware('permission:sales.proformas.cancel');
 
     Route::get('/invoices', [SalesInvoiceController::class, 'index'])->middleware('permission:sales.invoices.view');
+    Route::get('/invoices/export', [SalesInvoiceController::class, 'exportExcel'])->middleware('permission:sales.invoices.view');
+    Route::get('/invoices/adjacent', [SalesInvoiceController::class, 'adjacent'])->middleware('permission:sales.invoices.view');
     Route::post('/invoices', [SalesInvoiceController::class, 'store'])->middleware('permission:sales.invoices.create');
     Route::get('/invoices/{id}', [SalesInvoiceController::class, 'show'])->middleware('permission:sales.invoices.view');
     Route::patch('/invoices/{id}', [SalesInvoiceController::class, 'update'])->middleware('permission:sales.invoices.edit');
@@ -72,9 +79,11 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('sales')->group(fu
     Route::post('/invoices/from-proforma/{proformaId}', [SalesInvoiceController::class, 'createFromProforma'])->middleware('permission:sales.invoices.create');
     Route::patch('/invoices/{id}/approve', [SalesInvoiceController::class, 'approve'])->middleware('permission:sales.invoices.approve');
     Route::patch('/invoices/{id}/post', [SalesInvoiceController::class, 'post'])->middleware('permission:sales.invoices.post');
+    Route::post('/invoices/bulk-post', [SalesInvoiceController::class, 'bulkPost'])->middleware('permission:sales.invoices.post');
     Route::patch('/invoices/{id}/void', [SalesInvoiceController::class, 'void'])->middleware('permission:sales.invoices.void');
 
     Route::get('/customer-deposits', [CustomerDepositController::class, 'index'])->middleware('permission:sales.deposits.view');
+    Route::get('/customer-deposits/adjacent', [CustomerDepositController::class, 'adjacent'])->middleware('permission:sales.deposits.view');
     Route::post('/customer-deposits', [CustomerDepositController::class, 'store'])->middleware('permission:sales.deposits.create');
     Route::get('/customer-deposits/available', [CustomerDepositController::class, 'available'])->middleware('permission:sales.deposits.view|sales.receipts.view');
     Route::get('/customer-deposits/{id}', [CustomerDepositController::class, 'show'])->middleware('permission:sales.deposits.view');
@@ -84,6 +93,7 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('sales')->group(fu
     Route::post('/customer-deposits/{id}/allocate-to-invoice/{invoiceId}', [CustomerDepositController::class, 'allocateToInvoice'])->middleware('permission:sales.deposits.post');
 
     Route::get('/receipts', [SalesReceiptController::class, 'index'])->middleware('permission:sales.receipts.view');
+    Route::get('/receipts/adjacent', [SalesReceiptController::class, 'adjacent'])->middleware('permission:sales.receipts.view');
     Route::post('/receipts', [SalesReceiptController::class, 'store'])->middleware('permission:sales.receipts.create');
     Route::get('/receipts/customer-context', [SalesReceiptController::class, 'customerContext'])->middleware('permission:sales.receipts.view');
     Route::get('/receipts/{id}', [SalesReceiptController::class, 'show'])->middleware('permission:sales.receipts.view');
@@ -91,6 +101,7 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('sales')->group(fu
     Route::patch('/receipts/{id}/void', [SalesReceiptController::class, 'void'])->middleware('permission:sales.receipts.void');
 
     Route::get('/returns', [SalesReturnController::class, 'index'])->middleware('permission:sales.returns.view');
+    Route::get('/returns/adjacent', [SalesReturnController::class, 'adjacent'])->middleware('permission:sales.returns.view');
     Route::post('/returns', [SalesReturnController::class, 'store'])->middleware('permission:sales.returns.create');
     Route::get('/returns/{id}', [SalesReturnController::class, 'show'])->middleware('permission:sales.returns.view');
     Route::patch('/returns/{id}', [SalesReturnController::class, 'update'])->middleware('permission:sales.returns.create');

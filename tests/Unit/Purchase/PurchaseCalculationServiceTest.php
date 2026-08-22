@@ -2,7 +2,7 @@
 
 namespace Tests\Unit\Purchase;
 
-use App\Services\Purchase\PurchaseCalculationService;
+use App\Modules\Purchase\Services\PurchaseCalculationService;
 use InvalidArgumentException;
 use Tests\TestCase;
 
@@ -86,6 +86,6 @@ class PurchaseCalculationServiceTest extends TestCase
 
     private function service(): PurchaseCalculationService
     {
-        return new PurchaseCalculationService();
+        return new PurchaseCalculationService;
     }
 }

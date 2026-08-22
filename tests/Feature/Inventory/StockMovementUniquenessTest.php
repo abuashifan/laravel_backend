@@ -2,7 +2,7 @@
 
 namespace Tests\Feature\Inventory;
 
-use App\Models\Tenant\StockMovement;
+use App\Modules\Inventory\Models\StockMovement;
 use Illuminate\Database\QueryException;
 use Tests\TenantTestCase;
 

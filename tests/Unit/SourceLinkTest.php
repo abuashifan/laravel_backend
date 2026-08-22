@@ -2,10 +2,10 @@
 
 namespace Tests\Unit;
 
-use App\Support\SourceLink\SourceLink;
-use App\Support\SourceLink\SourceLinkFactory;
-use App\Support\SourceLink\SourceModule;
-use App\Support\SourceLink\SourceType;
+use App\Shared\SourceDocument\SourceLink;
+use App\Shared\SourceDocument\SourceLinkFactory;
+use App\Shared\SourceDocument\SourceModule;
+use App\Shared\SourceDocument\SourceType;
 use Tests\TestCase;
 
 class SourceLinkTest extends TestCase
@@ -143,4 +143,3 @@ class SourceLinkTest extends TestCase
         $this->assertTrue($arr['is_obsolete']);
     }
 }
-

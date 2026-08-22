@@ -25,7 +25,7 @@ class ModuleRoutesTest extends TestCase
     }
 
     /**
-     * @param array<int, string> $middleware
+     * @param  array<int, string>  $middleware
      */
     private function assertRouteExists(string $method, string $uri, array $middleware = []): void
     {

@@ -4,14 +4,14 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Inventory;
 
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\Product;
-use App\Models\Tenant\StockBalance;
-use App\Models\Tenant\StockMovement;
-use App\Models\Tenant\Unit;
-use App\Models\Tenant\Warehouse;
-use App\Support\AccountMapping\AccountMappingKey;
+use App\Modules\Inventory\Models\StockBalance;
+use App\Modules\Inventory\Models\StockMovement;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\MasterData\Models\Product;
+use App\Modules\MasterData\Models\Unit;
+use App\Modules\MasterData\Models\Warehouse;
+use App\Shared\AccountMapping\AccountMappingKey;
 use Tests\TenantTestCase;
 
 class MixedStockAdjustmentTest extends TenantTestCase
@@ -130,7 +130,7 @@ class MixedStockAdjustmentTest extends TenantTestCase
     }
 
     /**
-     * @param array<int, array<string, mixed>> $lines
+     * @param  array<int, array<string, mixed>>  $lines
      */
     private function createApprovedAdjustment(array $lines): int
     {

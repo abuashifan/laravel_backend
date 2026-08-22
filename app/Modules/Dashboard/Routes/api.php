@@ -1,6 +1,6 @@
 <?php
 
-use App\Http\Controllers\Api\Dashboard\DashboardController;
+use App\Modules\Dashboard\Controllers\DashboardController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth:sanctum', 'company.access', 'permission:dashboard.view'])

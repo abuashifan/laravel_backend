@@ -156,7 +156,7 @@ return [
             'required' => false,
             'account_types' => ['asset', 'expense'],
             'description' => 'Default purchase return account.',
-            'default_account_codes' => ['5110', '1130', '1106.10'],
+            'default_account_codes' => ['5111', '5110', '1130', '1106.10'],
             'visible_in_settings' => true,
             'settings_section' => 'Akun Standar Barang',
             'settings_order' => 150,

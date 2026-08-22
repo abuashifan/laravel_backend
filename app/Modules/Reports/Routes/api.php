@@ -1,22 +1,39 @@
 <?php
 
-use App\Http\Controllers\Api\Reports\AccountLedgerDetailController;
-use App\Http\Controllers\Api\Reports\BalanceSheetController;
-use App\Http\Controllers\Api\Reports\CashFlowController;
-use App\Http\Controllers\Api\Reports\FinancialSummaryController;
-use App\Http\Controllers\Api\Reports\GeneralLedgerController;
-use App\Http\Controllers\Api\Reports\ProfitLossController;
-use App\Http\Controllers\Api\Reports\ReconciliationReportController;
-use App\Http\Controllers\Api\Reports\TrialBalanceController;
+use App\Modules\Reports\Controllers\AccountLedgerDetailController;
+use App\Modules\Reports\Controllers\BalanceSheetController;
+use App\Modules\Reports\Controllers\CashFlowController;
+use App\Modules\Reports\Controllers\CashFlowDirectController;
+use App\Modules\Reports\Controllers\EquityChangesController;
+use App\Modules\Reports\Controllers\FinancialSummaryController;
+use App\Modules\Reports\Controllers\GeneralLedgerController;
+use App\Modules\Reports\Controllers\JournalListReportController;
+use App\Modules\Reports\Controllers\MultiPeriodReportController;
+use App\Modules\Reports\Controllers\ProductHistoryReportController;
+use App\Modules\Reports\Controllers\ProfitLossController;
+use App\Modules\Reports\Controllers\Purchase\PurchaseReportController;
+use App\Modules\Reports\Controllers\ReconciliationReportController;
+use App\Modules\Reports\Controllers\RetainedEarningsController;
+use App\Modules\Reports\Controllers\Sales\SalesReportController;
+use App\Modules\Reports\Controllers\SavedReportController;
+use App\Modules\Reports\Controllers\Tax\EfakturExportController;
+use App\Modules\Reports\Controllers\Tax\TaxReportController;
+use App\Modules\Reports\Controllers\TrialBalanceController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth:sanctum', 'company.access'])->prefix('reports')->group(function () {
     Route::get('/general-ledger', [GeneralLedgerController::class, 'index'])->middleware('permission:reports.view');
+    Route::get('/journals', [JournalListReportController::class, 'index'])->middleware('permission:reports.view');
     Route::get('/account-ledger/{account}', [AccountLedgerDetailController::class, 'show'])->middleware('permission:reports.view');
     Route::get('/trial-balance', [TrialBalanceController::class, 'index'])->middleware('permission:reports.view');
     Route::get('/profit-loss', [ProfitLossController::class, 'index'])->middleware('permission:reports.view');
+    Route::get('/profit-loss/multi-period', [MultiPeriodReportController::class, 'profitLoss'])->middleware('permission:reports.multi_period');
     Route::get('/balance-sheet', [BalanceSheetController::class, 'index'])->middleware('permission:reports.view');
+    Route::get('/balance-sheet/multi-period', [MultiPeriodReportController::class, 'balanceSheet'])->middleware('permission:reports.multi_period');
     Route::get('/cash-flow', [CashFlowController::class, 'index'])->middleware('permission:reports.view');
+    Route::get('/cash-flow-direct', [CashFlowDirectController::class, 'index'])->middleware('permission:reports.view');
+    Route::get('/retained-earnings', [RetainedEarningsController::class, 'index'])->middleware('permission:reports.view');
+    Route::get('/equity-changes', [EquityChangesController::class, 'index'])->middleware('permission:reports.view');
     Route::get('/financial-summary', [FinancialSummaryController::class, 'index'])->middleware('permission:reports.view');
     Route::get('/reconciliation/ar', [ReconciliationReportController::class, 'ar'])->middleware('permission:reports.view');
     Route::get('/reconciliation/ap', [ReconciliationReportController::class, 'ap'])->middleware('permission:reports.view');
@@ -24,4 +41,36 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('reports')->group(
     Route::get('/reconciliation/grni', [ReconciliationReportController::class, 'grni'])->middleware('permission:reports.view');
     Route::get('/reconciliation/customer-deposits', [ReconciliationReportController::class, 'customerDeposits'])->middleware('permission:reports.view');
     Route::get('/reconciliation/vendor-deposits', [ReconciliationReportController::class, 'vendorDeposits'])->middleware('permission:reports.view');
+
+    // Di level atas, bukan di dalam grup sales/purchase: isinya lintas kedua
+    // domain (penjualan + pembelian satu produk).
+    Route::get('/product-history', [ProductHistoryReportController::class, 'index'])->middleware('permission:reports.view');
+
+    Route::prefix('sales')->middleware('permission:reports.view')->group(function () {
+        Route::get('/summary', [SalesReportController::class, 'summary']);
+        Route::get('/by-customer', [SalesReportController::class, 'byCustomer']);
+        Route::get('/by-product', [SalesReportController::class, 'byProduct']);
+    });
+
+    Route::prefix('purchase')->middleware('permission:reports.view')->group(function () {
+        Route::get('/summary', [PurchaseReportController::class, 'summary']);
+        Route::get('/by-vendor', [PurchaseReportController::class, 'byVendor']);
+        Route::get('/by-product', [PurchaseReportController::class, 'byProduct']);
+    });
+
+    Route::prefix('saved')->middleware('permission:reports.save')->group(function () {
+        Route::get('/', [SavedReportController::class, 'index']);
+        Route::get('/shareable-users', [SavedReportController::class, 'shareableUsers']);
+        Route::post('/', [SavedReportController::class, 'store']);
+        Route::get('/{id}', [SavedReportController::class, 'show'])->whereNumber('id');
+        Route::put('/{id}', [SavedReportController::class, 'update'])->whereNumber('id');
+        Route::delete('/{id}', [SavedReportController::class, 'destroy'])->whereNumber('id');
+    });
+
+    Route::prefix('tax')->middleware('permission:reports.view')->group(function () {
+        Route::get('/output-vat', [TaxReportController::class, 'outputVat']);
+        Route::get('/input-vat', [TaxReportController::class, 'inputVat']);
+        Route::get('/efaktur/sales', [EfakturExportController::class, 'sales']);
+        Route::get('/efaktur/purchase', [EfakturExportController::class, 'purchase']);
+    });
 });

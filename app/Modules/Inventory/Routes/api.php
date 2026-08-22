@@ -1,11 +1,11 @@
 <?php
 
-use App\Http\Controllers\Api\Inventory\InventoryReportController;
-use App\Http\Controllers\Api\Inventory\InventoryValuationController;
-use App\Http\Controllers\Api\Inventory\StockAdjustmentController;
-use App\Http\Controllers\Api\Inventory\StockBalanceController;
-use App\Http\Controllers\Api\Inventory\StockMovementController;
-use App\Http\Controllers\Api\Inventory\StockOpnameController;
+use App\Modules\Inventory\Controllers\InventoryReportController;
+use App\Modules\Inventory\Controllers\InventoryValuationController;
+use App\Modules\Inventory\Controllers\StockAdjustmentController;
+use App\Modules\Inventory\Controllers\StockBalanceController;
+use App\Modules\Inventory\Controllers\StockMovementController;
+use App\Modules\Inventory\Controllers\StockOpnameController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth:sanctum', 'company.access'])->prefix('inventory')->group(function () {
@@ -18,6 +18,9 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('inventory')->grou
 
     Route::get('/stock-movements', [StockMovementController::class, 'index'])
         ->middleware('permission:inventory.movements.view');
+    // Harus sebelum `/stock-movements/{id}` supaya "adjacent" tidak tertangkap sebagai id.
+    Route::get('/stock-movements/adjacent', [StockMovementController::class, 'adjacent'])
+        ->middleware('permission:inventory.movements.view');
     Route::post('/stock-movements', [StockMovementController::class, 'store'])
         ->middleware('permission:inventory.movements.create');
     Route::get('/stock-movements/{id}', [StockMovementController::class, 'show'])
@@ -28,6 +31,8 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('inventory')->grou
         ->middleware('permission:inventory.movements.void');
 
     Route::get('/stock-adjustments', [StockAdjustmentController::class, 'index'])
+        ->middleware('permission:inventory.adjustments.view');
+    Route::get('/stock-adjustments/adjacent', [StockAdjustmentController::class, 'adjacent'])
         ->middleware('permission:inventory.adjustments.view');
     Route::post('/stock-adjustments', [StockAdjustmentController::class, 'store'])
         ->middleware('permission:inventory.adjustments.create');
@@ -43,6 +48,8 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('inventory')->grou
         ->middleware('permission:inventory.adjustments.void');
 
     Route::get('/stock-opnames', [StockOpnameController::class, 'index'])
+        ->middleware('permission:inventory.opname.view');
+    Route::get('/stock-opnames/adjacent', [StockOpnameController::class, 'adjacent'])
         ->middleware('permission:inventory.opname.view');
     Route::post('/stock-opnames', [StockOpnameController::class, 'store'])
         ->middleware('permission:inventory.opname.create');
@@ -66,6 +73,8 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('inventory')->grou
         Route::get('/valuation', [InventoryReportController::class, 'valuation'])->middleware('permission:inventory.reports.view');
         Route::get('/low-stock', [InventoryReportController::class, 'lowStock'])->middleware('permission:inventory.reports.view');
         Route::get('/negative-stock', [InventoryReportController::class, 'negativeStock'])->middleware('permission:inventory.reports.view');
+        Route::get('/aging', [InventoryReportController::class, 'aging'])->middleware('permission:inventory.reports.view');
+        Route::get('/opname-worksheet', [InventoryReportController::class, 'opnameWorksheet'])->middleware('permission:inventory.reports.view');
     });
 
     Route::get('/valuation', [InventoryValuationController::class, 'current'])

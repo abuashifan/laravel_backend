@@ -6,6 +6,9 @@ return [
         'UNAUTHENTICATED' => 'Unauthenticated.',
         'FORBIDDEN' => 'Forbidden.',
         'PERMISSION_DENIED' => 'You do not have permission to perform this action.',
+        'FEATURE_NOT_IN_PLAN' => 'Fitur ini tidak termasuk dalam paket langganan Anda. Hubungi penyedia aplikasi untuk meningkatkan paket.',
+        'SUBSCRIPTION_EXPIRED' => 'Langganan Anda sudah berakhir. Hubungi penyedia aplikasi untuk memperpanjang.',
+        'STORAGE_QUOTA_EXCEEDED' => 'Kuota penyimpanan perusahaan ini sudah penuh. Hapus data lama atau hubungi penyedia aplikasi.',
         'COMPANY_ACCESS_DENIED' => 'You do not have access to this company.',
         'COMPANY_NOT_FOUND' => 'Company tidak ditemukan.',
         'X_COMPANY_ID_REQUIRED' => 'X-Company-ID wajib dikirim.',
@@ -42,10 +45,25 @@ return [
         'EDIT_REASON_REQUIRED' => 'Edit reason is required.',
         'JOURNAL_REQUIRES_APPROVAL' => 'Journal must be approved before posting.',
 
+        'IMPORT_FILE_INVALID' => 'Import file is invalid.',
+        'IMPORT_ACTIVE_BATCH_EXISTS' => 'An import batch is already active.',
+
+        'BUDGET_ACCOUNT_DIRECTION_MISMATCH' => 'Hanya akun pendapatan atau beban yang bisa dianggarkan.',
+        'BUDGET_INVALID_GROUP_BY' => 'Dimensi pengelompokan tidak dikenal.',
+        'BUDGET_ALREADY_APPROVED' => 'Hanya anggaran yang sudah disetujui yang bisa direvisi.',
+        'BUDGET_VERSION_NOT_ACTIVE' => 'Versi anggaran ini bukan versi yang berlaku.',
+        'BUDGET_PERIOD_OVERLAP' => 'Periode anggaran beririsan dengan periode lain yang masih terbuka.',
+        'BUDGET_NEGATIVE_AMOUNT' => 'Nominal anggaran tidak boleh negatif. Turunkan lewat revisi anggaran.',
+        'BUDGET_PROJECT_NOT_ACTIVE' => 'Proyek sudah tidak aktif sehingga tidak bisa dianggarkan.',
+        'BUDGET_ALLOCATION_EXCEEDS_PARENT' => 'Total pagu melebihi pagu induknya.',
+        'DEPARTMENT_HIERARCHY_CYCLE' => 'Departemen tidak boleh menjadi induk dari dirinya sendiri.',
+        'DEPARTMENT_HIERARCHY_TOO_DEEP' => 'Hierarki departemen maksimal 5 tingkat.',
+
         'UNKNOWN_ERROR' => 'Unknown error.',
     ],
 
     'warnings' => [
+        'IMPORT_FILE_DUPLICATE' => 'Import file has already been uploaded.',
         'FUTURE_TRANSACTION_DATE_WARNING' => 'Transaction date is in the future.',
         'DIFFERENT_PERIOD_DATE_WARNING' => 'Transaction date is in a different period.',
         'BACKDATED_TRANSACTION_WARNING' => 'Transaction date is backdated.',

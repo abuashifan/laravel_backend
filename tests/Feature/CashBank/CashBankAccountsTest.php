@@ -2,7 +2,7 @@
 
 namespace Tests\Feature\CashBank;
 
-use App\Models\Tenant\ChartOfAccount;
+use App\Modules\MasterData\Models\ChartOfAccount;
 use Tests\Feature\Journal\JournalTestCase;
 
 class CashBankAccountsTest extends JournalTestCase
@@ -67,4 +67,3 @@ class CashBankAccountsTest extends JournalTestCase
         $this->assertNotContains((int) $nonCash->id, $ids2);
     }
 }
-

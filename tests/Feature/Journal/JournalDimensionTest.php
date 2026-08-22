@@ -2,9 +2,9 @@
 
 namespace Tests\Feature\Journal;
 
-use App\Models\Tenant\Department;
-use App\Models\Tenant\JournalEntryLine;
-use App\Models\Tenant\Project;
+use App\Modules\Journal\Models\JournalEntryLine;
+use App\Modules\MasterData\Models\Department;
+use App\Modules\MasterData\Models\Project;
 
 class JournalDimensionTest extends JournalTestCase
 {

@@ -35,4 +35,3 @@ class WarehouseTest extends MasterDataTestCase
         $this->patchJson('/api/master-data/warehouses/'.$w2['id'].'/deactivate', [], $ctx['headers'])->assertStatus(422);
     }
 }
-

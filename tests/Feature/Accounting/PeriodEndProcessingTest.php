@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Accounting;
 
-use App\Models\AccountingPeriod;
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\PeriodEndRun;
-use App\Services\Accounting\FiscalYearService;
+use App\Modules\Accounting\Models\PeriodEndRun;
+use App\Modules\Accounting\Services\FiscalYearService;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Shared\Models\AccountingPeriod;
 use Tests\Feature\Journal\JournalTestCase;
 
 class PeriodEndProcessingTest extends JournalTestCase

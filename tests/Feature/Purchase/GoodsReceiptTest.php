@@ -2,10 +2,11 @@
 
 namespace Tests\Feature\Purchase;
 
-use App\Models\Tenant\GoodsReceipt;
-use App\Models\Tenant\PurchaseOrder;
-use App\Models\Tenant\PurchaseOrderLine;
-use App\Models\Tenant\StockMovement;
+use App\Modules\Inventory\Models\StockMovement;
+use App\Modules\MasterData\Models\Product;
+use App\Modules\Purchase\Models\GoodsReceipt;
+use App\Modules\Purchase\Models\PurchaseOrder;
+use App\Modules\Purchase\Models\PurchaseOrderLine;
 use Illuminate\Support\Facades\DB;
 
 class GoodsReceiptTest extends PurchaseTestCase
@@ -93,7 +94,14 @@ class GoodsReceiptTest extends PurchaseTestCase
     public function test_goods_receipt_does_not_create_stock_movement_or_journal(): void
     {
         $ctx = $this->setUpTenant();
-        $receipt = $this->postJson('/api/purchase/goods-receipts', $this->goodsReceiptPayload(), $ctx['headers'])->assertStatus(201)->json('data');
+        // Baris non-stok: goods receipt tidak menyentuh persediaan → tanpa pergerakan stok/jurnal.
+        $nonStock = (int) Product::query()->create([
+            'product_code' => 'NS-GR', 'product_name' => 'Service Item', 'product_type' => 'service',
+            'unit_id' => $this->defaultUnitId, 'is_stock_item' => false, 'is_active' => true,
+        ])->id;
+        $receipt = $this->postJson('/api/purchase/goods-receipts', $this->goodsReceiptPayload([
+            'lines' => [['product_id' => $nonStock, 'description' => 'Service Item', 'quantity' => 2, 'unit_id' => $this->defaultUnitId]],
+        ]), $ctx['headers'])->assertStatus(201)->json('data');
         $this->patchJson('/api/purchase/goods-receipts/'.$receipt['id'].'/receive', [], $ctx['headers'])->assertStatus(200);
 
         $this->assertSame(0, DB::connection('tenant')->table('journal_entries')->count());
@@ -113,6 +121,7 @@ class GoodsReceiptTest extends PurchaseTestCase
     public function test_void_goods_receipt_reverses_purchase_order_received_quantity(): void
     {
         $ctx = $this->setUpTenant();
+        $this->seedPurchaseMappings(interim: true);
         $order = $this->createOrder($ctx);
         $receipt = $this->postJson('/api/purchase/goods-receipts/from-purchase-order/'.$order['id'], [], $ctx['headers'])->assertStatus(201)->json('data');
         $this->patchJson('/api/purchase/goods-receipts/'.$receipt['id'].'/receive', [], $ctx['headers'])->assertStatus(200);

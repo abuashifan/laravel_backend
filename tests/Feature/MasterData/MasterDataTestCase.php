@@ -2,11 +2,11 @@
 
 namespace Tests\Feature\MasterData;
 
-use App\Models\Company;
-use App\Models\CompanyUser;
-use App\Models\TenantDatabase;
-use App\Models\User;
-use App\Services\Tenant\TenantConnectionManager;
+use App\Shared\Models\Company;
+use App\Shared\Models\CompanyUser;
+use App\Shared\Models\TenantDatabase;
+use App\Shared\Models\User;
+use App\Shared\Tenant\TenantConnectionManager;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\File;
@@ -46,6 +46,7 @@ abstract class MasterDataTestCase extends TestCase
         if (! File::exists($tenantPath)) {
             File::put($tenantPath, '');
         }
+        $this->registerTenantFile($tenantPath);
 
         TenantDatabase::query()->create([
             'company_id' => $company->id,
@@ -63,7 +64,7 @@ abstract class MasterDataTestCase extends TestCase
             '--force' => true,
         ]);
 
-        Sanctum::actingAs($user);
+        Sanctum::actingAs($user, ['*']);
 
         return [
             'user' => $user,

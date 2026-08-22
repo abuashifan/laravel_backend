@@ -1,0 +1,114 @@
+<?php
+
+namespace App\Modules\MasterData\Services;
+
+use App\Modules\MasterData\Models\Contact;
+use App\Modules\MasterData\Services\Concerns\ParsesBooleanFilters;
+use App\Shared\Api\AppliesListQuery;
+use App\Shared\Exceptions\ApiException;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Collection;
+
+class ContactService
+{
+    use AppliesListQuery;
+    use ParsesBooleanFilters;
+
+    protected array $listSearchable = ['contact_code', 'name', 'email', 'phone'];
+
+    protected array $listSearchableRelations = [];
+
+    protected string $listDateColumn = '';
+
+    protected string $listStatusColumn = 'is_active';
+
+    protected array $listDefaultSort = ['name' => 'asc'];
+
+    protected array $listSortable = ['contact_code', 'name', 'email', 'contact_type', 'is_active'];
+
+    /**
+     * @param  array<string,mixed>  $filters
+     * @return LengthAwarePaginator|Collection<int,Contact>
+     */
+    public function list(array $filters = []): LengthAwarePaginator|Collection
+    {
+        $query = Contact::query();
+
+        if (array_key_exists('is_active', $filters)) {
+            $query->where('is_active', $this->toBool($filters['is_active']));
+        }
+
+        if (array_key_exists('is_customer', $filters)) {
+            $query->where('is_customer', $this->toBool($filters['is_customer']));
+        }
+
+        if (array_key_exists('is_supplier', $filters)) {
+            $query->where('is_supplier', $this->toBool($filters['is_supplier']));
+        }
+
+        if (! empty($filters['contact_type'])) {
+            $query->where('contact_type', (string) $filters['contact_type']);
+        }
+
+        return $this->applyListQuery($query, $filters);
+    }
+
+    public function create(array $data): Contact
+    {
+        $data = $this->withoutDeprecatedAccountingFields($data);
+
+        if (! empty($data['contact_code']) && Contact::query()->where('contact_code', (string) $data['contact_code'])->exists()) {
+            throw ApiException::make('DUPLICATE_CONTACT_CODE', 'Contact code is already in use.', 422, [
+                'contact_code' => ['Contact Code is already in use.'],
+            ]);
+        }
+
+        return Contact::query()->create($data);
+    }
+
+    public function update(Contact $contact, array $data): Contact
+    {
+        $data = $this->withoutDeprecatedAccountingFields($data);
+
+        if (! empty($data['contact_code']) && $data['contact_code'] !== $contact->contact_code) {
+            if (Contact::query()->where('contact_code', (string) $data['contact_code'])->exists()) {
+                throw ApiException::make('DUPLICATE_CONTACT_CODE', 'Contact code is already in use.', 422, [
+                    'contact_code' => ['Contact Code is already in use.'],
+                ]);
+            }
+        }
+
+        $contact->fill($data);
+        $contact->save();
+
+        return $contact->refresh();
+    }
+
+    public function deactivate(Contact $contact): Contact
+    {
+        $contact->is_active = false;
+        $contact->save();
+
+        return $contact->refresh();
+    }
+
+    public function activate(Contact $contact): Contact
+    {
+        $contact->is_active = true;
+        $contact->save();
+
+        return $contact->refresh();
+    }
+
+    private function withoutDeprecatedAccountingFields(array $data): array
+    {
+        unset(
+            $data['receivable_account_id'],
+            $data['payable_account_id'],
+            $data['account_receivable_id'],
+            $data['account_payable_id'],
+        );
+
+        return $data;
+    }
+}

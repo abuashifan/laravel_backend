@@ -2,6 +2,10 @@
 
 namespace Tests\Feature\Budget;
 
+use App\Shared\Models\CompanyUser;
+use App\Shared\Models\User;
+use Laravel\Sanctum\Sanctum;
+
 class BudgetFlowTest extends BudgetTestCase
 {
     public function test_auto_post_submission_flow_and_consolidation(): void
@@ -168,6 +172,62 @@ class BudgetFlowTest extends BudgetTestCase
         $this->putJson("/api/budget-submissions/{$submission['id']}/lines", [
             'lines' => [['account_id' => $ctx['account']->id, 'amount' => 999]],
         ], $ctx['headers'])->assertStatus(422);
+    }
+
+    public function test_finance_only_approver_can_reject_at_finance_stage(): void
+    {
+        // Role bawaan `finance` punya approve_head DAN approve_finance, jadi
+        // BudgetFlowTest yang lain tetap hijau baik sebelum maupun sesudah
+        // perbaikan. Yang menggigit adalah role kustom yang hanya diberi
+        // budgets.approve_finance — persis tahap yang jadi tanggung jawabnya.
+        config(['permissions.roles.budget_finance_reviewer' => [
+            'budgets.view',
+            'budgets.approve_finance',
+        ]]);
+
+        $ctx = $this->setUpTenant(role: 'owner', accountingSettingOverrides: [
+            'transaction_workflow_mode' => 'draft_then_post',
+            'auto_post_transactions' => false,
+        ]);
+
+        $period = $this->postJson('/api/budget-periods', [
+            'name' => 'Anggaran 2026', 'fiscal_year' => 2026,
+            'period_from' => '2026-01-01', 'period_to' => '2026-12-31',
+        ], $ctx['headers'])->json('data');
+
+        $submission = $this->postJson("/api/budget-periods/{$period['id']}/submissions", [
+            'department_id' => $ctx['dept']->id,
+        ], $ctx['headers'])->json('data');
+
+        $this->putJson("/api/budget-submissions/{$submission['id']}/lines", [
+            'lines' => [['account_id' => $ctx['account']->id, 'amount' => 5000000]],
+        ], $ctx['headers'])->assertStatus(200);
+
+        $this->postJson("/api/budget-submissions/{$submission['id']}/submit", [], $ctx['headers']);
+        $this->postJson("/api/budget-submissions/{$submission['id']}/approve-head", [], $ctx['headers'])
+            ->assertStatus(200)->assertJsonPath('data.status', 'approved_by_head');
+
+        $reviewer = User::factory()->create(['status' => 'active']);
+        CompanyUser::query()->create([
+            'company_id' => $ctx['company']->id,
+            'user_id' => $reviewer->id,
+            'role' => 'budget_finance_reviewer',
+            'status' => 'active',
+            'joined_at' => now(),
+        ]);
+        Sanctum::actingAs($reviewer, ['*']);
+
+        // Rolenya memang tidak punya approve_head — kalau langkah ini lolos,
+        // test di bawahnya tidak membuktikan apa pun.
+        $this->postJson("/api/budget-submissions/{$submission['id']}/approve-head", [], $ctx['headers'])
+            ->assertStatus(403);
+
+        $this->postJson("/api/budget-submissions/{$submission['id']}/reject", [
+            'rejection_note' => 'Alokasi gaji melebihi pagu tahun lalu',
+        ], $ctx['headers'])->assertStatus(200)
+            ->assertJsonPath('data.status', 'draft')
+            ->assertJsonPath('data.revision_number', 2)
+            ->assertJsonPath('data.rejection_note', 'Alokasi gaji melebihi pagu tahun lalu');
     }
 
     public function test_unauthorized_role_cannot_manage_period(): void

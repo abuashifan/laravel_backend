@@ -2,15 +2,15 @@
 
 namespace Tests\Feature\Accounting;
 
-use App\Models\AccountingPeriod;
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\Contact;
-use App\Models\Tenant\Product;
-use App\Models\Tenant\Unit;
-use App\Models\Tenant\Warehouse;
-use App\Services\Accounting\FiscalYearService;
-use App\Support\AccountMapping\AccountMappingKey;
+use App\Modules\Accounting\Services\FiscalYearService;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\MasterData\Models\Contact;
+use App\Modules\MasterData\Models\Product;
+use App\Modules\MasterData\Models\Unit;
+use App\Modules\MasterData\Models\Warehouse;
+use App\Shared\AccountMapping\AccountMappingKey;
+use App\Shared\Models\AccountingPeriod;
 use Tests\Feature\Journal\JournalTestCase;
 
 class PeriodLockTest extends JournalTestCase

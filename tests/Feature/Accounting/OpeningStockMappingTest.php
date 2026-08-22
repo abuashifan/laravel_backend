@@ -4,12 +4,13 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Accounting;
 
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\Product;
-use App\Models\Tenant\Unit;
-use App\Models\Tenant\Warehouse;
-use App\Support\AccountMapping\AccountMappingKey;
+use App\Modules\Journal\Models\JournalEntry;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\MasterData\Models\Product;
+use App\Modules\MasterData\Models\Unit;
+use App\Modules\MasterData\Models\Warehouse;
+use App\Shared\AccountMapping\AccountMappingKey;
 use Tests\Feature\Journal\JournalTestCase;
 
 /**
@@ -53,25 +54,25 @@ class OpeningStockMappingTest extends JournalTestCase
         [$inventory, $equity, $cogs] = $this->seedInventoryMappings();
 
         $unit = Unit::query()->create(['code' => 'PCS', 'name' => 'Pieces', 'precision' => 0, 'is_active' => true]);
-        $wh   = Warehouse::query()->create(['code' => 'WH1', 'name' => 'Main', 'is_default' => true, 'is_active' => true]);
+        $wh = Warehouse::query()->create(['code' => 'WH1', 'name' => 'Main', 'is_default' => true, 'is_active' => true]);
         $prod = Product::query()->create([
             'product_code' => 'OS-001',
             'product_name' => 'Opening Stock Item',
             'product_type' => 'goods',
-            'unit_id'      => $unit->id,
+            'unit_id' => $unit->id,
             'is_stock_item' => true,
-            'is_active'    => true,
+            'is_active' => true,
         ]);
 
         $movement = $this->postJson('/api/inventory/stock-movements', [
             'movement_date' => '2026-01-01',
             'movement_type' => 'opening_stock',
             'lines' => [[
-                'product_id'  => $prod->id,
+                'product_id' => $prod->id,
                 'warehouse_id' => $wh->id,
-                'unit_id'     => $unit->id,
-                'quantity'    => 10,
-                'unit_cost'   => 500,
+                'unit_id' => $unit->id,
+                'quantity' => 10,
+                'unit_cost' => 500,
             ]],
         ], $ctx['headers'])->assertCreated()->json('data.id');
 
@@ -82,7 +83,7 @@ class OpeningStockMappingTest extends JournalTestCase
         $this->assertSame('posted', $posted['status']);
 
         // Verify journal exists and uses opening_balance.equity account
-        $journal = \App\Models\Tenant\JournalEntry::query()
+        $journal = JournalEntry::query()
             ->where('source_type', 'stock_movement')
             ->where('source_id', $movement)
             ->firstOrFail();
@@ -107,25 +108,25 @@ class OpeningStockMappingTest extends JournalTestCase
             ->update(['account_id' => null]);
 
         $unit = Unit::query()->create(['code' => 'PCS', 'name' => 'Pieces', 'precision' => 0, 'is_active' => true]);
-        $wh   = Warehouse::query()->create(['code' => 'WH2', 'name' => 'WH2', 'is_default' => true, 'is_active' => true]);
+        $wh = Warehouse::query()->create(['code' => 'WH2', 'name' => 'WH2', 'is_default' => true, 'is_active' => true]);
         $prod = Product::query()->create([
             'product_code' => 'OS-002',
             'product_name' => 'Item B',
             'product_type' => 'goods',
-            'unit_id'      => $unit->id,
+            'unit_id' => $unit->id,
             'is_stock_item' => true,
-            'is_active'    => true,
+            'is_active' => true,
         ]);
 
         $movement = $this->postJson('/api/inventory/stock-movements', [
             'movement_date' => '2026-01-01',
             'movement_type' => 'opening_stock',
             'lines' => [[
-                'product_id'   => $prod->id,
+                'product_id' => $prod->id,
                 'warehouse_id' => $wh->id,
-                'unit_id'      => $unit->id,
-                'quantity'     => 5,
-                'unit_cost'    => 100,
+                'unit_id' => $unit->id,
+                'quantity' => 5,
+                'unit_cost' => 100,
             ]],
         ], $ctx['headers'])->assertCreated()->json('data.id');
 
@@ -141,7 +142,7 @@ class OpeningStockMappingTest extends JournalTestCase
     /**
      * Seed inventory + opening_balance.equity mappings.
      *
-     * @return array{0:int,1:int,2:int}  [inventory_account_id, equity_account_id, cogs_account_id]
+     * @return array{0:int,1:int,2:int} [inventory_account_id, equity_account_id, cogs_account_id]
      */
     private function seedInventoryMappings(): array
     {

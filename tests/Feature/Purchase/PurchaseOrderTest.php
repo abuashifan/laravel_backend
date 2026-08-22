@@ -2,11 +2,12 @@
 
 namespace Tests\Feature\Purchase;
 
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\PurchaseOrder;
-use App\Models\Tenant\PurchaseRequest;
-use App\Models\Tenant\VendorDeposit;
-use App\Models\Tenant\StockMovement;
+use App\Modules\Inventory\Models\StockMovement;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\MasterData\Models\PaymentTerm;
+use App\Modules\Purchase\Models\PurchaseOrder;
+use App\Modules\Purchase\Models\PurchaseRequest;
+use App\Modules\Purchase\Models\VendorDeposit;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -22,6 +23,49 @@ class PurchaseOrderTest extends PurchaseTestCase
 
         $this->assertDatabaseCount('purchase_orders', 1, 'tenant');
         $this->assertDatabaseCount('purchase_order_lines', 1, 'tenant');
+    }
+
+    public function test_can_create_purchase_order_with_payment_term(): void
+    {
+        $ctx = $this->setUpTenant();
+        $term = PaymentTerm::query()->create([
+            'code' => 'NET30',
+            'name' => 'Net 30',
+            'days' => 30,
+            'is_custom' => true,
+            'is_active' => true,
+        ]);
+
+        $order = $this->postJson('/api/purchase/orders', $this->purchaseOrderPayload([
+            'payment_term_id' => $term->id,
+        ]), $ctx['headers'])
+            ->assertStatus(201)
+            ->assertJsonPath('data.payment_term_id', $term->id)
+            ->assertJsonPath('data.payment_term.name', 'Net 30')
+            ->json('data');
+
+        $this->getJson('/api/purchase/orders/'.$order['id'], $ctx['headers'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.payment_term_id', $term->id)
+            ->assertJsonPath('data.payment_term.name', 'Net 30');
+    }
+
+    public function test_create_purchase_order_rejects_inactive_payment_term(): void
+    {
+        $ctx = $this->setUpTenant();
+        $term = PaymentTerm::query()->create([
+            'code' => 'OLD30',
+            'name' => 'Old Net 30',
+            'days' => 30,
+            'is_custom' => true,
+            'is_active' => false,
+        ]);
+
+        $this->postJson('/api/purchase/orders', $this->purchaseOrderPayload([
+            'payment_term_id' => $term->id,
+        ]), $ctx['headers'])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'PAYMENT_TERM_NOT_VALID');
     }
 
     public function test_can_create_purchase_order_from_purchase_request(): void

@@ -2,13 +2,13 @@
 
 namespace Tests\Unit\Permissions;
 
-use App\Models\Company;
-use App\Models\CompanyUser;
-use App\Models\CompanyUserPermissionOverride;
-use App\Models\Permission;
-use App\Models\Role;
-use App\Models\User;
-use App\Services\Permissions\EffectivePermissionService;
+use App\Shared\Models\Company;
+use App\Shared\Models\CompanyUser;
+use App\Shared\Models\CompanyUserPermissionOverride;
+use App\Shared\Models\Permission;
+use App\Shared\Models\Role;
+use App\Shared\Models\User;
+use App\Shared\Permission\EffectivePermissionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 

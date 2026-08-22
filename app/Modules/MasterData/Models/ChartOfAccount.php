@@ -1,0 +1,208 @@
+<?php
+
+namespace App\Modules\MasterData\Models;
+
+use Database\Factories\Tenant\ChartOfAccountFactory;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+
+class ChartOfAccount extends Model
+{
+    use HasFactory;
+
+    protected static function newFactory()
+    {
+        return ChartOfAccountFactory::new();
+    }
+
+    protected $connection = 'tenant';
+
+    protected $table = 'chart_of_accounts';
+
+    protected $fillable = [
+        'account_code',
+        'account_name',
+        'account_type',
+        'parent_account_id',
+        'normal_balance',
+        'cash_flow_section',
+        'is_cash_bank',
+        'is_active',
+        'is_system_default',
+        'description',
+        'metadata',
+    ];
+
+    protected $casts = [
+        'parent_account_id' => 'integer',
+        'is_cash_bank' => 'boolean',
+        'is_active' => 'boolean',
+        'is_system_default' => 'boolean',
+        'metadata' => 'array',
+        // Bukan kolom tabel -- ikut terhidrasi dari recursive CTE di
+        // ChartOfAccountService::hierarchicalQuery(). Hanya ada pada endpoint
+        // daftar mode hierarkis.
+        'depth' => 'integer',
+    ];
+
+    /**
+     * `hierarchy_path` adalah kolom turunan dari CTE yang memakai byte
+     * `char(1)` sebagai pemisah -- tidak layak masuk JSON. Ia hanya dipakai
+     * untuk `ORDER BY` di sisi server.
+     */
+    protected $hidden = ['hierarchy_path'];
+
+    public function parent(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'parent_account_id');
+    }
+
+    public function children(): HasMany
+    {
+        return $this->hasMany(self::class, 'parent_account_id');
+    }
+
+    public function accountMappings(): HasMany
+    {
+        return $this->hasMany(AccountMapping::class, 'account_id');
+    }
+
+    public function productSalesAccounts(): HasMany
+    {
+        return $this->hasMany(Product::class, 'sales_account_id');
+    }
+
+    public function productPurchaseAccounts(): HasMany
+    {
+        return $this->hasMany(Product::class, 'purchase_account_id');
+    }
+
+    public function productInventoryAccounts(): HasMany
+    {
+        return $this->hasMany(Product::class, 'inventory_account_id');
+    }
+
+    public function productCogsAccounts(): HasMany
+    {
+        return $this->hasMany(Product::class, 'cogs_account_id');
+    }
+
+    public function scopeActive($query)
+    {
+        return $query->where('is_active', true);
+    }
+
+    public function scopeInactive($query)
+    {
+        return $query->where('is_active', false);
+    }
+
+    public function isAsset(): bool
+    {
+        return $this->account_type === 'asset';
+    }
+
+    public function isLiability(): bool
+    {
+        return $this->account_type === 'liability';
+    }
+
+    public function isEquity(): bool
+    {
+        return $this->account_type === 'equity';
+    }
+
+    public function isRevenue(): bool
+    {
+        return $this->account_type === 'revenue';
+    }
+
+    public function isExpense(): bool
+    {
+        return $this->account_type === 'expense';
+    }
+
+    public function isDebitNormal(): bool
+    {
+        return $this->normal_balance === 'debit';
+    }
+
+    public function isCreditNormal(): bool
+    {
+        return $this->normal_balance === 'credit';
+    }
+
+    public function isCashBank(): bool
+    {
+        return (bool) $this->is_cash_bank;
+    }
+
+    public function isActive(): bool
+    {
+        return (bool) $this->is_active;
+    }
+
+    /**
+     * Akun induk (punya anak) tidak postable -- hanya akun daun (leaf) yang
+     * boleh dipakai untuk transaksi. Induk cuma untuk merangkum saldo di
+     * laporan.
+     */
+    public function isPostable(): bool
+    {
+        return $this->children()->doesntExist();
+    }
+
+    /**
+     * Id akun yang "efektif" cash/bank: ditandai `is_cash_bank` sendiri, atau
+     * keturunan dari akun yang ditandai begitu. Sifat cash/bank mengalir
+     * turun hierarki -- akun induk "Kas"/"Bank" biasa yang ditandai, sementara
+     * akun anak per-lokasi/per-rekening di bawahnya tidak ditandai satu-satu,
+     * jadi tanpa pewarisan ini mereka lenyap dari pilihan akun kas/bank.
+     * Dibatasi ke `account_type=asset` karena itu satu-satunya tipe yang
+     * boleh ditandai `is_cash_bank` (lihat
+     * `ChartOfAccountService::validateCashBank()`).
+     *
+     * @return array<int,int>
+     */
+    public static function effectiveCashBankIds(): array
+    {
+        $accounts = self::query()
+            ->where('account_type', 'asset')
+            ->get(['id', 'parent_account_id', 'is_cash_bank'])
+            ->keyBy('id');
+
+        $resolved = [];
+
+        $isEffectiveCashBank = function (int $id, int $depth = 0) use (&$isEffectiveCashBank, &$resolved, $accounts): bool {
+            if (array_key_exists($id, $resolved)) {
+                return $resolved[$id];
+            }
+
+            // Jaga-jaga terhadap siklus induk yang lolos dari validasi normal
+            // (mis. lewat seeder/factory yang menulis langsung ke tabel).
+            if ($depth > 20) {
+                return $resolved[$id] = false;
+            }
+
+            $account = $accounts->get($id);
+            if (! $account) {
+                return $resolved[$id] = false;
+            }
+
+            if ($account->is_cash_bank) {
+                return $resolved[$id] = true;
+            }
+
+            $parentId = $account->parent_account_id;
+
+            return $resolved[$id] = $parentId ? $isEffectiveCashBank((int) $parentId, $depth + 1) : false;
+        };
+
+        return $accounts->keys()
+            ->filter(fn (int $id) => $isEffectiveCashBank($id))
+            ->values()
+            ->all();
+    }
+}

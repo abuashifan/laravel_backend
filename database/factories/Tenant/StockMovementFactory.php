@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Database\Factories\Tenant;
 
-use App\Models\Tenant\StockMovement;
+use App\Modules\Inventory\Models\StockMovement;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**

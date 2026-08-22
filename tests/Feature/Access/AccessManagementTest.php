@@ -2,12 +2,12 @@
 
 namespace Tests\Feature\Access;
 
-use App\Models\ActivityLog;
-use App\Models\Company;
-use App\Models\CompanyUser;
-use App\Models\Role;
-use App\Models\TenantDatabase;
-use App\Models\User;
+use App\Shared\Models\ActivityLog;
+use App\Shared\Models\Company;
+use App\Shared\Models\CompanyUser;
+use App\Shared\Models\Role;
+use App\Shared\Models\TenantDatabase;
+use App\Shared\Models\User;
 use Database\Seeders\PermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
@@ -23,7 +23,7 @@ class AccessManagementTest extends TestCase
         $this->getJson('/api/access/company-users')->assertStatus(401);
 
         $user = User::factory()->create(['status' => 'active']);
-        Sanctum::actingAs($user);
+        Sanctum::actingAs($user, ['*']);
         $this->getJson('/api/access/company-users')->assertStatus(422);
     }
 
@@ -143,7 +143,7 @@ class AccessManagementTest extends TestCase
             ->assertJsonPath('code', 'SELF_ACCESS_CHANGE_NOT_ALLOWED');
 
         $viewer = $this->companyUser($ctx['company'], 'readonly@example.test', 'viewer');
-        Sanctum::actingAs($viewer->user);
+        Sanctum::actingAs($viewer->user, ['*']);
         $this->getJson('/api/access/company-users', $ctx['headers'])->assertStatus(403);
     }
 
@@ -167,7 +167,7 @@ class AccessManagementTest extends TestCase
             'joined_at' => now(),
         ]);
         $this->tenant($company);
-        Sanctum::actingAs($user);
+        Sanctum::actingAs($user, ['*']);
 
         return compact('company', 'companyUser') + [
             'company_user' => $companyUser,
@@ -194,6 +194,7 @@ class AccessManagementTest extends TestCase
         $path = database_path('tenants/test_access_'.$company->id.'_'.uniqid().'.sqlite');
         File::ensureDirectoryExists(dirname($path));
         File::put($path, '');
+        $this->registerTenantFile($path);
 
         TenantDatabase::query()->create([
             'company_id' => $company->id,

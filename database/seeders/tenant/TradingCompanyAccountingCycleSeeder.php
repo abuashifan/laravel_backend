@@ -1343,7 +1343,7 @@ class TradingCompanyAccountingCycleSeeder extends Seeder
     }
 
     /**
-     * @param array<int,array{0:string,1:float,2:float}> $lines
+     * @param  array<int,array{0:string,1:float,2:float}>  $lines
      */
     private function journal(int $sequence, int $month, int $day, string $description, array $lines, string $sourceModule, string $sourceNumber): int
     {
@@ -1395,7 +1395,7 @@ class TradingCompanyAccountingCycleSeeder extends Seeder
     }
 
     /**
-     * @param array<string, array{table:string,id:int}> $documents
+     * @param  array<string, array{table:string,id:int}>  $documents
      */
     private function linkDocumentJournals(array $documents): void
     {
@@ -1568,7 +1568,7 @@ class TradingCompanyAccountingCycleSeeder extends Seeder
     }
 
     /**
-     * @param array<string,int> $categories
+     * @param  array<string,int>  $categories
      * @return array<int,array{0:string,1:string,2:string,3:float,4:float,5:int|null}>
      */
     private function productCatalog(array $categories): array
@@ -1586,7 +1586,7 @@ class TradingCompanyAccountingCycleSeeder extends Seeder
     }
 
     /**
-     * @param array<string,mixed> $extra
+     * @param  array<string,mixed>  $extra
      * @return array<string,mixed>
      */
     private function itemLine(string $productCode, float $qty, float $unitPrice, float $gross, float $base, float $total, ?int $unitId, int $warehouseId, int $departmentId, int $projectId, float $tax, array $extra = []): array
@@ -1661,8 +1661,8 @@ class TradingCompanyAccountingCycleSeeder extends Seeder
     }
 
     /**
-     * @param array<int, array{0:string,1:array<string,mixed>}> $rows
-     * @param array<string, int> $ids
+     * @param  array<int, array{0:string,1:array<string,mixed>}>  $rows
+     * @param  array<string, int>  $ids
      */
     private function seedRows(string $table, string $key, array $rows, array &$ids): void
     {
@@ -1715,6 +1715,7 @@ class TradingCompanyAccountingCycleSeeder extends Seeder
         $exists = DB::connection('tenant')->table($table)->where($match)->first();
         if ($exists) {
             DB::connection('tenant')->table($table)->where('id', $exists->id)->update($payload);
+
             return (int) $exists->id;
         }
 
@@ -1725,15 +1726,17 @@ class TradingCompanyAccountingCycleSeeder extends Seeder
     {
         if (Schema::connection('tenant')->hasTable($table)) {
             $this->seededTables[] = $table;
+
             return true;
         }
 
         $this->skippedTables[] = $table;
+
         return false;
     }
 
     /**
-     * @param array<string,mixed> $values
+     * @param  array<string,mixed>  $values
      * @return array<string,mixed>
      */
     private function filter(string $table, array $values): array

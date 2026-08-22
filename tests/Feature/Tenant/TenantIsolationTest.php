@@ -2,10 +2,10 @@
 
 namespace Tests\Feature\Tenant;
 
-use App\Models\Company;
-use App\Models\CompanyUser;
-use App\Models\TenantDatabase;
-use App\Models\User;
+use App\Shared\Models\Company;
+use App\Shared\Models\CompanyUser;
+use App\Shared\Models\TenantDatabase;
+use App\Shared\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Route;
@@ -38,7 +38,7 @@ class TenantIsolationTest extends TestCase
     public function test_authenticated_user_cannot_access_tenant_context_without_x_company_id(): void
     {
         $user = User::factory()->create(['status' => 'active']);
-        Sanctum::actingAs($user);
+        Sanctum::actingAs($user, ['*']);
 
         $this->getJson('/api/tenant-context-test')
             ->assertStatus(422)
@@ -49,7 +49,7 @@ class TenantIsolationTest extends TestCase
     {
         [$userA, $companyA] = $this->seedTenantForUser(role: 'owner');
 
-        Sanctum::actingAs($userA);
+        Sanctum::actingAs($userA, ['*']);
 
         $this->getJson('/api/tenant-context-test', ['X-Company-ID' => (string) $companyA->id])
             ->assertStatus(200)
@@ -62,7 +62,7 @@ class TenantIsolationTest extends TestCase
         [$userA] = $this->seedTenantForUser(role: 'owner');
         [, $companyB] = $this->seedTenantForUser(role: 'owner');
 
-        Sanctum::actingAs($userA);
+        Sanctum::actingAs($userA, ['*']);
 
         $this->getJson('/api/tenant-context-test', ['X-Company-ID' => (string) $companyB->id])
             ->assertStatus(403)
@@ -74,7 +74,7 @@ class TenantIsolationTest extends TestCase
         [$userA, $companyA] = $this->seedTenantForUser(role: 'owner');
         $this->seedTenantForUser(role: 'owner'); // userB + companyB
 
-        Sanctum::actingAs($userA);
+        Sanctum::actingAs($userA, ['*']);
 
         $response = $this->getJson('/api/companies')->assertStatus(200);
 
@@ -92,7 +92,7 @@ class TenantIsolationTest extends TestCase
         [$userA] = $this->seedTenantForUser(role: 'owner');
         [, $companyB] = $this->seedTenantForUser(role: 'owner');
 
-        Sanctum::actingAs($userA);
+        Sanctum::actingAs($userA, ['*']);
 
         $this->postJson('/api/companies/select', ['company_id' => $companyB->id])
             ->assertStatus(403)
@@ -131,7 +131,7 @@ class TenantIsolationTest extends TestCase
             'status' => 'inactive',
         ]);
 
-        Sanctum::actingAs($userA);
+        Sanctum::actingAs($userA, ['*']);
 
         $this->getJson('/api/tenant-context-test', ['X-Company-ID' => (string) $companyA->id])
             ->assertStatus(422)
@@ -142,8 +142,13 @@ class TenantIsolationTest extends TestCase
     {
         $routes = Route::getRoutes();
 
+        // `POST api/companies` dulu ada di daftar ini. Sekarang endpoint itu
+        // disengaja: user yang sudah diregistrasi owner aplikasi boleh membuat
+        // perusahaannya sendiri. Penggantinya ada di bawah — endpoint tersebut
+        // wajib tetap di belakang auth:sanctum. Registrasi mandiri ditutup di
+        // Modules/Auth/Routes/api.php, jadi endpoint ini tidak terbuka publik.
         $forbidden = [
-            ['POST', 'api/companies'],
+            ['POST', 'api/auth/register'],
             ['POST', 'api/tenants'],
             ['POST', 'api/tenant/migrate'],
             ['POST', 'api/company-users'],
@@ -157,6 +162,13 @@ class TenantIsolationTest extends TestCase
 
             $this->assertFalse($exists, "Forbidden route exists: {$method} {$uri}");
         }
+
+        $createCompany = collect($routes)->first(function ($route) {
+            return in_array('POST', $route->methods(), true) && $route->uri() === 'api/companies';
+        });
+
+        $this->assertNotNull($createCompany, 'POST api/companies harus ada.');
+        $this->assertContains('auth:sanctum', $createCompany->gatherMiddleware());
     }
 
     /**

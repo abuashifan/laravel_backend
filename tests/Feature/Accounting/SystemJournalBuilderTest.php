@@ -4,18 +4,18 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Accounting;
 
-use App\Exceptions\ApiException;
-use App\Models\Company;
-use App\Models\CompanyUser;
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\JournalEntry;
-use App\Models\Tenant\StockMovement;
-use App\Models\TenantDatabase;
-use App\Services\Inventory\StockMovementJournalService;
-use App\Services\Journal\SystemJournalBuilder;
-use App\Services\Tenant\TenantContext;
-use App\Support\AccountMapping\AccountMappingKey;
+use App\Modules\Inventory\Models\StockMovement;
+use App\Modules\Inventory\Services\StockMovementJournalService;
+use App\Modules\Journal\Models\JournalEntry;
+use App\Modules\Journal\Services\SystemJournalBuilder;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Shared\AccountMapping\AccountMappingKey;
+use App\Shared\Exceptions\ApiException;
+use App\Shared\Models\Company;
+use App\Shared\Models\CompanyUser;
+use App\Shared\Models\TenantDatabase;
+use App\Shared\Tenant\TenantContext;
 use Tests\Feature\Journal\JournalTestCase;
 
 class SystemJournalBuilderTest extends JournalTestCase
@@ -37,12 +37,12 @@ class SystemJournalBuilderTest extends JournalTestCase
 
         $journal = $builder->create(
             [
-                'source_type'   => 'stock_movement',
-                'source_id'     => 99,
+                'source_type' => 'stock_movement',
+                'source_id' => 99,
                 'source_number' => 'SM-0001',
                 'source_module' => 'inventory',
-                'journal_date'  => '2026-05-01',
-                'description'   => 'Opening stock journal SM-0001',
+                'journal_date' => '2026-05-01',
+                'description' => 'Opening stock journal SM-0001',
             ],
             [
                 ['account_id' => $cashId,    'debit' => 500.0, 'credit' => 0.0,   'description' => 'Inventory',       'line_order' => 1],
@@ -85,10 +85,10 @@ class SystemJournalBuilderTest extends JournalTestCase
         try {
             $builder->create(
                 [
-                    'source_type'  => 'stock_movement',
-                    'source_id'    => 1,
+                    'source_type' => 'stock_movement',
+                    'source_id' => 1,
                     'journal_date' => '2026-05-01',
-                    'description'  => 'Unbalanced journal',
+                    'description' => 'Unbalanced journal',
                 ],
                 [
                     ['account_id' => $cashId,    'debit' => 600.0, 'credit' => 0.0,   'line_order' => 1],
@@ -119,10 +119,10 @@ class SystemJournalBuilderTest extends JournalTestCase
         try {
             $builder->create(
                 [
-                    'source_type'  => 'stock_movement',
-                    'source_id'    => 1,
+                    'source_type' => 'stock_movement',
+                    'source_id' => 1,
                     'journal_date' => '2026-05-01',
-                    'description'  => 'Missing account journal',
+                    'description' => 'Missing account journal',
                 ],
                 [
                     ['account_id' => null, 'debit' => 500.0, 'credit' => 0.0,   'line_order' => 1],
@@ -160,27 +160,27 @@ class SystemJournalBuilderTest extends JournalTestCase
 
         AccountMapping::query()->create([
             'mapping_key' => AccountMappingKey::INVENTORY_ASSET,
-            'module'      => 'inventory',
-            'account_id'  => $cashId,
+            'module' => 'inventory',
+            'account_id' => $cashId,
             'is_required' => true,
-            'is_active'   => true,
+            'is_active' => true,
         ]);
         AccountMapping::query()->create([
             'mapping_key' => AccountMappingKey::OPENING_BALANCE_EQUITY,
-            'module'      => 'inventory',
-            'account_id'  => $equityAccount->id,
+            'module' => 'inventory',
+            'account_id' => $equityAccount->id,
             'is_required' => true,
-            'is_active'   => true,
+            'is_active' => true,
         ]);
 
         $movement = StockMovement::query()->create([
             'movement_number' => 'SM-T001',
-            'movement_type'   => 'opening_stock',
-            'movement_date'   => '2026-05-01',
-            'source_type'     => 'opening',
-            'source_id'       => null,
-            'total_value'     => 250.0,
-            'status'          => 'posted',
+            'movement_type' => 'opening_stock',
+            'movement_date' => '2026-05-01',
+            'source_type' => 'opening',
+            'source_id' => null,
+            'total_value' => 250.0,
+            'status' => 'posted',
         ]);
 
         /** @var StockMovementJournalService $service */

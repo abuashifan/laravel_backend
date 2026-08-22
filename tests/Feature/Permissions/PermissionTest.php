@@ -2,11 +2,11 @@
 
 namespace Tests\Feature\Permissions;
 
-use App\Models\Company;
-use App\Models\CompanyAccountingSetting;
-use App\Models\CompanyUser;
-use App\Models\TenantDatabase;
-use App\Models\User;
+use App\Shared\Models\Company;
+use App\Shared\Models\CompanyAccountingSetting;
+use App\Shared\Models\CompanyUser;
+use App\Shared\Models\TenantDatabase;
+use App\Shared\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
 use Laravel\Sanctum\Sanctum;
@@ -24,7 +24,7 @@ class PermissionTest extends TestCase
     public function test_authenticated_user_cannot_get_permissions_without_x_company_id(): void
     {
         $user = User::factory()->create(['status' => 'active']);
-        Sanctum::actingAs($user);
+        Sanctum::actingAs($user, ['*']);
 
         $this->getJson('/api/auth/permissions')->assertStatus(422);
     }
@@ -32,7 +32,7 @@ class PermissionTest extends TestCase
     public function test_owner_role_receives_wildcard_permission(): void
     {
         [$user, $company] = $this->seedUserCompany(role: 'owner');
-        Sanctum::actingAs($user);
+        Sanctum::actingAs($user, ['*']);
 
         $this->getJson('/api/auth/permissions', ['X-Company-ID' => (string) $company->id])
             ->assertStatus(200)
@@ -44,7 +44,7 @@ class PermissionTest extends TestCase
     public function test_admin_role_receives_settings_company_edit_permission(): void
     {
         [$user, $company] = $this->seedUserCompany(role: 'admin');
-        Sanctum::actingAs($user);
+        Sanctum::actingAs($user, ['*']);
 
         $this->getJson('/api/auth/permissions', ['X-Company-ID' => (string) $company->id])
             ->assertStatus(200);
@@ -63,7 +63,7 @@ class PermissionTest extends TestCase
     public function test_viewer_does_not_have_settings_company_edit(): void
     {
         [$user, $company] = $this->seedUserCompany(role: 'viewer');
-        Sanctum::actingAs($user);
+        Sanctum::actingAs($user, ['*']);
 
         $this->patchJson(
             '/api/settings/company/accounting',
@@ -80,7 +80,7 @@ class PermissionTest extends TestCase
     public function test_sales_has_sales_create_but_not_purchase_create(): void
     {
         [$user, $company] = $this->seedUserCompany(role: 'sales');
-        Sanctum::actingAs($user);
+        Sanctum::actingAs($user, ['*']);
 
         $response = $this->getJson('/api/auth/permissions', ['X-Company-ID' => (string) $company->id])
             ->assertStatus(200);
@@ -93,7 +93,7 @@ class PermissionTest extends TestCase
     public function test_purchasing_has_purchase_create_but_not_sales_create(): void
     {
         [$user, $company] = $this->seedUserCompany(role: 'purchasing');
-        Sanctum::actingAs($user);
+        Sanctum::actingAs($user, ['*']);
 
         $response = $this->getJson('/api/auth/permissions', ['X-Company-ID' => (string) $company->id])
             ->assertStatus(200);
@@ -106,7 +106,7 @@ class PermissionTest extends TestCase
     public function test_warehouse_has_inventory_manage_but_not_sales_create(): void
     {
         [$user, $company] = $this->seedUserCompany(role: 'warehouse');
-        Sanctum::actingAs($user);
+        Sanctum::actingAs($user, ['*']);
 
         $response = $this->getJson('/api/auth/permissions', ['X-Company-ID' => (string) $company->id])
             ->assertStatus(200);
@@ -121,7 +121,7 @@ class PermissionTest extends TestCase
         [$userA] = $this->seedUserCompany(role: 'owner');
         [, $companyB] = $this->seedUserCompany(role: 'owner');
 
-        Sanctum::actingAs($userA);
+        Sanctum::actingAs($userA, ['*']);
 
         $this->getJson('/api/auth/permissions', ['X-Company-ID' => (string) $companyB->id])
             ->assertStatus(403);
@@ -130,7 +130,7 @@ class PermissionTest extends TestCase
     public function test_unknown_role_has_no_permission(): void
     {
         [$user, $company] = $this->seedUserCompany(role: 'unknown');
-        Sanctum::actingAs($user);
+        Sanctum::actingAs($user, ['*']);
 
         $response = $this->getJson('/api/auth/permissions', ['X-Company-ID' => (string) $company->id])
             ->assertStatus(200);
@@ -142,7 +142,7 @@ class PermissionTest extends TestCase
     public function test_permission_endpoint_includes_permission_mode(): void
     {
         [$user, $company] = $this->seedUserCompany(role: 'admin');
-        Sanctum::actingAs($user);
+        Sanctum::actingAs($user, ['*']);
 
         CompanyAccountingSetting::query()->updateOrCreate(
             ['company_id' => $company->id],
@@ -181,6 +181,7 @@ class PermissionTest extends TestCase
         $tenantPath = database_path('tenants/test_permission_'.$company->id.'_'.uniqid().'.sqlite');
         File::ensureDirectoryExists(dirname($tenantPath));
         File::put($tenantPath, '');
+        $this->registerTenantFile($tenantPath);
 
         TenantDatabase::query()->create([
             'company_id' => $company->id,

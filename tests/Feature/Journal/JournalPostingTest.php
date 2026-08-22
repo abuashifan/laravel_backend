@@ -2,7 +2,7 @@
 
 namespace Tests\Feature\Journal;
 
-use App\Models\FiscalYear;
+use App\Shared\Models\FiscalYear;
 
 class JournalPostingTest extends JournalTestCase
 {

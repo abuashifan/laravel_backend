@@ -4,10 +4,11 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Setup;
 
-use App\Models\CompanySetupState;
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\ChartOfAccount;
-use App\Services\Settings\CompanySettingService;
+use App\Modules\Journal\Models\JournalEntry;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\Settings\Services\CompanySettingService;
+use App\Shared\Models\CompanySetupState;
 use Tests\Feature\Journal\JournalTestCase;
 
 class SetupWizardTest extends JournalTestCase
@@ -39,6 +40,48 @@ class SetupWizardTest extends JournalTestCase
             ->assertJsonPath('data.state.opening_date', '2026-01-01');
     }
 
+    public function test_gate_offers_initial_setup_only_while_books_are_empty(): void
+    {
+        $ctx = $this->setUpTenant(role: 'owner');
+
+        $this->getJson('/api/setup/status', $ctx['headers'])
+            ->assertOk()
+            ->assertJsonPath('data.gate.is_finalized', false)
+            ->assertJsonPath('data.gate.has_operational_data', false)
+            ->assertJsonPath('data.gate.initial_setup_available', true);
+
+        // Satu transaksi operasional cukup untuk menutup alur setup awal,
+        // walaupun setup state belum pernah difinalisasi.
+        JournalEntry::query()->create([
+            'journal_number' => 'JV-GATE-001',
+            'journal_date' => '2026-02-01',
+            'description' => 'Transaksi operasional',
+            'status' => 'posted',
+            'total_debit' => 1000,
+            'total_credit' => 1000,
+        ]);
+
+        $this->getJson('/api/setup/status', $ctx['headers'])
+            ->assertOk()
+            ->assertJsonPath('data.gate.has_operational_data', true)
+            ->assertJsonPath('data.gate.initial_setup_available', false);
+    }
+
+    public function test_gate_closes_initial_setup_once_finalized(): void
+    {
+        $ctx = $this->setUpTenant(role: 'owner');
+
+        CompanySetupState::query()->updateOrCreate(
+            ['company_id' => $ctx['company']->id],
+            ['status' => 'finalized', 'current_step' => 'finalized', 'finalized_at' => now()],
+        );
+
+        $this->getJson('/api/setup/status', $ctx['headers'])
+            ->assertOk()
+            ->assertJsonPath('data.gate.is_finalized', true)
+            ->assertJsonPath('data.gate.initial_setup_available', false);
+    }
+
     public function test_validate_all_blocks_when_opening_balance_batch_is_missing(): void
     {
         $ctx = $this->setUpTenant(role: 'owner');
@@ -56,6 +99,35 @@ class SetupWizardTest extends JournalTestCase
         $response->assertJsonPath('data.valid', false);
         $response->assertJsonPath('data.results.opening_balance_preview.errors.0.code', 'OPENING_BALANCE_BATCH_REQUIRED');
         $response->assertJsonPath('data.state.status', 'in_progress');
+    }
+
+    /**
+     * Wizard menawarkan "Lewati, isi nanti" untuk saldo awal (perusahaan baru tanpa
+     * saldo historis wajar tidak punya apa pun untuk diinput). Tanpa flag skip ini
+     * finalize selalu gagal 422 walau semua step lain valid -- lihat
+     * SetupWizardService::openingBalanceSkipped().
+     */
+    public function test_opening_balance_can_be_explicitly_skipped_for_finalization(): void
+    {
+        $ctx = $this->setUpTenant(role: 'owner');
+        app(CompanySettingService::class)->getOrCreateModuleSetting($ctx['company']);
+        $this->seedSetupCoaAndMappings();
+
+        $this->patchJson('/api/setup/current-step', [
+            'current_step' => 'final_review',
+            'opening_date' => '2026-01-01',
+        ], $ctx['headers'])->assertOk();
+
+        $this->postJson('/api/setup/validate-step', [
+            'step' => 'opening_balance_preview',
+            'confirm_opening_balance_skipped' => true,
+        ], $ctx['headers'])
+            ->assertOk()
+            ->assertJsonPath('data.result.valid', true);
+
+        $response = $this->postJson('/api/setup/finalize', [], $ctx['headers'])->assertOk();
+        $response->assertJsonPath('data.finalized', true);
+        $response->assertJsonPath('data.state.status', 'finalized');
     }
 
     public function test_finalized_setup_cannot_be_downgraded_by_stale_current_step_request(): void

@@ -1,0 +1,73 @@
+<?php
+
+namespace App\Modules\MasterData\Controllers;
+
+use App\Http\Controllers\Controller;
+use App\Modules\MasterData\Models\Product;
+use App\Modules\MasterData\Requests\StoreProductRequest;
+use App\Modules\MasterData\Requests\UpdateProductRequest;
+use App\Modules\MasterData\Services\ProductService;
+use App\Shared\Api\ApiResponse;
+use App\Shared\Api\ResolvesAdjacentRecords;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+
+class ProductController extends Controller
+{
+    use ApiResponse;
+    use ResolvesAdjacentRecords;
+
+    public function __construct(private readonly ProductService $service) {}
+
+    public function adjacent(Request $request): JsonResponse
+    {
+        return $this->adjacentResponse(Product::query(), $request, 'product_code');
+    }
+
+    public function index(Request $request): JsonResponse
+    {
+        $items = $this->service->list($request->query());
+
+        return $this->listResponse($items, $request, 'Products retrieved successfully');
+    }
+
+    public function store(StoreProductRequest $request): JsonResponse
+    {
+        $product = $this->service->create($request->validated());
+
+        return $this->successResponse($product, 'Product created successfully', 201);
+    }
+
+    public function show(int $id): JsonResponse
+    {
+        $product = Product::query()
+            ->with(['category', 'unit', 'salesAccount', 'salesDiscountAccount', 'salesReturnAccount', 'purchaseReturnAccount', 'inventoryAccount', 'inventoryInterimAccount', 'cogsAccount'])
+            ->findOrFail($id);
+
+        return $this->successResponse($product, 'Product retrieved successfully');
+    }
+
+    public function update(UpdateProductRequest $request, int $id): JsonResponse
+    {
+        $product = Product::query()->findOrFail($id);
+        $product = $this->service->update($product, $request->validated());
+
+        return $this->successResponse($product, 'Product updated successfully');
+    }
+
+    public function deactivate(int $id): JsonResponse
+    {
+        $product = Product::query()->findOrFail($id);
+        $product = $this->service->deactivate($product);
+
+        return $this->successResponse($product, 'Product deactivated successfully');
+    }
+
+    public function activate(int $id): JsonResponse
+    {
+        $product = Product::query()->findOrFail($id);
+        $product = $this->service->activate($product);
+
+        return $this->successResponse($product, 'Product activated successfully');
+    }
+}

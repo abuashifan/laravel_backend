@@ -34,4 +34,3 @@ return new class extends Migration
         Schema::connection('tenant')->dropIfExists('fiscal_year_closings');
     }
 };
-

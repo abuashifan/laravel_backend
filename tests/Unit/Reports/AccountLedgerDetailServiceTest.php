@@ -2,13 +2,13 @@
 
 namespace Tests\Unit\Reports;
 
-use App\Data\Reports\AccountLedgerFilter;
-use App\Models\Tenant\Department;
-use App\Models\Tenant\JournalEntry;
-use App\Models\Tenant\Project;
-use App\Services\Reports\AccountLedgerDetailService;
-use App\Services\Reports\LedgerBalanceCalculator;
-use App\Services\Reports\LedgerFilterValidator;
+use App\Modules\Journal\Models\JournalEntry;
+use App\Modules\MasterData\Models\Department;
+use App\Modules\MasterData\Models\Project;
+use App\Modules\Reports\Services\AccountLedgerDetailService;
+use App\Modules\Reports\Services\LedgerBalanceCalculator;
+use App\Modules\Reports\Services\LedgerFilterValidator;
+use App\Shared\Reports\Data\AccountLedgerFilter;
 use Tests\Feature\Journal\JournalTestCase;
 
 class AccountLedgerDetailServiceTest extends JournalTestCase
@@ -98,7 +98,7 @@ class AccountLedgerDetailServiceTest extends JournalTestCase
             ['account_id' => $creditAccountId, 'debit' => 0, 'credit' => 999, 'line_order' => 2],
         ]);
 
-        $service = new AccountLedgerDetailService(new LedgerBalanceCalculator(), new LedgerFilterValidator());
+        $service = new AccountLedgerDetailService(new LedgerBalanceCalculator, new LedgerFilterValidator);
 
         $filter = AccountLedgerFilter::fromArray($debitAccountId, [
             'start_date' => '2026-02-01',
@@ -157,7 +157,7 @@ class AccountLedgerDetailServiceTest extends JournalTestCase
             ['account_id' => $debitAccountId, 'debit' => 20, 'credit' => 0, 'line_order' => 2],
         ]);
 
-        $service = new AccountLedgerDetailService(new LedgerBalanceCalculator(), new LedgerFilterValidator());
+        $service = new AccountLedgerDetailService(new LedgerBalanceCalculator, new LedgerFilterValidator);
 
         $filter = AccountLedgerFilter::fromArray($creditAccountId, [
             'start_date' => '2026-03-01',
@@ -169,4 +169,3 @@ class AccountLedgerDetailServiceTest extends JournalTestCase
         $this->assertSame(20.0, (float) $detail['lines'][0]['running_balance']);
     }
 }
-

@@ -2,10 +2,10 @@
 
 namespace App\Console\Commands;
 
-use App\Models\Tenant\SalesInvoice;
-use App\Models\TenantDatabase;
-use App\Services\Sales\SalesAccountResolverService;
-use App\Services\Tenant\TenantConnectionManager;
+use App\Modules\Sales\Models\SalesInvoice;
+use App\Modules\Sales\Services\SalesAccountResolverService;
+use App\Shared\Models\TenantDatabase;
+use App\Shared\Tenant\TenantConnectionManager;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Schema;
 use Throwable;
@@ -27,10 +27,12 @@ class BackfillSalesInvoiceAccountSnapshotsCommand extends Command
 
         if (($companyId === null || $companyId === '') && ! $all) {
             $this->error('Gunakan --company-id=ID atau --all.');
+
             return self::FAILURE;
         }
         if ($companyId !== null && $companyId !== '' && $all) {
             $this->error('Tidak boleh memakai --company-id dan --all bersamaan.');
+
             return self::FAILURE;
         }
 
@@ -42,6 +44,7 @@ class BackfillSalesInvoiceAccountSnapshotsCommand extends Command
 
         if ($tenants->isEmpty()) {
             $this->error('Tidak ada tenant aktif yang cocok.');
+
             return self::FAILURE;
         }
 

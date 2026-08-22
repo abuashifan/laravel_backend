@@ -2,13 +2,13 @@
 
 namespace Tests\Feature\Journal;
 
-use App\Models\Company;
-use App\Models\CompanyUser;
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\TenantDatabase;
-use App\Models\User;
-use App\Services\Settings\CompanySettingService;
-use App\Services\Tenant\TenantConnectionManager;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\Settings\Services\CompanySettingService;
+use App\Shared\Models\Company;
+use App\Shared\Models\CompanyUser;
+use App\Shared\Models\TenantDatabase;
+use App\Shared\Models\User;
+use App\Shared\Tenant\TenantConnectionManager;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\File;
@@ -48,6 +48,7 @@ abstract class JournalTestCase extends TestCase
         if (! File::exists($tenantPath)) {
             File::put($tenantPath, '');
         }
+        $this->registerTenantFile($tenantPath);
 
         TenantDatabase::query()->create([
             'company_id' => $company->id,
@@ -94,7 +95,7 @@ abstract class JournalTestCase extends TestCase
             'is_system_default' => false,
         ]);
 
-        Sanctum::actingAs($user);
+        Sanctum::actingAs($user, ['*']);
 
         return [
             'user' => $user,
@@ -105,4 +106,3 @@ abstract class JournalTestCase extends TestCase
         ];
     }
 }
-

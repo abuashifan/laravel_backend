@@ -2,14 +2,14 @@
 
 namespace Tests\Unit\Reports;
 
-use App\Data\Reports\TrialBalanceFilter;
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\Department;
-use App\Models\Tenant\JournalEntry;
-use App\Models\Tenant\Project;
-use App\Services\Reports\LedgerFilterValidator;
-use App\Services\Reports\TrialBalanceCalculator;
-use App\Services\Reports\TrialBalanceService;
+use App\Modules\Journal\Models\JournalEntry;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\MasterData\Models\Department;
+use App\Modules\MasterData\Models\Project;
+use App\Modules\Reports\Services\LedgerFilterValidator;
+use App\Modules\Reports\Services\TrialBalanceCalculator;
+use App\Modules\Reports\Services\TrialBalanceService;
+use App\Shared\Reports\Data\TrialBalanceFilter;
 use Tests\Feature\Journal\JournalTestCase;
 
 class TrialBalanceServiceTest extends JournalTestCase
@@ -89,7 +89,7 @@ class TrialBalanceServiceTest extends JournalTestCase
             ]);
         }
 
-        $service = new TrialBalanceService(new TrialBalanceCalculator(), new LedgerFilterValidator());
+        $service = new TrialBalanceService(new TrialBalanceCalculator, new LedgerFilterValidator);
 
         $filter = TrialBalanceFilter::fromArray([
             'start_date' => '2026-02-01',
@@ -199,7 +199,7 @@ class TrialBalanceServiceTest extends JournalTestCase
             ['account_id' => $revId, 'debit' => 0, 'credit' => 9, 'line_order' => 2],
         ]);
 
-        $service = new TrialBalanceService(new TrialBalanceCalculator(), new LedgerFilterValidator());
+        $service = new TrialBalanceService(new TrialBalanceCalculator, new LedgerFilterValidator);
         $tb = $service->getTrialBalance(TrialBalanceFilter::fromArray([
             'start_date' => '2026-04-01',
             'end_date' => '2026-04-30',

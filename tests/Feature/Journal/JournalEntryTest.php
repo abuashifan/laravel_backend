@@ -2,13 +2,13 @@
 
 namespace Tests\Feature\Journal;
 
-use App\Models\Company;
-use App\Models\CompanyUser;
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\JournalEntry;
-use App\Models\TenantDatabase;
-use App\Models\User;
-use App\Services\Tenant\TenantConnectionManager;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Shared\Models\Company;
+use App\Shared\Models\CompanyUser;
+use App\Shared\Models\TenantDatabase;
+use App\Shared\Models\User;
+use App\Shared\Tenant\TenantConnectionManager;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\File;
 
@@ -122,6 +122,37 @@ class JournalEntryTest extends JournalTestCase
             ->assertJsonPath('code', 'VALIDATION_ERROR');
     }
 
+    public function test_manual_journal_to_parent_account_is_rejected(): void
+    {
+        $ctx = $this->setUpTenant(role: 'owner', accountingSettingOverrides: [
+            'transaction_workflow_mode' => 'draft_then_post',
+            'auto_post_transactions' => false,
+        ]);
+
+        // Anak baru membuat akun 'debit' seed jadi akun induk -- tidak lagi
+        // postable.
+        ChartOfAccount::query()->create([
+            'account_code' => '1000.01',
+            'account_name' => 'Cash - Sub',
+            'account_type' => 'asset',
+            'parent_account_id' => $ctx['accounts']['debit'],
+            'normal_balance' => 'debit',
+            'is_active' => true,
+        ]);
+
+        $res = $this->postJson('/api/journals', [
+            'journal_date' => now()->toDateString(),
+            'description' => 'Parent Account',
+            'lines' => [
+                ['account_id' => $ctx['accounts']['debit'], 'debit' => 100],
+                ['account_id' => $ctx['accounts']['credit'], 'credit' => 100],
+            ],
+        ], $ctx['headers']);
+
+        $res->assertStatus(422);
+        $res->assertJsonPath('code', 'VALIDATION_ERROR');
+    }
+
     public function test_journal_index_hides_void_by_default(): void
     {
         $ctx = $this->setUpTenant(role: 'owner', accountingSettingOverrides: [
@@ -231,6 +262,7 @@ class JournalEntryTest extends JournalTestCase
         $tenantPath2 = database_path('tenants/test_company_'.$company2->id.'_'.uniqid().'.sqlite');
         File::ensureDirectoryExists(dirname($tenantPath2));
         File::put($tenantPath2, '');
+        $this->registerTenantFile($tenantPath2);
         TenantDatabase::query()->create([
             'company_id' => $company2->id,
             'database_name' => basename($tenantPath2),

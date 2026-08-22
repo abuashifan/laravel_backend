@@ -2,13 +2,13 @@
 
 namespace Tests\Feature\DocumentNumbering;
 
-use App\Models\Company;
-use App\Models\DocumentNumberSequence;
-use App\Models\DocumentNumberingSetting;
-use App\Models\User;
-use App\Services\Accounting\FiscalYearService;
-use App\Services\DocumentNumbering\DocumentNumberService;
-use App\Support\DocumentNumbering\DocumentType;
+use App\Modules\Accounting\Services\FiscalYearService;
+use App\Shared\DocumentNumbering\DocumentNumberService;
+use App\Shared\DocumentNumbering\DocumentType;
+use App\Shared\Models\Company;
+use App\Shared\Models\DocumentNumberingSetting;
+use App\Shared\Models\DocumentNumberSequence;
+use App\Shared\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -210,4 +210,3 @@ class DocumentNumberServiceTest extends TestCase
         $service->generate($company, DocumentType::SALES_INVOICE, '2026-05-17');
     }
 }
-

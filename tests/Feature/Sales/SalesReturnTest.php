@@ -2,14 +2,18 @@
 
 namespace Tests\Feature\Sales;
 
-use App\Models\FiscalYear;
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\JournalEntry;
-use App\Models\Tenant\SalesInvoice;
-use App\Models\Tenant\SalesReturn;
-use App\Models\Tenant\StockBalance;
-use App\Models\Tenant\StockMovement;
+use App\Modules\Inventory\Models\StockBalance;
+use App\Modules\Inventory\Models\StockMovement;
+use App\Modules\Journal\Models\JournalEntry;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\MasterData\Models\Product;
+use App\Modules\MasterData\Models\Unit;
+use App\Modules\MasterData\Models\Warehouse;
+use App\Modules\Sales\Models\SalesInvoice;
+use App\Modules\Sales\Models\SalesReturn;
+use App\Modules\Sales\Models\SalesReturnLine;
+use App\Shared\Models\FiscalYear;
 
 class SalesReturnTest extends SalesTestCase
 {
@@ -53,6 +57,47 @@ class SalesReturnTest extends SalesTestCase
                 'unit_price' => 100,
             ]],
         ], $ctx['headers'])->assertStatus(422);
+    }
+
+    /**
+     * `product_id` dkk. dulu tidak ada di StoreSalesReturnRequest, jadi
+     * `validated()` membuangnya dan retur yang dibuat langsung lewat API
+     * tersimpan tanpa produk -- barisnya ada, product_id NULL. Retur yang
+     * dibuat dari faktur tidak terkena karena melewati FormRequest.
+     */
+    public function test_direct_return_keeps_product_and_warehouse_on_lines(): void
+    {
+        $ctx = $this->setUpTenant();
+        $this->seedMappings();
+
+        $unit = Unit::query()->create(['code' => 'PCS', 'name' => 'Pieces', 'precision' => 0, 'is_active' => true]);
+        $product = Product::query()->create([
+            'product_code' => 'PRD-RET-1',
+            'product_name' => 'Barang Retur',
+            'product_type' => 'service',
+            'unit_id' => $unit->id,
+            'is_stock_item' => false,
+            'is_active' => true,
+        ]);
+        $warehouse = Warehouse::query()->create(['code' => 'WH-RET', 'name' => 'Gudang Retur', 'is_active' => true]);
+
+        $return = $this->postJson('/api/sales/returns', [
+            'return_date' => '2026-05-20',
+            'customer_id' => $this->createCustomer(),
+            'lines' => [[
+                'product_id' => $product->id,
+                'unit_id' => $unit->id,
+                'warehouse_id' => $warehouse->id,
+                'description' => 'Barang Retur',
+                'quantity' => 2,
+                'unit_price' => 100,
+            ]],
+        ], $ctx['headers'])->assertStatus(201)->json('data');
+
+        $line = SalesReturnLine::query()->where('sales_return_id', $return['id'])->firstOrFail();
+        $this->assertSame($product->id, (int) $line->product_id);
+        $this->assertSame($unit->id, (int) $line->unit_id);
+        $this->assertSame($warehouse->id, (int) $line->warehouse_id);
     }
 
     public function test_post_return_creates_contra_revenue_ar_journal_and_updates_invoice(): void
@@ -110,6 +155,7 @@ class SalesReturnTest extends SalesTestCase
     {
         $invoice = $this->postJson('/api/sales/invoices', ['customer_id' => $this->createCustomer(), 'invoice_date' => '2026-05-20', 'lines' => [['description' => 'Service', 'quantity' => 1, 'unit_price' => 100]]], $ctx['headers'])->assertStatus(201)->json('data');
         $this->patchJson('/api/sales/invoices/'.$invoice['id'].'/post', [], $ctx['headers'])->assertStatus(200);
+
         return SalesInvoice::query()->with('lines')->find($invoice['id'])->toArray();
     }
 
@@ -118,7 +164,9 @@ class SalesReturnTest extends SalesTestCase
         $ar = $this->account('1100', 'AR', 'asset', 'debit');
         $revenue = $this->account('4100', 'Revenue', 'revenue', 'credit');
         $salesReturn = $this->account('4200', 'Sales Return', 'revenue', 'debit');
-        foreach (['sales.accounts_receivable' => $ar, 'sales.revenue' => $revenue, 'sales.return' => $salesReturn] as $key => $id) AccountMapping::query()->create(['mapping_key' => $key, 'module' => 'sales', 'account_id' => $id, 'is_required' => true, 'is_active' => true]);
+        foreach (['sales.accounts_receivable' => $ar, 'sales.revenue' => $revenue, 'sales.return' => $salesReturn] as $key => $id) {
+            AccountMapping::query()->create(['mapping_key' => $key, 'module' => 'sales', 'account_id' => $id, 'is_required' => true, 'is_active' => true]);
+        }
     }
 
     private function account(string $code, string $name, string $type, string $normal): int

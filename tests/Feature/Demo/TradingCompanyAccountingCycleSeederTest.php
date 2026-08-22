@@ -12,7 +12,7 @@ class TradingCompanyAccountingCycleSeederTest extends JournalTestCase
     {
         $this->setUpTenant(role: 'owner');
 
-        $first = (new TradingCompanyAccountingCycleSeeder())->seed(2025, true);
+        $first = (new TradingCompanyAccountingCycleSeeder)->seed(2025, true);
 
         $this->assertTrue((bool) $first['trial_balance']['balanced']);
         $this->assertSame(0, (int) $first['trial_balance']['unbalanced_journals']);
@@ -60,7 +60,7 @@ class TradingCompanyAccountingCycleSeederTest extends JournalTestCase
         $this->assertGreaterThan(0, $arDocs);
         $this->assertGreaterThan(0, $apDocs);
 
-        $second = (new TradingCompanyAccountingCycleSeeder())->seed(2025, true);
+        $second = (new TradingCompanyAccountingCycleSeeder)->seed(2025, true);
         $this->assertTrue((bool) $second['trial_balance']['balanced']);
         $this->assertSame($first['journal_entries'], $second['journal_entries']);
     }
@@ -68,12 +68,14 @@ class TradingCompanyAccountingCycleSeederTest extends JournalTestCase
     private function normalDebitBalance(string $accountCode): float
     {
         $row = $this->accountSums($accountCode);
+
         return (float) $row->debit - (float) $row->credit;
     }
 
     private function normalCreditBalance(string $accountCode): float
     {
         $row = $this->accountSums($accountCode);
+
         return (float) $row->credit - (float) $row->debit;
     }
 

@@ -2,17 +2,17 @@
 
 namespace Tests\Unit;
 
-use App\Contracts\Transactions\TransactionDateGuard;
-use App\Contracts\Transactions\TransactionDependencyChecker;
-use App\Models\CompanyAccountingSetting;
-use App\Models\Company;
-use App\Services\Permissions\PermissionService;
-use App\Services\Settings\CompanySettingService;
-use App\Services\Tenant\TenantContext;
-use App\Services\Transactions\TransactionPolicyService;
-use App\Support\Transaction\DependencyCheckResult;
-use App\Support\Transaction\TransactionAction;
-use App\Support\Transaction\TransactionPolicyResult;
+use App\Modules\Settings\Services\CompanySettingService;
+use App\Shared\Models\Company;
+use App\Shared\Models\CompanyAccountingSetting;
+use App\Shared\Permission\PermissionService;
+use App\Shared\Tenant\TenantContext;
+use App\Shared\TransactionLifecycle\Contracts\TransactionDateGuard;
+use App\Shared\TransactionLifecycle\Contracts\TransactionDependencyChecker;
+use App\Shared\TransactionLifecycle\DependencyCheckResult;
+use App\Shared\TransactionLifecycle\TransactionAction;
+use App\Shared\TransactionLifecycle\TransactionPolicyResult;
+use App\Shared\TransactionLifecycle\TransactionPolicyService;
 use Tests\TestCase;
 
 class TransactionPolicyServiceTest extends TestCase
@@ -32,32 +32,29 @@ class TransactionPolicyServiceTest extends TestCase
             'block_outside_current_fiscal_year' => true,
         ], $settingsOverrides));
 
-        $tenantContext = new class(new Company(['id' => 1, 'name' => 'Test Company'])) extends TenantContext {
-            public function __construct(private readonly Company $activeCompany)
-            {
-            }
+        $tenantContext = new class(new Company(['id' => 1, 'name' => 'Test Company'])) extends TenantContext
+        {
+            public function __construct(private readonly Company $activeCompany) {}
 
-            public function company(): ?\App\Models\Company
+            public function company(): ?Company
             {
                 return $this->activeCompany;
             }
         };
 
-        $companySettingService = new class($setting) extends CompanySettingService {
-            public function __construct(private readonly CompanyAccountingSetting $setting)
-            {
-            }
+        $companySettingService = new class($setting) extends CompanySettingService
+        {
+            public function __construct(private readonly CompanyAccountingSetting $setting) {}
 
-            public function getOrCreateAccountingSetting(\App\Models\Company $company): CompanyAccountingSetting
+            public function getOrCreateAccountingSetting(Company $company): CompanyAccountingSetting
             {
                 return $this->setting;
             }
         };
 
-        $permissionService = new class($grantedPermissions) extends PermissionService {
-            public function __construct(private readonly array $grantedPermissions)
-            {
-            }
+        $permissionService = new class($grantedPermissions) extends PermissionService
+        {
+            public function __construct(private readonly array $grantedPermissions) {}
 
             public function cannot(string $permission): bool
             {
@@ -65,10 +62,9 @@ class TransactionPolicyServiceTest extends TestCase
             }
         };
 
-        $dependencyChecker = new class($hasDependency) implements TransactionDependencyChecker {
-            public function __construct(private readonly bool $hasDependency)
-            {
-            }
+        $dependencyChecker = new class($hasDependency) implements TransactionDependencyChecker
+        {
+            public function __construct(private readonly bool $hasDependency) {}
 
             public function check(mixed $transaction, string $action, string $module): DependencyCheckResult
             {
@@ -88,10 +84,9 @@ class TransactionPolicyServiceTest extends TestCase
             }
         };
 
-        $dateGuard = new class($dateGuardResult ?? TransactionPolicyResult::allow()) implements TransactionDateGuard {
-            public function __construct(private readonly TransactionPolicyResult $result)
-            {
-            }
+        $dateGuard = new class($dateGuardResult ?? TransactionPolicyResult::allow()) implements TransactionDateGuard
+        {
+            public function __construct(private readonly TransactionPolicyResult $result) {}
 
             public function check(?string $transactionDate, string $action, string $module): TransactionPolicyResult
             {
@@ -187,7 +182,7 @@ class TransactionPolicyServiceTest extends TestCase
 
     public function test_inventory_edit_is_blocked_when_generated_stock_movements_exist(): void
     {
-        $service = $this->makeService(['inventory.manage']);
+        $service = $this->makeService(['inventory.manage'], [], true);
         $result = $service->canEdit('inventory', [
             'status' => 'draft',
             'transaction_date' => '2026-05-17',

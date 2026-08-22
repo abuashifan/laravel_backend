@@ -222,6 +222,8 @@ return [
         // Reports
         'reports.view',
         'reports.export',
+        'reports.save',
+        'reports.multi_period',
 
         // Fiscal year closing / locking
         'fiscal_year.view',
@@ -242,12 +244,26 @@ return [
         'opening_balance.lock',
         'opening_balance.reopen',
 
+        // Imports
+        'imports.view',
+        'imports.upload',
+        'imports.map',
+        'imports.commit',
+        'imports.cancel',
+        'imports.templates.view',
+
+        // Import tier gates (Fase 5)
+        'masterdata.import',       // Basic+ — kontak, produk, COA
+        'transactions.import',     // Pro+   — faktur, tagihan, jurnal
+
         // Budget
         'budgets.view',
         'budgets.submit',
         'budgets.approve_head',
         'budgets.approve_finance',
         'budgets.manage',
+        'budgets.revise',
+        'budgets.export',
 
         // Audit
         'audit.view',
@@ -309,15 +325,27 @@ return [
             'cash_bank.transfer',
             'reports.view',
             'reports.export',
+            'reports.save',
+            'reports.multi_period',
             'audit.view',
             'fiscal_year.view',
             'fiscal_year.close',
             'fiscal_year.closing_wizard',
+            'imports.view',
+            'imports.upload',
+            'imports.map',
+            'imports.commit',
+            'imports.cancel',
+            'imports.templates.view',
+            'masterdata.import',
+            'transactions.import',
             'budgets.view',
             'budgets.submit',
             'budgets.approve_head',
             'budgets.approve_finance',
             'budgets.manage',
+            'budgets.revise',
+            'budgets.export',
         ],
         'accountant' => [
             'dashboard.view',
@@ -345,8 +373,17 @@ return [
             'journal.post',
             'reports.view',
             'reports.export',
+            'reports.save',
+            'reports.multi_period',
             'audit.view',
             'fiscal_year.view',
+            'imports.view',
+            'imports.upload',
+            'imports.map',
+            'imports.cancel',
+            'imports.templates.view',
+            'masterdata.import',
+            'transactions.import',
         ],
         'sales' => [
             'dashboard.view',
@@ -395,6 +432,13 @@ return [
             'sales.returns.create',
             'sales.ar.view',
             'reports.view',
+            'imports.view',
+            'imports.upload',
+            'imports.map',
+            'imports.cancel',
+            'imports.templates.view',
+            'masterdata.import',
+            'transactions.import',
         ],
         'purchasing' => [
             'dashboard.view',
@@ -436,6 +480,13 @@ return [
             'purchase.returns.create',
             'purchase.ap.view',
             'reports.view',
+            'imports.view',
+            'imports.upload',
+            'imports.map',
+            'imports.cancel',
+            'imports.templates.view',
+            'masterdata.import',
+            'transactions.import',
         ],
         'warehouse' => [
             'dashboard.view',

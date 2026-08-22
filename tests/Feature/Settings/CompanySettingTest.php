@@ -2,10 +2,10 @@
 
 namespace Tests\Feature\Settings;
 
-use App\Models\Company;
-use App\Models\CompanyUser;
-use App\Models\TenantDatabase;
-use App\Models\User;
+use App\Shared\Models\Company;
+use App\Shared\Models\CompanyUser;
+use App\Shared\Models\TenantDatabase;
+use App\Shared\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
 use Laravel\Sanctum\Sanctum;
@@ -36,7 +36,7 @@ class CompanySettingTest extends TestCase
     public function test_authenticated_user_cannot_get_company_settings_without_x_company_id(): void
     {
         $user = User::factory()->create(['status' => 'active']);
-        Sanctum::actingAs($user);
+        Sanctum::actingAs($user, ['*']);
 
         $this->getJson('/api/settings/company')
             ->assertStatus(422)
@@ -47,7 +47,7 @@ class CompanySettingTest extends TestCase
     {
         [$user, $company] = $this->seedAccessForUser();
 
-        Sanctum::actingAs($user);
+        Sanctum::actingAs($user, ['*']);
 
         $this->getJson('/api/settings/company', ['X-Company-ID' => (string) $company->id])
             ->assertStatus(200)
@@ -64,7 +64,7 @@ class CompanySettingTest extends TestCase
     {
         [$user, $company] = $this->seedAccessForUser('warehouse');
 
-        Sanctum::actingAs($user);
+        Sanctum::actingAs($user, ['*']);
 
         $this->getJson('/api/settings/company/workflow', ['X-Company-ID' => (string) $company->id])
             ->assertStatus(200)
@@ -80,7 +80,7 @@ class CompanySettingTest extends TestCase
         [$userA] = $this->seedAccessForUser();
         [, $companyB] = $this->seedAccessForUser();
 
-        Sanctum::actingAs($userA);
+        Sanctum::actingAs($userA, ['*']);
 
         $this->getJson('/api/settings/company', ['X-Company-ID' => (string) $companyB->id])
             ->assertStatus(403)
@@ -91,7 +91,7 @@ class CompanySettingTest extends TestCase
     {
         [$user, $company] = $this->seedAccessForUser();
 
-        Sanctum::actingAs($user);
+        Sanctum::actingAs($user, ['*']);
 
         $this->patchJson(
             '/api/settings/company/accounting',
@@ -111,7 +111,7 @@ class CompanySettingTest extends TestCase
     {
         [$user, $company] = $this->seedAccessForUser();
 
-        Sanctum::actingAs($user);
+        Sanctum::actingAs($user, ['*']);
 
         $this->patchJson(
             '/api/settings/company/accounting',

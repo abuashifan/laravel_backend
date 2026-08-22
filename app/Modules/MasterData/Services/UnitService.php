@@ -1,0 +1,86 @@
+<?php
+
+namespace App\Modules\MasterData\Services;
+
+use App\Modules\MasterData\Models\Unit;
+use App\Modules\MasterData\Services\Concerns\ParsesBooleanFilters;
+use App\Shared\Api\AppliesListQuery;
+use App\Shared\Exceptions\ApiException;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Collection;
+
+class UnitService
+{
+    use AppliesListQuery;
+    use ParsesBooleanFilters;
+
+    protected array $listSearchable = ['code', 'name'];
+
+    protected array $listSearchableRelations = [];
+
+    protected string $listDateColumn = '';
+
+    protected string $listStatusColumn = 'is_active';
+
+    protected array $listDefaultSort = ['code' => 'asc'];
+
+    protected array $listSortable = ['code', 'name', 'is_active'];
+
+    /**
+     * @param  array<string,mixed>  $filters
+     * @return LengthAwarePaginator|Collection<int,Unit>
+     */
+    public function list(array $filters = []): LengthAwarePaginator|Collection
+    {
+        $query = Unit::query();
+
+        if (array_key_exists('is_active', $filters)) {
+            $query->where('is_active', $this->toBool($filters['is_active']));
+        }
+
+        return $this->applyListQuery($query, $filters);
+    }
+
+    public function create(array $data): Unit
+    {
+        if (Unit::query()->where('code', (string) $data['code'])->exists()) {
+            throw ApiException::make('DUPLICATE_UNIT_CODE', 'Unit code is already in use.', 422, [
+                'code' => ['Code is already in use.'],
+            ]);
+        }
+
+        return Unit::query()->create($data);
+    }
+
+    public function update(Unit $unit, array $data): Unit
+    {
+        if (! empty($data['code']) && $data['code'] !== $unit->code) {
+            if (Unit::query()->where('code', (string) $data['code'])->exists()) {
+                throw ApiException::make('DUPLICATE_UNIT_CODE', 'Unit code is already in use.', 422, [
+                    'code' => ['Code is already in use.'],
+                ]);
+            }
+        }
+
+        $unit->fill($data);
+        $unit->save();
+
+        return $unit->refresh();
+    }
+
+    public function deactivate(Unit $unit): Unit
+    {
+        $unit->is_active = false;
+        $unit->save();
+
+        return $unit->refresh();
+    }
+
+    public function activate(Unit $unit): Unit
+    {
+        $unit->is_active = true;
+        $unit->save();
+
+        return $unit->refresh();
+    }
+}

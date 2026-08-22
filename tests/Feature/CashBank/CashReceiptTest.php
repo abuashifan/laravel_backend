@@ -2,8 +2,8 @@
 
 namespace Tests\Feature\CashBank;
 
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\JournalEntry;
+use App\Modules\Journal\Models\JournalEntry;
+use App\Modules\MasterData\Models\ChartOfAccount;
 use Tests\Feature\Journal\JournalTestCase;
 
 class CashReceiptTest extends JournalTestCase
@@ -89,6 +89,46 @@ class CashReceiptTest extends JournalTestCase
         $res->assertJsonPath('code', 'AMOUNT_MISMATCH');
     }
 
+    public function test_can_create_with_manual_receipt_number(): void
+    {
+        $ctx = $this->setUpTenant(role: 'finance');
+
+        $payload = [
+            'receipt_number' => 'RC-MANUAL-0001',
+            'receipt_date' => '2026-01-10',
+            'cash_bank_account_id' => (int) $ctx['accounts']['debit'],
+            'amount' => 1000,
+            'lines' => [
+                ['account_id' => (int) $ctx['accounts']['credit'], 'amount' => 1000, 'description' => 'Income', 'line_order' => 1],
+            ],
+        ];
+
+        $res = $this->postJson('/api/cash-bank/cash-receipts', $payload, $ctx['headers']);
+        $res->assertStatus(201);
+        $res->assertJsonPath('data.receipt_number', 'RC-MANUAL-0001');
+    }
+
+    public function test_rejects_duplicate_manual_receipt_number(): void
+    {
+        $ctx = $this->setUpTenant(role: 'finance');
+
+        $payload = [
+            'receipt_number' => 'RC-MANUAL-0002',
+            'receipt_date' => '2026-01-10',
+            'cash_bank_account_id' => (int) $ctx['accounts']['debit'],
+            'amount' => 1000,
+            'lines' => [
+                ['account_id' => (int) $ctx['accounts']['credit'], 'amount' => 1000, 'description' => 'Income', 'line_order' => 1],
+            ],
+        ];
+
+        $this->postJson('/api/cash-bank/cash-receipts', $payload, $ctx['headers'])->assertStatus(201);
+
+        $res = $this->postJson('/api/cash-bank/cash-receipts', $payload, $ctx['headers']);
+        $res->assertStatus(422);
+        $res->assertJsonValidationErrors('receipt_number');
+    }
+
     public function test_requires_cash_bank_account_marker(): void
     {
         $ctx = $this->setUpTenant(role: 'finance');
@@ -116,5 +156,94 @@ class CashReceiptTest extends JournalTestCase
         $res->assertStatus(422);
         $res->assertJsonPath('code', 'CASH_BANK_ACCOUNT_REQUIRED');
     }
-}
 
+    public function test_rejects_parent_account_as_cash_bank_account(): void
+    {
+        $ctx = $this->setUpTenant(role: 'finance');
+        $cashId = (int) $ctx['accounts']['debit'];
+
+        // Anak baru membuat akun kas seed jadi akun induk.
+        ChartOfAccount::query()->create([
+            'account_code' => '1000.01',
+            'account_name' => 'Cash - Sub',
+            'account_type' => 'asset',
+            'parent_account_id' => $cashId,
+            'normal_balance' => 'debit',
+            'is_cash_bank' => false,
+            'is_active' => true,
+            'is_system_default' => false,
+        ]);
+
+        $payload = [
+            'receipt_date' => '2026-01-10',
+            'cash_bank_account_id' => $cashId,
+            'amount' => 1000,
+            'lines' => [
+                ['account_id' => (int) $ctx['accounts']['credit'], 'amount' => 1000, 'description' => 'Income', 'line_order' => 1],
+            ],
+        ];
+
+        $res = $this->postJson('/api/cash-bank/cash-receipts', $payload, $ctx['headers']);
+        $res->assertStatus(422);
+        $res->assertJsonValidationErrors('cash_bank_account_id');
+    }
+
+    public function test_child_of_cash_bank_account_is_usable_without_own_flag(): void
+    {
+        $ctx = $this->setUpTenant(role: 'finance');
+        $cashId = (int) $ctx['accounts']['debit'];
+
+        $child = ChartOfAccount::query()->create([
+            'account_code' => '1000.01',
+            'account_name' => 'Cash - Sub',
+            'account_type' => 'asset',
+            'parent_account_id' => $cashId,
+            'normal_balance' => 'debit',
+            'is_cash_bank' => false,
+            'is_active' => true,
+            'is_system_default' => false,
+        ]);
+
+        $payload = [
+            'receipt_date' => '2026-01-10',
+            'cash_bank_account_id' => $child->id,
+            'amount' => 1000,
+            'lines' => [
+                ['account_id' => (int) $ctx['accounts']['credit'], 'amount' => 1000, 'description' => 'Income', 'line_order' => 1],
+            ],
+        ];
+
+        $res = $this->postJson('/api/cash-bank/cash-receipts', $payload, $ctx['headers']);
+        $res->assertStatus(201);
+    }
+
+    public function test_rejects_parent_account_in_lines(): void
+    {
+        $ctx = $this->setUpTenant(role: 'finance');
+        $incomeId = (int) $ctx['accounts']['credit'];
+
+        ChartOfAccount::query()->create([
+            'account_code' => '4000.01',
+            'account_name' => 'Revenue - Sub',
+            'account_type' => 'revenue',
+            'parent_account_id' => $incomeId,
+            'normal_balance' => 'credit',
+            'is_cash_bank' => false,
+            'is_active' => true,
+            'is_system_default' => false,
+        ]);
+
+        $payload = [
+            'receipt_date' => '2026-01-10',
+            'cash_bank_account_id' => (int) $ctx['accounts']['debit'],
+            'amount' => 1000,
+            'lines' => [
+                ['account_id' => $incomeId, 'amount' => 1000, 'description' => 'Income', 'line_order' => 1],
+            ],
+        ];
+
+        $res = $this->postJson('/api/cash-bank/cash-receipts', $payload, $ctx['headers']);
+        $res->assertStatus(422);
+        $res->assertJsonValidationErrors('lines.0.account_id');
+    }
+}

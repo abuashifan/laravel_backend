@@ -1,11 +1,12 @@
 <?php
 
-use App\Http\Controllers\Api\HealthController;
+use App\Shared\Http\Controllers\HealthController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/health', [HealthController::class, 'index']);
 
 require base_path('app/Modules/Auth/Routes/api.php');
+require base_path('app/Modules/Admin/Routes/api.php');
 require base_path('app/Modules/Companies/Routes/api.php');
 require base_path('app/Modules/Tenant/Routes/api.php');
 require base_path('app/Modules/Setup/Routes/api.php');
@@ -14,6 +15,7 @@ require base_path('app/Modules/Access/Routes/api.php');
 require base_path('app/Modules/Dashboard/Routes/api.php');
 require base_path('app/Modules/Accounting/Routes/api.php');
 require base_path('app/Modules/OpeningBalance/Routes/api.php');
+require base_path('app/Modules/Imports/Routes/api.php');
 require base_path('app/Modules/MasterData/Routes/api.php');
 require base_path('app/Modules/Journal/Routes/api.php');
 require base_path('app/Modules/Reports/Routes/api.php');

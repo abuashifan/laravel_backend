@@ -1,6 +1,6 @@
 <?php
 
-use App\Http\Controllers\Api\Settings\CompanySettingController;
+use App\Modules\Settings\Controllers\CompanySettingController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth:sanctum', 'company.access'])->group(function () {

@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Inventory;
 
-use App\Models\Tenant\Product;
-use App\Models\Tenant\Unit;
-use App\Models\Tenant\Warehouse;
-use App\Services\Inventory\StockMovementValidationService;
+use App\Modules\Inventory\Services\StockMovementValidationService;
+use App\Modules\MasterData\Models\Product;
+use App\Modules\MasterData\Models\Unit;
+use App\Modules\MasterData\Models\Warehouse;
 use Tests\Feature\Journal\JournalTestCase;
 
 /**
@@ -36,8 +36,8 @@ class MovementTypeConfigTest extends JournalTestCase
 
     public function test_config_movement_types_are_subset_of_allowed_types(): void
     {
-        $configTypes  = config('inventory.movement_types', []);
-        $service      = app(StockMovementValidationService::class);
+        $configTypes = config('inventory.movement_types', []);
+        $service = app(StockMovementValidationService::class);
         $allowedTypes = $this->getAllowedMovementTypes($service);
 
         foreach ($configTypes as $type) {
@@ -58,25 +58,25 @@ class MovementTypeConfigTest extends JournalTestCase
         $ctx = $this->setUpTenant(role: 'warehouse');
 
         $unit = Unit::query()->create(['code' => 'PCS', 'name' => 'Pieces', 'precision' => 0, 'is_active' => true]);
-        $wh   = Warehouse::query()->create(['code' => 'WH1', 'name' => 'Main', 'is_default' => true, 'is_active' => true]);
+        $wh = Warehouse::query()->create(['code' => 'WH1', 'name' => 'Main', 'is_default' => true, 'is_active' => true]);
         $prod = Product::query()->create([
-            'product_code'  => 'TRF-001',
-            'product_name'  => 'Transfer Item',
-            'product_type'  => 'goods',
-            'unit_id'       => $unit->id,
+            'product_code' => 'TRF-001',
+            'product_name' => 'Transfer Item',
+            'product_type' => 'goods',
+            'unit_id' => $unit->id,
             'is_stock_item' => true,
-            'is_active'     => true,
+            'is_active' => true,
         ]);
 
         $this->postJson('/api/inventory/stock-movements', [
             'movement_date' => '2026-01-01',
             'movement_type' => 'transfer_in',
             'lines' => [[
-                'product_id'   => $prod->id,
+                'product_id' => $prod->id,
                 'warehouse_id' => $wh->id,
-                'unit_id'      => $unit->id,
-                'quantity'     => 5,
-                'unit_cost'    => 100,
+                'unit_id' => $unit->id,
+                'quantity' => 5,
+                'unit_cost' => 100,
             ]],
         ], $ctx['headers'])
             ->assertStatus(422)
@@ -92,24 +92,24 @@ class MovementTypeConfigTest extends JournalTestCase
         $ctx = $this->setUpTenant(role: 'warehouse');
 
         $unit = Unit::query()->create(['code' => 'PCS', 'name' => 'Pieces', 'precision' => 0, 'is_active' => true]);
-        $wh   = Warehouse::query()->create(['code' => 'WH1', 'name' => 'Main', 'is_default' => true, 'is_active' => true]);
+        $wh = Warehouse::query()->create(['code' => 'WH1', 'name' => 'Main', 'is_default' => true, 'is_active' => true]);
         $prod = Product::query()->create([
-            'product_code'  => 'TRF-002',
-            'product_name'  => 'Transfer Item Out',
-            'product_type'  => 'goods',
-            'unit_id'       => $unit->id,
+            'product_code' => 'TRF-002',
+            'product_name' => 'Transfer Item Out',
+            'product_type' => 'goods',
+            'unit_id' => $unit->id,
             'is_stock_item' => true,
-            'is_active'     => true,
+            'is_active' => true,
         ]);
 
         $this->postJson('/api/inventory/stock-movements', [
             'movement_date' => '2026-01-01',
             'movement_type' => 'transfer_out',
             'lines' => [[
-                'product_id'   => $prod->id,
+                'product_id' => $prod->id,
                 'warehouse_id' => $wh->id,
-                'unit_id'      => $unit->id,
-                'quantity'     => 3,
+                'unit_id' => $unit->id,
+                'quantity' => 3,
             ]],
         ], $ctx['headers'])
             ->assertStatus(422)
@@ -129,6 +129,7 @@ class MovementTypeConfigTest extends JournalTestCase
     {
         $ref = new \ReflectionClass($service);
         $const = $ref->getReflectionConstant('ALLOWED_MOVEMENT_TYPES');
+
         return (array) $const->getValue();
     }
 }

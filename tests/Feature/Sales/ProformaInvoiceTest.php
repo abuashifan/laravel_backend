@@ -2,9 +2,8 @@
 
 namespace Tests\Feature\Sales;
 
-use App\Models\Tenant\StockMovement;
+use App\Modules\Inventory\Models\StockMovement;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 
 class ProformaInvoiceTest extends SalesTestCase
 {

@@ -2,17 +2,17 @@
 
 namespace Tests\Feature\Inventory;
 
-use App\Models\CompanyAccountingSetting;
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\Product;
-use App\Models\Tenant\StockAdjustment;
-use App\Models\Tenant\StockBalance;
-use App\Models\Tenant\StockMovement;
-use App\Models\Tenant\Unit;
-use App\Models\Tenant\Warehouse;
-use App\Services\Accounting\FiscalYearService;
-use App\Support\AccountMapping\AccountMappingKey;
+use App\Modules\Accounting\Services\FiscalYearService;
+use App\Modules\Inventory\Models\StockAdjustment;
+use App\Modules\Inventory\Models\StockBalance;
+use App\Modules\Inventory\Models\StockMovement;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\MasterData\Models\Product;
+use App\Modules\MasterData\Models\Unit;
+use App\Modules\MasterData\Models\Warehouse;
+use App\Shared\AccountMapping\AccountMappingKey;
+use App\Shared\Models\CompanyAccountingSetting;
 use Illuminate\Support\Facades\Config;
 use Tests\Feature\Journal\JournalTestCase;
 
@@ -210,6 +210,40 @@ class StockAdjustmentTest extends JournalTestCase
         $this->patchJson('/api/inventory/stock-adjustments/'.$res->json('data.id').'/approve', [], $ctx['headers'])
             ->assertStatus(200)
             ->assertJsonPath('data.status', 'posted');
+    }
+
+    public function test_index_and_show_include_warehouse_relation(): void
+    {
+        $ctx = $this->setUpTenant(role: 'warehouse', accountingSettingOverrides: [
+            'transaction_workflow_mode' => 'draft_approve_post',
+            'auto_post_transactions' => false,
+            'approval_enabled' => true,
+        ]);
+        $this->seedInventoryMappings();
+
+        $unit = Unit::query()->create(['code' => 'PCS', 'name' => 'Pieces', 'precision' => 0, 'is_active' => true]);
+        $wh = Warehouse::query()->create(['code' => 'WH1', 'name' => 'Main', 'is_default' => true, 'is_active' => true]);
+        $p = Product::query()->create(['product_code' => 'SKU1', 'product_name' => 'Item', 'product_type' => 'goods', 'unit_id' => $unit->id, 'is_stock_item' => true, 'is_active' => true]);
+
+        $res = $this->postJson('/api/inventory/stock-adjustments', [
+            'adjustment_date' => '2026-01-10',
+            'warehouse_id' => $wh->id,
+            'reason' => 'Init',
+            'lines' => [
+                ['product_id' => $p->id, 'warehouse_id' => $wh->id, 'unit_id' => $unit->id, 'adjustment_type' => 'increase', 'quantity' => 10, 'unit_cost' => 1000],
+            ],
+        ], $ctx['headers'])->assertStatus(201);
+
+        $id = (int) $res->json('data.id');
+
+        $this->getJson('/api/inventory/stock-adjustments', $ctx['headers'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.0.warehouse.name', 'Main');
+
+        $this->getJson('/api/inventory/stock-adjustments/'.$id, $ctx['headers'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.lines.0.product.product_name', 'Item')
+            ->assertJsonPath('data.lines.0.warehouse.name', 'Main');
     }
 
     public function test_permission_denied(): void

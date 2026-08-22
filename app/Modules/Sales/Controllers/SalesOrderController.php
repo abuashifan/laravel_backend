@@ -1,0 +1,78 @@
+<?php
+
+namespace App\Modules\Sales\Controllers;
+
+use App\Http\Controllers\Controller;
+use App\Modules\Sales\Models\SalesOrder;
+use App\Modules\Sales\Models\SalesQuotation;
+use App\Modules\Sales\Requests\SalesActionRequest;
+use App\Modules\Sales\Requests\StoreSalesOrderRequest;
+use App\Modules\Sales\Requests\UpdateSalesOrderRequest;
+use App\Modules\Sales\Services\SalesOrderService;
+use App\Shared\Api\ApiResponse;
+use App\Shared\Api\ResolvesAdjacentRecords;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+
+class SalesOrderController extends Controller
+{
+    use ApiResponse;
+    use ResolvesAdjacentRecords;
+
+    public function __construct(private readonly SalesOrderService $service) {}
+
+    public function adjacent(Request $request): JsonResponse
+    {
+        return $this->adjacentResponse(SalesOrder::query(), $request, 'order_number');
+    }
+
+    public function index(Request $request): JsonResponse
+    {
+        return $this->listResponse($this->service->list($request->query()), $request, 'Sales orders retrieved successfully');
+    }
+
+    public function store(StoreSalesOrderRequest $request): JsonResponse
+    {
+        $data = $request->validated();
+        if (($data['source_type'] ?? null) === 'sales_quotation' && ! empty($data['source_id'])) {
+            return $this->successResponse($this->service->createFromQuotation(SalesQuotation::query()->findOrFail((int) $data['source_id']), $data), 'Sales order created from quotation successfully', 201);
+        }
+
+        return $this->successResponse($this->service->create($data), 'Sales order created successfully', 201);
+    }
+
+    public function show(int $id): JsonResponse
+    {
+        return $this->successResponse($this->service->find($id), 'Sales order retrieved successfully');
+    }
+
+    public function update(UpdateSalesOrderRequest $request, int $id): JsonResponse
+    {
+        return $this->successResponse($this->service->update(SalesOrder::query()->findOrFail($id), $request->validated()), 'Sales order updated successfully');
+    }
+
+    public function createFromQuotation(Request $request, int $quotationId): JsonResponse
+    {
+        return $this->successResponse($this->service->createFromQuotation(SalesQuotation::query()->findOrFail($quotationId), $request->all()), 'Sales order created from quotation successfully', 201);
+    }
+
+    public function approve(int $id): JsonResponse
+    {
+        return $this->successResponse($this->service->approve(SalesOrder::query()->findOrFail($id)), 'Sales order approved successfully');
+    }
+
+    public function confirm(int $id): JsonResponse
+    {
+        return $this->successResponse($this->service->confirm(SalesOrder::query()->findOrFail($id)), 'Sales order confirmed successfully');
+    }
+
+    public function cancel(SalesActionRequest $request, int $id): JsonResponse
+    {
+        return $this->successResponse($this->service->cancel(SalesOrder::query()->findOrFail($id), $request->validated('reason')), 'Sales order cancelled successfully');
+    }
+
+    public function close(int $id): JsonResponse
+    {
+        return $this->successResponse($this->service->close(SalesOrder::query()->findOrFail($id)), 'Sales order closed successfully');
+    }
+}

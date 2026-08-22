@@ -2,14 +2,14 @@
 
 namespace Tests\Unit\Reports;
 
-use App\Services\Reports\ReportResponseBuilder;
+use App\Modules\Reports\Services\ReportResponseBuilder;
 use Tests\TestCase;
 
 class ReportResponseBuilderTest extends TestCase
 {
     public function test_build_returns_meta_data_and_totals(): void
     {
-        $builder = new ReportResponseBuilder();
+        $builder = new ReportResponseBuilder;
 
         $result = $builder->build(
             reportName: 'trial_balance',
@@ -36,4 +36,3 @@ class ReportResponseBuilderTest extends TestCase
         $this->assertSame(['ending_debit' => 100, 'ending_credit' => 100], $result['totals']);
     }
 }
-

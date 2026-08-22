@@ -2,12 +2,13 @@
 
 namespace Tests\Feature\Sales;
 
-use App\Models\Company;
-use App\Models\CompanyAccountingSetting;
-use App\Models\CompanyUser;
-use App\Models\TenantDatabase;
-use App\Models\User;
-use App\Services\Tenant\TenantConnectionManager;
+use App\Modules\MasterData\Models\Contact;
+use App\Shared\Models\Company;
+use App\Shared\Models\CompanyAccountingSetting;
+use App\Shared\Models\CompanyUser;
+use App\Shared\Models\TenantDatabase;
+use App\Shared\Models\User;
+use App\Shared\Tenant\TenantConnectionManager;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\File;
@@ -48,6 +49,7 @@ abstract class SalesTestCase extends TestCase
         $tenantPath = database_path('tenants/test_sales_'.$company->id.'_'.uniqid().'.sqlite');
         File::ensureDirectoryExists(dirname($tenantPath));
         File::put($tenantPath, '');
+        $this->registerTenantFile($tenantPath);
 
         TenantDatabase::query()->create([
             'company_id' => $company->id,
@@ -65,7 +67,7 @@ abstract class SalesTestCase extends TestCase
             '--force' => true,
         ]);
 
-        Sanctum::actingAs($user);
+        Sanctum::actingAs($user, ['*']);
 
         return [
             'user' => $user,
@@ -77,7 +79,7 @@ abstract class SalesTestCase extends TestCase
 
     protected function createCustomer(array $attributes = []): int
     {
-        return (int) \App\Models\Tenant\Contact::query()->create(array_merge([
+        return (int) Contact::query()->create(array_merge([
             'name' => 'Customer A',
             'contact_type' => 'customer',
             'is_customer' => true,

@@ -2,28 +2,32 @@
 
 namespace Tests\Feature;
 
-use App\Models\AccountingPeriod;
-use App\Exceptions\ApiException;
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\Contact;
-use App\Models\Tenant\Product;
-use App\Models\Tenant\StockBalance;
-use App\Models\Tenant\Unit;
-use App\Models\Tenant\VendorBill;
-use App\Models\Tenant\Warehouse;
-use App\Services\Accounting\FiscalYearService;
-use App\Services\Purchase\VendorBillService;
-use App\Support\AccountMapping\AccountMappingKey;
+use App\Modules\Accounting\Services\FiscalYearService;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\MasterData\Models\Contact;
+use App\Modules\MasterData\Models\Product;
+use App\Modules\MasterData\Models\Unit;
+use App\Modules\MasterData\Models\Warehouse;
+use App\Modules\Purchase\Models\VendorBill;
+use App\Modules\Purchase\Services\VendorBillService;
+use App\Shared\AccountMapping\AccountMappingKey;
+use App\Shared\Exceptions\ApiException;
+use App\Shared\Models\AccountingPeriod;
+use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TenantTestCase;
 
 class DocumentLifecycleMatrixTest extends TenantTestCase
 {
     private Contact $customer;
+
     private Contact $vendor;
+
     private Unit $unit;
+
     private Warehouse $warehouse;
+
     private Product $product;
 
     protected function tenantRole(): string
@@ -173,7 +177,7 @@ class DocumentLifecycleMatrixTest extends TenantTestCase
         };
     }
 
-    private function updateDocument(string $document, int $id): \Illuminate\Testing\TestResponse
+    private function updateDocument(string $document, int $id): TestResponse
     {
         return match ($document) {
             'sales_invoice' => $this->patchJson('/api/sales/invoices/'.$id, $this->salesInvoicePayload(['notes' => 'Updated']), $this->headers),
@@ -184,7 +188,7 @@ class DocumentLifecycleMatrixTest extends TenantTestCase
         };
     }
 
-    private function postDocument(string $document, int $id): \Illuminate\Testing\TestResponse
+    private function postDocument(string $document, int $id): TestResponse
     {
         return match ($document) {
             'sales_invoice' => $this->patchJson('/api/sales/invoices/'.$id.'/post', [], $this->headers),
@@ -195,7 +199,7 @@ class DocumentLifecycleMatrixTest extends TenantTestCase
         };
     }
 
-    private function voidDocument(string $document, int $id, ?string $reason): \Illuminate\Testing\TestResponse
+    private function voidDocument(string $document, int $id, ?string $reason): TestResponse
     {
         $payload = $reason === null ? [] : ['reason' => $reason];
 
@@ -221,10 +225,11 @@ class DocumentLifecycleMatrixTest extends TenantTestCase
         };
     }
 
-    private function assertGuardFailure(\Illuminate\Testing\TestResponse $response): void
+    private function assertGuardFailure(TestResponse $response): void
     {
         if ($response->exception instanceof ApiException) {
             $this->assertSame(422, $response->exception->status);
+
             return;
         }
 
@@ -276,7 +281,7 @@ class DocumentLifecycleMatrixTest extends TenantTestCase
             'is_taxable' => false,
             'tax_included' => false,
             'lines' => [
-                ['description' => 'Lifecycle purchase', 'quantity' => 1, 'unit_price' => 100],
+                ['product_id' => $this->product->id, 'description' => 'Lifecycle purchase', 'quantity' => 1, 'unit_price' => 100, 'warehouse_id' => $this->warehouse->id],
             ],
         ], $overrides);
     }

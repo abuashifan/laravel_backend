@@ -2,7 +2,7 @@
 
 namespace Tests\Unit\Enums;
 
-use App\Enums\SourceType;
+use App\Shared\Enums\SourceType;
 use Tests\TestCase;
 use ValueError;
 

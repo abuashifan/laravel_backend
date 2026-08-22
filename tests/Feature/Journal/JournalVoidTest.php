@@ -2,7 +2,7 @@
 
 namespace Tests\Feature\Journal;
 
-use App\Models\Tenant\JournalEntry;
+use App\Modules\Journal\Models\JournalEntry;
 
 class JournalVoidTest extends JournalTestCase
 {
@@ -131,4 +131,3 @@ class JournalVoidTest extends JournalTestCase
         $res->assertJsonPath('code', 'SYSTEM_GENERATED_READ_ONLY');
     }
 }
-

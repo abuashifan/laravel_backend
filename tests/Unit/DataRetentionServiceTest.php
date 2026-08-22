@@ -2,11 +2,10 @@
 
 namespace Tests\Unit;
 
-use App\Services\DataRetention\DataRetentionService;
-use App\Services\DataRetention\DataRetentionValidator;
-use App\Support\DataRetention\DataRetentionPolicy;
-use App\Support\DataRetention\RetentionDecision;
-use Carbon\Carbon;
+use App\Shared\DataRetention\DataRetentionPolicy;
+use App\Shared\DataRetention\DataRetentionService;
+use App\Shared\DataRetention\DataRetentionValidator;
+use App\Shared\DataRetention\RetentionDecision;
 use Tests\TestCase;
 
 class DataRetentionServiceTest extends TestCase
@@ -94,4 +93,3 @@ class DataRetentionServiceTest extends TestCase
         $this->assertSame(['action', 'allowed', 'code', 'message', 'reasons', 'meta'], array_keys($arr));
     }
 }
-

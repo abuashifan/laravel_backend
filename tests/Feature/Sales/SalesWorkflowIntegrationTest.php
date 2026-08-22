@@ -2,15 +2,15 @@
 
 namespace Tests\Feature\Sales;
 
-use App\Models\FiscalYear;
-use App\Models\Tenant\AccountMapping;
-use App\Models\Tenant\ChartOfAccount;
-use App\Models\Tenant\CustomerDeposit;
-use App\Models\Tenant\CustomerDepositAllocation;
-use App\Models\Tenant\JournalEntry;
-use App\Models\Tenant\SalesInvoice;
-use App\Models\Tenant\SalesOrderLine;
-use App\Models\Tenant\StockMovement;
+use App\Modules\Inventory\Models\StockMovement;
+use App\Modules\Journal\Models\JournalEntry;
+use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\Sales\Models\CustomerDeposit;
+use App\Modules\Sales\Models\CustomerDepositAllocation;
+use App\Modules\Sales\Models\SalesInvoice;
+use App\Modules\Sales\Models\SalesOrderLine;
+use App\Shared\Models\FiscalYear;
 use Illuminate\Support\Facades\Route;
 
 class SalesWorkflowIntegrationTest extends SalesTestCase
@@ -174,7 +174,8 @@ class SalesWorkflowIntegrationTest extends SalesTestCase
         $deposit = $this->account('2200', 'Customer Deposit', 'liability', 'credit');
         $revenue = $this->account('4100', 'Revenue', 'revenue', 'credit');
         $salesReturn = $this->account('4200', 'Sales Return', 'revenue', 'debit');
-        foreach (['sales.accounts_receivable' => $ar, 'sales.revenue' => $revenue, 'sales.tax_output' => $tax, 'sales.customer_deposit' => $deposit, 'sales.return' => $salesReturn] as $key => $id) {
+        $discount = $this->account('4300', 'Sales Discount', 'revenue', 'debit');
+        foreach (['sales.accounts_receivable' => $ar, 'sales.revenue' => $revenue, 'sales.tax_output' => $tax, 'sales.customer_deposit' => $deposit, 'sales.return' => $salesReturn, 'sales.discount' => $discount] as $key => $id) {
             AccountMapping::query()->create(['mapping_key' => $key, 'module' => 'sales', 'account_id' => $id, 'is_required' => true, 'is_active' => true]);
         }
 

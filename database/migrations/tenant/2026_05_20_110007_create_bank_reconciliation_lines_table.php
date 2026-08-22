@@ -37,4 +37,3 @@ return new class extends Migration
         Schema::dropIfExists('bank_reconciliation_lines');
     }
 };
-

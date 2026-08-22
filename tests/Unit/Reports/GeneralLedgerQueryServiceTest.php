@@ -2,20 +2,20 @@
 
 namespace Tests\Unit\Reports;
 
-use App\Data\Reports\LedgerFilter;
-use App\Models\Tenant\Department;
-use App\Models\Tenant\JournalEntry;
-use App\Models\Tenant\Project;
-use App\Services\Reports\GeneralLedgerQueryService;
-use App\Services\Reports\LedgerBalanceCalculator;
-use App\Services\Reports\LedgerFilterValidator;
+use App\Modules\Journal\Models\JournalEntry;
+use App\Modules\MasterData\Models\Department;
+use App\Modules\MasterData\Models\Project;
+use App\Modules\Reports\Services\GeneralLedgerQueryService;
+use App\Modules\Reports\Services\LedgerBalanceCalculator;
+use App\Modules\Reports\Services\LedgerFilterValidator;
+use App\Shared\Reports\Data\LedgerFilter;
 use Tests\Feature\Journal\JournalTestCase;
 
 class GeneralLedgerQueryServiceTest extends JournalTestCase
 {
     public function test_signed_amount_rules_for_debit_and_credit_normal_accounts(): void
     {
-        $calc = new LedgerBalanceCalculator();
+        $calc = new LedgerBalanceCalculator;
 
         $this->assertSame(70.0, $calc->signedAmount(100, 30, 'debit'));
         $this->assertSame(70.0, $calc->signedAmount(30, 100, 'credit'));
@@ -112,8 +112,8 @@ class GeneralLedgerQueryServiceTest extends JournalTestCase
         ]);
 
         $service = new GeneralLedgerQueryService(
-            new LedgerBalanceCalculator(),
-            new LedgerFilterValidator(),
+            new LedgerBalanceCalculator,
+            new LedgerFilterValidator,
         );
 
         $filter = LedgerFilter::fromArray([
@@ -155,4 +155,3 @@ class GeneralLedgerQueryServiceTest extends JournalTestCase
         $this->assertSame(50.0, (float) $ledgerProject['period_totals']['balance']);
     }
 }
-

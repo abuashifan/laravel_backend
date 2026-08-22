@@ -2,11 +2,11 @@
 
 namespace Database\Seeders;
 
-use App\Models\Permission;
-use App\Models\Role;
-use Illuminate\Support\Facades\DB;
-use App\Services\Permissions\PermissionCatalogService;
+use App\Shared\Models\Permission;
+use App\Shared\Models\Role;
+use App\Shared\Permission\PermissionCatalogService;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
 
 class PermissionSeeder extends Seeder
 {

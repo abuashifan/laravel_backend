@@ -2,11 +2,11 @@
 
 namespace Tests\Unit\Reports;
 
-use App\Data\Reports\ReportDateRange;
-use App\Data\Reports\ReportDimensionFilter;
-use App\Models\Tenant\Department;
-use App\Models\Tenant\Project;
-use App\Services\Reports\ReportFilterService;
+use App\Modules\MasterData\Models\Department;
+use App\Modules\MasterData\Models\Project;
+use App\Modules\Reports\Services\ReportFilterService;
+use App\Shared\Reports\Data\ReportDateRange;
+use App\Shared\Reports\Data\ReportDimensionFilter;
 use Tests\Feature\Journal\JournalTestCase;
 
 class ReportFilterServiceTest extends JournalTestCase
@@ -15,7 +15,7 @@ class ReportFilterServiceTest extends JournalTestCase
     {
         $this->setUpTenant(role: 'owner');
 
-        $svc = new ReportFilterService();
+        $svc = new ReportFilterService;
 
         $range = $svc->normalizeDateRange(['start_date' => '2026-02-01 10:00:00', 'end_date' => '2026-02-28']);
         $this->assertInstanceOf(ReportDateRange::class, $range);
@@ -47,4 +47,3 @@ class ReportFilterServiceTest extends JournalTestCase
         $this->assertFalse($svc->validateAccountType('invalid')['valid']);
     }
 }
-
