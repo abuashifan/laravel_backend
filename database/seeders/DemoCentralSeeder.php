@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Shared\Models\Company;
+use App\Shared\Models\Plan;
 use App\Shared\Models\TenantDatabase;
 use App\Shared\Models\User;
 use Illuminate\Database\Seeder;
@@ -18,12 +19,35 @@ class DemoCentralSeeder extends Seeder
     {
         $now = now();
 
+        $enterprisePlan = Plan::query()->where('code', 'enterprise')->first();
+
+        // Client demo utama — paket enterprise agar bisa tambah perusahaan baru
+        // dari halaman picker tanpa dibatasi kuota.
         $user = User::updateOrCreate(
             ['email' => 'admin@example.com'],
             [
                 'name' => 'Admin Demo',
                 'password' => Hash::make('password'),
                 'status' => 'active',
+                'plan_id' => $enterprisePlan?->id,
+            ]
+        );
+
+        // Pastikan plan_id terpasang meski user sudah ada sebelum enterprise
+        // plan di-seed (updateOrCreate hanya mengisi kolom saat baris baru).
+        if ($user->plan_id !== $enterprisePlan?->id) {
+            $user->forceFill(['plan_id' => $enterprisePlan?->id])->save();
+        }
+
+        // Akun platform admin terpisah — tidak boleh menjadi anggota perusahaan
+        // mana pun (enforced oleh MakePlatformAdminCommand dan EnsurePlatformAdmin).
+        User::updateOrCreate(
+            ['email' => 'superadmin@example.com'],
+            [
+                'name' => 'Super Admin',
+                'password' => Hash::make('password'),
+                'status' => 'active',
+                'is_platform_admin' => true,
             ]
         );
 
