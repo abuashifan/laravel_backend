@@ -67,6 +67,72 @@ class CoaTemplateApplyTest extends JournalTestCase
         $this->assertSame($piutang->id, AccountMapping::query()->where('mapping_key', 'sales.accounts_receivable')->value('account_id'));
     }
 
+    /**
+     * Temuan Improvement #3/#4: tiap template wajib membawa blok aset tetap per
+     * kategori (gedung, peralatan, kendaraan, software) lengkap dengan akumulasi
+     * penyusutan dan beban penyusutannya, supaya pemetaan akun `fixed_assets.*`
+     * terisi sendiri tanpa user membuat akun manual lebih dulu.
+     */
+    public function test_every_template_carries_the_per_category_fixed_asset_block(): void
+    {
+        $required = ['1500', '1510', '1511', '1520', '1521', '1530', '1531', '1590', '1600', '1601', '6171', '6172', '6173', '6175', '7200', '8200'];
+
+        foreach ((array) config('coa_templates.templates') as $templateId => $template) {
+            if ($templateId === 'blank') {
+                continue;
+            }
+
+            $codes = array_column((array) $template['accounts'], 'code');
+            foreach ($required as $code) {
+                $this->assertContains($code, $codes, "Template [{$templateId}] tidak punya akun aset tetap [{$code}].");
+            }
+        }
+    }
+
+    /**
+     * Akumulasi penyusutan/amortisasi bertipe `asset` tetapi saldo normalnya
+     * `credit` (kontra-aset). Tanpa `normal_balance` eksplisit di template,
+     * ChartOfAccountService menurunkannya dari tipe dan akun ini lahir dengan
+     * saldo normal `debit` -- neraca lalu menambah, bukan mengurangi.
+     */
+    public function test_apply_keeps_contra_asset_accounts_on_credit_normal_balance(): void
+    {
+        $ctx = $this->setUpTenant(role: 'owner');
+
+        $this->postJson('/api/setup/coa-templates/apply', [
+            'template_id' => 'trading',
+            'accounts' => (array) config('coa_templates.templates.trading.accounts'),
+        ], $ctx['headers'])->assertOk();
+
+        foreach (['1511', '1521', '1531', '1601'] as $code) {
+            $account = ChartOfAccount::query()->where('account_code', $code)->firstOrFail();
+            $this->assertSame('asset', $account->account_type, "Akun {$code} harus bertipe asset.");
+            $this->assertSame('credit', $account->normal_balance, "Akun kontra-aset {$code} harus bersaldo normal credit.");
+        }
+
+        // Akun aset tetap biasa tetap debit.
+        $this->assertSame('debit', ChartOfAccount::query()->where('account_code', '1520')->value('normal_balance'));
+    }
+
+    public function test_apply_defaults_every_required_fixed_asset_mapping(): void
+    {
+        $ctx = $this->setUpTenant(role: 'owner');
+
+        $this->postJson('/api/setup/coa-templates/apply', [
+            'template_id' => 'trading',
+            'accounts' => (array) config('coa_templates.templates.trading.accounts'),
+        ], $ctx['headers'])->assertOk();
+
+        $missing = AccountMapping::query()
+            ->where('module', 'fixed_assets')
+            ->where('is_required', true)
+            ->whereNull('account_id')
+            ->pluck('mapping_key')
+            ->all();
+
+        $this->assertSame([], $missing, 'Pemetaan akun aset tetap wajib masih kosong: '.implode(', ', $missing));
+    }
+
     public function test_reapplying_template_replaces_previous_system_default_accounts_only(): void
     {
         $ctx = $this->setUpTenant(role: 'owner');

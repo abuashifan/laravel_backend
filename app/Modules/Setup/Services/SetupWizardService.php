@@ -136,8 +136,13 @@ class SetupWizardService
 
         if ($step === 'opening_balance_preview' && array_key_exists('confirm_opening_balance_skipped', $data)) {
             $metadata = (array) $state->metadata;
-            $metadata['opening_balance_skipped'] = (bool) $data['confirm_opening_balance_skipped'];
+            $skipRequested = (bool) $data['confirm_opening_balance_skipped'];
+            $metadata['opening_balance_skipped'] = $skipRequested;
             $state->metadata = $metadata;
+
+            if ($skipRequested) {
+                $this->discardEmptyDraftOpeningBalanceBatch();
+            }
         }
 
         $result = $this->validateStepKey($state, $step);
@@ -587,6 +592,42 @@ class SetupWizardService
         $metadata = (array) $state->metadata;
 
         return (bool) ($metadata['opening_balance_skipped'] ?? false);
+    }
+
+    /**
+     * "Lewati, isi nanti" hanya berlaku selama benar-benar TIDAK ADA batch saldo
+     * awal -- lihat guard `$preview['opening_balance_batch'] === null` di
+     * validateOpeningBalancePreview() dan assertOpeningBalanceReadyForFinalization().
+     *
+     * Masalahnya, sekadar membuka halaman Saldo Awal lalu menekan "Mulai Input
+     * Saldo Awal" SUDAH membuat batch draft kosong. Sejak saat itu skip tidak
+     * pernah berlaku lagi dan finalize selalu gagal dengan BATCH_MINIMUM_LINES,
+     * padahal user tidak pernah mengisi satu baris pun -- persis keluhan
+     * "skipnya harus buka halaman saldo awal dulu isi data". Batch draft tanpa
+     * baris tidak memuat data siapa pun, jadi ia dibuang di sini supaya
+     * "lewati" benar-benar berarti lewati.
+     *
+     * Batch yang SUDAH berisi baris sengaja tidak disentuh: membuangnya diam-diam
+     * sama saja menghapus isian user. Untuk kasus itu validasi normal tetap
+     * berlaku dan pesan errornya yang menjelaskan apa yang masih kurang.
+     */
+    private function discardEmptyDraftOpeningBalanceBatch(): void
+    {
+        if (! Schema::connection('tenant')->hasTable('opening_balance_batches')) {
+            return;
+        }
+
+        $batch = $this->openingBalanceBatchService->latestActiveBatch();
+        if (! $batch || $batch->status !== 'draft' || $batch->lines()->exists()) {
+            return;
+        }
+
+        $batchNumber = (string) $batch->batch_number;
+        $batch->delete();
+
+        $this->audit('setup.opening_balance_empty_draft_discarded', 'Empty draft opening balance batch discarded when opening balance was skipped.', [
+            'batch_number' => $batchNumber,
+        ]);
     }
 
     private function assertOpeningBalanceReadyForFinalization(CompanySetupState $state): void

@@ -56,6 +56,21 @@ return [
             'headers' => ['Code', 'Name', 'Type', 'Category', 'Unit', 'Stock Item', 'Min Stock'],
             'sample' => ['', 'Kertas A4', 'goods', 'Alat Tulis Kantor', 'PCS', 'yes', '0'],
         ],
+        // Saldo awal: satu berkas = seluruh isi SATU batch saldo awal (backend
+        // hanya mengizinkan satu batch aktif per perusahaan), jadi profil ini
+        // sengaja tidak punya kolom Ref seperti profil transaksi lain.
+        'opening_balance' => [
+            'label' => 'Saldo Awal',
+            'required_fields' => ['account_code'],
+            'fields' => ['account_code', 'description', 'debit', 'credit'],
+            'headers' => ['Account Code', 'Description', 'Debit', 'Credit'],
+            'samples' => [
+                ['1100', 'Saldo kas per tanggal pembukuan', '25000000', '0'],
+                ['1120', 'Piutang usaha awal', '15000000', '0'],
+                ['2100', 'Hutang usaha awal', '0', '10000000'],
+                ['3100', 'Modal disetor', '0', '30000000'],
+            ],
+        ],
         'chart_of_account' => [
             'label' => 'Chart of Account',
             'required_fields' => ['code', 'name', 'type'],

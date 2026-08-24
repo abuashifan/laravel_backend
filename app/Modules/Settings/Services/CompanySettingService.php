@@ -48,7 +48,12 @@ class CompanySettingService
                 'cash_bank_enabled' => true,
                 'inventory_enabled' => false,
                 'warehouse_enabled' => false,
-                'fixed_asset_enabled' => false,
+                // Aktif secara default: modul Aktiva Tetap tidak digerbangi tier
+                // mana pun (tidak ada entri `fixed_assets` di config/plan_features.php),
+                // jadi setiap perusahaan memilikinya. Menyalakannya di awal juga
+                // membuat blok akun aset tetap dari template COA langsung terpakai
+                // lewat pemetaan akun default, bukan menganggur.
+                'fixed_asset_enabled' => true,
                 'approval_enabled' => false,
                 'tax_enabled' => false,
                 'reports_enabled' => true,

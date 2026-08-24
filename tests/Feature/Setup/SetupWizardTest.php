@@ -7,6 +7,7 @@ namespace Tests\Feature\Setup;
 use App\Modules\Journal\Models\JournalEntry;
 use App\Modules\MasterData\Models\AccountMapping;
 use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\OpeningBalance\Models\OpeningBalanceBatch;
 use App\Modules\Settings\Services\CompanySettingService;
 use App\Shared\Models\CompanySetupState;
 use Tests\Feature\Journal\JournalTestCase;
@@ -125,9 +126,108 @@ class SetupWizardTest extends JournalTestCase
             ->assertOk()
             ->assertJsonPath('data.result.valid', true);
 
+        // Modul Aktiva Tetap kini menyala default (CompanySettingService), jadi
+        // `opening_fixed_assets` ikut jadi step wajib dan wizard harus
+        // menyatakan "tidak ada aset tetap awal" -- persis yang dilakukan
+        // Step5OpeningBalance di frontend.
+        $this->postJson('/api/setup/validate-step', [
+            'step' => 'opening_fixed_assets',
+            'confirm_no_opening_fixed_assets' => true,
+        ], $ctx['headers'])
+            ->assertOk()
+            ->assertJsonPath('data.result.valid', true);
+
         $response = $this->postJson('/api/setup/finalize', [], $ctx['headers'])->assertOk();
         $response->assertJsonPath('data.finalized', true);
         $response->assertJsonPath('data.state.status', 'finalized');
+    }
+
+    /**
+     * Modul Aktiva Tetap menyala secara default (temuan Improvement #2): tidak
+     * ada tier yang menggerbanginya, jadi setiap perusahaan memilikinya sejak
+     * awal dan blok akun aset tetap dari template COA langsung terpakai.
+     */
+    public function test_fixed_asset_module_is_enabled_by_default(): void
+    {
+        $ctx = $this->setUpTenant(role: 'owner');
+        $modules = app(CompanySettingService::class)->getOrCreateModuleSetting($ctx['company']);
+
+        $this->assertTrue((bool) $modules->fixed_asset_enabled);
+    }
+
+    /**
+     * Temuan Improvement #5. "Lewati, isi nanti" hanya berlaku selama batch saldo
+     * awal benar-benar tidak ada. Padahal sekadar membuka halaman Saldo Awal dan
+     * menekan "Mulai Input Saldo Awal" sudah membuat batch draft KOSONG -- sejak
+     * itu skip diam-diam tidak berlaku lagi dan finalize selalu 422
+     * (BATCH_MINIMUM_LINES), yang di UI muncul sebagai "Periksa kembali isian
+     * yang ditandai" di halaman Selesai yang tidak punya isian apa pun.
+     */
+    public function test_skip_discards_an_empty_draft_batch_so_finalization_can_proceed(): void
+    {
+        $ctx = $this->setUpTenant(role: 'owner');
+        app(CompanySettingService::class)->getOrCreateModuleSetting($ctx['company']);
+        $this->seedSetupCoaAndMappings();
+
+        $this->patchJson('/api/setup/current-step', [
+            'current_step' => 'final_review',
+            'opening_date' => '2026-01-01',
+        ], $ctx['headers'])->assertOk();
+
+        $this->postJson('/api/opening-balance/batches', ['opening_date' => '2026-01-01'], $ctx['headers'])
+            ->assertCreated();
+
+        $this->postJson('/api/setup/validate-step', [
+            'step' => 'opening_balance_preview',
+            'confirm_opening_balance_skipped' => true,
+        ], $ctx['headers'])
+            ->assertOk()
+            ->assertJsonPath('data.result.valid', true)
+            // Kontrak yang dipakai Step5OpeningBalance untuk menulis ringkasan
+            // "Belum diisi" vs "Tersimpan" di halaman Selesai.
+            ->assertJsonPath('data.result.metadata.skipped', true);
+
+        $this->assertSame(0, OpeningBalanceBatch::query()->count(), 'Batch draft kosong harus dibuang saat user memilih lewati.');
+
+        $this->getJson('/api/opening-balance/status', $ctx['headers'])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'not_started');
+    }
+
+    /**
+     * Kebalikannya: batch yang SUDAH berisi baris tidak boleh ikut dibuang.
+     * Menghapusnya diam-diam sama saja membuang isian user hanya karena ia
+     * menekan tombol lewati.
+     */
+    public function test_skip_keeps_a_draft_batch_that_already_has_lines(): void
+    {
+        $ctx = $this->setUpTenant(role: 'owner');
+        app(CompanySettingService::class)->getOrCreateModuleSetting($ctx['company']);
+        $this->seedSetupCoaAndMappings();
+
+        $batchId = $this->postJson('/api/opening-balance/batches', ['opening_date' => '2026-01-01'], $ctx['headers'])
+            ->assertCreated()
+            ->json('data.id');
+
+        $cash = (int) ChartOfAccount::query()->where('account_code', '1999')->value('id');
+        $equity = (int) ChartOfAccount::query()->where('account_code', '3999')->value('id');
+
+        $this->putJson("/api/opening-balance/batches/{$batchId}/lines", [
+            'lines' => [
+                ['account_id' => $cash, 'debit' => 1000000, 'credit' => 0],
+                ['account_id' => $equity, 'debit' => 0, 'credit' => 1000000],
+            ],
+        ], $ctx['headers'])->assertOk();
+
+        $this->postJson('/api/setup/validate-step', [
+            'step' => 'opening_balance_preview',
+            'confirm_opening_balance_skipped' => true,
+        ], $ctx['headers'])->assertOk();
+
+        $this->assertSame(1, OpeningBalanceBatch::query()->count());
+        $this->getJson('/api/opening-balance/status', $ctx['headers'])
+            ->assertOk()
+            ->assertJsonPath('data.batch.total_debit', '1000000.00');
     }
 
     public function test_finalized_setup_cannot_be_downgraded_by_stale_current_step_request(): void
@@ -169,6 +269,13 @@ class SetupWizardTest extends JournalTestCase
             'cash_bank.default_cash' => ['cash_bank', $asset],
             'cash_bank.default_bank' => ['cash_bank', $asset],
             'opening_balance.equity' => ['opening_balance', $equity],
+            // Modul Aktiva Tetap menyala default, jadi mapping-nya ikut wajib.
+            'fixed_assets.clearing' => ['fixed_assets', $asset],
+            'fixed_assets.cost' => ['fixed_assets', $asset],
+            'fixed_assets.accumulated_depreciation' => ['fixed_assets', $asset],
+            'fixed_assets.depreciation_expense' => ['fixed_assets', $expense],
+            'fixed_assets.disposal_gain' => ['fixed_assets', $revenue],
+            'fixed_assets.disposal_loss' => ['fixed_assets', $expense],
         ] as $key => [$module, $accountId]) {
             AccountMapping::query()->updateOrCreate(
                 ['mapping_key' => $key],

@@ -19,6 +19,10 @@ class ApplyCoaTemplateRequest extends FormRequest
             'accounts.*.code' => ['required', 'string', 'max:50'],
             'accounts.*.name' => ['required', 'string', 'max:255'],
             'accounts.*.type' => ['required', 'in:asset,liability,equity,revenue,expense'],
+            // Opsional; hanya dipakai akun kontra (mis. akumulasi penyusutan)
+            // yang saldo normalnya berlawanan dengan tipenya. Kalau tidak
+            // dikirim, saldo normal diturunkan dari `type`.
+            'accounts.*.normal_balance' => ['nullable', 'in:debit,credit'],
             'accounts.*.parent_code' => ['nullable', 'string', 'max:50'],
             'accounts.*.is_cash_bank' => ['nullable', 'boolean'],
             'accounts.*.description' => ['nullable', 'string'],

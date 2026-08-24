@@ -45,7 +45,7 @@ class CoaTemplateService
      * `is_system_default` dari pemakaian sebelumnya -- akun itu diganti,
      * akun yang dibuat manual di Master Data tidak disentuh.
      *
-     * @param  array<int, array{code:string, name:string, type:string, parent_code:?string, is_cash_bank?:bool, description?:?string}>  $accounts
+     * @param  array<int, array{code:string, name:string, type:string, parent_code:?string, is_cash_bank?:bool, description?:?string, normal_balance?:?string}>  $accounts
      * @return array<int, ChartOfAccount>
      */
     public function applyTemplate(string $templateId, array $accounts): array
@@ -83,6 +83,12 @@ class CoaTemplateService
                     'account_code' => $code,
                     'account_name' => (string) $row['name'],
                     'account_type' => (string) $row['type'],
+                    // Diteruskan apa adanya supaya akun kontra-aset (akumulasi
+                    // penyusutan/amortisasi: tipe `asset`, saldo normal `credit`)
+                    // tidak ikut diturunkan jadi `debit` oleh
+                    // ChartOfAccountService::validateNormalBalance(). Null tetap
+                    // berarti "turunkan dari tipe", seperti sebelumnya.
+                    'normal_balance' => $row['normal_balance'] ?? null,
                     'parent_account_id' => $parentId,
                     'is_cash_bank' => (bool) ($row['is_cash_bank'] ?? false),
                     'description' => $row['description'] ?? null,
