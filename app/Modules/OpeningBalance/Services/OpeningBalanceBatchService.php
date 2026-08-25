@@ -2,12 +2,14 @@
 
 namespace App\Modules\OpeningBalance\Services;
 
+use App\Modules\FixedAssets\Services\FixedAssetService;
 use App\Modules\Journal\Models\JournalEntry;
 use App\Modules\MasterData\Models\AccountMapping;
 use App\Modules\MasterData\Models\ChartOfAccount;
 use App\Modules\OpeningBalance\Models\OpeningBalanceBatch as OpeningBalanceBatchModel;
 use App\Modules\OpeningBalance\Support\OpeningBalanceBatch as OpeningBalanceBatchDto;
 use App\Modules\OpeningBalance\Support\OpeningBalanceLine as OpeningBalanceLineDto;
+use App\Modules\OpeningBalance\Support\OpeningBalanceType;
 use App\Shared\Audit\AuditLogService;
 use App\Shared\DocumentNumbering\DocumentNumberService;
 use App\Shared\DocumentNumbering\DocumentType;
@@ -29,6 +31,7 @@ class OpeningBalanceBatchService
         private readonly AuditLogService $auditLogService,
         private readonly OpeningBalanceService $openingBalanceService,
         private readonly TransactionVoidEffectService $voidEffectService,
+        private readonly FixedAssetService $fixedAssetService,
     ) {}
 
     public function status(): array
@@ -58,7 +61,32 @@ class OpeningBalanceBatchService
     public function create(array $data): OpeningBalanceBatchModel
     {
         $company = $this->company();
-        if (OpeningBalanceBatchModel::query()->whereIn('status', ['draft', 'validated', 'posted', 'locked', 'reopened'])->exists()) {
+        $type = (string) ($data['type'] ?? OpeningBalanceType::STANDARD);
+
+        /*
+         * Batch KOREKSI itu menambah, bukan mengubah.
+         *
+         * Kalau klien melaporkan aset yang terlewat setelah setup selesai,
+         * jalan yang salah adalah membuka kembali (reopen) batch pertama --
+         * reopen MEMBATALKAN jurnal pembuka yang sudah jadi dasar semua
+         * laporan. Batch koreksi berdiri sendiri: jurnal lama tetap utuh,
+         * selisihnya masuk ekuitas sebagai koreksi periode lalu.
+         *
+         * Syaratnya tetap ketat: hanya satu batch yang boleh sedang dikerjakan.
+         * Batch koreksi baru boleh dibuat kalau semua batch sebelumnya sudah
+         * selesai (diposting/dikunci).
+         */
+        $inFlight = OpeningBalanceBatchModel::query()->whereIn('status', ['draft', 'validated', 'reopened'])->exists();
+        $settled = OpeningBalanceBatchModel::query()->whereIn('status', ['posted', 'locked'])->exists();
+
+        if ($type === OpeningBalanceType::CORRECTION) {
+            if (! $settled) {
+                throw ApiException::make('OPENING_BALANCE_NOTHING_TO_CORRECT', 'A correction batch requires a posted opening balance.', 422);
+            }
+            if ($inFlight) {
+                throw ApiException::make('OPENING_BALANCE_ACTIVE_BATCH_EXISTS', 'Only one active opening balance batch is allowed.', 422);
+            }
+        } elseif ($inFlight || $settled) {
             throw ApiException::make('OPENING_BALANCE_ACTIVE_BATCH_EXISTS', 'Only one active opening balance batch is allowed.', 422);
         }
 
@@ -68,7 +96,7 @@ class OpeningBalanceBatchService
             'batch_number' => $this->documentNumberService->generate($company, DocumentType::OPENING_BALANCE, $openingDate),
             'opening_date' => $openingDate,
             'fiscal_year' => $data['fiscal_year'] ?? (int) Carbon::parse($openingDate)->format('Y'),
-            'type' => $data['type'] ?? 'standard',
+            'type' => $type,
             'status' => 'draft',
             'description' => $data['description'] ?? null,
             'metadata' => $data['metadata'] ?? null,
@@ -187,8 +215,8 @@ class OpeningBalanceBatchService
     {
         $batch->loadMissing('lines.account');
         $manualLines = $this->manualLineArrays($batch);
-        $systemLines = $this->fixedAssetSystemLines();
-        $fixedAssetTotals = $this->openingFixedAssetTotals();
+        $systemLines = $this->fixedAssetSystemLines($batch);
+        $fixedAssetTotals = $this->openingFixedAssetTotals($batch);
         $allLines = array_values(array_merge($manualLines, $systemLines));
 
         $dto = $this->dto($batch, $allLines);
@@ -243,7 +271,7 @@ class OpeningBalanceBatchService
                 ]);
             }
 
-            if (OpeningBalanceBatchModel::query()->where('id', '!=', $batch->id)->whereIn('status', ['posted', 'locked'])->exists()) {
+            if (! $batch->isCorrection() && OpeningBalanceBatchModel::query()->where('id', '!=', $batch->id)->whereIn('status', ['posted', 'locked'])->exists()) {
                 throw ApiException::make('OPENING_BALANCE_ALREADY_POSTED', 'Another opening balance batch is already posted or locked.', 422);
             }
 
@@ -260,8 +288,31 @@ class OpeningBalanceBatchService
                 ]),
             ])->save();
 
+            /*
+             * Aktivasi aset tetap awal adalah EFEK DARI POSTING, bukan langkah
+             * terpisah yang harus diingat user.
+             *
+             * Alasannya konkret: `SetupWizardService::finalize()` sendiri yang
+             * memanggil post() di klik terakhir wizard. Kalau aktivasinya
+             * berupa tombol terpisah, user mendarat di dashboard dan harus
+             * ingat mampir ke halaman Aktiva Tetap -- lupa sekali saja berarti
+             * asetnya tidak pernah masuk penyusutan bulanan, dan itu baru
+             * ketahuan saat tutup buku.
+             *
+             * Dijalankan SETELAH jurnal terbentuk supaya jejak aset bisa
+             * menunjuk ke jurnal pembukanya.
+             */
+            $activated = $this->fixedAssetsEnabled()
+                ? $this->fixedAssetService->activateOpeningAssets(
+                    (int) $batch->id,
+                    $batch->opening_date->toDateString(),
+                    (int) $journal->id,
+                )
+                : 0;
+
             $this->audit('opening_balance.posted', 'Opening balance posted.', $batch->refresh(), [
                 'journal_entry_id' => $journal->id,
+                'activated_fixed_assets' => $activated,
             ]);
 
             return $batch->refresh()->load('lines', 'journalEntry');
@@ -307,6 +358,15 @@ class OpeningBalanceBatchService
             throw ApiException::make('OPENING_BALANCE_REOPEN_BLOCKED_BY_TRANSACTIONS', 'Opening balance cannot be reopened after operational transactions exist.', 422, [
                 'blocking_transactions' => $blocking,
             ]);
+        }
+
+        // Reopen membatalkan jurnal pembuka, jadi aset yang dibukukannya harus
+        // ikut dikembalikan ke draft -- kalau tidak, register menyatakan aset
+        // itu ada sementara buku besarnya sudah tidak. Dijalankan SEBELUM
+        // jurnalnya dibatalkan supaya penolakan karena penyusutan sudah
+        // terposting terjadi sebelum ada yang diubah.
+        if ($this->fixedAssetsEnabled()) {
+            $this->fixedAssetService->deactivateOpeningAssets((int) $batch->id);
         }
 
         $this->voidEffectService->voidJournalById((int) $batch->journal_entry_id, $reason);
@@ -426,37 +486,60 @@ class OpeningBalanceBatchService
         ])->all();
     }
 
-    private function fixedAssetSystemLines(): array
+    /**
+     * Baris kontrol aset tetap awal, DIPECAH PER AKUN.
+     *
+     * Sebelumnya seluruh aset dijumlahkan ke satu akun generik. Sejak kategori
+     * aset tersambung ke akun per kelas, penyusutan bulanan mengkredit akun
+     * per kelas (mis. 1511 Akum. Kendaraan) -- kalau baris pembuka tetap di akun
+     * generik (1531 Akum. Peralatan), akumulasi SATU aset terbelah di dua akun
+     * dan rekonsiliasi per kelas jadi mustahil. Pemecahan per akun dilakukan
+     * `FixedAssetService::openingAssetTotals()`, yang memang memiliki
+     * pengetahuan akun mana milik aset mana.
+     */
+    private function fixedAssetSystemLines(OpeningBalanceBatchModel $batch): array
     {
         if (! $this->fixedAssetsEnabled() || ! Schema::connection('tenant')->hasTable('fixed_assets')) {
             return [];
         }
 
-        $totals = $this->openingFixedAssetTotals();
-        $cost = $totals['cost'];
-        $accumulated = $totals['accumulated_depreciation'];
-        if ($cost <= 0 && $accumulated <= 0) {
-            return [];
-        }
-
+        $totals = $this->openingFixedAssetTotals($batch);
         $lines = [];
-        if ($cost > 0) {
-            $lines[] = $this->systemLine($this->mappingAccount('fixed_assets.cost'), $cost, 0, 'Opening fixed asset cost', [
+
+        foreach ($totals['cost_by_account'] as $accountId => $amount) {
+            if ($amount <= 0) {
+                continue;
+            }
+            $lines[] = $this->systemLine((int) $accountId, (float) $amount, 0, 'Opening fixed asset cost', [
                 'source_type' => 'opening_fixed_assets',
-                'fixed_asset_total_cost' => $cost,
+                'fixed_asset_total_cost' => (float) $amount,
             ]);
         }
-        if ($accumulated > 0) {
-            $lines[] = $this->systemLine($this->mappingAccount('fixed_assets.accumulated_depreciation'), 0, $accumulated, 'Opening accumulated depreciation', [
+
+        foreach ($totals['accumulated_by_account'] as $accountId => $amount) {
+            if ($amount <= 0) {
+                continue;
+            }
+            $lines[] = $this->systemLine((int) $accountId, 0, (float) $amount, 'Opening accumulated depreciation', [
                 'source_type' => 'opening_fixed_assets',
-                'fixed_asset_total_accumulated_depreciation' => $accumulated,
+                'fixed_asset_total_accumulated_depreciation' => (float) $amount,
             ]);
         }
 
         return $lines;
     }
 
-    private function openingFixedAssetTotals(): array
+    /**
+     * Aset mana yang dibukukan sebuah batch:
+     *
+     *   - batch belum diposting → aset yang BELUM dicap batch mana pun
+     *   - batch sudah diposting → aset yang bercap batch itu
+     *
+     * Pemisahan inilah yang membuat batch koreksi (batch kedua untuk aset yang
+     * terlewat) hanya membukukan aset barunya, bukan mengulang seluruh aset
+     * batch pertama.
+     */
+    private function openingFixedAssetTotals(OpeningBalanceBatchModel $batch): array
     {
         if (! $this->fixedAssetsEnabled() || ! Schema::connection('tenant')->hasTable('fixed_assets')) {
             return [
@@ -464,20 +547,14 @@ class OpeningBalanceBatchService
                 'cost' => 0.0,
                 'accumulated_depreciation' => 0.0,
                 'net_book_value' => 0.0,
+                'cost_by_account' => [],
+                'accumulated_by_account' => [],
             ];
         }
 
-        $totals = DB::connection('tenant')->table('fixed_assets')
-            ->where('source_type', 'opening_import')
-            ->selectRaw('COUNT(*) as total_count, COALESCE(SUM(acquisition_cost), 0) as cost, COALESCE(SUM(accumulated_depreciation), 0) as accumulated, COALESCE(SUM(net_book_value), 0) as nbv')
-            ->first();
-
-        return [
-            'count' => (int) ($totals->total_count ?? 0),
-            'cost' => round((float) ($totals->cost ?? 0), 2),
-            'accumulated_depreciation' => round((float) ($totals->accumulated ?? 0), 2),
-            'net_book_value' => round((float) ($totals->nbv ?? 0), 2),
-        ];
+        return $this->fixedAssetService->openingAssetTotals(
+            $batch->postedOrLocked() ? (int) $batch->id : null
+        );
     }
 
     private function systemLine(int $accountId, float $debit, float $credit, string $description, array $metadata = []): array
@@ -503,7 +580,7 @@ class OpeningBalanceBatchService
     private function additionalBlockingErrors(OpeningBalanceBatchModel $batch, array $manualLines, array $systemLines): array
     {
         $errors = [];
-        if (OpeningBalanceBatchModel::query()->where('id', '!=', $batch->id)->whereIn('status', ['posted', 'locked'])->exists()) {
+        if (! $batch->isCorrection() && OpeningBalanceBatchModel::query()->where('id', '!=', $batch->id)->whereIn('status', ['posted', 'locked'])->exists()) {
             $errors[] = $this->error('OPENING_BALANCE_ALREADY_POSTED', 'Another opening balance batch is already posted or locked.');
         }
 

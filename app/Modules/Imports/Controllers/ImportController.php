@@ -52,7 +52,7 @@ class ImportController extends Controller
     public function storeMaster(StoreImportRequest $request): JsonResponse
     {
         $profile = (string) $request->validated('profile');
-        $this->assertProfileIn($profile, ['contact', 'product', 'chart_of_account'], 'master');
+        $this->assertProfileIn($profile, ['contact', 'product', 'chart_of_account', 'opening_balance', 'fixed_asset_opening'], 'master');
 
         return $this->store($request);
     }

@@ -18,6 +18,8 @@ class ImportCommitterFactory
         private readonly SalesInvoiceImportCommitter $salesInvoice,
         private readonly VendorBillImportCommitter $vendorBill,
         private readonly JournalEntryImportCommitter $journalEntry,
+        private readonly OpeningBalanceImportCommitter $openingBalance,
+        private readonly FixedAssetOpeningImportCommitter $fixedAssetOpening,
     ) {}
 
     public function has(string $profile): bool
@@ -42,6 +44,8 @@ class ImportCommitterFactory
             'sales_invoice' => $this->salesInvoice,
             'vendor_bill' => $this->vendorBill,
             'journal_entry' => $this->journalEntry,
+            'opening_balance' => $this->openingBalance,
+            'fixed_asset_opening' => $this->fixedAssetOpening,
         ];
     }
 }

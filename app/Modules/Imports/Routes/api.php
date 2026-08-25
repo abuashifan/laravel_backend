@@ -11,14 +11,14 @@ use Illuminate\Support\Facades\Route;
 | /imports/master/*      → masterdata.import (Basic+)
 | /imports/transactions/* → transactions.import (Pro+)
 |
-| Profil master: contact, product, chart_of_account
+| Profil master: contact, product, chart_of_account, opening_balance, fixed_asset_opening
 | Profil transaksi: sales_invoice, vendor_bill, journal_entry
 |
 | Controller yang sama dipakai dua grup — validasi profil dilakukan
 | di controller berdasarkan prefix rute, bukan di middleware.
 */
 
-$masterProfiles = ['contact', 'product', 'chart_of_account'];
+$masterProfiles = ['contact', 'product', 'chart_of_account', 'opening_balance', 'fixed_asset_opening'];
 $transactionProfiles = ['sales_invoice', 'vendor_bill', 'journal_entry'];
 
 // ── Master data imports (Basic+) ─────────────────────────────────────

@@ -56,6 +56,40 @@ return [
             'headers' => ['Code', 'Name', 'Type', 'Category', 'Unit', 'Stock Item', 'Min Stock'],
             'sample' => ['', 'Kertas A4', 'goods', 'Alat Tulis Kantor', 'PCS', 'yes', '0'],
         ],
+        // Dua profil di bawah (Fase 7) mengisi data SETUP AWAL, bukan transaksi
+        // harian. Keduanya sinkron: committer-nya tidak memposting jurnal apa
+        // pun -- saldo awal hanya menulis baris draft batch, aset tetap hanya
+        // membuat register aset. Jurnal baru lahir saat user menekan Posting di
+        // halaman Saldo Awal.
+        //
+        // URUTAN WAJIB: 'fixed_asset_opening' DULU, baru 'opening_balance'.
+        // OpeningBalanceBatchService::fixedAssetSystemLines() mengubah aset
+        // ber-source_type 'opening_import' jadi baris kontrol otomatis di batch
+        // saldo awal, dan menolak baris manual dengan akun yang sama
+        // (FIXED_ASSET_CONTROL_DUPLICATE). Karena itu berkas saldo awal TIDAK
+        // BOLEH memuat akun harga perolehan / akumulasi penyusutan aset tetap.
+        'fixed_asset_opening' => [
+            'label' => 'Aset Tetap Awal',
+            'required_fields' => ['name', 'category', 'acquisition_date', 'acquisition_cost'],
+            'fields' => ['name', 'category', 'acquisition_date', 'acquisition_cost', 'accumulated_depreciation', 'salvage_value', 'useful_life_years', 'quantity', 'service_start_date', 'department', 'project', 'description'],
+            'headers' => ['Name', 'Category', 'Acquisition Date', 'Acquisition Cost', 'Accumulated Depreciation', 'Salvage Value', 'Useful Life Years', 'Quantity', 'Service Start Date', 'Department', 'Project', 'Description'],
+            'samples' => [
+                ['Toyota Avanza B 1234 XYZ', 'VEHICLE', '15/03/2023', '250000000', '75000000', '0', '8', '1', '15/03/2023', '', '', 'Kendaraan operasional'],
+                ['Laptop Dell Latitude', 'IT_EQUIP', '01/07/2024', '18000000', '4500000', '0', '4', '1', '01/07/2024', '', '', ''],
+            ],
+        ],
+        'opening_balance' => [
+            'label' => 'Saldo Awal',
+            'required_fields' => ['account_code'],
+            'fields' => ['account_code', 'description', 'debit', 'credit'],
+            'headers' => ['Account Code', 'Description', 'Debit', 'Credit'],
+            // Dua baris contoh: satu sisi debit, satu sisi kredit -- mengisyaratkan
+            // bahwa berkasnya adalah neraca saldo, bukan daftar satu sisi.
+            'samples' => [
+                ['1101', 'Saldo awal kas kecil', '5000000', '0'],
+                ['3100', 'Saldo awal modal disetor', '0', '5000000'],
+            ],
+        ],
         'chart_of_account' => [
             'label' => 'Chart of Account',
             'required_fields' => ['code', 'name', 'type'],

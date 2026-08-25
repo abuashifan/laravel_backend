@@ -3,6 +3,7 @@
 namespace App\Modules\OpeningBalance\Models;
 
 use App\Modules\Journal\Models\JournalEntry;
+use App\Modules\OpeningBalance\Support\OpeningBalanceType;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -48,5 +49,16 @@ class OpeningBalanceBatch extends Model
     public function postedOrLocked(): bool
     {
         return in_array((string) $this->status, ['posted', 'locked'], true);
+    }
+
+    /**
+     * Batch koreksi menambah posisi pembuka tanpa mengubah batch pertama —
+     * dipakai saat aset atau saldo yang terlewat baru dilaporkan setelah setup
+     * selesai. Beberapa penjaga "hanya satu batch" sengaja tidak berlaku
+     * untuknya; lihat OpeningBalanceBatchService::create().
+     */
+    public function isCorrection(): bool
+    {
+        return (string) $this->type === OpeningBalanceType::CORRECTION;
     }
 }

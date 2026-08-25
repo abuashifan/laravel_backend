@@ -19,8 +19,10 @@ use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
 use App\Shared\TransactionLifecycle\TransactionDateGuardService;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class FixedAssetService
 {
@@ -130,6 +132,223 @@ class FixedAssetService
         });
     }
 
+    /**
+     * Ringkasan aset tetap awal untuk batch saldo awal, dipecah per akun kontrol.
+     *
+     * Dipakai `OpeningBalanceBatchService` membangun baris sistem. Pemecahan per
+     * akun ada DI SINI, bukan di modul Saldo Awal, karena akun mana yang dipakai
+     * sebuah aset adalah pengetahuan modul ini (kategori dulu, mapping generik
+     * sebagai cadangan) -- menyalinnya ke modul lain berarti dua tempat yang
+     * pasti lepas sinkron.
+     *
+     * `$batchId` null berarti "aset yang belum dibukukan batch mana pun".
+     *
+     * @return array{count:int, cost:float, accumulated_depreciation:float, net_book_value:float, cost_by_account:array<int,float>, accumulated_by_account:array<int,float>}
+     */
+    public function openingAssetTotals(?int $batchId = null): array
+    {
+        $empty = [
+            'count' => 0,
+            'cost' => 0.0,
+            'accumulated_depreciation' => 0.0,
+            'net_book_value' => 0.0,
+            'cost_by_account' => [],
+            'accumulated_by_account' => [],
+        ];
+
+        if (! Schema::connection('tenant')->hasTable('fixed_assets')) {
+            return $empty;
+        }
+
+        $assets = $this->openingAssetQuery($batchId)->with('category')->get();
+        if ($assets->isEmpty()) {
+            return $empty;
+        }
+
+        $costByAccount = [];
+        $accumulatedByAccount = [];
+        $cost = 0.0;
+        $accumulated = 0.0;
+
+        foreach ($assets as $asset) {
+            $assetCost = round((float) $asset->acquisition_cost, 2);
+            $assetAccumulated = round((float) $asset->accumulated_depreciation, 2);
+            $cost += $assetCost;
+            $accumulated += $assetAccumulated;
+
+            if ($assetCost > 0) {
+                $account = $this->assetAccount($asset);
+                $costByAccount[$account] = round(($costByAccount[$account] ?? 0) + $assetCost, 2);
+            }
+            if ($assetAccumulated > 0) {
+                $account = $this->accumulatedAccount($asset);
+                $accumulatedByAccount[$account] = round(($accumulatedByAccount[$account] ?? 0) + $assetAccumulated, 2);
+            }
+        }
+
+        return [
+            'count' => $assets->count(),
+            'cost' => round($cost, 2),
+            'accumulated_depreciation' => round($accumulated, 2),
+            'net_book_value' => round($cost - $accumulated, 2),
+            'cost_by_account' => $costByAccount,
+            'accumulated_by_account' => $accumulatedByAccount,
+        ];
+    }
+
+    /**
+     * Aktifkan aset tetap awal yang dibukukan sebuah batch saldo awal.
+     *
+     * Dipanggil dari `OpeningBalanceBatchService::post()`, di dalam transaksi
+     * yang sama. **Tidak memposting jurnal apa pun** -- harga perolehan dan
+     * akumulasi penyusutannya sudah masuk buku besar lewat baris sistem batch
+     * itu. Memanggil `capitalize()` di sini akan membukukannya dua kali; lihat
+     * penjaga di method tersebut.
+     *
+     * @return int jumlah aset yang diaktifkan
+     */
+    public function activateOpeningAssets(int $batchId, string $openingDate, ?int $journalEntryId = null): int
+    {
+        if (! Schema::connection('tenant')->hasTable('fixed_assets')) {
+            return 0;
+        }
+
+        $company = $this->tenantContext->company();
+        if (! $company) {
+            throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
+        }
+
+        $assets = $this->openingAssetQuery(null)->with('category')->get();
+        $this->assertOpeningAssetsDepreciable($assets, $openingDate);
+        $activated = 0;
+
+        foreach ($assets as $asset) {
+            $assetNumber = $asset->asset_number ?: $this->documentNumberService->generate($company, DocumentType::FIXED_ASSET, $openingDate);
+
+            $asset->forceFill([
+                'asset_number' => $assetNumber,
+                'opening_balance_batch_id' => $batchId,
+                'capitalized_at' => Carbon::parse($openingDate),
+                'status' => 'active',
+            ])->save();
+
+            $this->generateOpeningSchedules($asset->refresh(), $openingDate);
+            $this->syncLifecycleStatus($asset->refresh());
+
+            $this->transaction($asset, 'opening_import', $openingDate, (float) $asset->acquisition_cost, (float) $asset->quantity, [
+                'source_type' => 'opening_import',
+                'source_id' => $batchId,
+                'journal_entry_id' => $journalEntryId,
+                'metadata' => ['accumulated_depreciation_at_opening' => (float) $asset->accumulated_depreciation],
+            ]);
+            $this->audit('fixed_asset.opening_activated', $asset, 'Opening fixed asset activated by opening balance posting.', [
+                'opening_balance_batch_id' => $batchId,
+                'journal_entry_id' => $journalEntryId,
+            ]);
+            $activated++;
+        }
+
+        return $activated;
+    }
+
+    /**
+     * Tolak aset yang masa manfaatnya sudah habis SEBELUM tanggal saldo awal
+     * tapi masih membawa nilai buku.
+     *
+     * Itu ketidakcocokan di data klien, bukan kasus yang bisa diputuskan
+     * sistem: tidak ada bulan tersisa untuk menyusutkan sisanya. Kalau
+     * dibiarkan, asetnya lolos tanpa jadwal lalu ditandai `fully_depreciated`,
+     * dan sisa nilainya diam-diam tidak pernah dibebankan.
+     *
+     * Diperiksa di sini, bukan saat impor, karena tanggal saldo awal baru pasti
+     * di titik ini — dan karena aset juga bisa masuk lewat form manual, bukan
+     * hanya lewat impor.
+     *
+     * @param  \Illuminate\Support\Collection<int, FixedAsset>  $assets
+     */
+    private function assertOpeningAssetsDepreciable($assets, string $openingDate): void
+    {
+        $openingMonth = Carbon::parse($openingDate)->startOfMonth();
+        $offenders = [];
+
+        foreach ($assets as $asset) {
+            if (! in_array((string) $asset->depreciation_type, ['depreciation', 'amortization'], true)) {
+                continue;
+            }
+            $remaining = round((float) $asset->depreciable_basis - (float) $asset->accumulated_depreciation, 2);
+            if ($remaining <= 0 || ! $asset->last_depreciation_period) {
+                continue;
+            }
+            if (Carbon::createFromFormat('Y-m', (string) $asset->last_depreciation_period)->startOfMonth()->lt($openingMonth)) {
+                $offenders[] = $asset->name.' (masa manfaat berakhir '.$asset->last_depreciation_period.', sisa nilai '.number_format($remaining, 2, ',', '.').')';
+            }
+        }
+
+        if ($offenders !== []) {
+            throw ApiException::make(
+                'OPENING_ASSET_LIFE_ALREADY_ENDED',
+                'Ada aset saldo awal yang masa manfaatnya sudah berakhir sebelum tanggal saldo awal tapi masih punya nilai buku. Perbaiki akumulasi penyusutan atau masa manfaatnya lebih dulu: '.implode('; ', $offenders),
+                422,
+                ['fixed_assets' => $offenders]
+            );
+        }
+    }
+
+    /**
+     * Kebalikan `activateOpeningAssets()`, dipakai saat batch saldo awal dibuka
+     * kembali (reopen). Reopen membatalkan jurnal pembuka, jadi aset yang
+     * dibukukannya harus ikut dikembalikan ke draft -- kalau tidak, register
+     * menyatakan aset itu ada sementara buku besarnya sudah tidak.
+     *
+     * @return int jumlah aset yang dikembalikan ke draft
+     */
+    public function deactivateOpeningAssets(int $batchId): int
+    {
+        if (! Schema::connection('tenant')->hasTable('fixed_assets')) {
+            return 0;
+        }
+
+        $assets = $this->openingAssetQuery($batchId)->get();
+        $reverted = 0;
+
+        foreach ($assets as $asset) {
+            if ($asset->schedules()->where('status', 'posted')->exists()) {
+                throw ApiException::make(
+                    'FIXED_ASSET_HAS_POSTED_DEPRECIATION',
+                    "Aset {$asset->asset_number} sudah punya penyusutan terposting; saldo awal tidak bisa dibuka kembali.",
+                    422
+                );
+            }
+
+            $asset->schedules()->delete();
+            $asset->transactions()->where('transaction_type', 'opening_import')->delete();
+            $asset->forceFill([
+                'opening_balance_batch_id' => null,
+                'capitalized_at' => null,
+                'status' => 'draft',
+            ])->save();
+
+            $this->audit('fixed_asset.opening_deactivated', $asset, 'Opening fixed asset reverted to draft after opening balance reopen.', [
+                'opening_balance_batch_id' => $batchId,
+            ]);
+            $reverted++;
+        }
+
+        return $reverted;
+    }
+
+    /**
+     * @return Builder<FixedAsset>
+     */
+    private function openingAssetQuery(?int $batchId)
+    {
+        $query = FixedAsset::query()->where('source_type', 'opening_import');
+
+        return $batchId === null
+            ? $query->whereNull('opening_balance_batch_id')
+            : $query->where('opening_balance_batch_id', $batchId);
+    }
+
     public function update(FixedAsset $asset, array $data): FixedAsset
     {
         if (FixedAssetDepreciationSchedule::query()->where('fixed_asset_id', $asset->id)->where('status', 'posted')->exists()) {
@@ -159,6 +378,20 @@ class FixedAssetService
 
     public function capitalize(FixedAsset $asset, array $data): FixedAsset
     {
+        // Aset saldo awal TIDAK boleh lewat sini. Harga perolehannya sudah
+        // dibukukan jurnal saldo awal lewat baris sistem batch; kapitalisasi
+        // normal akan memposting Dr Aset / Cr Kliring sekali lagi -- nilai
+        // asetnya dobel dan saldo kliring menggantung tanpa lawan. Aset ini
+        // diaktifkan otomatis oleh `activateOpeningAssets()` saat batch saldo
+        // awalnya diposting.
+        if ((string) $asset->source_type === 'opening_import') {
+            throw ApiException::make(
+                'FIXED_ASSET_OPENING_NOT_CAPITALIZABLE',
+                'Aset saldo awal tidak dikapitalisasi manual. Aset ini aktif otomatis saat batch saldo awalnya diposting.',
+                422
+            );
+        }
+
         if (in_array((string) $asset->status, ['active', 'capitalized', 'partially_disposed', 'disposed'], true)) {
             throw ApiException::make('FIXED_ASSET_ALREADY_CAPITALIZED', 'Asset is already capitalized or disposed.', 422);
         }
@@ -483,12 +716,28 @@ class FixedAssetService
         $quantity = (float) ($data['quantity'] ?? 1);
         $cost = round((float) ($data['acquisition_cost'] ?? 0), 2);
         $salvage = round((float) ($data['salvage_value'] ?? 0), 2);
+        $salvageCapped = min($salvage, $cost);
         $lifeYears = in_array($category->depreciation_type, ['depreciation', 'amortization'], true)
             ? (int) ($data['useful_life_years'] ?? $category->default_useful_life_years ?? 4)
             : null;
         $serviceStart = $data['service_start_date'] ?? null;
         $firstPeriod = $serviceStart && $lifeYears ? Carbon::parse((string) $serviceStart)->addMonthNoOverflow()->format('Y-m') : null;
         $lastPeriod = $firstPeriod && $lifeYears ? Carbon::createFromFormat('Y-m', $firstPeriod)->addMonthsNoOverflow(($lifeYears * 12) - 1)->format('Y-m') : null;
+
+        $accumulated = round((float) ($data['accumulated_depreciation'] ?? 0), 2);
+        $depreciableBasis = max(0, round($cost - $salvageCapped, 2));
+        // Aset warisan yang diimpor sebagai saldo awal membawa akumulasi
+        // penyusutannya sendiri. Tanpa batas ini, salah ketik satu digit
+        // menghasilkan nilai buku negatif yang baru ketahuan saat neraca
+        // saldo awal tidak balance -- jauh dari penyebabnya.
+        if ($accumulated > $depreciableBasis) {
+            throw ApiException::make(
+                'FIXED_ASSET_ACCUMULATED_EXCEEDS_BASIS',
+                'Accumulated depreciation cannot exceed acquisition cost minus salvage value.',
+                422,
+                ['accumulated_depreciation' => ['Akumulasi penyusutan tidak boleh melebihi harga perolehan dikurangi nilai residu.']]
+            );
+        }
 
         return [
             'name' => $data['name'],
@@ -508,10 +757,10 @@ class FixedAssetService
             'remaining_quantity' => (float) ($data['remaining_quantity'] ?? $quantity),
             'unit_acquisition_cost' => $quantity > 0 ? round($cost / $quantity, 2) : 0,
             'acquisition_cost' => $cost,
-            'salvage_value' => $salage = min($salvage, $cost),
-            'depreciable_basis' => max(0, $cost - $salage),
-            'accumulated_depreciation' => (float) ($data['accumulated_depreciation'] ?? 0),
-            'net_book_value' => $cost - (float) ($data['accumulated_depreciation'] ?? 0),
+            'salvage_value' => $salvageCapped,
+            'depreciable_basis' => $depreciableBasis,
+            'accumulated_depreciation' => $accumulated,
+            'net_book_value' => round($cost - $accumulated, 2),
             'department_id' => $data['department_id'] ?? null,
             'project_id' => $data['project_id'] ?? null,
             'source_type' => $data['source_type'] ?? null,
@@ -604,6 +853,78 @@ class FixedAssetService
             ];
             $period->addMonthNoOverflow();
         }
+        $asset->schedules()->createMany($rows);
+    }
+
+    /**
+     * Jadwal penyusutan untuk aset tetap awal — SISA nilai selama SISA umur.
+     *
+     * Berbeda dari `generateSchedules()` yang mengasumsikan aset baru dan selalu
+     * mulai dari nol. Aset saldo awal sudah menyusut di pembukuan sebelumnya,
+     * jadi:
+     *
+     *   - Periode pertama = bulan tanggal saldo awal (BUKAN +1 bulan seperti
+     *     aset baru). Akumulasi dari pengguna dihitung sampai sehari sebelum
+     *     tanggal itu, jadi bulan tersebut memang belum tersusut.
+     *   - Periode terakhir = `last_depreciation_period` aset itu, yang dihitung
+     *     dari tanggal mulai pakai ASLI. Akhir masa manfaat adalah fakta
+     *     kalender dan tidak boleh bergeser karena perusahaannya ganti aplikasi.
+     *   - Nilai yang dijadwalkan = basis - akumulasi. Dibagi rata ke sisa bulan,
+     *     jadi kalau angka akumulasi dari klien tidak persis garis lurus
+     *     (mis. sistem lamanya memakai metode lain), penyesuaiannya terserap
+     *     otomatis dan asetnya tetap habis tepat di akhir masa manfaat.
+     *
+     * Tanpa jadwal (umur sudah habis, atau tidak menyusut sama sekali) aset
+     * dibiarkan tanpa baris — `syncLifecycleStatus()` yang menandainya
+     * `fully_depreciated`.
+     */
+    private function generateOpeningSchedules(FixedAsset $asset, string $openingDate): void
+    {
+        if (! in_array((string) $asset->depreciation_type, ['depreciation', 'amortization'], true)) {
+            return;
+        }
+        if ($asset->schedules()->where('status', 'posted')->exists()) {
+            return;
+        }
+
+        $asset->schedules()->delete();
+
+        $remaining = round((float) $asset->depreciable_basis - (float) $asset->accumulated_depreciation, 2);
+        if ($remaining <= 0 || ! $asset->last_depreciation_period) {
+            return;
+        }
+
+        $first = Carbon::parse($openingDate)->startOfMonth();
+        $last = Carbon::createFromFormat('Y-m', (string) $asset->last_depreciation_period)->startOfMonth();
+        if ($last->lt($first)) {
+            return;
+        }
+
+        $months = ((int) $first->diffInMonths($last)) + 1;
+        $monthly = round($remaining / $months, 2);
+        $running = (float) $asset->accumulated_depreciation;
+        $period = $first->copy();
+        $rows = [];
+
+        for ($i = 1; $i <= $months; $i++) {
+            $amount = $i === $months
+                ? round((float) $asset->depreciable_basis - $running, 2)
+                : $monthly;
+            $running += $amount;
+            $rows[] = [
+                'period_year' => (int) $period->year,
+                'period_month' => (int) $period->month,
+                'period' => $period->format('Y-m'),
+                'depreciation_amount' => $amount,
+                'accumulated_depreciation_after' => round($running, 2),
+                'net_book_value_after' => round((float) $asset->acquisition_cost - $running, 2),
+                'status' => 'scheduled',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ];
+            $period->addMonthNoOverflow();
+        }
+
         $asset->schedules()->createMany($rows);
     }
 

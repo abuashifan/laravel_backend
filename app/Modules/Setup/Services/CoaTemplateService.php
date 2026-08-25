@@ -2,6 +2,7 @@
 
 namespace App\Modules\Setup\Services;
 
+use App\Modules\FixedAssets\Services\FixedAssetCategoryAccountLinker;
 use App\Modules\Journal\Models\JournalEntryLine;
 use App\Modules\MasterData\Models\ChartOfAccount;
 use App\Modules\MasterData\Services\AccountMappingStorageService;
@@ -15,6 +16,7 @@ class CoaTemplateService
     public function __construct(
         private readonly ChartOfAccountService $chartOfAccountService,
         private readonly AccountMappingStorageService $accountMappingStorageService,
+        private readonly FixedAssetCategoryAccountLinker $fixedAssetCategoryAccountLinker,
     ) {}
 
     /**
@@ -95,6 +97,12 @@ class CoaTemplateService
             }
 
             $this->accountMappingStorageService->syncDefaultMappingsFromConfig();
+
+            // Wajib SETELAH sync mapping: kategori menyimpan chart_of_accounts.id
+            // yang di-resolve lewat mapping key, jadi mapping harus sudah menunjuk
+            // ke akun template yang baru dibuat di atas. Kategorinya sendiri sudah
+            // ada sejak migration tenant -- yang diisi di sini hanya kolom akunnya.
+            $this->fixedAssetCategoryAccountLinker->linkDefaults();
 
             return $created;
         });

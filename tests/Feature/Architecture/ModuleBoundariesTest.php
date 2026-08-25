@@ -56,6 +56,11 @@ class ModuleBoundariesTest extends TestCase
         'Inventory → App\\Modules\\Budget\\Services\\BudgetWarningService',
         'FixedAssets → App\\Modules\\Budget\\Services\\BudgetWarningService',
         'OpeningBalance → App\\Modules\\Accounting\\Services\\FiscalYearService',
+        // Posting saldo awal sekaligus mengaktifkan aset tetap awal yang
+        // dibukukannya, dan reopen mengembalikannya ke draft. Akun kontrol per
+        // kelas juga di-resolve di sisi FixedAssets — menyalin logika akunnya ke
+        // modul ini pasti lepas sinkron.
+        'OpeningBalance → App\\Modules\\FixedAssets\\Services\\FixedAssetService',
         'Purchase → App\\Modules\\Settings\\Services\\CompanySettingService',
         'Purchase → App\\Modules\\Inventory\\Services\\InventoryPurchaseIntegrationService',
         'Purchase → App\\Modules\\MasterData\\Services\\AccountMappingStorageService',
@@ -96,6 +101,14 @@ class ModuleBoundariesTest extends TestCase
         'Imports → App\\Modules\\Journal\\Services\\JournalEntryService',
         'Imports → App\\Modules\\Sales\\Services\\SalesInvoiceService',
         'Imports → App\\Modules\\Purchase\\Services\\VendorBillService',
+        // Fase 7 (impor saldo awal & aset tetap awal) — alasan identik: satu-
+        // satunya cara mematuhi "importer wajib lewat service dokumen".
+        'Imports → App\\Modules\\OpeningBalance\\Services\\OpeningBalanceBatchService',
+        'Imports → App\\Modules\\FixedAssets\\Services\\FixedAssetService',
+        // Kategori aset tetap disambungkan ke akun COA saat template diterapkan —
+        // butuh chart_of_accounts.id, jadi harus setelah COA jadi. Arah yang sama
+        // dengan Setup → MasterData\\Services\\* di atas.
+        'Setup → App\\Modules\\FixedAssets\\Services\\FixedAssetCategoryAccountLinker',
     ];
 
     /**

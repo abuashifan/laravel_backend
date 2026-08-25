@@ -23,6 +23,14 @@ class StoreFixedAssetRequest extends FormRequest
             'quantity' => ['nullable', 'numeric', 'gt:0'],
             'acquisition_cost' => ['required', 'numeric', 'min:0'],
             'salvage_value' => ['nullable', 'numeric', 'min:0'],
+            // Wajib ada di sini walau `assetPayload()` sudah lama menghormatinya:
+            // controller memakai `$request->validated()`, jadi field yang tidak
+            // punya aturan DIBUANG diam-diam. Tanpa ini, aset perolehan lama yang
+            // diimpor sebagai saldo awal masuk dengan akumulasi 0 dan nilai buku
+            // sebesar harga perolehan penuh. Batas atasnya (cost - salvage)
+            // ditegakkan di FixedAssetService::assetPayload() supaya berlaku untuk
+            // jalur form DAN jalur impor.
+            'accumulated_depreciation' => ['nullable', 'numeric', 'min:0'],
             'department_id' => ['nullable', 'integer', 'exists:tenant.departments,id'],
             'project_id' => ['nullable', 'integer', 'exists:tenant.projects,id'],
             'source_type' => ['nullable', 'string'],
