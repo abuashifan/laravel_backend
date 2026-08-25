@@ -12,8 +12,22 @@
  * `AccountMappingStorageService::syncDefaultMappingsFromConfig()` otomatis
  * memetakan akun hasil template tanpa logika tambahan. Jangan ubah kode akun
  * inti (1100, 1110, 1120, 1130, 1140, 2100, 2120, 2130, 2140, 2150, 3100,
- * 3200, 3300, 4100, 4110, 4120, 5100, 5110, 5120, 6100, 6160, 6170, 7100,
- * 7200, 1520, 1521, 1590, 8200) tanpa juga menyesuaikan `account_mappings.php`.
+ * 3200, 3300, 4100, 4110, 4120, 5100, 5110, 5120, 6100, 6160, 7100, 7200,
+ * 1590, 8200) tanpa juga menyesuaikan `account_mappings.php`.
+ *
+ * Aset tetap dipecah per kelas, bukan satu akun gabungan, supaya neraca dan
+ * jurnal penyusutan bisa dibaca per jenis aset tanpa membongkar COA lagi:
+ *
+ *   Kendaraan       1510 / akum. 1511 / beban 6170
+ *   Gedung          1520 / akum. 1521 / beban 6171
+ *   Peralatan       1530 / akum. 1531 / beban 6172
+ *   Perangkat Lunak 1540 / akum. 1541 / beban 6175  (amortisasi, aset tak berwujud)
+ *
+ * Kelas Peralatan sekaligus jadi fallback untuk key generik `fixed_assets.cost`,
+ * `.accumulated_depreciation`, dan `.depreciation_expense` -- akun induk `15`
+ * tidak bisa dipakai transaksi, jadi fallback harus menunjuk akun leaf.
+ * 1520/1521 tetap dipakai (kini untuk Gedung) supaya tenant yang sudah
+ * menerapkan template versi lama tetap punya akun dengan kode yang sama.
  *
  * `normal_balance` sengaja tidak diisi di sini -- diturunkan dari `type` oleh
  * `ChartOfAccountService::validateNormalBalance()` saat akun dibuat.
@@ -35,8 +49,14 @@ return [
                 ['code' => '1140', 'name' => 'Uang Muka Pembelian', 'type' => 'asset', 'parent_code' => '1'],
                 ['code' => '2140', 'name' => 'PPN Masukan', 'type' => 'asset', 'parent_code' => '1'],
                 ['code' => '15', 'name' => 'ASET TETAP', 'type' => 'asset', 'parent_code' => null],
-                ['code' => '1520', 'name' => 'Aset Tetap', 'type' => 'asset', 'parent_code' => '15'],
-                ['code' => '1521', 'name' => 'Akumulasi Penyusutan Aset Tetap', 'type' => 'asset', 'parent_code' => '15'],
+                ['code' => '1510', 'name' => 'Kendaraan', 'type' => 'asset', 'parent_code' => '15'],
+                ['code' => '1511', 'name' => 'Akumulasi Penyusutan Kendaraan', 'type' => 'asset', 'parent_code' => '15'],
+                ['code' => '1520', 'name' => 'Gedung', 'type' => 'asset', 'parent_code' => '15'],
+                ['code' => '1521', 'name' => 'Akumulasi Penyusutan Gedung', 'type' => 'asset', 'parent_code' => '15'],
+                ['code' => '1530', 'name' => 'Peralatan', 'type' => 'asset', 'parent_code' => '15'],
+                ['code' => '1531', 'name' => 'Akumulasi Penyusutan Peralatan', 'type' => 'asset', 'parent_code' => '15'],
+                ['code' => '1540', 'name' => 'Perangkat Lunak (Software)', 'type' => 'asset', 'parent_code' => '15'],
+                ['code' => '1541', 'name' => 'Akumulasi Amortisasi Perangkat Lunak', 'type' => 'asset', 'parent_code' => '15'],
                 ['code' => '1590', 'name' => 'Fixed Asset Clearing', 'type' => 'asset', 'parent_code' => '15'],
                 ['code' => '2', 'name' => 'KEWAJIBAN LANCAR', 'type' => 'liability', 'parent_code' => null],
                 ['code' => '2100', 'name' => 'Hutang Usaha', 'type' => 'liability', 'parent_code' => '2'],
@@ -65,7 +85,10 @@ return [
                 ['code' => '6110', 'name' => 'Beban Bahan Bakar Kendaraan', 'type' => 'expense', 'parent_code' => '6'],
                 ['code' => '6120', 'name' => 'Beban Pemeliharaan Kendaraan', 'type' => 'expense', 'parent_code' => '6'],
                 ['code' => '6160', 'name' => 'Biaya Admin Bank', 'type' => 'expense', 'parent_code' => '6'],
-                ['code' => '6170', 'name' => 'Beban Penyusutan Aset Tetap', 'type' => 'expense', 'parent_code' => '6'],
+                ['code' => '6170', 'name' => 'Beban Penyusutan Kendaraan', 'type' => 'expense', 'parent_code' => '6'],
+                ['code' => '6171', 'name' => 'Beban Penyusutan Gedung', 'type' => 'expense', 'parent_code' => '6'],
+                ['code' => '6172', 'name' => 'Beban Penyusutan Peralatan', 'type' => 'expense', 'parent_code' => '6'],
+                ['code' => '6175', 'name' => 'Beban Amortisasi Perangkat Lunak', 'type' => 'expense', 'parent_code' => '6'],
                 ['code' => '8', 'name' => 'BEBAN LAIN-LAIN', 'type' => 'expense', 'parent_code' => null],
                 ['code' => '8200', 'name' => 'Rugi Pelepasan Aset Tetap', 'type' => 'expense', 'parent_code' => '8'],
             ],
@@ -85,8 +108,14 @@ return [
                 ['code' => '1140', 'name' => 'Uang Muka Pembelian', 'type' => 'asset', 'parent_code' => '1'],
                 ['code' => '2140', 'name' => 'PPN Masukan', 'type' => 'asset', 'parent_code' => '1'],
                 ['code' => '15', 'name' => 'ASET TETAP', 'type' => 'asset', 'parent_code' => null],
-                ['code' => '1520', 'name' => 'Aset Tetap', 'type' => 'asset', 'parent_code' => '15'],
-                ['code' => '1521', 'name' => 'Akumulasi Penyusutan Aset Tetap', 'type' => 'asset', 'parent_code' => '15'],
+                ['code' => '1510', 'name' => 'Kendaraan', 'type' => 'asset', 'parent_code' => '15'],
+                ['code' => '1511', 'name' => 'Akumulasi Penyusutan Kendaraan', 'type' => 'asset', 'parent_code' => '15'],
+                ['code' => '1520', 'name' => 'Gedung', 'type' => 'asset', 'parent_code' => '15'],
+                ['code' => '1521', 'name' => 'Akumulasi Penyusutan Gedung', 'type' => 'asset', 'parent_code' => '15'],
+                ['code' => '1530', 'name' => 'Peralatan', 'type' => 'asset', 'parent_code' => '15'],
+                ['code' => '1531', 'name' => 'Akumulasi Penyusutan Peralatan', 'type' => 'asset', 'parent_code' => '15'],
+                ['code' => '1540', 'name' => 'Perangkat Lunak (Software)', 'type' => 'asset', 'parent_code' => '15'],
+                ['code' => '1541', 'name' => 'Akumulasi Amortisasi Perangkat Lunak', 'type' => 'asset', 'parent_code' => '15'],
                 ['code' => '1590', 'name' => 'Fixed Asset Clearing', 'type' => 'asset', 'parent_code' => '15'],
                 ['code' => '2', 'name' => 'KEWAJIBAN LANCAR', 'type' => 'liability', 'parent_code' => null],
                 ['code' => '2100', 'name' => 'Hutang Usaha', 'type' => 'liability', 'parent_code' => '2'],
@@ -114,7 +143,10 @@ return [
                 ['code' => '6111', 'name' => 'Beban Angkut Pembelian', 'type' => 'expense', 'parent_code' => '6'],
                 ['code' => '6112', 'name' => 'Beban Angkut Penjualan', 'type' => 'expense', 'parent_code' => '6'],
                 ['code' => '6160', 'name' => 'Biaya Admin Bank', 'type' => 'expense', 'parent_code' => '6'],
-                ['code' => '6170', 'name' => 'Beban Penyusutan Aset Tetap', 'type' => 'expense', 'parent_code' => '6'],
+                ['code' => '6170', 'name' => 'Beban Penyusutan Kendaraan', 'type' => 'expense', 'parent_code' => '6'],
+                ['code' => '6171', 'name' => 'Beban Penyusutan Gedung', 'type' => 'expense', 'parent_code' => '6'],
+                ['code' => '6172', 'name' => 'Beban Penyusutan Peralatan', 'type' => 'expense', 'parent_code' => '6'],
+                ['code' => '6175', 'name' => 'Beban Amortisasi Perangkat Lunak', 'type' => 'expense', 'parent_code' => '6'],
                 ['code' => '8', 'name' => 'BEBAN LAIN-LAIN', 'type' => 'expense', 'parent_code' => null],
                 ['code' => '8200', 'name' => 'Rugi Pelepasan Aset Tetap', 'type' => 'expense', 'parent_code' => '8'],
             ],
@@ -131,8 +163,14 @@ return [
                 ['code' => '1140', 'name' => 'Uang Muka Pembelian', 'type' => 'asset', 'parent_code' => '1'],
                 ['code' => '2140', 'name' => 'PPN Masukan', 'type' => 'asset', 'parent_code' => '1'],
                 ['code' => '15', 'name' => 'ASET TETAP', 'type' => 'asset', 'parent_code' => null],
-                ['code' => '1520', 'name' => 'Aset Tetap', 'type' => 'asset', 'parent_code' => '15'],
-                ['code' => '1521', 'name' => 'Akumulasi Penyusutan Aset Tetap', 'type' => 'asset', 'parent_code' => '15'],
+                ['code' => '1510', 'name' => 'Kendaraan', 'type' => 'asset', 'parent_code' => '15'],
+                ['code' => '1511', 'name' => 'Akumulasi Penyusutan Kendaraan', 'type' => 'asset', 'parent_code' => '15'],
+                ['code' => '1520', 'name' => 'Gedung', 'type' => 'asset', 'parent_code' => '15'],
+                ['code' => '1521', 'name' => 'Akumulasi Penyusutan Gedung', 'type' => 'asset', 'parent_code' => '15'],
+                ['code' => '1530', 'name' => 'Peralatan', 'type' => 'asset', 'parent_code' => '15'],
+                ['code' => '1531', 'name' => 'Akumulasi Penyusutan Peralatan', 'type' => 'asset', 'parent_code' => '15'],
+                ['code' => '1540', 'name' => 'Perangkat Lunak (Software)', 'type' => 'asset', 'parent_code' => '15'],
+                ['code' => '1541', 'name' => 'Akumulasi Amortisasi Perangkat Lunak', 'type' => 'asset', 'parent_code' => '15'],
                 ['code' => '1590', 'name' => 'Fixed Asset Clearing', 'type' => 'asset', 'parent_code' => '15'],
                 ['code' => '2', 'name' => 'KEWAJIBAN LANCAR', 'type' => 'liability', 'parent_code' => null],
                 ['code' => '2100', 'name' => 'Hutang Usaha', 'type' => 'liability', 'parent_code' => '2'],
@@ -152,7 +190,10 @@ return [
                 ['code' => '6130', 'name' => 'Beban Gaji Karyawan', 'type' => 'expense', 'parent_code' => '6'],
                 ['code' => '6140', 'name' => 'Beban Sewa Kantor', 'type' => 'expense', 'parent_code' => '6'],
                 ['code' => '6160', 'name' => 'Biaya Admin Bank', 'type' => 'expense', 'parent_code' => '6'],
-                ['code' => '6170', 'name' => 'Beban Penyusutan Aset Tetap', 'type' => 'expense', 'parent_code' => '6'],
+                ['code' => '6170', 'name' => 'Beban Penyusutan Kendaraan', 'type' => 'expense', 'parent_code' => '6'],
+                ['code' => '6171', 'name' => 'Beban Penyusutan Gedung', 'type' => 'expense', 'parent_code' => '6'],
+                ['code' => '6172', 'name' => 'Beban Penyusutan Peralatan', 'type' => 'expense', 'parent_code' => '6'],
+                ['code' => '6175', 'name' => 'Beban Amortisasi Perangkat Lunak', 'type' => 'expense', 'parent_code' => '6'],
                 ['code' => '8', 'name' => 'BEBAN LAIN-LAIN', 'type' => 'expense', 'parent_code' => null],
                 ['code' => '8200', 'name' => 'Rugi Pelepasan Aset Tetap', 'type' => 'expense', 'parent_code' => '8'],
             ],
@@ -173,8 +214,14 @@ return [
                 ['code' => '1140', 'name' => 'Uang Muka Pembelian', 'type' => 'asset', 'parent_code' => '1'],
                 ['code' => '2140', 'name' => 'PPN Masukan', 'type' => 'asset', 'parent_code' => '1'],
                 ['code' => '15', 'name' => 'ASET TETAP', 'type' => 'asset', 'parent_code' => null],
-                ['code' => '1520', 'name' => 'Aset Tetap', 'type' => 'asset', 'parent_code' => '15'],
-                ['code' => '1521', 'name' => 'Akumulasi Penyusutan Aset Tetap', 'type' => 'asset', 'parent_code' => '15'],
+                ['code' => '1510', 'name' => 'Kendaraan', 'type' => 'asset', 'parent_code' => '15'],
+                ['code' => '1511', 'name' => 'Akumulasi Penyusutan Kendaraan', 'type' => 'asset', 'parent_code' => '15'],
+                ['code' => '1520', 'name' => 'Gedung', 'type' => 'asset', 'parent_code' => '15'],
+                ['code' => '1521', 'name' => 'Akumulasi Penyusutan Gedung', 'type' => 'asset', 'parent_code' => '15'],
+                ['code' => '1530', 'name' => 'Peralatan', 'type' => 'asset', 'parent_code' => '15'],
+                ['code' => '1531', 'name' => 'Akumulasi Penyusutan Peralatan', 'type' => 'asset', 'parent_code' => '15'],
+                ['code' => '1540', 'name' => 'Perangkat Lunak (Software)', 'type' => 'asset', 'parent_code' => '15'],
+                ['code' => '1541', 'name' => 'Akumulasi Amortisasi Perangkat Lunak', 'type' => 'asset', 'parent_code' => '15'],
                 ['code' => '1590', 'name' => 'Fixed Asset Clearing', 'type' => 'asset', 'parent_code' => '15'],
                 ['code' => '2', 'name' => 'KEWAJIBAN LANCAR', 'type' => 'liability', 'parent_code' => null],
                 ['code' => '2100', 'name' => 'Hutang Usaha', 'type' => 'liability', 'parent_code' => '2'],
@@ -202,7 +249,10 @@ return [
                 ['code' => '6', 'name' => 'BEBAN OPERASIONAL', 'type' => 'expense', 'parent_code' => null],
                 ['code' => '6100', 'name' => 'Beban Operasional Umum', 'type' => 'expense', 'parent_code' => '6'],
                 ['code' => '6160', 'name' => 'Biaya Admin Bank', 'type' => 'expense', 'parent_code' => '6'],
-                ['code' => '6170', 'name' => 'Beban Penyusutan Aset Tetap', 'type' => 'expense', 'parent_code' => '6'],
+                ['code' => '6170', 'name' => 'Beban Penyusutan Kendaraan', 'type' => 'expense', 'parent_code' => '6'],
+                ['code' => '6171', 'name' => 'Beban Penyusutan Gedung', 'type' => 'expense', 'parent_code' => '6'],
+                ['code' => '6172', 'name' => 'Beban Penyusutan Peralatan', 'type' => 'expense', 'parent_code' => '6'],
+                ['code' => '6175', 'name' => 'Beban Amortisasi Perangkat Lunak', 'type' => 'expense', 'parent_code' => '6'],
                 ['code' => '8', 'name' => 'BEBAN LAIN-LAIN', 'type' => 'expense', 'parent_code' => null],
                 ['code' => '8200', 'name' => 'Rugi Pelepasan Aset Tetap', 'type' => 'expense', 'parent_code' => '8'],
             ],

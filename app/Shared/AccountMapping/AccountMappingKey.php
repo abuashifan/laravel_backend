@@ -66,6 +66,32 @@ class AccountMappingKey
 
     public const FIXED_ASSETS_DISPOSAL_LOSS = 'fixed_assets.disposal_loss';
 
+    // Fixed Assets -- per kelas aset. Optional: dipakai sebagai acuan akun
+    // kategori aset tetap; key generik di atas tetap jadi fallback posting.
+    public const FIXED_ASSETS_VEHICLE_COST = 'fixed_assets.vehicle_cost';
+
+    public const FIXED_ASSETS_VEHICLE_ACCUMULATED_DEPRECIATION = 'fixed_assets.vehicle_accumulated_depreciation';
+
+    public const FIXED_ASSETS_VEHICLE_DEPRECIATION_EXPENSE = 'fixed_assets.vehicle_depreciation_expense';
+
+    public const FIXED_ASSETS_BUILDING_COST = 'fixed_assets.building_cost';
+
+    public const FIXED_ASSETS_BUILDING_ACCUMULATED_DEPRECIATION = 'fixed_assets.building_accumulated_depreciation';
+
+    public const FIXED_ASSETS_BUILDING_DEPRECIATION_EXPENSE = 'fixed_assets.building_depreciation_expense';
+
+    public const FIXED_ASSETS_EQUIPMENT_COST = 'fixed_assets.equipment_cost';
+
+    public const FIXED_ASSETS_EQUIPMENT_ACCUMULATED_DEPRECIATION = 'fixed_assets.equipment_accumulated_depreciation';
+
+    public const FIXED_ASSETS_EQUIPMENT_DEPRECIATION_EXPENSE = 'fixed_assets.equipment_depreciation_expense';
+
+    public const FIXED_ASSETS_SOFTWARE_COST = 'fixed_assets.software_cost';
+
+    public const FIXED_ASSETS_SOFTWARE_ACCUMULATED_AMORTIZATION = 'fixed_assets.software_accumulated_amortization';
+
+    public const FIXED_ASSETS_SOFTWARE_AMORTIZATION_EXPENSE = 'fixed_assets.software_amortization_expense';
+
     // Cash/Bank
     public const CASH_BANK_DEFAULT_CASH = 'cash_bank.default_cash';
 

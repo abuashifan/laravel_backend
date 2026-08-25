@@ -8,6 +8,7 @@ use App\Modules\Journal\Models\JournalEntry;
 use App\Modules\MasterData\Models\AccountMapping;
 use App\Modules\MasterData\Models\ChartOfAccount;
 use App\Modules\Settings\Services\CompanySettingService;
+use App\Shared\Models\CompanyModuleSetting;
 use App\Shared\Models\CompanySetupState;
 use Tests\Feature\Journal\JournalTestCase;
 
@@ -130,6 +131,79 @@ class SetupWizardTest extends JournalTestCase
         $response->assertJsonPath('data.state.status', 'finalized');
     }
 
+    /**
+     * Reproduksi bug: perusahaan yang mengaktifkan modul Aktiva Tetap di Step 2
+     * wizard tapi belum punya aset tetap tidak pernah bisa finalize -- frontend
+     * lama tidak punya UI untuk step `opening_fixed_assets` sama sekali, jadi
+     * `confirm_no_opening_fixed_assets` tidak pernah terkirim dan user macet di
+     * "Selesai" dengan toast generik "Periksa kembali isian yang ditandai" tanpa
+     * field apa pun yang ditandai (lihat Step5OpeningBalance.tsx).
+     */
+    public function test_finalize_blocks_when_fixed_asset_module_enabled_without_opening_fixed_assets_confirmation(): void
+    {
+        $ctx = $this->setUpTenant(role: 'owner');
+        CompanyModuleSetting::query()->updateOrCreate(
+            ['company_id' => $ctx['company']->id],
+            ['fixed_asset_enabled' => true],
+        );
+        $this->seedSetupCoaAndMappings();
+        $this->seedFixedAssetMappings();
+
+        $this->patchJson('/api/setup/current-step', [
+            'current_step' => 'final_review',
+            'opening_date' => '2026-01-01',
+        ], $ctx['headers'])->assertOk();
+
+        $this->postJson('/api/setup/validate-step', [
+            'step' => 'opening_balance_preview',
+            'confirm_opening_balance_skipped' => true,
+        ], $ctx['headers'])->assertOk();
+
+        $response = $this->postJson('/api/setup/validate-all', [], $ctx['headers'])->assertOk();
+
+        $response->assertJsonPath('data.valid', false);
+        $response->assertJsonPath('data.results.opening_fixed_assets.errors.0.code', 'OPENING_FIXED_ASSETS_NOT_CONFIRMED');
+
+        $this->postJson('/api/setup/finalize', [], $ctx['headers'])->assertStatus(422);
+    }
+
+    /**
+     * Alur wizard yang benar (Step5OpeningBalance): saat modul Aktiva Tetap
+     * aktif, wizard mengirim `confirm_no_opening_fixed_assets` bersamaan
+     * dengan `confirm_opening_balance_skipped` sebelum finalize.
+     */
+    public function test_opening_fixed_assets_can_be_explicitly_confirmed_as_none_for_finalization(): void
+    {
+        $ctx = $this->setUpTenant(role: 'owner');
+        CompanyModuleSetting::query()->updateOrCreate(
+            ['company_id' => $ctx['company']->id],
+            ['fixed_asset_enabled' => true],
+        );
+        $this->seedSetupCoaAndMappings();
+        $this->seedFixedAssetMappings();
+
+        $this->patchJson('/api/setup/current-step', [
+            'current_step' => 'final_review',
+            'opening_date' => '2026-01-01',
+        ], $ctx['headers'])->assertOk();
+
+        $this->postJson('/api/setup/validate-step', [
+            'step' => 'opening_balance_preview',
+            'confirm_opening_balance_skipped' => true,
+        ], $ctx['headers'])->assertOk();
+
+        $this->postJson('/api/setup/validate-step', [
+            'step' => 'opening_fixed_assets',
+            'confirm_no_opening_fixed_assets' => true,
+        ], $ctx['headers'])
+            ->assertOk()
+            ->assertJsonPath('data.result.valid', true);
+
+        $response = $this->postJson('/api/setup/finalize', [], $ctx['headers'])->assertOk();
+        $response->assertJsonPath('data.finalized', true);
+        $response->assertJsonPath('data.state.status', 'finalized');
+    }
+
     public function test_finalized_setup_cannot_be_downgraded_by_stale_current_step_request(): void
     {
         $ctx = $this->setUpTenant(role: 'owner');
@@ -174,6 +248,43 @@ class SetupWizardTest extends JournalTestCase
                 ['mapping_key' => $key],
                 [
                     'module' => $module,
+                    'account_id' => $accountId,
+                    'is_required' => true,
+                    'is_active' => true,
+                ]
+            );
+        }
+    }
+
+    /**
+     * Mengaktifkan modul Aktiva Tetap membuat 6 mapping key `fixed_assets.*`
+     * jadi wajib (lihat AccountMappingHealthTest / config/account_mappings.php).
+     * Di wizard sungguhan ini terisi otomatis lewat
+     * AccountMappingStorageService::syncDefaultMappingsFromConfig() setelah
+     * Step3 menerapkan template COA -- di sini diisi manual karena test tidak
+     * lewat endpoint template.
+     */
+    private function seedFixedAssetMappings(): void
+    {
+        $asset = $this->account('1590', 'Fixed Asset Clearing', 'asset', 'debit');
+        $cost = $this->account('1530', 'Peralatan', 'asset', 'debit');
+        $accumulated = $this->account('1531', 'Akumulasi Penyusutan Peralatan', 'asset', 'debit');
+        $expense = $this->account('6172', 'Beban Penyusutan Peralatan', 'expense', 'debit');
+        $gain = $this->account('7200', 'Laba Pelepasan Aset Tetap', 'revenue', 'credit');
+        $loss = $this->account('8200', 'Rugi Pelepasan Aset Tetap', 'expense', 'debit');
+
+        foreach ([
+            'fixed_assets.clearing' => $asset,
+            'fixed_assets.cost' => $cost,
+            'fixed_assets.accumulated_depreciation' => $accumulated,
+            'fixed_assets.depreciation_expense' => $expense,
+            'fixed_assets.disposal_gain' => $gain,
+            'fixed_assets.disposal_loss' => $loss,
+        ] as $key => $accountId) {
+            AccountMapping::query()->updateOrCreate(
+                ['mapping_key' => $key],
+                [
+                    'module' => 'fixed_assets',
                     'account_id' => $accountId,
                     'is_required' => true,
                     'is_active' => true,
