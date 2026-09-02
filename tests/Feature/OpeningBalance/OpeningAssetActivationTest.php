@@ -87,6 +87,69 @@ class OpeningAssetActivationTest extends JournalTestCase
         $this->assertNull($journal->lines->firstWhere('account_id', $this->accountId('1530')));
     }
 
+    public function test_blank_accumulated_depreciation_is_calculated_at_posting(): void
+    {
+        $ctx = $this->setUpOpeningTenant();
+
+        // Persis aset yang sama dengan `createOpeningVehicle()`, TANPA angka
+        // akumulasi. Aset warisan yang kolomnya dikosongkan berarti "hitungkan",
+        // bukan "belum pernah disusutkan" -- dan hitungannya harus jatuh tepat
+        // di angka yang dipakai test lain di kelas ini.
+        $asset = app(FixedAssetService::class)->create([
+            'name' => 'Toyota Avanza B 1234 XYZ',
+            'fixed_asset_category_id' => $this->categoryId('VEHICLE'),
+            'acquisition_date' => '2025-03-10',
+            'service_start_date' => '2025-03-10',
+            'useful_life_years' => 8,
+            'acquisition_cost' => self::COST,
+            'source_type' => 'opening_import',
+        ]);
+
+        // Selama masih draft angkanya belum ada: tanggal saldo awal belum pasti.
+        $this->assertEqualsWithDelta(0, (float) $asset->accumulated_depreciation, 0.001);
+        $this->assertTrue((bool) ($asset->metadata['accumulated_depreciation_auto'] ?? false));
+
+        $this->postOpeningBatch($ctx, '2026-01-01');
+
+        // 250jt / 96 bulan x 9 bulan (Apr 2025 s/d Des 2025).
+        $asset->refresh();
+        $this->assertEqualsWithDelta(self::ACCUMULATED, (float) $asset->accumulated_depreciation, 0.05);
+        $this->assertEqualsWithDelta(self::COST - self::ACCUMULATED, (float) $asset->net_book_value, 0.05);
+
+        // Jadwalnya harus sama persis dengan aset yang akumulasinya diketik user.
+        $schedules = $asset->schedules()->orderBy('period')->get();
+        $this->assertCount(87, $schedules);
+        $this->assertSame('2026-01', $schedules->first()->period);
+        $this->assertEqualsWithDelta(self::COST, (float) $schedules->last()->accumulated_depreciation_after, 0.05);
+    }
+
+    public function test_auto_accumulated_depreciation_reaches_the_general_ledger(): void
+    {
+        $ctx = $this->setUpOpeningTenant();
+        app(FixedAssetService::class)->create([
+            'name' => 'Toyota Avanza B 1234 XYZ',
+            'fixed_asset_category_id' => $this->categoryId('VEHICLE'),
+            'acquisition_date' => '2025-03-10',
+            'service_start_date' => '2025-03-10',
+            'useful_life_years' => 8,
+            'acquisition_cost' => self::COST,
+            'source_type' => 'opening_import',
+        ]);
+
+        $this->postOpeningBatch($ctx, '2026-01-01');
+
+        // Baris sistem batch saldo awal dibentuk dari angka aset. Kalau
+        // hitungan otomatis berjalan setelah baris itu dibentuk, kreditnya
+        // akan nol dan neraca pembuka melebihkan nilai aset sebesar akumulasi.
+        $journal = JournalEntry::query()->with('lines')->latest('id')->firstOrFail();
+        $accumulatedAccount = $this->accountId('1511');
+        $this->assertEqualsWithDelta(
+            self::ACCUMULATED,
+            (float) $journal->lines->firstWhere('account_id', $accumulatedAccount)?->credit,
+            0.05,
+        );
+    }
+
     public function test_correction_batch_only_books_the_newly_added_asset(): void
     {
         $ctx = $this->setUpOpeningTenant();

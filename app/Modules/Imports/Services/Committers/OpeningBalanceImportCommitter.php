@@ -2,14 +2,18 @@
 
 namespace App\Modules\Imports\Services\Committers;
 
+use App\Modules\FixedAssets\Models\FixedAsset;
 use App\Modules\Imports\Models\ImportBatch;
 use App\Modules\MasterData\Models\AccountMapping;
 use App\Modules\MasterData\Models\ChartOfAccount;
 use App\Modules\OpeningBalance\Models\OpeningBalanceBatch;
 use App\Modules\OpeningBalance\Services\OpeningBalanceBatchService;
 use App\Shared\Exceptions\ApiException;
+use App\Shared\Models\CompanyModuleSetting;
+use App\Shared\Models\CompanySetupState;
 use App\Shared\Models\FiscalYear;
 use App\Shared\Tenant\TenantContext;
+use Illuminate\Support\Facades\Schema;
 use Throwable;
 
 /**
@@ -31,22 +35,29 @@ use Throwable;
  * Menolaknya di sini, per baris, memindahkan kegagalan itu dari "batch tidak
  * bisa divalidasi dengan pesan yang tidak menyebut baris mana" ke "baris ke-17
  * salah, dan ini alasannya".
+ *
+ * ── Urutan wajib: aset tetap awal DULU ──────────────────────────────────────
+ *
+ * Konsekuensi langsung dari paragraf di atas: selama modul Aktiva Tetap aktif
+ * dan aset tetap awalnya belum diimpor (atau belum dinyatakan tidak ada),
+ * seluruh berkas saldo awal ditolak lewat `openingFixedAssetsPrecondition()`.
+ * Aturan yang sama sudah tertulis di `config/imports.php` pada profil
+ * `fixed_asset_opening`; di sini ia ditegakkan, bukan sekadar didokumentasikan.
  */
 class OpeningBalanceImportCommitter implements ImportProfileCommitter
 {
     use Concerns\DetectsDuplicateCodesInBatch;
 
     /**
-     * Kunci mapping yang menghasilkan baris sistem aset tetap. Generik dan
-     * per-kelas keduanya didaftar: yang generik yang dipakai
-     * `fixedAssetSystemLines()` hari ini, yang per-kelas dipakai kategori aset
-     * (`config/fixed_asset_categories.php`) dan akan dipakai kalau baris sistem
-     * dipecah per kelas nanti. Menolak keduanya sekarang membuat berkas yang
-     * sah hari ini tetap sah setelah pemecahan itu.
+     * Kunci mapping yang menghasilkan baris sistem aset tetap. Kunci generik
+     * yang tersisa (cost, akumulasi amortisasi) dan seluruh kunci per kelas
+     * didaftar: baris sistem memakai akun kategori aset
+     * (`config/fixed_asset_categories.php`), sedangkan yang generik masih jadi
+     * fallback saat kolom akun kategori kosong. Menolak keduanya membuat
+     * berkas tetap divalidasi sama, apa pun jalur akun yang terpakai.
      */
     private const FIXED_ASSET_CONTROL_KEYS = [
         'fixed_assets.cost',
-        'fixed_assets.accumulated_depreciation',
         'fixed_assets.accumulated_amortization',
         'fixed_assets.vehicle_cost',
         'fixed_assets.vehicle_accumulated_depreciation',
@@ -263,6 +274,10 @@ class OpeningBalanceImportCommitter implements ImportProfileCommitter
 
     private function preconditionError(): ?string
     {
+        if ($fixedAssets = $this->openingFixedAssetsPrecondition()) {
+            return $fixedAssets;
+        }
+
         $batch = $this->openingBalanceBatchService->latestActiveBatch();
 
         if ($batch instanceof OpeningBalanceBatch && $batch->postedOrLocked()) {
@@ -281,6 +296,84 @@ class OpeningBalanceImportCommitter implements ImportProfileCommitter
         }
 
         return null;
+    }
+
+    /**
+     * Urutan wajib: aset tetap awal DULU, saldo awal belakangan.
+     *
+     * Baris harga perolehan dan akumulasi penyusutan di batch saldo awal tidak
+     * pernah diketik — `OpeningBalanceBatchService::fixedAssetSystemLines()`
+     * menghasilkannya otomatis dari tabel `fixed_assets` yang bersumber
+     * `opening_import`, dipecah per akun kelas aset. Mengimpor saldo awal lebih
+     * dulu berarti mengunci neraca pembuka pada angka yang belum memuat aset
+     * sama sekali: user melihat batch yang seimbang, memposting, lalu aset yang
+     * diimpor sesudahnya tidak punya lagi tempat untuk dibukukan (impor aset
+     * ditolak `FixedAssetOpeningImportCommitter::preconditionError()` begitu
+     * saldo awal diposting) — dan selisihnya baru ketahuan saat neraca dibaca.
+     *
+     * Menolaknya di sini memindahkan kegagalan itu ke titik paling awal yang
+     * masih bisa diperbaiki tanpa reopen.
+     *
+     * Dua jalan keluar yang sah, sama persis dengan yang dipakai
+     * `SetupWizardService::validateOpeningFixedAssets()` supaya wizard dan impor
+     * tidak pernah berbeda pendapat:
+     *   1. register sudah berisi aset ber-`source_type = 'opening_import'`, atau
+     *   2. user sudah menyatakan perusahaan ini tidak punya aset tetap awal
+     *      (`opening_fixed_assets_confirmed_none` di metadata setup).
+     */
+    private function openingFixedAssetsPrecondition(): ?string
+    {
+        if (! $this->fixedAssetsEnabled()) {
+            return null;
+        }
+
+        if (! Schema::connection('tenant')->hasTable('fixed_assets')) {
+            return 'Modul Aktiva Tetap aktif untuk perusahaan ini, tapi tabel aset tetap belum tersedia. Hubungi admin sebelum mengimpor saldo awal.';
+        }
+
+        if (FixedAsset::query()->where('source_type', 'opening_import')->exists()) {
+            return null;
+        }
+
+        if ($this->confirmedNoOpeningFixedAssets()) {
+            return null;
+        }
+
+        return 'Modul Aktiva Tetap aktif, tapi aset tetap awal belum diimpor. Impor berkas Aset Tetap Awal dulu — baris harga perolehan dan akumulasi penyusutannya dibuat otomatis dari data itu, jadi urutannya tidak bisa dibalik. Kalau perusahaan ini memang tidak punya aset tetap awal, centang konfirmasinya di wizard Setup langkah Saldo Awal.';
+    }
+
+    /**
+     * Pernyataan eksplisit "tidak punya aset tetap awal" dari wizard Setup.
+     * Dibaca langsung dari `company_setup_states`, bukan lewat SetupWizardService:
+     * memanggil service itu dari sini akan membuat coupling Imports → Setup yang
+     * belum ada di baseline `ModuleBoundariesTest`, sementara yang dibutuhkan
+     * cuma satu flag boolean.
+     */
+    private function confirmedNoOpeningFixedAssets(): bool
+    {
+        $company = $this->tenantContext->company();
+        if (! $company) {
+            return false;
+        }
+
+        // `first()`, bukan `value('metadata')`: kolomnya JSON dengan cast `array`
+        // di model, dan `value()` melewati cast itu -- yang kembali string mentah.
+        $state = CompanySetupState::query()->where('company_id', $company->id)->first();
+        if (! $state instanceof CompanySetupState) {
+            return false;
+        }
+
+        return (bool) (((array) $state->metadata)['opening_fixed_assets_confirmed_none'] ?? false);
+    }
+
+    private function fixedAssetsEnabled(): bool
+    {
+        $company = $this->tenantContext->company();
+        if (! $company) {
+            return false;
+        }
+
+        return (bool) CompanyModuleSetting::query()->where('company_id', $company->id)->value('fixed_asset_enabled');
     }
 
     private function accountAlreadyInBatch(int $accountId): bool

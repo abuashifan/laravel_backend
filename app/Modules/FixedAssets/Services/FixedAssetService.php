@@ -8,6 +8,7 @@ use App\Modules\FixedAssets\Models\FixedAsset;
 use App\Modules\FixedAssets\Models\FixedAssetCategory;
 use App\Modules\FixedAssets\Models\FixedAssetDepreciationRun;
 use App\Modules\FixedAssets\Models\FixedAssetDepreciationSchedule;
+use App\Modules\FixedAssets\Support\OpeningAccumulatedDepreciation;
 use App\Modules\Journal\Models\JournalEntry;
 use App\Modules\MasterData\Models\AccountMapping;
 use App\Modules\MasterData\Models\ChartOfAccount;
@@ -145,7 +146,7 @@ class FixedAssetService
      *
      * @return array{count:int, cost:float, accumulated_depreciation:float, net_book_value:float, cost_by_account:array<int,float>, accumulated_by_account:array<int,float>}
      */
-    public function openingAssetTotals(?int $batchId = null): array
+    public function openingAssetTotals(?int $batchId = null, ?string $openingDate = null): array
     {
         $empty = [
             'count' => 0,
@@ -172,7 +173,7 @@ class FixedAssetService
 
         foreach ($assets as $asset) {
             $assetCost = round((float) $asset->acquisition_cost, 2);
-            $assetAccumulated = round((float) $asset->accumulated_depreciation, 2);
+            $assetAccumulated = round($this->effectiveAccumulatedDepreciation($asset, $openingDate), 2);
             $cost += $assetCost;
             $accumulated += $assetAccumulated;
 
@@ -219,6 +220,10 @@ class FixedAssetService
         }
 
         $assets = $this->openingAssetQuery(null)->with('category')->get();
+        // Wajib SEBELUM pemeriksaan di bawah: aset yang akumulasinya dihitung
+        // sistem masih bernilai 0 di titik ini, dan `assertOpeningAssetsDepreciable()`
+        // membaca angka itu untuk memutuskan masih ada nilai buku atau tidak.
+        $this->fillAutoAccumulatedDepreciation($assets, $openingDate);
         $this->assertOpeningAssetsDepreciable($assets, $openingDate);
         $activated = 0;
 
@@ -249,6 +254,80 @@ class FixedAssetService
         }
 
         return $activated;
+    }
+
+    /**
+     * Akumulasi penyusutan yang BERLAKU untuk sebuah aset saldo awal.
+     *
+     * Untuk aset yang akumulasinya dititipkan ke sistem, angka tersimpannya
+     * masih 0 sampai batch saldo awalnya diposting — sementara pratinjau
+     * neraca pembuka sudah harus memperlihatkan angka yang benar. Tanpa ini
+     * user menyusun baris penyeimbang ekuitas dari total yang salah, lalu
+     * angkanya berubah sendiri saat posting.
+     */
+    private function effectiveAccumulatedDepreciation(FixedAsset $asset, ?string $openingDate): float
+    {
+        if ($openingDate === null) {
+            return (float) $asset->accumulated_depreciation;
+        }
+
+        return $this->autoAccumulatedDepreciation($asset, $openingDate)
+            ?? (float) $asset->accumulated_depreciation;
+    }
+
+    /**
+     * Estimasi untuk aset yang ditandai hitung-otomatis, atau null kalau aset
+     * ini bukan salah satunya (atau kategorinya memang tidak menyusut).
+     */
+    private function autoAccumulatedDepreciation(FixedAsset $asset, string $openingDate): ?float
+    {
+        if (($asset->metadata['accumulated_depreciation_auto'] ?? false) !== true) {
+            return null;
+        }
+
+        return OpeningAccumulatedDepreciation::estimate(
+            (float) $asset->acquisition_cost,
+            (float) $asset->salvage_value,
+            $asset->useful_life_years ? (int) $asset->useful_life_years : null,
+            $asset->service_start_date?->toDateString(),
+            $openingDate,
+        );
+    }
+
+    /**
+     * Isi akumulasi penyusutan aset saldo awal yang dikosongkan user.
+     *
+     * Baru bisa dikerjakan di sini, bukan saat impor atau saat form disimpan:
+     * angkanya dinyatakan PER TANGGAL SALDO AWAL, dan tanggal itu baru pasti
+     * ketika batchnya diposting. Alasan yang sama dipakai
+     * `assertOpeningAssetsDepreciable()` di bawah.
+     *
+     * Penandanya sengaja tidak dihapus setelah dihitung: reopen mengembalikan
+     * aset ke draft, dan batch berikutnya bisa bertanggal lain — saat itu
+     * angkanya harus dihitung ulang, bukan memakai sisa hitungan lama.
+     *
+     * @param  \Illuminate\Support\Collection<int, FixedAsset>  $assets
+     */
+    private function fillAutoAccumulatedDepreciation($assets, string $openingDate): void
+    {
+        foreach ($assets as $asset) {
+            $estimate = $this->autoAccumulatedDepreciation($asset, $openingDate);
+
+            // Kategori tanpa penyusutan (tanah, aset dalam penyelesaian) tidak
+            // punya estimasi. Nol memang jawaban yang benar untuk mereka.
+            if ($estimate === null) {
+                continue;
+            }
+
+            $metadata = (array) ($asset->metadata ?? []);
+            $metadata['accumulated_depreciation_auto_computed'] = $estimate;
+
+            $asset->forceFill([
+                'accumulated_depreciation' => $estimate,
+                'net_book_value' => round((float) $asset->acquisition_cost - $estimate, 2),
+                'metadata' => $metadata,
+            ])->save();
+        }
     }
 
     /**
@@ -366,7 +445,18 @@ class FixedAssetService
             : $asset->category;
 
         return DB::connection('tenant')->transaction(function () use ($asset, $data, $category) {
-            $asset->fill($this->assetPayload(array_merge($asset->toArray(), $data), $category, preserveStatus: true))->save();
+            $merged = array_merge($asset->toArray(), $data);
+
+            // Aset yang akumulasinya dititipkan ke sistem harus tetap begitu
+            // walau yang diubah cuma namanya: tanpa baris ini `array_merge`
+            // menyuntikkan nilai tersimpan (masih 0 selama aset draft) sebagai
+            // kalau-kalau user yang mengetiknya, dan penandanya ikut hilang.
+            if (! array_key_exists('accumulated_depreciation', $data)
+                && (($asset->metadata['accumulated_depreciation_auto'] ?? false) === true)) {
+                unset($merged['accumulated_depreciation']);
+            }
+
+            $asset->fill($this->assetPayload($merged, $category, preserveStatus: true))->save();
             if ($asset->capitalized_at) {
                 $this->generateSchedules($asset->refresh());
             }
@@ -724,7 +814,13 @@ class FixedAssetService
         $firstPeriod = $serviceStart && $lifeYears ? Carbon::parse((string) $serviceStart)->addMonthNoOverflow()->format('Y-m') : null;
         $lastPeriod = $firstPeriod && $lifeYears ? Carbon::createFromFormat('Y-m', $firstPeriod)->addMonthsNoOverflow(($lifeYears * 12) - 1)->format('Y-m') : null;
 
-        $accumulated = round((float) ($data['accumulated_depreciation'] ?? 0), 2);
+        // Kolom akumulasi yang dikosongkan pada aset saldo awal TIDAK berarti
+        // nol -- aset warisan yang sudah dipakai bertahun-tahun hampir pasti
+        // sudah menyusut. Ia berarti "hitungkan": asetnya ditandai di sini dan
+        // angkanya diisi `activateOpeningAssets()` saat tanggal saldo awal
+        // sudah pasti. Nol yang diketik user secara eksplisit tetap nol.
+        $autoAccumulated = $this->wantsAutoAccumulatedDepreciation($data);
+        $accumulated = $autoAccumulated ? 0.0 : round((float) ($data['accumulated_depreciation'] ?? 0), 2);
         $depreciableBasis = max(0, round($cost - $salvageCapped, 2));
         // Aset warisan yang diimpor sebagai saldo awal membawa akumulasi
         // penyusutannya sendiri. Tanpa batas ini, salah ketik satu digit
@@ -765,8 +861,39 @@ class FixedAssetService
             'project_id' => $data['project_id'] ?? null,
             'source_type' => $data['source_type'] ?? null,
             'source_id' => $data['source_id'] ?? null,
-            'metadata' => $data['metadata'] ?? null,
+            'metadata' => $this->withAutoAccumulatedFlag($data['metadata'] ?? null, $autoAccumulated),
         ];
+    }
+
+    /**
+     * Aset saldo awal yang datang TANPA angka akumulasi penyusutan sama sekali
+     * (kunci tidak ada, atau null) minta dihitungkan sistem. Angka nol yang
+     * diketik user bukan permintaan itu -- ada aset warisan yang memang belum
+     * pernah disusutkan, dan menimpanya akan salah.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function wantsAutoAccumulatedDepreciation(array $data): bool
+    {
+        return ($data['source_type'] ?? null) === 'opening_import'
+            && ! isset($data['accumulated_depreciation']);
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $metadata
+     * @return array<string, mixed>|null
+     */
+    private function withAutoAccumulatedFlag(?array $metadata, bool $auto): ?array
+    {
+        $metadata ??= [];
+
+        if ($auto) {
+            $metadata['accumulated_depreciation_auto'] = true;
+        } else {
+            unset($metadata['accumulated_depreciation_auto'], $metadata['accumulated_depreciation_auto_computed']);
+        }
+
+        return $metadata === [] ? null : $metadata;
     }
 
     private function guardDate(string $date, string $action = 'post'): void
@@ -1013,9 +1140,55 @@ class FixedAssetService
         return $journal->refresh();
     }
 
+    /**
+     * Akun harga perolehan sebuah aset.
+     *
+     * Fallback `fixed_assets.cost` menunjuk akun Peralatan -- akun untuk aset
+     * yang DISUSUTKAN. Untuk kategori yang tidak pernah disusutkan (Tanah, Aset
+     * Dalam Penyelesaian, Goodwill) fallback itu bukan sekadar kurang tepat, ia
+     * salah kelas: nilai tanah mendarat di baris Peralatan pada neraca, dan
+     * satu-satunya cara ketahuan adalah ada orang membaca neraca lalu curiga
+     * kenapa Peralatan sebesar itu.
+     *
+     * Penjagaannya diletakkan di sini, bukan di validasi impor, karena di sini
+     * SELURUH jalur bertemu: impor saldo awal, form aset manual, kapitalisasi
+     * dari tagihan vendor, pelepasan, dan posting saldo awal. Penjagaan di lapis
+     * impor saja meninggalkan form manual tetap terbuka.
+     */
     private function assetAccount(FixedAsset $asset): int
     {
-        return (int) ($asset->category?->asset_account_id ?: $this->mapping('fixed_assets.cost', ['asset']));
+        $category = $asset->category;
+
+        if ($category?->asset_account_id) {
+            return (int) $category->asset_account_id;
+        }
+
+        if ($category !== null && ! $this->categoryDepreciates($category)) {
+            throw ApiException::make(
+                'FIXED_ASSET_CATEGORY_ACCOUNT_REQUIRED',
+                sprintf(
+                    'Kategori %s tidak disusutkan, jadi ia wajib punya Akun Aktiva sendiri dan tidak boleh memakai akun Peralatan. Buat akunnya di Daftar Akun, lalu petakan di Master Data → Kategori Aset Tetap → kolom Akun Aktiva.',
+                    $category->name,
+                ),
+                422,
+                ['fixed_asset_category_id' => [(int) $category->id]],
+            );
+        }
+
+        return (int) $this->mapping('fixed_assets.cost', ['asset']);
+    }
+
+    /**
+     * Kategori ini menghasilkan penyusutan/amortisasi atau tidak.
+     *
+     * Satu-satunya pembeda yang dipakai penjagaan akun lintas kelas. Sengaja
+     * memakai daftar positif, bukan menyenaraikan kode kategori: kategori buatan
+     * user yang `depreciation_type`-nya `none` atau `impairment_only` ikut
+     * terjaga tanpa perlu didaftarkan di mana pun.
+     */
+    private function categoryDepreciates(FixedAssetCategory $category): bool
+    {
+        return in_array((string) $category->depreciation_type, ['depreciation', 'amortization'], true);
     }
 
     private function clearingAccount(FixedAsset $asset): int
@@ -1023,16 +1196,52 @@ class FixedAssetService
         return (int) ($asset->category?->clearing_account_id ?: $this->mapping('fixed_assets.clearing', ['asset']));
     }
 
+    /**
+     * Fallback penyusutan memakai kunci kelas Peralatan, bukan kunci generik:
+     * `fixed_assets.accumulated_depreciation` / `.depreciation_expense` sudah
+     * dihapus karena menduplikasi field per kelas di halaman Pemetaan Akun.
+     * Akun defaultnya identik (1531 / 6172), jadi jurnal kategori yang kolom
+     * akunnya masih null tetap jatuh ke akun yang sama seperti sebelumnya.
+     */
     private function accumulatedAccount(FixedAsset $asset): int
     {
-        $key = $asset->depreciation_type === 'amortization' ? 'fixed_assets.accumulated_amortization' : 'fixed_assets.accumulated_depreciation';
+        $key = $asset->depreciation_type === 'amortization'
+            ? 'fixed_assets.accumulated_amortization'
+            : 'fixed_assets.equipment_accumulated_depreciation';
 
-        return (int) ($asset->category?->accumulated_depreciation_account_id ?: $this->mapping($key, ['asset']));
+        $category = $asset->category;
+
+        if ($category?->accumulated_depreciation_account_id) {
+            return (int) $category->accumulated_depreciation_account_id;
+        }
+
+        // Sisi kedua dari penjagaan yang sama. Kategori non-penyusutan tidak
+        // punya akun akumulasi dan memang tidak seharusnya punya, jadi fallback
+        // di sini akan membukukan "akumulasi penyusutan tanah" ke Akumulasi
+        // Penyusutan PERALATAN. Jalur ini hanya tercapai kalau asetnya benar-
+        // benar membawa akumulasi (seluruh pemanggil bergerbang `> 0`), dan
+        // akumulasi pada aset yang tidak disusutkan itu sendiri sudah keliru.
+        if ($category !== null && ! $this->categoryDepreciates($category)) {
+            throw ApiException::make(
+                'FIXED_ASSET_CATEGORY_ACCOUNT_REQUIRED',
+                sprintf(
+                    'Aset %s berkategori %s yang tidak disusutkan, tapi membawa akumulasi penyusutan. Angka itu tidak bisa dibukukan ke akun Akumulasi Penyusutan Peralatan — kosongkan akumulasinya, atau pindahkan aset ini ke kategori yang memang disusutkan.',
+                    $asset->name,
+                    $category->name,
+                ),
+                422,
+                ['fixed_asset_category_id' => [(int) $category->id]],
+            );
+        }
+
+        return (int) $this->mapping($key, ['asset']);
     }
 
     private function expenseAccount(FixedAsset $asset): int
     {
-        $key = $asset->depreciation_type === 'amortization' ? 'fixed_assets.amortization_expense' : 'fixed_assets.depreciation_expense';
+        $key = $asset->depreciation_type === 'amortization'
+            ? 'fixed_assets.amortization_expense'
+            : 'fixed_assets.equipment_depreciation_expense';
 
         return (int) ($asset->category?->depreciation_expense_account_id ?: $this->mapping($key, ['expense']));
     }

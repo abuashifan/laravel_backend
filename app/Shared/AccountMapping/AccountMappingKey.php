@@ -54,10 +54,6 @@ class AccountMappingKey
 
     public const FIXED_ASSETS_COST = 'fixed_assets.cost';
 
-    public const FIXED_ASSETS_ACCUMULATED_DEPRECIATION = 'fixed_assets.accumulated_depreciation';
-
-    public const FIXED_ASSETS_DEPRECIATION_EXPENSE = 'fixed_assets.depreciation_expense';
-
     public const FIXED_ASSETS_ACCUMULATED_AMORTIZATION = 'fixed_assets.accumulated_amortization';
 
     public const FIXED_ASSETS_AMORTIZATION_EXPENSE = 'fixed_assets.amortization_expense';
@@ -67,7 +63,8 @@ class AccountMappingKey
     public const FIXED_ASSETS_DISPOSAL_LOSS = 'fixed_assets.disposal_loss';
 
     // Fixed Assets -- per kelas aset. Optional: dipakai sebagai acuan akun
-    // kategori aset tetap; key generik di atas tetap jadi fallback posting.
+    // kategori aset tetap. Untuk penyusutan tidak ada lagi key generik --
+    // kelas Peralatan yang jadi fallback posting (lihat FixedAssetService).
     public const FIXED_ASSETS_VEHICLE_COST = 'fixed_assets.vehicle_cost';
 
     public const FIXED_ASSETS_VEHICLE_ACCUMULATED_DEPRECIATION = 'fixed_assets.vehicle_accumulated_depreciation';

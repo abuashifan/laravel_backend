@@ -5,12 +5,14 @@ namespace App\Modules\Imports\Services\Committers;
 use App\Modules\FixedAssets\Models\FixedAsset;
 use App\Modules\FixedAssets\Models\FixedAssetCategory;
 use App\Modules\FixedAssets\Services\FixedAssetService;
+use App\Modules\FixedAssets\Support\OpeningAccumulatedDepreciation;
 use App\Modules\Imports\Models\ImportBatch;
 use App\Modules\MasterData\Models\Department;
 use App\Modules\MasterData\Models\Project;
 use App\Modules\OpeningBalance\Models\OpeningBalanceBatch;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Models\CompanyModuleSetting;
+use App\Shared\Models\FiscalYear;
 use App\Shared\Tenant\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Schema;
@@ -43,12 +45,18 @@ use Throwable;
  * tanpa checkbox "belum punya aset tetap") DAN
  * `OpeningBalanceBatchService::openingFixedAssetTotals()`.
  */
-class FixedAssetOpeningImportCommitter implements ImportProfileCommitter
+class FixedAssetOpeningImportCommitter implements ImportProfileCommitter, ProvidesImportWarnings
 {
     use Concerns\NormalizesImportDates;
 
     /** Sejajar dengan aturan `in:` di `StoreFixedAssetRequest`. */
     private const ALLOWED_USEFUL_LIFE_YEARS = [4, 8, 10, 16, 20];
+
+    /** Hasil `prospectiveOpeningDate()`, di-cache: warnRow() dipanggil per baris. */
+    private ?string $openingDate = null;
+
+    /** @var array<string, FixedAssetCategory|null> */
+    private array $categoryCache = [];
 
     public function __construct(
         private readonly FixedAssetService $fixedAssetService,
@@ -83,8 +91,40 @@ class FixedAssetOpeningImportCommitter implements ImportProfileCommitter
         $project = trim((string) ($normalized['project'] ?? ''));
 
         // ── Category ────────────────────────────────────────────────────
-        if ($category !== '' && ! $this->findCategory($category) instanceof FixedAssetCategory) {
+        $resolvedCategory = $this->findCategory($category);
+
+        if ($category !== '' && ! $resolvedCategory instanceof FixedAssetCategory) {
             $errors['category'][] = "Kategori '{$category}' tidak ditemukan atau tidak aktif. Pakai kode kategori (mis. VEHICLE, IT_EQUIP) atau namanya persis seperti di halaman Kategori Aset Tetap.";
+        }
+
+        // Kategori yang TIDAK menyusut wajib punya Akun Aktiva sendiri.
+        //
+        // `FixedAssetService::assetAccount()` jatuh ke mapping global
+        // `fixed_assets.cost` saat kolom kategori null, dan mapping itu menunjuk
+        // akun Peralatan — akun untuk aset yang DISUSUTKAN. Untuk Tanah, Aset
+        // Dalam Penyelesaian, dan Goodwill (satu-satunya kategori bawaan yang
+        // `depreciation_type`-nya bukan depreciation/amortization) fallback itu
+        // bukan sekadar kurang tepat, ia salah kelas: pos neraca yang tidak pernah
+        // disusutkan tidak boleh mendarat di akun aset yang disusutkan.
+        //
+        // Sebelum penjagaan ini tidak ada satu pun galat yang terbit — tidak di
+        // pratinjau impor, tidak saat validasi saldo awal, tidak saat posting.
+        // Justru fallback yang BERFUNGSI itulah yang membuatnya senyap: kalau
+        // `fixed_assets.cost` ikut kosong, `mapping()` akan melempar
+        // ACCOUNT_MAPPING_MISSING dan user langsung tahu ada yang salah.
+        //
+        // Kategori yang menyusut sengaja TIDAK dijaga di sini: fallback ke akun
+        // Peralatan memang perilaku yang didokumentasikan (lihat docblock
+        // `accumulatedAccount()`), dan tenant yang baru dimigrasi belum memetakan
+        // satu pun kolom akun kategori — menolaknya akan memblokir seluruh impor
+        // pada perusahaan baru, bukan cuma kasus yang benar-benar salah.
+        if ($resolvedCategory instanceof FixedAssetCategory
+            && ! $resolvedCategory->asset_account_id
+            && ! in_array((string) $resolvedCategory->depreciation_type, ['depreciation', 'amortization'], true)) {
+            $errors['category'][] = sprintf(
+                'Kategori %s tidak disusutkan tapi belum punya Akun Aktiva sendiri, sehingga harga perolehannya akan jatuh ke akun Peralatan — akun untuk aset yang disusutkan. Buat akunnya di Daftar Akun, lalu petakan di Kategori Aset Tetap → kolom Akun Aktiva.',
+                $resolvedCategory->name,
+            );
         }
 
         // ── Acquisition Date ────────────────────────────────────────────
@@ -154,6 +194,106 @@ class FixedAssetOpeningImportCommitter implements ImportProfileCommitter
     }
 
     /**
+     * Peringatan pratinjau — semuanya sah untuk data warisan, jadi tidak ada
+     * yang menggagalkan baris. Yang dikejar di sini adalah salah ketik yang
+     * lolos semua aturan formal: umur 20 tahun untuk laptop, akumulasi satu
+     * digit meleset, aset yang sebenarnya pembelian baru dan bukan saldo awal.
+     *
+     * @param  array<string, string>  $normalized
+     * @return array<string, list<string>>
+     */
+    public function warnRow(ImportBatch $batch, array $normalized): array
+    {
+        $category = $this->findCategory(trim((string) ($normalized['category'] ?? '')));
+
+        if (! $category instanceof FixedAssetCategory) {
+            return [];
+        }
+
+        $warnings = [];
+        $depreciates = in_array((string) $category->depreciation_type, ['depreciation', 'amortization'], true);
+        $life = trim((string) ($normalized['useful_life_years'] ?? ''));
+        $accumulated = trim((string) ($normalized['accumulated_depreciation'] ?? ''));
+        $openingDate = $this->prospectiveOpeningDate();
+
+        // ── Umur manfaat ────────────────────────────────────────────────
+        if (! $depreciates) {
+            if ($life !== '') {
+                $warnings['useful_life_years'][] = sprintf(
+                    'Kategori %s tidak disusutkan, jadi Useful Life Years diabaikan.',
+                    $category->name,
+                );
+            }
+
+            if ($accumulated !== '' && (float) $accumulated > 0) {
+                $warnings['accumulated_depreciation'][] = sprintf(
+                    'Kategori %s tidak disusutkan, tapi baris ini membawa akumulasi penyusutan — angkanya tetap dibukukan ke akun akumulasi penyusutan saat saldo awal diposting.',
+                    $category->name,
+                );
+            }
+        } elseif ($life !== '' && $category->default_useful_life_years && (int) $life !== (int) $category->default_useful_life_years) {
+            // Bukan galat: dokumen menetapkan umur kategori sebagai SARAN yang
+            // boleh diubah user ("Category may suggest a default, but it must
+            // remain user-editable before capitalization"). Yang dikejar
+            // peringatan ini cuma salah ketik.
+            $warnings['useful_life_years'][] = sprintf(
+                'Umur manfaat %d tahun berbeda dari default kategori %s (%d tahun). Angka Anda tetap dipakai — pastikan memang begitu di pembukuan lama.',
+                (int) $life,
+                $category->name,
+                (int) $category->default_useful_life_years,
+            );
+        }
+
+        // ── Tanggal perolehan setelah tanggal saldo awal ────────────────
+        $acquisition = $this->parseImportDate(trim((string) ($normalized['acquisition_date'] ?? '')));
+        if ($acquisition instanceof CarbonImmutable && $acquisition->gt(CarbonImmutable::parse($openingDate))) {
+            $warnings['acquisition_date'][] = sprintf(
+                'Tanggal perolehan %s ada SETELAH tanggal saldo awal %s. Aset yang dibeli setelah saldo awal seharusnya masuk lewat tagihan pembelian, bukan impor aset tetap awal.',
+                $acquisition->format('d/m/Y'),
+                CarbonImmutable::parse($openingDate)->format('d/m/Y'),
+            );
+        }
+
+        // ── Akumulasi penyusutan ────────────────────────────────────────
+        if (! $depreciates) {
+            return $warnings;
+        }
+
+        $estimate = OpeningAccumulatedDepreciation::estimate(
+            (float) trim((string) ($normalized['acquisition_cost'] ?? '0')),
+            (float) trim((string) ($normalized['salvage_value'] ?? '0')),
+            $this->effectiveLifeYears($life, $category),
+            $this->normalizeDate(trim((string) ($normalized['service_start_date'] ?? ''))) ?: $this->normalizeDate(trim((string) ($normalized['acquisition_date'] ?? ''))),
+            $openingDate,
+        );
+
+        if ($estimate === null) {
+            return $warnings;
+        }
+
+        if ($accumulated === '') {
+            $warnings['accumulated_depreciation'][] = sprintf(
+                'Accumulated Depreciation dikosongkan, jadi sistem yang menghitungnya: %s per %s (garis lurus). Isi kolomnya kalau pembukuan lama memakai angka lain.',
+                $this->rupiah($estimate),
+                CarbonImmutable::parse($openingDate)->format('d/m/Y'),
+            );
+
+            return $warnings;
+        }
+
+        if (is_numeric($accumulated) && OpeningAccumulatedDepreciation::deviates((float) $accumulated, $estimate)) {
+            $warnings['accumulated_depreciation'][] = sprintf(
+                'Accumulated Depreciation %s menyimpang dari perkiraan garis lurus %s per %s. Angka Anda tetap dipakai — abaikan kalau pembukuan lama memang bukan garis lurus.',
+                $this->rupiah((float) $accumulated),
+                $this->rupiah($estimate),
+                CarbonImmutable::parse($openingDate)->format('d/m/Y'),
+            );
+        }
+
+        return $warnings;
+    }
+
+    /**
      * @return array<int, array{status: string, document_id: ?int, document_type: ?string, error: ?string}>
      */
     public function commit(ImportBatch $batch): array
@@ -214,6 +354,7 @@ class FixedAssetOpeningImportCommitter implements ImportProfileCommitter
         // semua klien saat mengosongkan kolomnya.
         $serviceStart = $this->normalizeDate(trim((string) ($n['service_start_date'] ?? ''))) ?: $acquisitionDate;
         $life = trim((string) ($n['useful_life_years'] ?? ''));
+        $accumulated = trim((string) ($n['accumulated_depreciation'] ?? ''));
         $quantity = trim((string) ($n['quantity'] ?? ''));
         $department = trim((string) ($n['department'] ?? ''));
         $project = trim((string) ($n['project'] ?? ''));
@@ -227,7 +368,10 @@ class FixedAssetOpeningImportCommitter implements ImportProfileCommitter
             'useful_life_years' => $life !== '' ? (int) $life : null,
             'quantity' => $quantity !== '' ? (float) $quantity : 1,
             'acquisition_cost' => (float) ($n['acquisition_cost'] ?? 0),
-            'accumulated_depreciation' => (float) ($n['accumulated_depreciation'] ?? 0),
+            // null, BUKAN 0, saat kolomnya kosong: nol berarti "aset ini belum
+            // pernah disusutkan", sementara kolom kosong berarti "hitungkan".
+            // `FixedAssetService` yang membedakan keduanya.
+            'accumulated_depreciation' => $accumulated !== '' ? (float) $accumulated : null,
             'salvage_value' => (float) ($n['salvage_value'] ?? 0),
             'department_id' => $department !== '' ? Department::query()->where('code', $department)->value('id') : null,
             'project_id' => $project !== '' ? Project::query()->where('code', $project)->value('id') : null,
@@ -251,6 +395,18 @@ class FixedAssetOpeningImportCommitter implements ImportProfileCommitter
             return null;
         }
 
+        // Di-cache karena tiap baris menanyakan kategorinya sampai tiga kali:
+        // sekali di validateRow(), sekali di warnRow(), sekali di commit() --
+        // dan berkas seribu baris umumnya hanya memakai segelintir kategori.
+        if (array_key_exists($value, $this->categoryCache)) {
+            return $this->categoryCache[$value];
+        }
+
+        return $this->categoryCache[$value] = $this->lookupCategory($value);
+    }
+
+    private function lookupCategory(string $value): ?FixedAssetCategory
+    {
         $category = FixedAssetCategory::query()->where('code', $value)->where('is_active', true)->first();
         if ($category instanceof FixedAssetCategory) {
             return $category;
@@ -268,6 +424,73 @@ class FixedAssetOpeningImportCommitter implements ImportProfileCommitter
             ->whereRaw('LOWER(name) = ?', [mb_strtolower($value)])
             ->where('is_active', true)
             ->first();
+    }
+
+    /**
+     * Umur manfaat yang benar-benar akan dipakai aset ini: yang diketik di
+     * berkas, atau default kategori kalau kolomnya kosong. Harus sejalan
+     * dengan `FixedAssetService::assetPayload()` — kalau tidak, perkiraan
+     * akumulasi yang diperingatkan di sini berbeda dari yang dihitung sistem.
+     */
+    private function effectiveLifeYears(string $life, FixedAssetCategory $category): ?int
+    {
+        if ($life !== '' && ctype_digit($life)) {
+            return (int) $life;
+        }
+
+        return $category->default_useful_life_years ? (int) $category->default_useful_life_years : null;
+    }
+
+    /**
+     * Tanggal saldo awal yang KEMUNGKINAN dipakai, untuk keperluan peringatan
+     * saja.
+     *
+     * Saat berkas diimpor, batch saldo awalnya sering belum ada — dan tanggal
+     * yang pasti baru diketahui saat batch itu diposting. Urutan tebakannya
+     * sama dengan yang dipakai `OpeningBalanceImportCommitter` ketika ia harus
+     * membuat batch sendiri (keputusan 7B-2): batch yang masih bisa diisi,
+     * lalu awal tahun fiskal aktif, lalu hari ini. Peringatan yang meleset
+     * karena tebakan ini tidak berbahaya — angka yang dipakai sistem tetap
+     * dihitung ulang saat posting.
+     */
+    private function prospectiveOpeningDate(): string
+    {
+        if ($this->openingDate !== null) {
+            return $this->openingDate;
+        }
+
+        if (Schema::connection('tenant')->hasTable('opening_balance_batches')) {
+            $batch = OpeningBalanceBatch::query()
+                ->whereIn('status', ['draft', 'reopened'])
+                ->orderByDesc('opening_date')
+                ->first();
+
+            if ($batch instanceof OpeningBalanceBatch && $batch->opening_date) {
+                return $this->openingDate = $batch->opening_date->toDateString();
+            }
+        }
+
+        $company = $this->tenantContext->company();
+        if ($company) {
+            $start = FiscalYear::query()
+                ->where('company_id', $company->id)
+                ->where('is_active', true)
+                ->orderByDesc('start_date')
+                ->value('start_date');
+
+            if ($start) {
+                return $this->openingDate = $start instanceof \DateTimeInterface
+                    ? $start->format('Y-m-d')
+                    : (string) $start;
+            }
+        }
+
+        return $this->openingDate = CarbonImmutable::now()->toDateString();
+    }
+
+    private function rupiah(float $amount): string
+    {
+        return number_format($amount, 2, ',', '.');
     }
 
     /**

@@ -3,6 +3,7 @@
 namespace App\Modules\Imports\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Imports\Models\ImportBatch;
 use App\Modules\Imports\Requests\StoreImportRequest;
 use App\Modules\Imports\Requests\UpdateImportMappingRequest;
 use App\Modules\Imports\Services\DuplicateImportFileException;
@@ -10,6 +11,7 @@ use App\Modules\Imports\Services\ImportBatchService;
 use App\Modules\Imports\Services\ImportTemplateService;
 use App\Shared\Api\ApiErrorCode;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Exceptions\ApiException;
 use App\Shared\Export\ExcelExportService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -121,7 +123,7 @@ class ImportController extends Controller
     private function assertProfileIn(string $profile, array $allowed, string $group): void
     {
         if (! in_array($profile, $allowed, true)) {
-            throw \App\Shared\Exceptions\ApiException::make(
+            throw ApiException::make(
                 ApiErrorCode::VALIDATION_ERROR,
                 "Profil '{$profile}' tidak termasuk dalam grup impor {$group}.",
                 422,
@@ -136,7 +138,7 @@ class ImportController extends Controller
      */
     public function exportErrors(string $uuid, ExcelExportService $excel): StreamedResponse
     {
-        $batch = \App\Modules\Imports\Models\ImportBatch::query()->where('uuid', $uuid)->firstOrFail();
+        $batch = ImportBatch::query()->where('uuid', $uuid)->firstOrFail();
 
         $rows = $batch->rows()
             ->where('status', 'invalid')
@@ -168,19 +170,20 @@ class ImportController extends Controller
         return $excel->downloadFromArray($data, $headers, "import-{$uuid}-errors");
     }
 
+    /**
+     * Templat diunduh sebagai .xlsx, bukan CSV: berkasnya langsung terbuka di
+     * Excel tanpa dialog impor teks, dan pembaca unggahan sudah menerima
+     * .xlsx (`SpreadsheetReaderFactory`) jadi berkas yang sama bisa diisi lalu
+     * dikirim balik apa adanya. CSV tetap boleh diunggah -- yang berubah cuma
+     * format unduhannya.
+     *
+     * Berkasnya berisi dua sheet: "Data" untuk diisi, dan "Referensi" berisi
+     * master data yang harus dicocokkan (kategori aset, kode akun, departemen,
+     * proyek) yang sekaligus jadi sumber dropdown di sheet Data. Lihat
+     * `ExcelExportService::downloadTemplate()`.
+     */
     public function template(string $profile): StreamedResponse
     {
-        $data = $this->templates->csv($profile);
-
-        return response()->streamDownload(function () use ($data): void {
-            $out = fopen('php://output', 'w');
-            fputcsv($out, $data['headers']);
-            foreach ($data['rows'] as $row) {
-                fputcsv($out, $row);
-            }
-            fclose($out);
-        }, $data['filename'], [
-            'Content-Type' => 'text/csv; charset=UTF-8',
-        ]);
+        return $this->excel->downloadTemplate($this->templates->template($profile));
     }
 }

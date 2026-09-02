@@ -552,8 +552,13 @@ class OpeningBalanceBatchService
             ];
         }
 
+        // Tanggal batch ikut dikirim: aset yang akumulasi penyusutannya
+        // dititipkan ke sistem baru punya angka setelah tanggal itu diketahui,
+        // dan pratinjau neraca pembuka harus memperlihatkan angka yang sama
+        // dengan yang nanti dibukukan posting.
         return $this->fixedAssetService->openingAssetTotals(
-            $batch->postedOrLocked() ? (int) $batch->id : null
+            $batch->postedOrLocked() ? (int) $batch->id : null,
+            $batch->opening_date?->toDateString(),
         );
     }
 

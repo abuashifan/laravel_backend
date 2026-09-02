@@ -260,8 +260,8 @@ class OpeningBalanceTest extends JournalTestCase
             'opening_balance.equity' => ['opening_balance', $equity],
             'fixed_assets.clearing' => ['fixed_assets', $fixedAssetCost],
             'fixed_assets.cost' => ['fixed_assets', $fixedAssetCost],
-            'fixed_assets.accumulated_depreciation' => ['fixed_assets', $fixedAssetAccumulated],
-            'fixed_assets.depreciation_expense' => ['fixed_assets', $expense],
+            'fixed_assets.equipment_accumulated_depreciation' => ['fixed_assets', $fixedAssetAccumulated],
+            'fixed_assets.equipment_depreciation_expense' => ['fixed_assets', $expense],
             'fixed_assets.disposal_gain' => ['fixed_assets', $revenue],
             'fixed_assets.disposal_loss' => ['fixed_assets', $expense],
         ] as $key => [$module, $accountId]) {

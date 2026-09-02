@@ -2,10 +2,13 @@
 
 namespace Tests\Feature\FixedAssets;
 
+use App\Modules\FixedAssets\Models\FixedAsset;
 use App\Modules\FixedAssets\Models\FixedAssetCategory;
 use App\Modules\FixedAssets\Services\FixedAssetCategoryAccountLinker;
+use App\Modules\FixedAssets\Services\FixedAssetService;
 use App\Modules\MasterData\Models\ChartOfAccount;
 use App\Modules\Setup\Services\CoaTemplateService;
+use App\Shared\Exceptions\ApiException;
 use App\Shared\Models\Company;
 use App\Shared\Models\CompanyUser;
 use App\Shared\Models\TenantDatabase;
@@ -66,19 +69,119 @@ class FixedAssetCategoryAccountLinkTest extends TestCase
         }
     }
 
-    public function test_non_depreciating_categories_stay_unlinked_on_purpose(): void
+    /**
+     * Dulu test ini bernama `..._stay_unlinked_on_purpose` dan menegaskan
+     * kebalikannya: ketiga kategori ini SENGAJA dibiarkan null supaya jatuh ke
+     * fallback `fixed_assets.cost`, "bukan diklaim ke akun Peralatan yang akan
+     * salah di neraca".
+     *
+     * Alasannya benar, obatnya yang keliru — fallback itu MENUNJUK akun
+     * Peralatan, jadi null menghasilkan tepat hasil yang hendak dihindari, cuma
+     * lewat pintu lain dan tanpa satu pun galat. Sekarang ketiganya punya akun
+     * sendiri di templat COA, jadi ia disambungkan seperti kelas lain.
+     */
+    public function test_non_depreciating_categories_are_wired_to_their_own_cost_accounts(): void
     {
         $this->setUpTenant();
         $this->applyTradingTemplate();
 
-        // Templat COA belum punya akun khusus Tanah / Aset Dalam Penyelesaian /
-        // Goodwill. Dibiarkan null supaya jatuh ke mapping generik, bukan
-        // diklaim ke akun Peralatan yang akan salah di neraca.
-        foreach (['LAND', 'CIP', 'GOODWILL'] as $code) {
+        $accountIdByCode = ChartOfAccount::query()->pluck('id', 'account_code');
+
+        foreach ([
+            'LAND' => '1500',
+            'CIP' => '1550',
+            'GOODWILL' => '1560',
+        ] as $code => $assetCode) {
             $category = FixedAssetCategory::query()->where('code', $code)->firstOrFail();
-            $this->assertNull($category->asset_account_id, "asset account {$code}");
+
+            $this->assertSame((int) $accountIdByCode[$assetCode], (int) $category->asset_account_id, "asset account {$code}");
+
+            // Tidak disusutkan, jadi tidak punya akun akumulasi maupun beban.
+            // Mengisinya justru akan menghidupkan kembali jalur salah kelas:
+            // akumulasi tanah mendarat di Akumulasi Penyusutan Peralatan.
             $this->assertNull($category->accumulated_depreciation_account_id, "accumulated account {$code}");
+            $this->assertNull($category->depreciation_expense_account_id, "expense account {$code}");
         }
+
+        // Akun Peralatan tetap milik kelas Peralatan saja.
+        $this->assertNotSame(
+            (int) $accountIdByCode['1530'],
+            (int) FixedAssetCategory::query()->where('code', 'LAND')->value('asset_account_id'),
+        );
+    }
+
+    /**
+     * Penjagaan intinya, dan alasan ia diletakkan di lapis resolusi akun.
+     *
+     * Tenant warisan yang COA-nya dibuat sebelum akun 1500/1550/1560 ada akan
+     * tetap punya kategori LAND tanpa akun. Sebelum penjagaan ini, asetnya
+     * diam-diam dibukukan ke akun Peralatan lewat fallback `fixed_assets.cost`
+     * — tidak ada galat di pratinjau impor, di validasi saldo awal, maupun saat
+     * posting. Sekarang ia gagal keras, dengan pesan yang menyebut apa yang
+     * harus disetel.
+     */
+    public function test_non_depreciating_category_without_account_refuses_the_equipment_fallback(): void
+    {
+        $this->setUpTenant();
+        $this->applyTradingTemplate();
+
+        // Simulasikan tenant warisan: akun Tanah dicabut, kategori kembali null.
+        FixedAssetCategory::query()->where('code', 'LAND')->update(['asset_account_id' => null]);
+
+        $land = FixedAssetCategory::query()->where('code', 'LAND')->firstOrFail();
+        FixedAsset::query()->create([
+            'name' => 'Tanah Gudang',
+            'fixed_asset_category_id' => $land->id,
+            'asset_class' => $land->asset_class,
+            'depreciation_type' => $land->depreciation_type,
+            'status' => 'draft',
+            'source_type' => 'opening_import',
+            'acquisition_date' => '2019-01-10',
+            'acquisition_cost' => 450000000,
+            'quantity' => 1,
+            'accumulated_depreciation' => 0,
+        ]);
+
+        try {
+            app(FixedAssetService::class)->openingAssetTotals(null, '2026-01-01');
+            $this->fail('Kategori non-penyusutan tanpa akun seharusnya ditolak, bukan jatuh ke akun Peralatan.');
+        } catch (ApiException $e) {
+            $this->assertSame('FIXED_ASSET_CATEGORY_ACCOUNT_REQUIRED', $e->codeName);
+            $this->assertStringContainsString('Akun Aktiva', $e->getMessage());
+        }
+    }
+
+    /**
+     * Sisi lain penjagaan yang sama: kategori yang MENYUSUT tetap boleh memakai
+     * fallback. Tenant yang baru dimigrasi belum memetakan satu pun kolom akun
+     * kategori, jadi menolak semuanya akan memblokir perusahaan baru — bukan
+     * cuma kasus yang benar-benar salah kelas.
+     */
+    public function test_depreciating_category_without_account_still_uses_the_fallback(): void
+    {
+        $this->setUpTenant();
+        $this->applyTradingTemplate();
+
+        FixedAssetCategory::query()->where('code', 'IT_EQUIP')->update(['asset_account_id' => null]);
+
+        $category = FixedAssetCategory::query()->where('code', 'IT_EQUIP')->firstOrFail();
+        FixedAsset::query()->create([
+            'name' => 'Laptop Kantor',
+            'fixed_asset_category_id' => $category->id,
+            'asset_class' => $category->asset_class,
+            'depreciation_type' => $category->depreciation_type,
+            'status' => 'draft',
+            'source_type' => 'opening_import',
+            'acquisition_date' => '2024-07-01',
+            'acquisition_cost' => 18000000,
+            'quantity' => 1,
+            'accumulated_depreciation' => 0,
+        ]);
+
+        $totals = app(FixedAssetService::class)->openingAssetTotals(null, '2026-01-01');
+
+        $equipment = (int) ChartOfAccount::query()->where('account_code', '1530')->value('id');
+        $this->assertSame([$equipment => 18000000.0], $totals['cost_by_account']);
     }
 
     public function test_linker_is_idempotent_and_never_overwrites_user_choices(): void

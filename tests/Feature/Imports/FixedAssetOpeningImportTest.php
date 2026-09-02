@@ -3,6 +3,7 @@
 namespace Tests\Feature\Imports;
 
 use App\Modules\FixedAssets\Models\FixedAsset;
+use App\Modules\FixedAssets\Models\FixedAssetCategory;
 use App\Modules\Imports\Models\ImportBatch;
 use App\Modules\Imports\Models\ImportRow;
 use App\Modules\Journal\Models\JournalEntry;
@@ -11,9 +12,11 @@ use App\Modules\MasterData\Models\ChartOfAccount;
 use App\Modules\Settings\Services\CompanySettingService;
 use App\Shared\Models\Company;
 use App\Shared\Models\CompanyUser;
+use App\Shared\Models\FiscalYear;
 use App\Shared\Models\TenantDatabase;
 use App\Shared\Models\User;
 use App\Shared\Tenant\TenantConnectionManager;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Artisan;
@@ -73,6 +76,59 @@ class FixedAssetOpeningImportTest extends TestCase
 
         $errors = $this->firstRowErrors($uuid);
         $this->assertStringContainsString('TIDAK_ADA', $errors['category'][0]);
+    }
+
+    /**
+     * Regresi: aset Tanah pernah lolos impor di perusahaan yang Daftar Akun-nya
+     * belum punya akun Tanah sama sekali, lalu dibukukan ke akun Peralatan lewat
+     * fallback `fixed_assets.cost` — tanpa galat di pratinjau impor, di validasi
+     * saldo awal, maupun saat posting. Satu-satunya cara ketahuan adalah ada
+     * orang membaca neraca dan curiga kenapa Peralatan sebesar itu.
+     */
+    public function test_non_depreciating_category_without_asset_account_is_rejected_at_preview(): void
+    {
+        Storage::fake('local');
+        $ctx = $this->setUpTenant();
+        $this->enableFixedAssets($ctx);
+        $this->seedAccountsAndCategories();
+
+        // CIP tidak menyusut dan seedernya sengaja tidak memetakan akunnya.
+        $uuid = $this->uploadAndMap($ctx, [
+            $this->headers(),
+            ['Perluasan Gudang Tahap 2', 'CIP', '01/09/2025', '120000000', '', '0', '', '1', '', '', '', ''],
+        ], expectedFailedRows: 1);
+
+        $errors = $this->firstRowErrors($uuid);
+        $this->assertStringContainsString('Akun Aktiva', $errors['category'][0]);
+
+        $this->assertSame(0, FixedAsset::query()->count());
+    }
+
+    /**
+     * Sisi lain penjagaan yang sama: kategori yang MENYUSUT tetap boleh memakai
+     * fallback akun Peralatan. Tenant yang baru dimigrasi belum memetakan satu
+     * pun kolom akun kategori, jadi menolaknya akan memblokir seluruh impor pada
+     * perusahaan baru — bukan cuma kasus yang benar-benar salah kelas.
+     */
+    public function test_depreciating_category_without_asset_account_still_imports(): void
+    {
+        Storage::fake('local');
+        $ctx = $this->setUpTenant();
+        $this->enableFixedAssets($ctx);
+        $this->seedAccountsAndCategories();
+
+        $this->assertNull(
+            FixedAssetCategory::query()->where('code', 'IT_EQUIP')->value('asset_account_id'),
+        );
+
+        $uuid = $this->uploadAndMap($ctx, [
+            $this->headers(),
+            ['Laptop Kantor', 'IT_EQUIP', '01/07/2024', '18000000', '0', '0', '4', '1', '', '', '', ''],
+        ]);
+
+        $this->postJson('/api/imports/'.$uuid.'/commit', [], $ctx['headers'])
+            ->assertOk()
+            ->assertJsonPath('data.committed_rows', 1);
     }
 
     public function test_category_can_be_matched_by_name_case_insensitively(): void
@@ -142,6 +198,129 @@ class FixedAssetOpeningImportTest extends TestCase
         $this->assertSame(0, FixedAsset::query()->count());
     }
 
+    public function test_useful_life_that_differs_from_category_default_warns_but_still_commits(): void
+    {
+        Storage::fake('local');
+        $ctx = $this->setUpTenant();
+        $this->enableFixedAssets($ctx);
+        $this->seedAccountsAndCategories();
+        $this->seedFiscalYear($ctx, '2026-01-01');
+
+        // VEHICLE default 8 tahun; berkasnya menyebut 10. Dokumen menetapkan
+        // umur kategori sebagai SARAN yang boleh diubah user, jadi barisnya
+        // wajib tetap valid -- yang berubah cuma ada peringatan.
+        $uuid = $this->uploadAndMap($ctx, [
+            $this->headers(),
+            ['Toyota Avanza', 'VEHICLE', '15/03/2023', '250000000', '85937500', '0', '10', '1', '15/03/2023', '', '', ''],
+        ]);
+
+        $warnings = $this->firstRowWarnings($uuid);
+        $this->assertArrayHasKey('useful_life_years', $warnings);
+        $this->assertStringContainsString('8 tahun', $warnings['useful_life_years'][0]);
+
+        // Barisnya tetap valid — peringatan tidak menggagalkan apa pun.
+        $batch = ImportBatch::query()->where('uuid', $uuid)->firstOrFail();
+        $this->assertSame(1, (int) $batch->valid_rows);
+        $this->assertSame(0, (int) $batch->failed_rows);
+        $this->assertSame(1, (int) $batch->warning_rows);
+
+        $this->postJson('/api/imports/'.$uuid.'/commit', [], $ctx['headers'])
+            ->assertOk()
+            ->assertJsonPath('data.committed_rows', 1);
+
+        $this->assertSame(10, (int) FixedAsset::query()->firstOrFail()->useful_life_years);
+    }
+
+    public function test_accumulated_depreciation_far_from_straight_line_is_warned(): void
+    {
+        Storage::fake('local');
+        $ctx = $this->setUpTenant();
+        $this->enableFixedAssets($ctx);
+        $this->seedAccountsAndCategories();
+        $this->seedFiscalYear($ctx, '2026-01-01');
+
+        // Garis lurus: 250jt / 96 bulan x 33 bulan (Apr 2023 s/d Des 2025)
+        // = 85.937.500. Berkasnya menyebut 10jt -- masih di bawah dasar
+        // penyusutan, jadi sah, tapi jauh dari perkiraan.
+        $uuid = $this->uploadAndMap($ctx, [
+            $this->headers(),
+            ['Toyota Avanza', 'VEHICLE', '15/03/2023', '250000000', '10000000', '0', '8', '1', '15/03/2023', '', '', ''],
+        ]);
+
+        $warnings = $this->firstRowWarnings($uuid);
+        $this->assertArrayHasKey('accumulated_depreciation', $warnings);
+        $this->assertStringContainsString('85.937.500', $warnings['accumulated_depreciation'][0]);
+    }
+
+    public function test_blank_accumulated_depreciation_is_flagged_for_system_calculation(): void
+    {
+        Storage::fake('local');
+        $ctx = $this->setUpTenant();
+        $this->enableFixedAssets($ctx);
+        $this->seedAccountsAndCategories();
+        $this->seedFiscalYear($ctx, '2026-01-01');
+
+        $uuid = $this->uploadAndMap($ctx, [
+            $this->headers(),
+            ['Toyota Avanza', 'VEHICLE', '15/03/2023', '250000000', '', '0', '8', '1', '15/03/2023', '', '', ''],
+        ]);
+
+        $this->assertStringContainsString(
+            '85.937.500',
+            $this->firstRowWarnings($uuid)['accumulated_depreciation'][0],
+        );
+
+        $this->postJson('/api/imports/'.$uuid.'/commit', [], $ctx['headers'])
+            ->assertOk()
+            ->assertJsonPath('data.committed_rows', 1);
+
+        // Angkanya belum diisi di sini: tanggal saldo awal baru pasti saat
+        // batchnya diposting. Yang tersimpan sekarang cuma penandanya.
+        $asset = FixedAsset::query()->firstOrFail();
+        $this->assertTrue((bool) ($asset->metadata['accumulated_depreciation_auto'] ?? false));
+        $this->assertEqualsWithDelta(0, (float) $asset->accumulated_depreciation, 0.001);
+    }
+
+    public function test_explicit_zero_accumulated_depreciation_is_not_treated_as_auto(): void
+    {
+        Storage::fake('local');
+        $ctx = $this->setUpTenant();
+        $this->enableFixedAssets($ctx);
+        $this->seedAccountsAndCategories();
+        $this->seedFiscalYear($ctx, '2026-01-01');
+
+        // Ada aset warisan yang memang belum pernah disusutkan. Nol yang
+        // diketik user harus bertahan sebagai nol, bukan diisi ulang sistem.
+        $uuid = $this->uploadAndMap($ctx, [
+            $this->headers(),
+            ['Tanah Kantor', 'LAND', '15/03/2023', '250000000', '0', '0', '', '1', '15/03/2023', '', '', ''],
+        ]);
+
+        $this->postJson('/api/imports/'.$uuid.'/commit', [], $ctx['headers'])->assertOk();
+
+        $asset = FixedAsset::query()->firstOrFail();
+        $this->assertFalse((bool) ($asset->metadata['accumulated_depreciation_auto'] ?? false));
+    }
+
+    public function test_acquisition_date_after_opening_date_is_warned(): void
+    {
+        Storage::fake('local');
+        $ctx = $this->setUpTenant();
+        $this->enableFixedAssets($ctx);
+        $this->seedAccountsAndCategories();
+        $this->seedFiscalYear($ctx, '2026-01-01');
+
+        $uuid = $this->uploadAndMap($ctx, [
+            $this->headers(),
+            ['Laptop Baru', 'IT_EQUIP', '01/07/2026', '18000000', '0', '0', '4', '1', '01/07/2026', '', '', ''],
+        ]);
+
+        $this->assertStringContainsString(
+            'tagihan pembelian',
+            $this->firstRowWarnings($uuid)['acquisition_date'][0],
+        );
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────
 
     private function headers(): array
@@ -181,6 +360,31 @@ class FixedAssetOpeningImportTest extends TestCase
         return $batch['uuid'];
     }
 
+    private function firstRowWarnings(string $uuid): array
+    {
+        $batchId = ImportBatch::query()->where('uuid', $uuid)->firstOrFail()->id;
+
+        return (array) ImportRow::query()->where('import_batch_id', $batchId)->firstOrFail()->warnings;
+    }
+
+    /**
+     * Peringatan yang membandingkan angka "per tanggal saldo awal" butuh
+     * tanggal itu. Saat impor batchnya sering belum ada, jadi committer jatuh
+     * ke awal tahun fiskal aktif -- yang ditanam di sini supaya perkiraannya
+     * tidak ikut bergeser mengikuti tanggal hari ini.
+     */
+    private function seedFiscalYear(array $ctx, string $startDate): void
+    {
+        FiscalYear::query()->create([
+            'company_id' => $ctx['company']->id,
+            'year' => (int) substr($startDate, 0, 4),
+            'start_date' => $startDate,
+            'end_date' => CarbonImmutable::parse($startDate)->addYear()->subDay()->toDateString(),
+            'status' => 'open',
+            'is_active' => true,
+        ]);
+    }
+
     private function firstRowErrors(string $uuid): array
     {
         $batchId = ImportBatch::query()->where('uuid', $uuid)->firstOrFail()->id;
@@ -207,9 +411,7 @@ class FixedAssetOpeningImportTest extends TestCase
         foreach ([
             'fixed_assets.cost' => $cost,
             'fixed_assets.clearing' => $cost,
-            'fixed_assets.accumulated_depreciation' => $accumulated,
             'fixed_assets.accumulated_amortization' => $accumulated,
-            'fixed_assets.depreciation_expense' => $expense,
             'fixed_assets.amortization_expense' => $expense,
             'fixed_assets.disposal_gain' => $revenue,
             'fixed_assets.disposal_loss' => $expense,
@@ -226,6 +428,16 @@ class FixedAssetOpeningImportTest extends TestCase
         // Kategori sendiri sudah ada dari migration tenant; yang dibutuhkan di
         // sini cuma mapping akunnya supaya FixedAssetService punya akun untuk
         // dijadikan fallback.
+        //
+        // Kecuali kategori yang TIDAK menyusut: fallback `fixed_assets.cost`
+        // menunjuk akun Peralatan, dan sejak validateRow() menolak kategori
+        // non-penyusutan tanpa akun sendiri, Tanah butuh akun aktivanya sendiri
+        // — sama seperti tenant sungguhan yang tersetel benar. Sebelum penjagaan
+        // itu ada, baris Tanah lolos hanya karena diam-diam dibukukan sebagai
+        // Peralatan.
+        FixedAssetCategory::query()->where('code', 'LAND')->update([
+            'asset_account_id' => $this->account('1500', 'Tanah', 'asset', 'debit'),
+        ]);
     }
 
     private function account(string $code, string $name, string $type, string $normalBalance): int

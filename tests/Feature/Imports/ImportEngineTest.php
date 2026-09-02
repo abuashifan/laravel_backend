@@ -17,6 +17,8 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
+use PhpOffice\PhpSpreadsheet\Cell\DataValidation;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Tests\TestCase;
@@ -235,13 +237,74 @@ class ImportEngineTest extends TestCase
         $this->assertSame(0, ImportBatch::query()->count());
     }
 
-    public function test_template_endpoint_streams_csv(): void
+    /**
+     * Templat diunduh sebagai .xlsx dan harus benar-benar terbaca kembali oleh
+     * pembaca unggahan -- berkas yang sama diisi user lalu dikirim balik, jadi
+     * header di dalamnya wajib persis sama dengan yang diumumkan endpoint
+     * profil (di situlah `column_map` otomatis dicocokkan).
+     */
+    public function test_template_endpoint_streams_a_readable_xlsx(): void
     {
         $ctx = $this->setUpTenant();
 
-        $this->getJson('/api/imports/templates/sales_invoice', $ctx['headers'])
+        $response = $this->getJson('/api/imports/templates/sales_invoice', $ctx['headers'])
             ->assertOk()
-            ->assertHeader('content-type', 'text/csv; charset=UTF-8');
+            ->assertHeader('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+
+        $this->assertStringContainsString('template-sales_invoice.xlsx', (string) $response->headers->get('content-disposition'));
+
+        $path = tempnam(sys_get_temp_dir(), 'tpl').'.xlsx';
+        file_put_contents($path, $response->streamedContent());
+
+        $sheet = IOFactory::load($path)->getActiveSheet()->toArray();
+        @unlink($path);
+
+        $expectedHeaders = (array) config('imports.profiles.sales_invoice.headers');
+        $this->assertSame($expectedHeaders, array_slice($sheet[0], 0, count($expectedHeaders)));
+        $this->assertSame('INV-20260811-001', $sheet[1][0]);
+    }
+
+    /**
+     * Templat profil yang kolomnya wajib cocok dengan master data ikut membawa
+     * daftarnya sendiri.
+     *
+     * Tanpa ini user hanya melihat satu contoh di baris pertama ('VEHICLE')
+     * dan harus menebak sisanya — penyebab paling sering baris impor ditolak
+     * dengan "kategori tidak ditemukan".
+     */
+    public function test_fixed_asset_template_carries_a_reference_sheet_and_dropdowns(): void
+    {
+        $ctx = $this->setUpTenant();
+
+        $response = $this->getJson('/api/imports/templates/fixed_asset_opening', $ctx['headers'])->assertOk();
+
+        $path = tempnam(sys_get_temp_dir(), 'tpl').'.xlsx';
+        file_put_contents($path, $response->streamedContent());
+        $spreadsheet = IOFactory::load($path);
+        @unlink($path);
+
+        // Sheet data WAJIB pertama: itu yang dibaca XlsxSpreadsheetReader saat
+        // berkasnya diisi lalu dikirim balik.
+        $data = $spreadsheet->getSheet(0);
+        $this->assertSame('Data', $data->getTitle());
+        $this->assertSame(
+            (array) config('imports.profiles.fixed_asset_opening.headers'),
+            array_slice($data->toArray()[0], 0, 12),
+        );
+
+        $reference = $spreadsheet->getSheetByName('Referensi');
+        $this->assertNotNull($reference);
+        $codes = array_column($reference->toArray(), 0);
+        $this->assertContains('VEHICLE', $codes);
+        $this->assertContains('IT_EQUIP', $codes);
+
+        // Kolom Category (B) dikunci ke daftar kategori di sheet Referensi.
+        $categoryValidation = $data->getCell('B2')->getDataValidation();
+        $this->assertSame(DataValidation::TYPE_LIST, $categoryValidation->getType());
+        $this->assertStringContainsString('Referensi', (string) $categoryValidation->getFormula1());
+
+        // Umur manfaat daftarnya tetap, jadi ditulis langsung di aturannya.
+        $this->assertSame('"4,8,10,16,20"', $data->getCell('G2')->getDataValidation()->getFormula1());
     }
 
     private function setUpTenant(string $role = 'owner'): array

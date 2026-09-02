@@ -188,7 +188,10 @@ return [
             'required' => true,
             'account_types' => ['asset'],
             'description' => 'Default inventory asset account.',
-            'default_account_codes' => ['1130', '1106.10'],
+            // 1130 lebih dulu karena di sebagian COA akun itu leaf. Di template
+            // gas_agent/trading/manufacture 1130 adalah induk, jadi resolusi
+            // default melewatinya dan jatuh ke akun anaknya.
+            'default_account_codes' => ['1130', '1131', '1133', '1106.10'],
             'visible_in_settings' => true,
             'settings_section' => 'Akun Standar Barang',
             'settings_order' => 110,
@@ -246,11 +249,20 @@ return [
         /*
          * Key generik di bawah ini adalah FALLBACK terakhir saat kategori aset
          * (`fixed_asset_categories.*_account_id`) belum mengisi akunnya sendiri --
-         * lihat FixedAssetService::resolve*Account(). Defaultnya menunjuk kelas
+         * lihat FixedAssetService::assetAccount() dkk. Defaultnya menunjuk kelas
          * Peralatan karena akun induk `15` tidak bisa dipakai transaksi, jadi
-         * fallback wajib akun leaf. Kode lama (1520/1521/1511/6170) tetap ada di
-         * daftar supaya tenant yang menerapkan template versi sebelumnya tidak
+         * fallback wajib akun leaf. Kode lama (1520/1510) tetap ada di daftar
+         * supaya tenant yang menerapkan template versi sebelumnya tidak
          * kehilangan pemetaan.
+         *
+         * Pasangan penyusutan generiknya (`accumulated_depreciation` dan
+         * `depreciation_expense`) SENGAJA TIDAK ADA di sini: keduanya sudah
+         * dipecah per kelas aset di bawah, dan membiarkannya berdampingan
+         * membuat halaman Pemetaan Akun menampilkan dua field untuk akun yang
+         * sama. Fallback-nya sekarang kunci kelas Peralatan -- akun default
+         * yang sama persis (1531 / 6172) dengan yang dipakai key generik itu.
+         * Amortisasi belum dipecah selain Perangkat Lunak, jadi generiknya
+         * masih dipertahankan.
          */
         'fixed_assets.cost' => [
             'module' => 'fixed_assets',
@@ -262,28 +274,6 @@ return [
             'visible_in_settings' => true,
             'settings_section' => 'Aset Tetap',
             'settings_order' => 310,
-        ],
-        'fixed_assets.accumulated_depreciation' => [
-            'module' => 'fixed_assets',
-            'label' => 'Akumulasi Penyusutan (Default)',
-            'required' => true,
-            'account_types' => ['asset'],
-            'description' => 'Fallback contra asset account for accumulated depreciation.',
-            'default_account_codes' => ['1531', '1521', '1511'],
-            'visible_in_settings' => true,
-            'settings_section' => 'Aset Tetap',
-            'settings_order' => 320,
-        ],
-        'fixed_assets.depreciation_expense' => [
-            'module' => 'fixed_assets',
-            'label' => 'Beban Penyusutan (Default)',
-            'required' => true,
-            'account_types' => ['expense'],
-            'description' => 'Fallback depreciation expense account.',
-            'default_account_codes' => ['6172', '6170'],
-            'visible_in_settings' => true,
-            'settings_section' => 'Aset Tetap',
-            'settings_order' => 330,
         ],
         'fixed_assets.accumulated_amortization' => [
             'module' => 'fixed_assets',
@@ -472,6 +462,56 @@ return [
             'visible_in_settings' => true,
             'settings_section' => 'Aset Tetap',
             'settings_order' => 432,
+        ],
+
+        /*
+         * Kelas aset tetap yang TIDAK disusutkan.
+         *
+         * Ketiganya hanya punya akun harga perolehan -- tidak ada akumulasi dan
+         * tidak ada beban, karena memang tidak pernah disusutkan. Itu sebabnya
+         * ia tidak boleh memakai fallback `fixed_assets.cost`: fallback itu
+         * menunjuk akun Peralatan, akun untuk aset yang DISUSUTKAN, sehingga
+         * nilai tanah mendarat di baris Peralatan pada neraca.
+         *
+         * `required` sengaja false supaya wizard tidak terblokir bagi klien yang
+         * tidak punya tanah/CIP/goodwill sama sekali. Yang menegakkan aturannya
+         * bukan flag ini, melainkan `FixedAssetService::assetAccount()`: ia
+         * menolak melayani kategori non-penyusutan yang akunnya belum disetel,
+         * jadi kegagalannya muncul tepat pada perusahaan yang benar-benar punya
+         * asetnya -- bukan pada semua orang.
+         */
+        'fixed_assets.land_cost' => [
+            'module' => 'fixed_assets',
+            'label' => 'Akun Tanah',
+            'required' => false,
+            'account_types' => ['asset'],
+            'description' => 'Cost account for land. Land is never depreciated, so it has no accumulated or expense account.',
+            'default_account_codes' => ['1500'],
+            'visible_in_settings' => true,
+            'settings_section' => 'Aset Tetap',
+            'settings_order' => 440,
+        ],
+        'fixed_assets.construction_in_progress_cost' => [
+            'module' => 'fixed_assets',
+            'label' => 'Akun Aset Dalam Penyelesaian',
+            'required' => false,
+            'account_types' => ['asset'],
+            'description' => 'Cost account for construction in progress. Not depreciated until the asset is placed in service.',
+            'default_account_codes' => ['1550'],
+            'visible_in_settings' => true,
+            'settings_section' => 'Aset Tetap',
+            'settings_order' => 450,
+        ],
+        'fixed_assets.goodwill_cost' => [
+            'module' => 'fixed_assets',
+            'label' => 'Akun Goodwill',
+            'required' => false,
+            'account_types' => ['asset'],
+            'description' => 'Cost account for goodwill. Tested for impairment rather than amortized.',
+            'default_account_codes' => ['1560'],
+            'visible_in_settings' => true,
+            'settings_section' => 'Aset Tetap',
+            'settings_order' => 460,
         ],
 
         'cash_bank.default_cash' => [

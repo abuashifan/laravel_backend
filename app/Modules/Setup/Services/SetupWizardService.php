@@ -55,6 +55,7 @@ class SetupWizardService
             'state' => $this->serializeState($state),
             'steps' => $this->buildSteps($state),
             'gate' => $this->gate($state),
+            'opening_fixed_assets' => $this->openingFixedAssetsGate($state),
         ];
     }
 
@@ -66,6 +67,7 @@ class SetupWizardService
             'steps' => $this->buildSteps($state),
             'state' => $this->serializeState($state),
             'gate' => $this->gate($state),
+            'opening_fixed_assets' => $this->openingFixedAssetsGate($state),
         ];
     }
 
@@ -86,6 +88,36 @@ class SetupWizardService
             'is_finalized' => $isFinalized,
             'has_operational_data' => $hasOperationalData,
             'initial_setup_available' => ! $isFinalized && ! $hasOperationalData,
+        ];
+    }
+
+    /**
+     * Jawaban tunggal untuk pertanyaan "boleh belum mengisi saldo awal?".
+     *
+     * Aset tetap awal harus beres lebih dulu: baris harga perolehan dan
+     * akumulasi penyusutan di batch saldo awal dihasilkan otomatis dari register
+     * aset (`OpeningBalanceBatchService::fixedAssetSystemLines()`), jadi saldo
+     * awal yang diisi duluan mengunci neraca pembuka pada angka tanpa aset.
+     * Aturan yang sama ditegakkan di jalur impor oleh
+     * `OpeningBalanceImportCommitter::openingFixedAssetsPrecondition()`.
+     *
+     * `settled` memakai dua syarat yang persis sama dengan
+     * `validateOpeningFixedAssets()` — disatukan di sini supaya wizard dan
+     * halaman impor tidak pernah menampilkan dua kesimpulan berbeda.
+     *
+     * @return array{module_enabled: bool, imported_count: int, confirmed_none: bool, settled: bool}
+     */
+    private function openingFixedAssetsGate(CompanySetupState $state): array
+    {
+        $enabled = $this->fixedAssetsEnabled();
+        $importedCount = $enabled ? $this->openingFixedAssetTotals()['count'] : 0;
+        $confirmedNone = (bool) (((array) $state->metadata)['opening_fixed_assets_confirmed_none'] ?? false);
+
+        return [
+            'module_enabled' => $enabled,
+            'imported_count' => $importedCount,
+            'confirmed_none' => $confirmedNone,
+            'settled' => ! $enabled || $importedCount > 0 || $confirmedNone,
         ];
     }
 

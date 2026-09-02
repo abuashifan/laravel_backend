@@ -70,8 +70,25 @@ class FixedAssetReportService
         $register = $this->registerSnapshot($period);
         $registerCost = (float) $register->sum('acquisition_cost');
         $registerAccumulated = (float) $register->sum('accumulated_depreciation_until_period');
-        $costAccounts = $this->mappingAccountIds(['fixed_assets.cost']);
-        $accumulatedAccounts = $this->mappingAccountIds(['fixed_assets.accumulated_depreciation', 'fixed_assets.accumulated_amortization']);
+        // Kunci per kelas ikut didaftar karena jurnal penyusutan memakai akun
+        // kategori aset (kendaraan/gedung/peralatan/software), bukan akun
+        // generik. Kunci generik penyusutan sudah dihapus -- yang tersisa cuma
+        // cost dan amortisasi -- jadi tanpa daftar per kelas ini saldo GL yang
+        // dibandingkan kosong dan rekonsiliasi selalu selisih.
+        $costAccounts = $this->mappingAccountIds([
+            'fixed_assets.cost',
+            'fixed_assets.vehicle_cost',
+            'fixed_assets.building_cost',
+            'fixed_assets.equipment_cost',
+            'fixed_assets.software_cost',
+        ]);
+        $accumulatedAccounts = $this->mappingAccountIds([
+            'fixed_assets.accumulated_amortization',
+            'fixed_assets.vehicle_accumulated_depreciation',
+            'fixed_assets.building_accumulated_depreciation',
+            'fixed_assets.equipment_accumulated_depreciation',
+            'fixed_assets.software_accumulated_amortization',
+        ]);
         $glCost = $this->glBalance($costAccounts, $asOfDate, normalDebit: true);
         $glAccumulated = $this->glBalance($accumulatedAccounts, $asOfDate, normalDebit: false);
 

@@ -111,8 +111,8 @@ class FixedAssetServiceLifecycleTest extends JournalTestCase
         foreach ([
             'fixed_assets.clearing' => $assetAccount->id,
             'fixed_assets.cost' => $assetAccount->id,
-            'fixed_assets.accumulated_depreciation' => $assetAccount->id,
-            'fixed_assets.depreciation_expense' => $expenseAccount->id,
+            'fixed_assets.equipment_accumulated_depreciation' => $assetAccount->id,
+            'fixed_assets.equipment_depreciation_expense' => $expenseAccount->id,
             'fixed_assets.disposal_gain' => $revenueAccount->id,
             'fixed_assets.disposal_loss' => $expenseAccount->id,
         ] as $key => $accountId) {

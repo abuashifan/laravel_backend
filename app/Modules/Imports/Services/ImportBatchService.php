@@ -6,6 +6,7 @@ use App\Jobs\ImportBatchJob;
 use App\Modules\Imports\Models\ImportBatch;
 use App\Modules\Imports\Models\ImportRow;
 use App\Modules\Imports\Services\Committers\ImportCommitterFactory;
+use App\Modules\Imports\Services\Committers\ProvidesImportWarnings;
 use App\Shared\Api\ApiErrorCode;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Subscription\StorageQuotaService;
@@ -115,23 +116,33 @@ class ImportBatchService
                     'column_map' => $normalizedMap,
                     'valid_rows' => 0,
                     'failed_rows' => 0,
+                    'warning_rows' => 0,
                     'error_message' => null,
                 ]);
                 $batch->rows()->delete();
 
                 $validRows = 0;
                 $failedRows = 0;
+                $warningRows = 0;
 
                 foreach ($reader->rows($path) as $rowNumber => $raw) {
                     $normalized = $this->normalizeRow($raw, $normalizedMap);
                     $externalRef = $this->externalRef($normalized);
                     $errors = $this->validateRow($batch, $normalized, $externalRef, $requiredFields);
                     $status = $errors === [] ? 'valid' : 'invalid';
+                    // Peringatan hanya dihitung untuk baris yang lolos: pada
+                    // baris yang sudah gagal ia cuma menambah kebisingan di
+                    // sebelah galat yang sudah menjelaskan masalahnya.
+                    $warnings = $status === 'valid' ? $this->warnRow($batch, $normalized) : [];
 
                     if ($status === 'valid') {
                         $validRows++;
                     } else {
                         $failedRows++;
+                    }
+
+                    if ($warnings !== []) {
+                        $warningRows++;
                     }
 
                     ImportRow::query()->create([
@@ -142,6 +153,7 @@ class ImportBatchService
                         'normalized' => $normalized,
                         'status' => $status,
                         'errors' => $errors,
+                        'warnings' => $warnings,
                         'external_ref' => $externalRef,
                     ]);
                 }
@@ -150,6 +162,7 @@ class ImportBatchService
                     'status' => 'previewed',
                     'valid_rows' => $validRows,
                     'failed_rows' => $failedRows,
+                    'warning_rows' => $warningRows,
                 ]);
             });
         } catch (ApiException $exception) {
@@ -381,6 +394,32 @@ class ImportBatchService
         return $normalized;
     }
 
+    /**
+     * Peringatan tingkat baris — hal yang MUNGKIN salah tapi tetap boleh
+     * di-commit. Tidak pernah mengubah status baris.
+     *
+     * Profil yang tidak mengimplementasikan `ProvidesImportWarnings` tidak
+     * punya peringatan sama sekali, dan itu wajar: kebanyakan profil master
+     * data hanya mengenal benar/salah.
+     *
+     * @param  array<string, string>  $normalized
+     * @return array<string, list<string>>
+     */
+    private function warnRow(ImportBatch $batch, array $normalized): array
+    {
+        if (! $this->committers->has($batch->profile)) {
+            return [];
+        }
+
+        $committer = $this->committers->make($batch->profile);
+
+        if (! $committer instanceof ProvidesImportWarnings) {
+            return [];
+        }
+
+        return $committer->warnRow($batch, $normalized);
+    }
+
     private function validateRow(ImportBatch $batch, array $normalized, ?string $externalRef, array $requiredFields): array
     {
         $errors = [];
@@ -549,6 +588,7 @@ class ImportBatchService
             'total_rows' => $batch->total_rows,
             'valid_rows' => $batch->valid_rows,
             'failed_rows' => $batch->failed_rows,
+            'warning_rows' => $batch->warning_rows,
             'committed_rows' => $batch->committed_rows,
             'error_message' => $batch->error_message,
             'created_by' => $batch->created_by,

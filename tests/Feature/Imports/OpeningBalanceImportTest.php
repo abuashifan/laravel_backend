@@ -2,12 +2,16 @@
 
 namespace Tests\Feature\Imports;
 
+use App\Modules\FixedAssets\Models\FixedAsset;
+use App\Modules\FixedAssets\Models\FixedAssetCategory;
 use App\Modules\Imports\Models\ImportBatch;
 use App\Modules\Imports\Models\ImportRow;
 use App\Modules\MasterData\Models\AccountMapping;
 use App\Modules\MasterData\Models\ChartOfAccount;
 use App\Modules\OpeningBalance\Models\OpeningBalanceBatch;
+use App\Modules\Settings\Services\CompanySettingService;
 use App\Shared\Models\Company;
+use App\Shared\Models\CompanySetupState;
 use App\Shared\Models\CompanyUser;
 use App\Shared\Models\TenantDatabase;
 use App\Shared\Models\User;
@@ -208,6 +212,127 @@ class OpeningBalanceImportTest extends TestCase
 
     // ── Helpers ──────────────────────────────────────────────────────────
 
+    /**
+     * Urutan wajib: aset tetap awal DULU, saldo awal belakangan.
+     *
+     * Baris harga perolehan & akumulasi penyusutan di batch saldo awal lahir
+     * otomatis dari register aset, jadi berkas saldo awal yang masuk lebih dulu
+     * akan mengunci neraca pembuka pada angka tanpa aset -- dan impor asetnya
+     * ditolak begitu saldo awal diposting. Ditolak di titik paling awal yang
+     * masih bisa diperbaiki tanpa reopen.
+     */
+    public function test_import_is_blocked_when_fixed_assets_enabled_but_opening_assets_missing(): void
+    {
+        Storage::fake('local');
+        $ctx = $this->setUpTenant();
+        $this->seedAccounts();
+        app(CompanySettingService::class)->updateModuleSetting($ctx['company'], ['fixed_asset_enabled' => true]);
+
+        $uuid = $this->uploadAndMap($ctx, [
+            ['Account Code', 'Description', 'Debit', 'Credit'],
+            ['1101', 'Saldo awal kas', '5000000', '0'],
+            ['3100', 'Modal disetor', '0', '5000000'],
+        ], expectedFailedRows: 2);
+
+        $errors = $this->firstRowErrors($uuid);
+        $this->assertStringContainsString('aset tetap awal belum diimpor', $errors['account_code'][0]);
+
+        // Tidak ada baris valid sama sekali -- commit ditolak, batch saldo awal
+        // tidak pernah dibuat.
+        $this->postJson('/api/imports/'.$uuid.'/commit', [], $ctx['headers'])->assertStatus(422);
+        $this->assertSame(0, OpeningBalanceBatch::query()->count());
+    }
+
+    public function test_import_proceeds_once_opening_fixed_assets_are_registered(): void
+    {
+        Storage::fake('local');
+        $ctx = $this->setUpTenant();
+        $this->seedAccounts();
+        app(CompanySettingService::class)->updateModuleSetting($ctx['company'], ['fixed_asset_enabled' => true]);
+        $this->registerOpeningAsset();
+
+        $uuid = $this->uploadAndMap($ctx, [
+            ['Account Code', 'Description', 'Debit', 'Credit'],
+            ['1101', 'Saldo awal kas', '5000000', '0'],
+        ]);
+
+        $this->postJson('/api/imports/'.$uuid.'/commit', [], $ctx['headers'])
+            ->assertOk()
+            ->assertJsonPath('data.committed_rows', 1);
+    }
+
+    /**
+     * Jalan keluar kedua, sama persis dengan yang diterima
+     * `SetupWizardService::validateOpeningFixedAssets()`: perusahaan yang modul
+     * Aktiva Tetapnya aktif tapi memang tidak punya aset warisan. Tanpa jalur
+     * ini, mengaktifkan modul akan mengunci impor saldo awal selamanya.
+     */
+    public function test_import_proceeds_when_absence_of_opening_fixed_assets_is_confirmed(): void
+    {
+        Storage::fake('local');
+        $ctx = $this->setUpTenant();
+        $this->seedAccounts();
+        app(CompanySettingService::class)->updateModuleSetting($ctx['company'], ['fixed_asset_enabled' => true]);
+
+        $this->postJson('/api/setup/validate-step', [
+            'step' => 'opening_fixed_assets',
+            'confirm_no_opening_fixed_assets' => true,
+        ], $ctx['headers'])->assertOk();
+
+        $this->assertTrue(
+            (bool) ((array) CompanySetupState::query()->where('company_id', $ctx['company']->id)->firstOrFail()->metadata)['opening_fixed_assets_confirmed_none']
+        );
+
+        $uuid = $this->uploadAndMap($ctx, [
+            ['Account Code', 'Description', 'Debit', 'Credit'],
+            ['1101', 'Saldo awal kas', '5000000', '0'],
+        ]);
+
+        $this->postJson('/api/imports/'.$uuid.'/commit', [], $ctx['headers'])
+            ->assertOk()
+            ->assertJsonPath('data.committed_rows', 1);
+    }
+
+    /** Modul Aktiva Tetap mati -- gerbang urutan tidak berlaku sama sekali. */
+    public function test_import_is_unaffected_when_fixed_asset_module_is_disabled(): void
+    {
+        Storage::fake('local');
+        $ctx = $this->setUpTenant();
+        $this->seedAccounts();
+
+        $uuid = $this->uploadAndMap($ctx, [
+            ['Account Code', 'Description', 'Debit', 'Credit'],
+            ['1101', 'Saldo awal kas', '5000000', '0'],
+        ]);
+
+        $this->postJson('/api/imports/'.$uuid.'/commit', [], $ctx['headers'])
+            ->assertOk()
+            ->assertJsonPath('data.committed_rows', 1);
+    }
+
+    /**
+     * Satu baris register aset warisan. Ditulis langsung ke model, bukan lewat
+     * impor aset: yang diuji di kelas ini adalah gerbangnya, bukan committer
+     * aset tetap (itu punya FixedAssetOpeningImportTest sendiri).
+     */
+    private function registerOpeningAsset(): void
+    {
+        $category = FixedAssetCategory::query()->where('code', 'IT_EQUIP')->firstOrFail();
+
+        FixedAsset::query()->create([
+            'name' => 'Laptop Warisan',
+            'fixed_asset_category_id' => $category->id,
+            'asset_class' => $category->asset_class,
+            'depreciation_type' => $category->depreciation_type,
+            'status' => 'draft',
+            'acquisition_date' => '2024-07-01',
+            'acquisition_cost' => 18000000,
+            'accumulated_depreciation' => 4500000,
+            'net_book_value' => 13500000,
+            'source_type' => 'opening_import',
+        ]);
+    }
+
     private function uploadAndMap(array $ctx, array $rows, int $expectedFailedRows = 0): string
     {
         $batch = $this->postJson('/api/imports', [
@@ -248,7 +373,7 @@ class OpeningBalanceImportTest extends TestCase
         foreach ([
             'opening_balance.equity' => ['opening_balance', $equity],
             'fixed_assets.cost' => ['fixed_assets', $faCost],
-            'fixed_assets.accumulated_depreciation' => ['fixed_assets', $faAccumulated],
+            'fixed_assets.equipment_accumulated_depreciation' => ['fixed_assets', $faAccumulated],
         ] as $key => [$module, $accountId]) {
             AccountMapping::query()->updateOrCreate(
                 ['mapping_key' => $key],

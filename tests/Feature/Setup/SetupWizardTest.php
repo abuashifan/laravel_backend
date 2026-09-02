@@ -204,6 +204,46 @@ class SetupWizardTest extends JournalTestCase
         $response->assertJsonPath('data.state.status', 'finalized');
     }
 
+    /**
+     * Gerbang urutan "aset tetap awal dulu" yang dibaca Step 6 wizard untuk
+     * mengunci tombol impor saldo awal. Aturan yang sama ditegakkan di jalur
+     * impor oleh `OpeningBalanceImportCommitter`; field ini ada supaya UI tidak
+     * menyimpulkan sendiri dan berakhir beda pendapat dengan backend.
+     */
+    public function test_status_exposes_opening_fixed_assets_ordering_gate(): void
+    {
+        $ctx = $this->setUpTenant(role: 'owner');
+
+        // Modul mati -> gerbang terbuka; layar saldo awal tidak mengunci apa pun.
+        $this->getJson('/api/setup/status', $ctx['headers'])
+            ->assertOk()
+            ->assertJsonPath('data.opening_fixed_assets.module_enabled', false)
+            ->assertJsonPath('data.opening_fixed_assets.settled', true);
+
+        CompanyModuleSetting::query()->updateOrCreate(
+            ['company_id' => $ctx['company']->id],
+            ['fixed_asset_enabled' => true],
+        );
+
+        // Modul hidup, register kosong, belum dikonfirmasi -> terkunci.
+        $this->getJson('/api/setup/status', $ctx['headers'])
+            ->assertOk()
+            ->assertJsonPath('data.opening_fixed_assets.module_enabled', true)
+            ->assertJsonPath('data.opening_fixed_assets.imported_count', 0)
+            ->assertJsonPath('data.opening_fixed_assets.confirmed_none', false)
+            ->assertJsonPath('data.opening_fixed_assets.settled', false);
+
+        $this->postJson('/api/setup/validate-step', [
+            'step' => 'opening_fixed_assets',
+            'confirm_no_opening_fixed_assets' => true,
+        ], $ctx['headers'])->assertOk();
+
+        $this->getJson('/api/setup/status', $ctx['headers'])
+            ->assertOk()
+            ->assertJsonPath('data.opening_fixed_assets.confirmed_none', true)
+            ->assertJsonPath('data.opening_fixed_assets.settled', true);
+    }
+
     public function test_finalized_setup_cannot_be_downgraded_by_stale_current_step_request(): void
     {
         $ctx = $this->setUpTenant(role: 'owner');
@@ -257,8 +297,10 @@ class SetupWizardTest extends JournalTestCase
     }
 
     /**
-     * Mengaktifkan modul Aktiva Tetap membuat 6 mapping key `fixed_assets.*`
-     * jadi wajib (lihat AccountMappingHealthTest / config/account_mappings.php).
+     * Mengaktifkan modul Aktiva Tetap membuat 4 mapping key `fixed_assets.*`
+     * jadi wajib (lihat AccountMappingHealthTest / config/account_mappings.php);
+     * kunci penyusutan per kelas ikut diisi di sini karena jadi fallback posting
+     * setelah kunci generiknya dihapus.
      * Di wizard sungguhan ini terisi otomatis lewat
      * AccountMappingStorageService::syncDefaultMappingsFromConfig() setelah
      * Step3 menerapkan template COA -- di sini diisi manual karena test tidak
@@ -276,8 +318,8 @@ class SetupWizardTest extends JournalTestCase
         foreach ([
             'fixed_assets.clearing' => $asset,
             'fixed_assets.cost' => $cost,
-            'fixed_assets.accumulated_depreciation' => $accumulated,
-            'fixed_assets.depreciation_expense' => $expense,
+            'fixed_assets.equipment_accumulated_depreciation' => $accumulated,
+            'fixed_assets.equipment_depreciation_expense' => $expense,
             'fixed_assets.disposal_gain' => $gain,
             'fixed_assets.disposal_loss' => $loss,
         ] as $key => $accountId) {
