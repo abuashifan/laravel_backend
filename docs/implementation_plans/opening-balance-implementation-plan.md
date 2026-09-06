@@ -1,8 +1,23 @@
 # Opening Balance Implementation Plan
 
 Date: 2026-06-15
-Status: planning
+Status: **SUPERSEDED (2026-09-06)** — historis, jangan diikuti untuk pekerjaan baru
 Context source: `docs/accounting-setup-and-fixed-assets-context.md`
+
+> ⚠️ **Model batch yang dijelaskan dokumen ini sudah dibongkar.**
+>
+> Fase 8 (`Finlite_knowladge/plans/data-import/phase-8-perantara-saldo-awal.md`)
+> menghapus `opening_balance_batches`/`_lines` beserta enam statusnya dan seluruh
+> alur validate → post → lock → reopen. Saldo awal sekarang adalah **jurnal biasa**
+> ber-`source_module = 'opening_balance'`: satu berkas impor → satu jurnal, dan
+> selisihnya jatuh ke akun perantara `3900` (mapping `opening_balance.clearing`)
+> yang ditutup ke ekuitas lewat `POST /opening-balance/close-clearing`.
+>
+> Aset tetap awal tidak lagi menghasilkan baris sistem di saldo awal — impornya
+> hanya mendaftar kartu aset, dan urutan kedua impor bebas.
+>
+> Dokumen ini dipertahankan sebagai catatan kenapa model lama pernah dipilih.
+> Sumber kebenaran sekarang: `app/Modules/OpeningBalance/Services/OpeningBalanceService.php`.
 
 ## Purpose
 
