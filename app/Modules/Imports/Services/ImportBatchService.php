@@ -7,6 +7,7 @@ use App\Modules\Imports\Models\ImportBatch;
 use App\Modules\Imports\Models\ImportRow;
 use App\Modules\Imports\Services\Committers\ImportCommitterFactory;
 use App\Modules\Imports\Services\Committers\ProvidesImportWarnings;
+use App\Modules\Imports\Services\Committers\RevertsImport;
 use App\Shared\Api\ApiErrorCode;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Subscription\StorageQuotaService;
@@ -190,6 +191,38 @@ class ImportBatchService
             ->paginate($perPage);
     }
 
+    /**
+     * Riwayat impor. Tanpa ini batch lama tidak bisa dibuka lagi begitu halaman
+     * ditinggalkan — UUID-nya cuma hidup di state frontend — apalagi dibatalkan.
+     */
+    public function list(array $filters = []): LengthAwarePaginator
+    {
+        $perPage = min(max((int) ($filters['per_page'] ?? 25), 1), 100);
+
+        $query = ImportBatch::query()->orderByDesc('id');
+
+        if (! empty($filters['profile'])) {
+            $query->where('profile', (string) $filters['profile']);
+        }
+        if (! empty($filters['status'])) {
+            $query->where('status', (string) $filters['status']);
+        }
+
+        $paginator = $query->paginate($perPage);
+        $paginator->getCollection()->transform(fn (ImportBatch $batch): array => $this->batchPayload($batch));
+
+        return $paginator;
+    }
+
+    /**
+     * Batalkan batch yang BELUM di-commit: berkasnya dibuang, jejaknya ikut.
+     *
+     * Sengaja tidak lagi menerima batch `completed`. Sampai Fase 7 ia menerima
+     * status apa pun kecuali `committing`, yang berarti "batalkan" pada batch
+     * yang sudah selesai justru menghapus jejak impornya **tanpa menghapus
+     * datanya** — jalur yang menyesatkan sejak awal. Yang membatalkan hasil
+     * commit sekarang adalah `revert()`.
+     */
     public function cancel(string $uuid): void
     {
         $batch = $this->find($uuid);
@@ -198,10 +231,70 @@ class ImportBatchService
             throw ApiException::make(ApiErrorCode::VALIDATION_ERROR, 'Batch impor sedang diproses dan belum bisa dibatalkan.', 422);
         }
 
+        if (in_array((string) $batch->status, ['completed', 'reverted'], true)) {
+            throw ApiException::make(
+                ApiErrorCode::VALIDATION_ERROR,
+                'Batch ini sudah di-commit. Pakai Batalkan Impor (revert) untuk menarik kembali datanya.',
+                422
+            );
+        }
+
         DB::connection('tenant')->transaction(function () use ($batch): void {
             Storage::disk('local')->delete($batch->stored_path);
             $batch->delete();
         });
+    }
+
+    /**
+     * Kebalikan `commit()` — Fase 8.
+     *
+     * Batchnya TIDAK dihapus: statusnya jadi `reverted` dan barisnya ikut,
+     * sehingga riwayatnya tetap menceritakan apa yang pernah masuk dan ditarik
+     * lagi. Jejak itu justru yang paling dibutuhkan saat ada yang salah.
+     */
+    public function revert(string $uuid, string $reason): array
+    {
+        $batch = $this->find($uuid);
+
+        if (! in_array((string) $batch->status, ['completed', 'failed'], true)) {
+            throw ApiException::make(
+                ApiErrorCode::VALIDATION_ERROR,
+                'Hanya batch yang sudah selesai di-commit yang bisa dibatalkan.',
+                422
+            );
+        }
+
+        if (! $this->committers->has($batch->profile)) {
+            throw ApiException::make(ApiErrorCode::VALIDATION_ERROR, 'Profil impor ini tidak dikenal.', 422);
+        }
+
+        $committer = $this->committers->make($batch->profile);
+
+        if (! $committer instanceof RevertsImport) {
+            throw ApiException::make(
+                ApiErrorCode::VALIDATION_ERROR,
+                'Impor profil ini tidak bisa dibatalkan otomatis. Data yang sudah masuk mungkin sudah dipakai dokumen lain — hapus atau perbaiki lewat menu modulnya.',
+                422
+            );
+        }
+
+        DB::connection('tenant')->transaction(function () use ($batch, $committer, $reason): void {
+            $committer->revert($batch, $reason);
+
+            $batch->rows()->where('status', 'committed')->update([
+                'status' => 'reverted',
+                'document_id' => null,
+                'document_type' => null,
+            ]);
+
+            $batch->update([
+                'status' => 'reverted',
+                'committed_rows' => 0,
+                'error_message' => 'Dibatalkan: '.$reason,
+            ]);
+        });
+
+        return $this->show($uuid);
     }
 
     /**
@@ -474,11 +567,18 @@ class ImportBatchService
         return ImportBatch::query()->where('uuid', $uuid)->firstOrFail();
     }
 
+    /**
+     * Batch `reverted` sengaja dilewati: berkas yang sama diunggah ulang setelah
+     * pembatalan adalah jalur perbaikan yang normal — memperingatkannya sebagai
+     * duplikat berarti menghadang user tepat saat ia sedang membetulkan
+     * kesalahan.
+     */
     private function duplicateFile(string $profile, string $fileHash): ?array
     {
         $batch = ImportBatch::query()
             ->where('profile', $profile)
             ->where('file_hash', $fileHash)
+            ->where('status', '!=', 'reverted')
             ->latest('id')
             ->first();
 

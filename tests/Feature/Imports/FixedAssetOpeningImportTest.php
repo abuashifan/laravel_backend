@@ -26,13 +26,17 @@ use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
 /**
- * Profil impor aset tetap awal — Fase 7 rencana impor data.
+ * Profil impor aset tetap awal — Fase 8.
+ *
+ * Yang berubah dari Fase 7: aset langsung AKTIF saat impor (tidak lagi menunggu
+ * batch saldo awal diposting), dan tetap nol jurnal — nilainya masuk buku besar
+ * lewat berkas saldo awal, seperti akun lain.
  */
 class FixedAssetOpeningImportTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_import_creates_draft_register_records_without_any_journal(): void
+    public function test_import_creates_active_register_records_without_any_journal(): void
     {
         Storage::fake('local');
         $ctx = $this->setUpTenant();
@@ -50,7 +54,9 @@ class FixedAssetOpeningImportTest extends TestCase
 
         $asset = FixedAsset::query()->firstOrFail();
         $this->assertSame('opening_import', $asset->source_type);
-        $this->assertSame('draft', $asset->status);
+        // Fase 8: aktif seketika. Tidak ada lagi peristiwa buku besar yang layak
+        // jadi pemicunya, dan aset draft yang terlupakan tidak pernah disusutkan.
+        $this->assertSame('active', $asset->status);
 
         // Regresi langsung dari celah StoreFixedAssetRequest: sebelum Fase 7,
         // `validated()` membuang accumulated_depreciation diam-diam sehingga
@@ -274,11 +280,13 @@ class FixedAssetOpeningImportTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.committed_rows', 1);
 
-        // Angkanya belum diisi di sini: tanggal saldo awal baru pasti saat
-        // batchnya diposting. Yang tersimpan sekarang cuma penandanya.
+        // Sejak Fase 8 tanggal saldo awal sudah pasti sebelum impor berjalan,
+        // jadi angkanya langsung terisi saat aset diaktifkan — bukan menunggu
+        // sebuah dokumen diposting. Penandanya tetap disimpan supaya nilai yang
+        // dititipkan ke sistem bisa dibedakan dari yang diketik user.
         $asset = FixedAsset::query()->firstOrFail();
         $this->assertTrue((bool) ($asset->metadata['accumulated_depreciation_auto'] ?? false));
-        $this->assertEqualsWithDelta(0, (float) $asset->accumulated_depreciation, 0.001);
+        $this->assertEqualsWithDelta(85937500, (float) $asset->accumulated_depreciation, 0.001);
     }
 
     public function test_explicit_zero_accumulated_depreciation_is_not_treated_as_auto(): void

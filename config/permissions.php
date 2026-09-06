@@ -249,6 +249,7 @@ return [
         'imports.upload',
         'imports.map',
         'imports.commit',
+        'imports.revert',
         'imports.cancel',
         'imports.templates.view',
 
@@ -335,6 +336,7 @@ return [
             'imports.upload',
             'imports.map',
             'imports.commit',
+            'imports.revert',
             'imports.cancel',
             'imports.templates.view',
             'masterdata.import',

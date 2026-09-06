@@ -7,7 +7,6 @@ use App\Modules\Journal\Models\JournalEntryLine;
 use App\Modules\MasterData\Models\ChartOfAccount;
 use App\Modules\MasterData\Services\AccountMappingStorageService;
 use App\Modules\MasterData\Services\ChartOfAccountService;
-use App\Modules\OpeningBalance\Models\OpeningBalanceLine;
 use App\Shared\Exceptions\ApiException;
 use Illuminate\Support\Facades\DB;
 
@@ -126,8 +125,9 @@ class CoaTemplateService
             return;
         }
 
-        $referenced = JournalEntryLine::query()->whereIn('account_id', $existingIds)->exists()
-            || OpeningBalanceLine::query()->whereIn('account_id', $existingIds)->exists();
+        // Baris saldo awal ikut terperiksa lewat `journal_entry_lines`: sejak
+        // Fase 8 saldo awal adalah jurnal biasa, bukan tabel tersendiri.
+        $referenced = JournalEntryLine::query()->whereIn('account_id', $existingIds)->exists();
 
         if ($referenced) {
             throw ApiException::make(

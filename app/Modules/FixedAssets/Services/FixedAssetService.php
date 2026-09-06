@@ -136,7 +136,8 @@ class FixedAssetService
     /**
      * Ringkasan aset tetap awal untuk batch saldo awal, dipecah per akun kontrol.
      *
-     * Dipakai `OpeningBalanceBatchService` membangun baris sistem. Pemecahan per
+     * Dipakai papan pemantau Saldo Awal untuk merekonsiliasi register dengan
+     * buku besar (`OpeningBalanceService::fixedAssetReconciliation()`). Pemecahan per
      * akun ada DI SINI, bukan di modul Saldo Awal, karena akun mana yang dipakai
      * sebuah aset adalah pengetahuan modul ini (kategori dulu, mapping generik
      * sebagai cadangan) -- menyalinnya ke modul lain berarti dua tempat yang
@@ -146,7 +147,7 @@ class FixedAssetService
      *
      * @return array{count:int, cost:float, accumulated_depreciation:float, net_book_value:float, cost_by_account:array<int,float>, accumulated_by_account:array<int,float>}
      */
-    public function openingAssetTotals(?int $batchId = null, ?string $openingDate = null): array
+    public function openingAssetTotals(?string $openingDate = null): array
     {
         $empty = [
             'count' => 0,
@@ -161,7 +162,7 @@ class FixedAssetService
             return $empty;
         }
 
-        $assets = $this->openingAssetQuery($batchId)->with('category')->get();
+        $assets = $this->openingAssetQuery()->with('category')->get();
         if ($assets->isEmpty()) {
             return $empty;
         }
@@ -198,17 +199,19 @@ class FixedAssetService
     }
 
     /**
-     * Aktifkan aset tetap awal yang dibukukan sebuah batch saldo awal.
+     * Aktifkan aset tetap awal yang masih draft.
      *
-     * Dipanggil dari `OpeningBalanceBatchService::post()`, di dalam transaksi
-     * yang sama. **Tidak memposting jurnal apa pun** -- harga perolehan dan
-     * akumulasi penyusutannya sudah masuk buku besar lewat baris sistem batch
-     * itu. Memanggil `capitalize()` di sini akan membukukannya dua kali; lihat
-     * penjaga di method tersebut.
+     * Dipanggil langsung dari impor (Fase 8), bukan lagi sebagai efek posting
+     * batch saldo awal. **Tidak memposting jurnal apa pun** -- harga perolehan
+     * dan akumulasi penyusutan masuk buku besar lewat berkas saldo awal, seperti
+     * akun lain. Memanggil `capitalize()` di sini akan membukukannya dua kali.
+     *
+     * Idempoten: hanya aset berstatus `draft` yang disentuh, jadi impor kedua
+     * tidak menyusun ulang jadwal aset yang sudah aktif.
      *
      * @return int jumlah aset yang diaktifkan
      */
-    public function activateOpeningAssets(int $batchId, string $openingDate, ?int $journalEntryId = null): int
+    public function activateOpeningAssets(string $openingDate): int
     {
         if (! Schema::connection('tenant')->hasTable('fixed_assets')) {
             return 0;
@@ -219,7 +222,11 @@ class FixedAssetService
             throw ApiException::make('COMPANY_NOT_FOUND', 'Company context not resolved.', 422);
         }
 
-        $assets = $this->openingAssetQuery(null)->with('category')->get();
+        $assets = $this->openingAssetQuery()->where('status', 'draft')->with('category')->get();
+        if ($assets->isEmpty()) {
+            return 0;
+        }
+
         // Wajib SEBELUM pemeriksaan di bawah: aset yang akumulasinya dihitung
         // sistem masih bernilai 0 di titik ini, dan `assertOpeningAssetsDepreciable()`
         // membaca angka itu untuk memutuskan masih ada nilai buku atau tidak.
@@ -232,7 +239,6 @@ class FixedAssetService
 
             $asset->forceFill([
                 'asset_number' => $assetNumber,
-                'opening_balance_batch_id' => $batchId,
                 'capitalized_at' => Carbon::parse($openingDate),
                 'status' => 'active',
             ])->save();
@@ -242,13 +248,12 @@ class FixedAssetService
 
             $this->transaction($asset, 'opening_import', $openingDate, (float) $asset->acquisition_cost, (float) $asset->quantity, [
                 'source_type' => 'opening_import',
-                'source_id' => $batchId,
-                'journal_entry_id' => $journalEntryId,
+                'source_id' => null,
+                'journal_entry_id' => null,
                 'metadata' => ['accumulated_depreciation_at_opening' => (float) $asset->accumulated_depreciation],
             ]);
-            $this->audit('fixed_asset.opening_activated', $asset, 'Opening fixed asset activated by opening balance posting.', [
-                'opening_balance_batch_id' => $batchId,
-                'journal_entry_id' => $journalEntryId,
+            $this->audit('fixed_asset.opening_activated', $asset, 'Opening fixed asset activated on import.', [
+                'opening_date' => $openingDate,
             ]);
             $activated++;
         }
@@ -374,58 +379,71 @@ class FixedAssetService
     }
 
     /**
-     * Kebalikan `activateOpeningAssets()`, dipakai saat batch saldo awal dibuka
-     * kembali (reopen). Reopen membatalkan jurnal pembuka, jadi aset yang
-     * dibukukannya harus ikut dikembalikan ke draft -- kalau tidak, register
-     * menyatakan aset itu ada sementara buku besarnya sudah tidak.
+     * Hapus seluruh aset yang berasal dari satu batch impor — kebalikan commit
+     * profil `fixed_asset_opening` (Fase 8).
      *
-     * @return int jumlah aset yang dikembalikan ke draft
+     * Menghapus, bukan mengembalikan ke draft: aset yang ternyata salah impor
+     * tidak pernah benar-benar ada, dan register yang bersih lebih berharga
+     * daripada kartu aset gantung yang tidak akan pernah dipakai. Jejaknya tetap
+     * tersimpan di `import_rows` dan audit log.
+     *
+     * Ditolak seluruhnya — bukan sebagian — begitu ada satu aset yang sudah
+     * menyusut. Pembatalan setengah jalan meninggalkan register yang lebih sulit
+     * dijelaskan daripada tidak bisa membatalkan sama sekali.
+     *
+     * @return int jumlah aset yang dihapus
      */
-    public function deactivateOpeningAssets(int $batchId): int
+    public function deleteImportedOpeningAssets(string $importBatchUuid): int
     {
         if (! Schema::connection('tenant')->hasTable('fixed_assets')) {
             return 0;
         }
 
-        $assets = $this->openingAssetQuery($batchId)->get();
-        $reverted = 0;
+        $assets = $this->openingAssetQuery()
+            ->get()
+            ->filter(fn (FixedAsset $asset): bool => (string) (((array) ($asset->metadata ?? []))['import_batch_uuid'] ?? '') === $importBatchUuid);
 
         foreach ($assets as $asset) {
             if ($asset->schedules()->where('status', 'posted')->exists()) {
                 throw ApiException::make(
                     'FIXED_ASSET_HAS_POSTED_DEPRECIATION',
-                    "Aset {$asset->asset_number} sudah punya penyusutan terposting; saldo awal tidak bisa dibuka kembali.",
+                    "Aset {$asset->asset_number} sudah punya penyusutan terposting, jadi impor ini tidak bisa dibatalkan.",
                     422
                 );
             }
-
-            $asset->schedules()->delete();
-            $asset->transactions()->where('transaction_type', 'opening_import')->delete();
-            $asset->forceFill([
-                'opening_balance_batch_id' => null,
-                'capitalized_at' => null,
-                'status' => 'draft',
-            ])->save();
-
-            $this->audit('fixed_asset.opening_deactivated', $asset, 'Opening fixed asset reverted to draft after opening balance reopen.', [
-                'opening_balance_batch_id' => $batchId,
-            ]);
-            $reverted++;
+            if (in_array((string) $asset->status, ['disposed', 'partially_disposed'], true)) {
+                throw ApiException::make(
+                    'FIXED_ASSET_NOT_REVERTIBLE',
+                    "Aset {$asset->asset_number} sudah dilepas, jadi impor ini tidak bisa dibatalkan.",
+                    422
+                );
+            }
         }
 
-        return $reverted;
+        $deleted = 0;
+        foreach ($assets as $asset) {
+            $this->audit('fixed_asset.opening_import_reverted', $asset, 'Opening fixed asset removed by import revert.', [
+                'import_batch_uuid' => $importBatchUuid,
+            ]);
+
+            $asset->schedules()->delete();
+            $asset->transactions()->delete();
+            $asset->delete();
+            $deleted++;
+        }
+
+        return $deleted;
     }
 
     /**
+     * Seluruh aset tetap awal, apa pun statusnya. Batch saldo awal sudah tidak
+     * ada lagi sejak Fase 8, jadi tidak ada lagi yang perlu disaring per batch.
+     *
      * @return Builder<FixedAsset>
      */
-    private function openingAssetQuery(?int $batchId)
+    private function openingAssetQuery()
     {
-        $query = FixedAsset::query()->where('source_type', 'opening_import');
-
-        return $batchId === null
-            ? $query->whereNull('opening_balance_batch_id')
-            : $query->where('opening_balance_batch_id', $batchId);
+        return FixedAsset::query()->where('source_type', 'opening_import');
     }
 
     public function update(FixedAsset $asset, array $data): FixedAsset
@@ -468,16 +486,15 @@ class FixedAssetService
 
     public function capitalize(FixedAsset $asset, array $data): FixedAsset
     {
-        // Aset saldo awal TIDAK boleh lewat sini. Harga perolehannya sudah
-        // dibukukan jurnal saldo awal lewat baris sistem batch; kapitalisasi
+        // Aset saldo awal TIDAK boleh lewat sini. Harga perolehannya masuk
+        // buku besar lewat berkas saldo awal seperti akun lain; kapitalisasi
         // normal akan memposting Dr Aset / Cr Kliring sekali lagi -- nilai
         // asetnya dobel dan saldo kliring menggantung tanpa lawan. Aset ini
-        // diaktifkan otomatis oleh `activateOpeningAssets()` saat batch saldo
-        // awalnya diposting.
+        // aktif sendiri saat diimpor (`activateOpeningAssets()`).
         if ((string) $asset->source_type === 'opening_import') {
             throw ApiException::make(
                 'FIXED_ASSET_OPENING_NOT_CAPITALIZABLE',
-                'Aset saldo awal tidak dikapitalisasi manual. Aset ini aktif otomatis saat batch saldo awalnya diposting.',
+                'Aset saldo awal tidak dikapitalisasi manual. Nilainya masuk buku besar lewat impor saldo awal.',
                 422
             );
         }
@@ -817,8 +834,8 @@ class FixedAssetService
         // Kolom akumulasi yang dikosongkan pada aset saldo awal TIDAK berarti
         // nol -- aset warisan yang sudah dipakai bertahun-tahun hampir pasti
         // sudah menyusut. Ia berarti "hitungkan": asetnya ditandai di sini dan
-        // angkanya diisi `activateOpeningAssets()` saat tanggal saldo awal
-        // sudah pasti. Nol yang diketik user secara eksplisit tetap nol.
+        // angkanya diisi `activateOpeningAssets()` memakai tanggal saldo awal
+        // perusahaan. Nol yang diketik user secara eksplisit tetap nol.
         $autoAccumulated = $this->wantsAutoAccumulatedDepreciation($data);
         $accumulated = $autoAccumulated ? 0.0 : round((float) ($data['accumulated_depreciation'] ?? 0), 2);
         $depreciableBasis = max(0, round($cost - $salvageCapped, 2));

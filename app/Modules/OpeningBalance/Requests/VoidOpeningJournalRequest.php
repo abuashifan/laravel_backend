@@ -1,10 +1,10 @@
 <?php
 
-namespace App\Modules\Setup\Requests;
+namespace App\Modules\OpeningBalance\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 
-class ValidateSetupStepRequest extends FormRequest
+class VoidOpeningJournalRequest extends FormRequest
 {
     public function authorize(): bool
     {
@@ -14,8 +14,7 @@ class ValidateSetupStepRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'step' => ['required', 'string', 'max:80'],
-            'opening_date' => ['nullable', 'date'],
+            'reason' => ['required', 'string', 'max:1000'],
         ];
     }
 }

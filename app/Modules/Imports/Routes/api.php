@@ -27,11 +27,13 @@ Route::middleware(['auth:sanctum', 'company.access', 'permission:masterdata.impo
     ->group(function () use ($masterProfiles) {
         Route::get('/profiles', [ImportController::class, 'profiles']);
         Route::get('/templates/{profile}', [ImportController::class, 'template']);
+        Route::get('/batches', [ImportController::class, 'index']);
         Route::post('/', [ImportController::class, 'storeMaster']);
         Route::patch('/{uuid}/mapping', [ImportController::class, 'mapping']);
         Route::get('/{uuid}', [ImportController::class, 'show']);
         Route::get('/{uuid}/rows', [ImportController::class, 'rows']);
         Route::post('/{uuid}/commit', [ImportController::class, 'commit']);
+        Route::post('/{uuid}/revert', [ImportController::class, 'revert']);
         Route::delete('/{uuid}', [ImportController::class, 'destroy']);
         Route::get('/{uuid}/export-errors', [ImportController::class, 'exportErrors']);
     });
@@ -42,11 +44,13 @@ Route::middleware(['auth:sanctum', 'company.access', 'permission:transactions.im
     ->group(function () use ($transactionProfiles) {
         Route::get('/profiles', [ImportController::class, 'profiles']);
         Route::get('/templates/{profile}', [ImportController::class, 'template']);
+        Route::get('/batches', [ImportController::class, 'index']);
         Route::post('/', [ImportController::class, 'storeTransaction']);
         Route::patch('/{uuid}/mapping', [ImportController::class, 'mapping']);
         Route::get('/{uuid}', [ImportController::class, 'show']);
         Route::get('/{uuid}/rows', [ImportController::class, 'rows']);
         Route::post('/{uuid}/commit', [ImportController::class, 'commit']);
+        Route::post('/{uuid}/revert', [ImportController::class, 'revert']);
         Route::delete('/{uuid}', [ImportController::class, 'destroy']);
         Route::get('/{uuid}/export-errors', [ImportController::class, 'exportErrors']);
     });
@@ -55,6 +59,8 @@ Route::middleware(['auth:sanctum', 'company.access', 'permission:transactions.im
 // Dipertahankan agar test dan frontend yang belum diperbarui tidak pecah.
 // Middleware tier hanya berlaku di rute master/transactions di atas.
 Route::middleware(['auth:sanctum', 'company.access'])->group(function () {
+    Route::get('/imports', [ImportController::class, 'index'])
+        ->middleware('permission:imports.view');
     Route::get('/imports/profiles', [ImportController::class, 'profiles'])
         ->middleware('permission:imports.view');
     Route::get('/imports/templates/{profile}', [ImportController::class, 'template'])
@@ -69,6 +75,8 @@ Route::middleware(['auth:sanctum', 'company.access'])->group(function () {
         ->middleware('permission:imports.view');
     Route::post('/imports/{uuid}/commit', [ImportController::class, 'commit'])
         ->middleware('permission:imports.commit');
+    Route::post('/imports/{uuid}/revert', [ImportController::class, 'revert'])
+        ->middleware('permission:imports.revert');
     Route::delete('/imports/{uuid}', [ImportController::class, 'destroy'])
         ->middleware('permission:imports.cancel');
     Route::get('/imports/{uuid}/export-errors', [ImportController::class, 'exportErrors'])

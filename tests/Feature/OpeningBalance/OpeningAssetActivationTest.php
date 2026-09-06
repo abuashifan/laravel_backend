@@ -5,22 +5,29 @@ namespace Tests\Feature\OpeningBalance;
 use App\Modules\FixedAssets\Models\FixedAsset;
 use App\Modules\FixedAssets\Services\FixedAssetService;
 use App\Modules\Journal\Models\JournalEntry;
+use App\Modules\MasterData\Models\AccountMapping;
 use App\Modules\MasterData\Models\ChartOfAccount;
-use App\Modules\OpeningBalance\Models\OpeningBalanceBatch;
-use App\Modules\OpeningBalance\Support\OpeningBalanceType;
+use App\Modules\OpeningBalance\Services\OpeningBalanceService;
 use App\Modules\Settings\Services\CompanySettingService;
 use App\Modules\Setup\Services\CoaTemplateService;
-use App\Shared\Exceptions\ApiException;
+use App\Shared\Models\CompanySetupState;
+use App\Shared\Models\CompanyUser;
+use App\Shared\Models\TenantDatabase;
+use App\Shared\Tenant\TenantContext;
 use Illuminate\Support\Facades\DB;
 use Tests\Feature\Journal\JournalTestCase;
 
 /**
- * Fase 7F — aktivasi aset tetap awal.
+ * Aktivasi aset tetap awal dan rekonsiliasinya — Fase 8.
  *
- * Aset saldo awal dibukukan jurnal pembuka, bukan jurnal kapitalisasi. Karena
- * itu ia diaktifkan sebagai EFEK dari posting batch — bukan lewat langkah
- * terpisah yang bisa terlupa — dan jadwal penyusutannya menghitung SISA nilai
- * selama SISA umur.
+ * Aset saldo awal **tidak dibukukan** oleh register: nilainya masuk buku besar
+ * lewat berkas saldo awal, seperti akun lain. Yang dikerjakan aktivasi cuma
+ * kartu asetnya — nomor aset, tanggal kapitalisasi, dan jadwal penyusutan yang
+ * menghitung SISA nilai selama SISA umur.
+ *
+ * Karena keduanya tidak lagi saling menurunkan, saldo akun dan register **boleh
+ * berbeda**. Itu bukan galat: tanah bisa berdiri di beberapa lokasi sementara
+ * yang terdaftar baru satu. Yang wajib ada cuma laporannya.
  */
 class OpeningAssetActivationTest extends JournalTestCase
 {
@@ -28,185 +35,129 @@ class OpeningAssetActivationTest extends JournalTestCase
 
     private const ACCUMULATED = 23437500.0;
 
-    public function test_posting_activates_opening_assets_and_schedules_the_remaining_life(): void
+    public function test_activation_capitalises_the_asset_and_schedules_only_the_remaining_life(): void
     {
         $ctx = $this->setUpOpeningTenant();
         $asset = $this->createOpeningVehicle();
 
         $this->assertSame('draft', $asset->status);
-        $this->assertNull($asset->capitalized_at);
-        $this->assertSame(0, $asset->schedules()->count());
 
-        $batch = $this->postOpeningBatch($ctx, '2026-01-01');
+        $activated = app(FixedAssetService::class)->activateOpeningAssets('2026-01-01');
+        $this->assertSame(1, $activated);
 
         $asset->refresh();
         $this->assertSame('active', $asset->status);
-        $this->assertSame('2026-01-01', $asset->capitalized_at?->toDateString());
-        $this->assertSame((int) $batch['id'], (int) $asset->opening_balance_batch_id);
         $this->assertNotNull($asset->asset_number);
+        $this->assertSame('2026-01-01', $asset->capitalized_at?->toDateString());
 
-        // Jadwal: Januari 2026 (bulan tanggal saldo awal, BUKAN +1) sampai
-        // Maret 2033 (akhir masa manfaat asli, tidak bergeser).
-        $schedules = $asset->schedules()->orderBy('period')->get();
-        $this->assertCount(87, $schedules);
-        $this->assertSame('2026-01', $schedules->first()->period);
-        $this->assertSame('2033-03', $schedules->last()->period);
-
-        // Yang dijadwalkan hanya SISA nilai, dan berakhir tepat di basis penuh.
-        $this->assertEqualsWithDelta(self::COST - self::ACCUMULATED, (float) $schedules->sum('depreciation_amount'), 0.05);
-        $this->assertEqualsWithDelta(self::COST, (float) $schedules->last()->accumulated_depreciation_after, 0.05);
-    }
-
-    public function test_activation_creates_no_journal_beyond_the_opening_one(): void
-    {
-        $ctx = $this->setUpOpeningTenant();
-        $this->createOpeningVehicle();
-        $this->postOpeningBatch($ctx, '2026-01-01');
-
-        // Satu-satunya jurnal yang boleh ada adalah jurnal pembuka. Kapitalisasi
-        // normal akan menambah Dr Aset / Cr Kliring — itu yang membukukan dobel.
-        $this->assertSame(1, JournalEntry::query()->count());
-        $this->assertSame('opening_balance', JournalEntry::query()->firstOrFail()->source_type);
-    }
-
-    public function test_opening_control_lines_use_per_class_accounts(): void
-    {
-        $ctx = $this->setUpOpeningTenant();
-        $this->createOpeningVehicle();
-        $this->postOpeningBatch($ctx, '2026-01-01');
-
-        $journal = JournalEntry::query()->with('lines')->firstOrFail();
-        $vehicleCost = $this->accountId('1510');
-        $vehicleAccumulated = $this->accountId('1511');
-
-        // Kalau baris pembuka memakai akun generik (1530/1531) sementara
-        // penyusutan bulanan memakai akun per kelas, akumulasi satu aset
-        // terbelah di dua akun.
-        $this->assertEqualsWithDelta(self::COST, (float) $journal->lines->firstWhere('account_id', $vehicleCost)?->debit, 0.05);
-        $this->assertEqualsWithDelta(self::ACCUMULATED, (float) $journal->lines->firstWhere('account_id', $vehicleAccumulated)?->credit, 0.05);
-        $this->assertNull($journal->lines->firstWhere('account_id', $this->accountId('1530')));
-    }
-
-    public function test_blank_accumulated_depreciation_is_calculated_at_posting(): void
-    {
-        $ctx = $this->setUpOpeningTenant();
-
-        // Persis aset yang sama dengan `createOpeningVehicle()`, TANPA angka
-        // akumulasi. Aset warisan yang kolomnya dikosongkan berarti "hitungkan",
-        // bukan "belum pernah disusutkan" -- dan hitungannya harus jatuh tepat
-        // di angka yang dipakai test lain di kelas ini.
-        $asset = app(FixedAssetService::class)->create([
-            'name' => 'Toyota Avanza B 1234 XYZ',
-            'fixed_asset_category_id' => $this->categoryId('VEHICLE'),
-            'acquisition_date' => '2025-03-10',
-            'service_start_date' => '2025-03-10',
-            'useful_life_years' => 8,
-            'acquisition_cost' => self::COST,
-            'source_type' => 'opening_import',
-        ]);
-
-        // Selama masih draft angkanya belum ada: tanggal saldo awal belum pasti.
-        $this->assertEqualsWithDelta(0, (float) $asset->accumulated_depreciation, 0.001);
-        $this->assertTrue((bool) ($asset->metadata['accumulated_depreciation_auto'] ?? false));
-
-        $this->postOpeningBatch($ctx, '2026-01-01');
-
-        // 250jt / 96 bulan x 9 bulan (Apr 2025 s/d Des 2025).
-        $asset->refresh();
-        $this->assertEqualsWithDelta(self::ACCUMULATED, (float) $asset->accumulated_depreciation, 0.05);
-        $this->assertEqualsWithDelta(self::COST - self::ACCUMULATED, (float) $asset->net_book_value, 0.05);
-
-        // Jadwalnya harus sama persis dengan aset yang akumulasinya diketik user.
-        $schedules = $asset->schedules()->orderBy('period')->get();
-        $this->assertCount(87, $schedules);
-        $this->assertSame('2026-01', $schedules->first()->period);
-        $this->assertEqualsWithDelta(self::COST, (float) $schedules->last()->accumulated_depreciation_after, 0.05);
-    }
-
-    public function test_auto_accumulated_depreciation_reaches_the_general_ledger(): void
-    {
-        $ctx = $this->setUpOpeningTenant();
-        app(FixedAssetService::class)->create([
-            'name' => 'Toyota Avanza B 1234 XYZ',
-            'fixed_asset_category_id' => $this->categoryId('VEHICLE'),
-            'acquisition_date' => '2025-03-10',
-            'service_start_date' => '2025-03-10',
-            'useful_life_years' => 8,
-            'acquisition_cost' => self::COST,
-            'source_type' => 'opening_import',
-        ]);
-
-        $this->postOpeningBatch($ctx, '2026-01-01');
-
-        // Baris sistem batch saldo awal dibentuk dari angka aset. Kalau
-        // hitungan otomatis berjalan setelah baris itu dibentuk, kreditnya
-        // akan nol dan neraca pembuka melebihkan nilai aset sebesar akumulasi.
-        $journal = JournalEntry::query()->with('lines')->latest('id')->firstOrFail();
-        $accumulatedAccount = $this->accountId('1511');
+        // Umur 8 tahun (96 bulan), sudah terpakai 9 bulan sampai tanggal saldo
+        // awal → sisa 87 bulan. Jadwalnya hanya boleh mencakup sisa itu.
+        $this->assertSame(87, $asset->schedules()->count());
         $this->assertEqualsWithDelta(
-            self::ACCUMULATED,
-            (float) $journal->lines->firstWhere('account_id', $accumulatedAccount)?->credit,
-            0.05,
+            self::COST - self::ACCUMULATED,
+            (float) $asset->schedules()->sum('depreciation_amount'),
+            1.0,
         );
     }
 
-    public function test_correction_batch_only_books_the_newly_added_asset(): void
-    {
-        $ctx = $this->setUpOpeningTenant();
-        $this->createOpeningVehicle();
-        $this->postOpeningBatch($ctx, '2026-01-01');
-
-        // Klien melaporkan satu aset yang terlewat setelah setup selesai.
-        $laptop = app(FixedAssetService::class)->create([
-            'name' => 'Laptop Terlewat',
-            'fixed_asset_category_id' => $this->categoryId('IT_EQUIP'),
-            'acquisition_date' => '2025-06-01',
-            'service_start_date' => '2025-06-01',
-            'useful_life_years' => 4,
-            'acquisition_cost' => 20000000,
-            'accumulated_depreciation' => 4166666.67,
-            'source_type' => 'opening_import',
-        ]);
-
-        $correction = $this->postOpeningBatch($ctx, '2026-04-01', OpeningBalanceType::CORRECTION);
-
-        $laptop->refresh();
-        $this->assertSame((int) $correction['id'], (int) $laptop->opening_balance_batch_id);
-        $this->assertSame('2026-04-01', $laptop->capitalized_at?->toDateString());
-
-        // Jurnal koreksi hanya memuat laptopnya — mobil dari batch pertama tidak
-        // boleh dibukukan ulang.
-        $correctionJournal = JournalEntry::query()->with('lines')->latest('id')->firstOrFail();
-        $this->assertNull($correctionJournal->lines->firstWhere('account_id', $this->accountId('1510')));
-        $this->assertEqualsWithDelta(20000000, (float) $correctionJournal->lines->firstWhere('account_id', $this->accountId('1530'))?->debit, 0.05);
-    }
-
-    public function test_capitalize_is_rejected_for_opening_assets(): void
+    public function test_activation_creates_no_journal_at_all(): void
     {
         $this->setUpOpeningTenant();
-        $asset = $this->createOpeningVehicle();
+        $this->createOpeningVehicle();
 
-        $this->expectException(ApiException::class);
-        $this->expectExceptionMessage('Aset saldo awal tidak dikapitalisasi manual');
+        app(FixedAssetService::class)->activateOpeningAssets('2026-01-01');
 
-        app(FixedAssetService::class)->capitalize($asset, []);
+        $this->assertSame(0, JournalEntry::query()->count());
     }
 
-    public function test_reopening_returns_opening_assets_to_draft(): void
+    public function test_activation_is_idempotent(): void
+    {
+        $this->setUpOpeningTenant();
+        $this->createOpeningVehicle();
+
+        $service = app(FixedAssetService::class);
+        $this->assertSame(1, $service->activateOpeningAssets('2026-01-01'));
+        // Panggilan kedua tidak menyusun ulang jadwal aset yang sudah aktif.
+        $this->assertSame(0, $service->activateOpeningAssets('2026-01-01'));
+    }
+
+    /**
+     * Skenario yang diminta pemilik produk: akun Tanah 100jt di buku besar, tapi
+     * yang baru didaftarkan satu lokasi senilai 60jt. Impor tetap sukses, dan
+     * selisihnya muncul sebagai laporan — bukan penolakan.
+     */
+    public function test_partial_asset_registration_is_reported_not_rejected(): void
     {
         $ctx = $this->setUpOpeningTenant();
-        $asset = $this->createOpeningVehicle();
-        $batch = $this->postOpeningBatch($ctx, '2026-01-01');
 
-        $this->postJson('/api/opening-balance/batches/'.$batch['id'].'/reopen', [
-            'reason' => 'Koreksi angka saldo awal sebelum perusahaan bertransaksi.',
-        ], $ctx['headers'])->assertOk();
+        $this->createOpeningLand(60000000);
+        app(FixedAssetService::class)->activateOpeningAssets('2026-01-01');
 
-        $asset->refresh();
-        $this->assertSame('draft', $asset->status);
-        $this->assertNull($asset->capitalized_at);
-        $this->assertNull($asset->opening_balance_batch_id);
-        $this->assertSame(0, $asset->schedules()->count());
+        // Saldo akun tanah diisi lewat berkas saldo awal, untuk dua lokasi.
+        app(OpeningBalanceService::class)->postOpeningJournal([[
+            'account_id' => $this->accountId('1540'),
+            'debit' => 100000000,
+            'credit' => 0,
+            'description' => 'Saldo awal tanah',
+        ]]);
+
+        $reconciliation = $this->getJson('/api/opening-balance/status', $ctx['headers'])
+            ->assertOk()
+            ->json('data.fixed_asset_reconciliation');
+
+        $this->assertTrue($reconciliation['has_difference']);
+
+        $landRow = collect($reconciliation['rows'])->firstWhere('account_code', '1540');
+        $this->assertEqualsWithDelta(60000000, (float) $landRow['register_amount'], 0.001);
+        $this->assertEqualsWithDelta(100000000, (float) $landRow['gl_amount'], 0.001);
+        $this->assertEqualsWithDelta(40000000, (float) $landRow['difference'], 0.001);
+    }
+
+    public function test_reconciliation_reports_no_difference_once_registration_is_complete(): void
+    {
+        $ctx = $this->setUpOpeningTenant();
+
+        $this->createOpeningLand(100000000);
+        app(FixedAssetService::class)->activateOpeningAssets('2026-01-01');
+
+        app(OpeningBalanceService::class)->postOpeningJournal([[
+            'account_id' => $this->accountId('1540'),
+            'debit' => 100000000,
+            'credit' => 0,
+            'description' => 'Saldo awal tanah',
+        ]]);
+
+        $this->getJson('/api/opening-balance/status', $ctx['headers'])
+            ->assertOk()
+            ->assertJsonPath('data.fixed_asset_reconciliation.has_difference', false);
+    }
+
+    public function test_reverting_an_import_deletes_its_asset_cards(): void
+    {
+        $this->setUpOpeningTenant();
+        $asset = $this->createOpeningVehicle(importBatchUuid: 'batch-abc');
+        app(FixedAssetService::class)->activateOpeningAssets('2026-01-01');
+
+        $deleted = app(FixedAssetService::class)->deleteImportedOpeningAssets('batch-abc');
+
+        $this->assertSame(1, $deleted);
+        $this->assertNull(FixedAsset::query()->find($asset->id));
+        $this->assertSame(0, DB::connection('tenant')->table('fixed_asset_depreciation_schedules')->count());
+    }
+
+    public function test_revert_is_refused_entirely_when_depreciation_is_already_posted(): void
+    {
+        $this->setUpOpeningTenant();
+        $asset = $this->createOpeningVehicle(importBatchUuid: 'batch-abc');
+        app(FixedAssetService::class)->activateOpeningAssets('2026-01-01');
+
+        DB::connection('tenant')->table('fixed_asset_depreciation_schedules')
+            ->where('fixed_asset_id', $asset->id)
+            ->limit(1)
+            ->update(['status' => 'posted']);
+
+        $this->expectExceptionMessage('sudah punya penyusutan terposting');
+        app(FixedAssetService::class)->deleteImportedOpeningAssets('batch-abc');
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────
@@ -220,10 +171,35 @@ class OpeningAssetActivationTest extends JournalTestCase
         $template = collect($service->templates())->firstWhere('id', 'trading');
         $service->applyTemplate('trading', $template['accounts']);
 
+        CompanySetupState::query()->updateOrCreate(
+            ['company_id' => $ctx['company']->id],
+            ['opening_date' => '2026-01-01'],
+        );
+
+        ChartOfAccount::query()->firstOrCreate(
+            ['account_code' => '1540'],
+            ['account_name' => 'Tanah', 'account_type' => 'asset', 'normal_balance' => 'debit', 'is_active' => true],
+        );
+
+        AccountMapping::query()->updateOrCreate(
+            ['mapping_key' => 'opening_balance.clearing'],
+            ['module' => 'opening_balance', 'account_id' => $this->accountId('3900'), 'is_required' => true, 'is_active' => true],
+        );
+
+        DB::connection('tenant')->table('fixed_asset_categories')
+            ->where('code', 'LAND')
+            ->update(['asset_account_id' => $this->accountId('1540')]);
+
+        app(TenantContext::class)->set(
+            $ctx['company'],
+            CompanyUser::query()->where('company_id', $ctx['company']->id)->firstOrFail(),
+            TenantDatabase::query()->where('company_id', $ctx['company']->id)->firstOrFail(),
+        );
+
         return $ctx;
     }
 
-    private function createOpeningVehicle(): FixedAsset
+    private function createOpeningVehicle(?string $importBatchUuid = null): FixedAsset
     {
         return app(FixedAssetService::class)->create([
             'name' => 'Toyota Avanza B 1234 XYZ',
@@ -234,38 +210,21 @@ class OpeningAssetActivationTest extends JournalTestCase
             'acquisition_cost' => self::COST,
             'accumulated_depreciation' => self::ACCUMULATED,
             'source_type' => 'opening_import',
+            'metadata' => $importBatchUuid ? ['import_batch_uuid' => $importBatchUuid] : [],
         ]);
     }
 
-    /**
-     * Buat batch, isi baris ekuitas penyeimbang sebesar selisih, lalu posting.
-     */
-    private function postOpeningBatch(array $ctx, string $openingDate, string $type = OpeningBalanceType::STANDARD): array
+    private function createOpeningLand(float $cost): FixedAsset
     {
-        $batch = $this->postJson('/api/opening-balance/batches', [
-            'opening_date' => $openingDate,
-            'type' => $type,
-        ], $ctx['headers'])->assertCreated()->json('data');
-
-        $preview = $this->getJson('/api/opening-balance/batches/'.$batch['id'].'/preview', $ctx['headers'])
-            ->assertOk()->json('data');
-
-        $difference = round((float) $preview['total_debit'] - (float) $preview['total_credit'], 2);
-        $this->putJson('/api/opening-balance/batches/'.$batch['id'].'/lines', [
-            'lines' => [[
-                'account_id' => $this->accountId('3200'),
-                'debit' => $difference < 0 ? abs($difference) : 0,
-                'credit' => $difference > 0 ? $difference : 0,
-                'description' => 'Penyeimbang saldo awal',
-            ]],
-        ], $ctx['headers'])->assertOk();
-
-        $this->postJson('/api/opening-balance/batches/'.$batch['id'].'/validate', [], $ctx['headers'])->assertOk();
-        $this->postJson('/api/opening-balance/batches/'.$batch['id'].'/post', [], $ctx['headers'])->assertOk();
-
-        $this->assertTrue(OpeningBalanceBatch::query()->findOrFail($batch['id'])->postedOrLocked());
-
-        return $batch;
+        return app(FixedAssetService::class)->create([
+            'name' => 'Tanah Lokasi A',
+            'fixed_asset_category_id' => $this->categoryId('LAND'),
+            'acquisition_date' => '2024-01-10',
+            'service_start_date' => '2024-01-10',
+            'acquisition_cost' => $cost,
+            'accumulated_depreciation' => 0,
+            'source_type' => 'opening_import',
+        ]);
     }
 
     private function accountId(string $code): int

@@ -9,50 +9,44 @@ use App\Modules\FixedAssets\Support\OpeningAccumulatedDepreciation;
 use App\Modules\Imports\Models\ImportBatch;
 use App\Modules\MasterData\Models\Department;
 use App\Modules\MasterData\Models\Project;
-use App\Modules\OpeningBalance\Models\OpeningBalanceBatch;
+use App\Modules\OpeningBalance\Services\OpeningBalanceService;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Models\CompanyModuleSetting;
-use App\Shared\Models\FiscalYear;
 use App\Shared\Tenant\TenantContext;
 use Carbon\CarbonImmutable;
-use Illuminate\Support\Facades\Schema;
 use Throwable;
 
 /**
- * Profil impor aset tetap awal — Fase 7.
+ * Profil impor aset tetap awal — Fase 8.
  *
  * Mengisi register aset warisan milik klien yang baru pindah ke aplikasi ini:
- * aset yang sudah dibeli bertahun-tahun lalu, sudah menyusut sebagian, dan
- * harus muncul di neraca pembuka dengan nilai buku yang benar.
+ * aset yang sudah dibeli bertahun-tahun lalu dan sudah menyusut sebagian.
  *
- * ── Yang SENGAJA tidak dilakukan committer ini ──────────────────────────────
+ * ── Ia tidak menyentuh buku besar. Sama sekali. ─────────────────────────────
  *
- * 1. **Tidak memposting jurnal.** Aturan tertulis di
- *    `docs/implementation_plans/fixed-assets-implementation-plan.md` baris 568:
- *    "Opening fixed asset import must create register records only and must not
- *    create a standalone GL journal." Harga perolehan dan akumulasi penyusutan
- *    dibukukan SEKALI saja, lewat baris sistem batch saldo awal
- *    (`OpeningBalanceBatchService::fixedAssetSystemLines()`). Memanggil
- *    `capitalize()` di sini akan membukukan asetnya dua kali.
- * 2. **Tidak mengkapitalisasi.** Aset berhenti di status `draft`. Ia diaktifkan
- *    — beserta jadwal penyusutan sisa nilai/sisa umurnya — oleh
- *    `FixedAssetService::activateOpeningAssets()` saat batch saldo awalnya
- *    diposting. Impor hanya mengisi register; yang menghidupkannya adalah
- *    peristiwa yang juga membukukannya ke buku besar.
+ * Harga perolehan dan akumulasi penyusutan masuk buku besar lewat **berkas
+ * saldo awal**, seperti akun lain. Yang dikerjakan di sini cuma kartu asetnya:
+ * nama, tanggal, umur manfaat, akumulasi, dan jadwal penyusutan sisa umurnya.
  *
- * Penanda `source_type = 'opening_import'` yang ditulis di bawah adalah yang
- * dibaca `SetupWizardService::validateOpeningFixedAssets()` (step wizard lolos
- * tanpa checkbox "belum punya aset tetap") DAN
- * `OpeningBalanceBatchService::openingFixedAssetTotals()`.
+ * Konsekuensinya, dan inilah inti Fase 8: **tidak ada prasyarat apa pun.**
+ * Boleh diimpor sebelum atau sesudah saldo awal, berkali-kali, sebagian demi
+ * sebagian. Tanah yang berdiri di lima lokasi boleh didaftarkan satu lokasi
+ * hari ini dan sisanya bulan depan — selisih antara saldo akun dan register
+ * bukan galat, ia keadaan yang wajar dan dilaporkan apa adanya oleh
+ * `OpeningBalanceService::fixedAssetReconciliation()`.
+ *
+ * Aset langsung **aktif** beserta jadwal penyusutannya, memakai tanggal saldo
+ * awal perusahaan. Tidak ada lagi peristiwa buku besar yang layak jadi
+ * pemicunya, dan aset draft yang terlupakan tidak akan pernah disusutkan.
  */
-class FixedAssetOpeningImportCommitter implements ImportProfileCommitter, ProvidesImportWarnings
+class FixedAssetOpeningImportCommitter implements ImportProfileCommitter, ProvidesImportWarnings, RevertsImport
 {
     use Concerns\NormalizesImportDates;
 
     /** Sejajar dengan aturan `in:` di `StoreFixedAssetRequest`. */
     private const ALLOWED_USEFUL_LIFE_YEARS = [4, 8, 10, 16, 20];
 
-    /** Hasil `prospectiveOpeningDate()`, di-cache: warnRow() dipanggil per baris. */
+    /** Tanggal saldo awal perusahaan, di-cache: warnRow() dipanggil per baris. */
     private ?string $openingDate = null;
 
     /** @var array<string, FixedAssetCategory|null> */
@@ -60,6 +54,7 @@ class FixedAssetOpeningImportCommitter implements ImportProfileCommitter, Provid
 
     public function __construct(
         private readonly FixedAssetService $fixedAssetService,
+        private readonly OpeningBalanceService $openingBalanceService,
         private readonly TenantContext $tenantContext,
     ) {}
 
@@ -69,12 +64,11 @@ class FixedAssetOpeningImportCommitter implements ImportProfileCommitter, Provid
      */
     public function validateRow(ImportBatch $batch, array $normalized): array
     {
-        // Prasyarat tingkat perusahaan. Sengaja dilaporkan per baris, bukan
-        // ditahan sampai commit: kalau modulnya mati atau saldo awal sudah
-        // diposting, SETIAP baris memang tidak bisa masuk — dan user berhak
-        // tahu itu di layar pratinjau, bukan setelah menekan Commit.
-        if ($precondition = $this->preconditionError()) {
-            return ['name' => [$precondition]];
+        // Satu-satunya prasyarat yang tersisa: modulnya harus hidup. Sengaja
+        // dilaporkan per baris — kalau modulnya mati, SETIAP baris memang tidak
+        // bisa masuk, dan user berhak tahu itu di layar pratinjau.
+        if (! $this->fixedAssetsEnabled()) {
+            return ['name' => ['Modul Aktiva Tetap belum aktif untuk perusahaan ini. Aktifkan dulu di Pengaturan → Modul sebelum mengimpor aset tetap awal.']];
         }
 
         $errors = [];
@@ -214,7 +208,7 @@ class FixedAssetOpeningImportCommitter implements ImportProfileCommitter, Provid
         $depreciates = in_array((string) $category->depreciation_type, ['depreciation', 'amortization'], true);
         $life = trim((string) ($normalized['useful_life_years'] ?? ''));
         $accumulated = trim((string) ($normalized['accumulated_depreciation'] ?? ''));
-        $openingDate = $this->prospectiveOpeningDate();
+        $openingDate = $this->openingDate();
 
         // ── Umur manfaat ────────────────────────────────────────────────
         if (! $depreciates) {
@@ -301,12 +295,9 @@ class FixedAssetOpeningImportCommitter implements ImportProfileCommitter, Provid
         $results = [];
         $rows = $batch->rows()->where('status', 'valid')->orderBy('row_number')->get();
 
-        // Diperiksa ulang di sini, bukan hanya di validateRow: keadaannya bisa
-        // berubah antara pratinjau dan commit (mis. saldo awal diposting di tab
-        // lain), dan yang satu ini tidak boleh lolos.
-        if ($precondition = $this->preconditionError()) {
+        if (! $this->fixedAssetsEnabled()) {
             foreach ($rows as $row) {
-                $results[$row->id] = ['status' => 'failed', 'document_id' => null, 'document_type' => null, 'error' => $precondition];
+                $results[$row->id] = ['status' => 'failed', 'document_id' => null, 'document_type' => null, 'error' => 'Modul Aktiva Tetap belum aktif untuk perusahaan ini.'];
             }
 
             return $results;
@@ -338,7 +329,34 @@ class FixedAssetOpeningImportCommitter implements ImportProfileCommitter, Provid
             }
         }
 
+        // Aktivasi menutup impor, bukan menunggu peristiwa lain. Ia mengisi
+        // akumulasi penyusutan yang dikosongkan user (per tanggal saldo awal),
+        // menerbitkan nomor aset, dan menyusun jadwal penyusutan sisa umurnya.
+        //
+        // Kegagalan di sini TIDAK menggagalkan barisnya: kartunya sudah benar
+        // tersimpan, yang gagal cuma menghidupkannya. Menandai baris gagal akan
+        // menyuruh user mengimpor ulang berkas yang sebenarnya sudah masuk.
+        // Pesannya tetap dilampirkan ke baris yang berhasil, supaya ia terbaca
+        // di kolom Galat layar pratinjau alih-alih hilang diam-diam.
+        try {
+            $this->fixedAssetService->activateOpeningAssets($this->openingDate());
+        } catch (Throwable $e) {
+            foreach ($results as $rowId => $result) {
+                if ($result['status'] === 'committed') {
+                    $results[$rowId]['error'] = 'Aset tersimpan, tapi belum bisa diaktifkan: '.$e->getMessage();
+                }
+            }
+        }
+
         return $results;
+    }
+
+    /**
+     * Kebalikan commit: kartu aset yang dibuat berkas ini dihapus.
+     */
+    public function revert(ImportBatch $batch, string $reason): int
+    {
+        return $this->fixedAssetService->deleteImportedOpeningAssets($batch->uuid);
     }
 
     /**
@@ -442,75 +460,21 @@ class FixedAssetOpeningImportCommitter implements ImportProfileCommitter, Provid
     }
 
     /**
-     * Tanggal saldo awal yang KEMUNGKINAN dipakai, untuk keperluan peringatan
-     * saja.
+     * Tanggal saldo awal perusahaan — satu tanggal, ditetapkan di wizard Setup,
+     * dipakai baik oleh peringatan di sini maupun oleh aktivasi aset.
      *
-     * Saat berkas diimpor, batch saldo awalnya sering belum ada — dan tanggal
-     * yang pasti baru diketahui saat batch itu diposting. Urutan tebakannya
-     * sama dengan yang dipakai `OpeningBalanceImportCommitter` ketika ia harus
-     * membuat batch sendiri (keputusan 7B-2): batch yang masih bisa diisi,
-     * lalu awal tahun fiskal aktif, lalu hari ini. Peringatan yang meleset
-     * karena tebakan ini tidak berbahaya — angka yang dipakai sistem tetap
-     * dihitung ulang saat posting.
+     * Sampai Fase 7 ia atribut batch saldo awal, jadi saat impor berjalan
+     * tanggalnya masih tebakan. Sekarang ia sudah pasti sebelum berkas pertama
+     * diunggah — dan itulah yang membuat impor aset boleh berjalan lebih dulu.
      */
-    private function prospectiveOpeningDate(): string
+    private function openingDate(): string
     {
-        if ($this->openingDate !== null) {
-            return $this->openingDate;
-        }
-
-        if (Schema::connection('tenant')->hasTable('opening_balance_batches')) {
-            $batch = OpeningBalanceBatch::query()
-                ->whereIn('status', ['draft', 'reopened'])
-                ->orderByDesc('opening_date')
-                ->first();
-
-            if ($batch instanceof OpeningBalanceBatch && $batch->opening_date) {
-                return $this->openingDate = $batch->opening_date->toDateString();
-            }
-        }
-
-        $company = $this->tenantContext->company();
-        if ($company) {
-            $start = FiscalYear::query()
-                ->where('company_id', $company->id)
-                ->where('is_active', true)
-                ->orderByDesc('start_date')
-                ->value('start_date');
-
-            if ($start) {
-                return $this->openingDate = $start instanceof \DateTimeInterface
-                    ? $start->format('Y-m-d')
-                    : (string) $start;
-            }
-        }
-
-        return $this->openingDate = CarbonImmutable::now()->toDateString();
+        return $this->openingDate ??= $this->openingBalanceService->openingDate();
     }
 
     private function rupiah(float $amount): string
     {
         return number_format($amount, 2, ',', '.');
-    }
-
-    /**
-     * Alasan berkas ini tidak bisa diimpor sama sekali, atau null kalau aman.
-     */
-    private function preconditionError(): ?string
-    {
-        if (! $this->fixedAssetsEnabled()) {
-            return 'Modul Aktiva Tetap belum aktif untuk perusahaan ini. Aktifkan dulu di Pengaturan → Modul sebelum mengimpor aset tetap awal.';
-        }
-
-        if (Schema::connection('tenant')->hasTable('opening_balance_batches')
-            && OpeningBalanceBatch::query()->whereIn('status', ['posted', 'locked'])->exists()) {
-            // Total aset tetap ikut membentuk baris sistem batch saldo awal.
-            // Menambah aset setelah batch diposting akan membuat register aset
-            // dan jurnal pembuka tidak lagi cocok, tanpa jejak apa pun.
-            return 'Saldo awal sudah diposting/dikunci. Aset tetap awal harus diimpor SEBELUM saldo awal diposting — kalau memang perlu, buka kembali (reopen) saldo awalnya dulu.';
-        }
-
-        return null;
     }
 
     private function fixedAssetsEnabled(): bool

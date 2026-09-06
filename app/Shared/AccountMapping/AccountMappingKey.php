@@ -101,6 +101,8 @@ class AccountMappingKey
     // Opening/Closing
     public const OPENING_BALANCE_EQUITY = 'opening_balance.equity';
 
+    public const OPENING_BALANCE_CLEARING = 'opening_balance.clearing';
+
     public const CLOSING_RETAINED_EARNINGS = 'closing.retained_earnings';
 
     public const CLOSING_CURRENT_YEAR_EARNINGS = 'closing.current_year_earnings';

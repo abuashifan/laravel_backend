@@ -556,9 +556,32 @@ return [
             'label' => 'Opening Balance Equity',
             'required' => true,
             'account_types' => ['equity'],
-            'description' => 'Default balancing equity account for opening balances if needed.',
+            'description' => 'Akun ekuitas tujuan saat saldo perantara saldo awal ditutup.',
             'default_account_codes' => ['3100'],
-            'visible_in_settings' => false,
+            'visible_in_settings' => true,
+        ],
+
+        /*
+         * Lawan universal setiap jurnal saldo awal (Fase 8).
+         *
+         * Berkas neraca saldo klien diimpor apa adanya, satu sisi per baris;
+         * selisihnya jatuh ke akun ini, sehingga jurnalnya selalu seimbang
+         * tanpa user perlu menghitung ekuitas pembuka lebih dulu. Saldo akun
+         * ini adalah ekuitas pembuka yang belum diakui -- ia ditutup ke
+         * `opening_balance.equity` lewat satu langkah eksplisit di akhir.
+         *
+         * Akun sendiri, bukan langsung 3100: selama saldonya bukan nol, neraca
+         * pembuka belum selesai -- dan itu harus terbaca dari saldo satu akun,
+         * bukan dari status sebuah dokumen.
+         */
+        'opening_balance.clearing' => [
+            'module' => 'opening_balance',
+            'label' => 'Saldo Awal (Perantara)',
+            'required' => true,
+            'account_types' => ['equity'],
+            'description' => 'Akun perantara yang jadi lawan setiap jurnal saldo awal sebelum ditutup ke ekuitas.',
+            'default_account_codes' => ['3900'],
+            'visible_in_settings' => true,
         ],
 
         'closing.retained_earnings' => [

@@ -4,7 +4,7 @@ namespace App\Modules\OpeningBalance\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 
-class ReopenOpeningBalanceRequest extends FormRequest
+class SetOpeningDateRequest extends FormRequest
 {
     public function authorize(): bool
     {
@@ -14,7 +14,7 @@ class ReopenOpeningBalanceRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'reason' => ['required', 'string', 'max:1000'],
+            'opening_date' => ['required', 'date'],
         ];
     }
 }

@@ -13,7 +13,7 @@
  * memetakan akun hasil template tanpa logika tambahan. Jangan ubah kode akun
  * inti (1100, 1110, 1120, 1130, 1140, 2100, 2120, 2130, 2140, 2150, 3100,
  * 3200, 3300, 4100, 4110, 4120, 5100, 5110, 5120, 6100, 6160, 7100, 7200,
- * 1590, 8200) tanpa juga menyesuaikan `account_mappings.php`.
+ * 1590, 3900, 8200) tanpa juga menyesuaikan `account_mappings.php`.
  *
  * Resolusi default itu MELEWATI akun induk -- akun induk ditolak saat posting
  * jurnal, jadi memetakannya cuma menunda kegagalan sampai transaksi pertama.
@@ -92,6 +92,7 @@ return [
                 ['code' => '3100', 'name' => 'Modal Pemilik', 'type' => 'equity', 'parent_code' => '3'],
                 ['code' => '3200', 'name' => 'Laba Ditahan', 'type' => 'equity', 'parent_code' => '3'],
                 ['code' => '3300', 'name' => 'Laba Tahun Berjalan', 'type' => 'equity', 'parent_code' => '3'],
+                ['code' => '3900', 'name' => 'Saldo Awal (Perantara)', 'type' => 'equity', 'parent_code' => '3'],
                 ['code' => '4', 'name' => 'PENDAPATAN', 'type' => 'revenue', 'parent_code' => null],
                 ['code' => '4100', 'name' => 'Pendapatan Penjualan Gas', 'type' => 'revenue', 'parent_code' => '4'],
                 ['code' => '4110', 'name' => 'Retur Penjualan', 'type' => 'revenue', 'parent_code' => '4'],
@@ -153,6 +154,7 @@ return [
                 ['code' => '3100', 'name' => 'Modal Pemilik', 'type' => 'equity', 'parent_code' => '3'],
                 ['code' => '3200', 'name' => 'Laba Ditahan', 'type' => 'equity', 'parent_code' => '3'],
                 ['code' => '3300', 'name' => 'Laba Tahun Berjalan', 'type' => 'equity', 'parent_code' => '3'],
+                ['code' => '3900', 'name' => 'Saldo Awal (Perantara)', 'type' => 'equity', 'parent_code' => '3'],
                 ['code' => '4', 'name' => 'PENDAPATAN', 'type' => 'revenue', 'parent_code' => null],
                 ['code' => '4100', 'name' => 'Pendapatan Penjualan', 'type' => 'revenue', 'parent_code' => '4'],
                 ['code' => '4110', 'name' => 'Retur Penjualan', 'type' => 'revenue', 'parent_code' => '4'],
@@ -214,6 +216,7 @@ return [
                 ['code' => '3100', 'name' => 'Modal Pemilik', 'type' => 'equity', 'parent_code' => '3'],
                 ['code' => '3200', 'name' => 'Laba Ditahan', 'type' => 'equity', 'parent_code' => '3'],
                 ['code' => '3300', 'name' => 'Laba Tahun Berjalan', 'type' => 'equity', 'parent_code' => '3'],
+                ['code' => '3900', 'name' => 'Saldo Awal (Perantara)', 'type' => 'equity', 'parent_code' => '3'],
                 ['code' => '4', 'name' => 'PENDAPATAN', 'type' => 'revenue', 'parent_code' => null],
                 ['code' => '4100', 'name' => 'Pendapatan Jasa', 'type' => 'revenue', 'parent_code' => '4'],
                 ['code' => '4120', 'name' => 'Diskon Jasa', 'type' => 'revenue', 'parent_code' => '4'],
@@ -272,6 +275,7 @@ return [
                 ['code' => '3100', 'name' => 'Modal Pemilik', 'type' => 'equity', 'parent_code' => '3'],
                 ['code' => '3200', 'name' => 'Laba Ditahan', 'type' => 'equity', 'parent_code' => '3'],
                 ['code' => '3300', 'name' => 'Laba Tahun Berjalan', 'type' => 'equity', 'parent_code' => '3'],
+                ['code' => '3900', 'name' => 'Saldo Awal (Perantara)', 'type' => 'equity', 'parent_code' => '3'],
                 ['code' => '4', 'name' => 'PENDAPATAN', 'type' => 'revenue', 'parent_code' => null],
                 ['code' => '4100', 'name' => 'Pendapatan Penjualan', 'type' => 'revenue', 'parent_code' => '4'],
                 ['code' => '4110', 'name' => 'Retur Penjualan', 'type' => 'revenue', 'parent_code' => '4'],

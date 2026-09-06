@@ -56,10 +56,9 @@ class ModuleBoundariesTest extends TestCase
         'Inventory → App\\Modules\\Budget\\Services\\BudgetWarningService',
         'FixedAssets → App\\Modules\\Budget\\Services\\BudgetWarningService',
         'OpeningBalance → App\\Modules\\Accounting\\Services\\FiscalYearService',
-        // Posting saldo awal sekaligus mengaktifkan aset tetap awal yang
-        // dibukukannya, dan reopen mengembalikannya ke draft. Akun kontrol per
-        // kelas juga di-resolve di sisi FixedAssets — menyalin logika akunnya ke
-        // modul ini pasti lepas sinkron.
+        // Papan pemantau saldo awal merekonsiliasi register aset dengan buku
+        // besar, dan akun kontrol per kelas di-resolve di sisi FixedAssets —
+        // menyalin logika akunnya ke modul ini pasti lepas sinkron.
         'OpeningBalance → App\\Modules\\FixedAssets\\Services\\FixedAssetService',
         'Purchase → App\\Modules\\Settings\\Services\\CompanySettingService',
         'Purchase → App\\Modules\\Inventory\\Services\\InventoryPurchaseIntegrationService',
@@ -73,7 +72,7 @@ class ModuleBoundariesTest extends TestCase
         'Sales → App\\Modules\\Settings\\Services\\CompanySettingService',
         'Sales → App\\Modules\\MasterData\\Services\\AccountMappingStorageService',
         'Sales → App\\Modules\\Inventory\\Services\\InventorySalesIntegrationService',
-        'Setup → App\\Modules\\OpeningBalance\\Services\\OpeningBalanceBatchService',
+        'Setup → App\\Modules\\OpeningBalance\\Services\\OpeningBalanceService',
         // CoaTemplateService (apply COA template dari wizard) sengaja memakai ulang
         // service MasterData yang sudah divalidasi bisnisnya, bukan menduplikasi logic
         // create akun/sync mapping -- preseden arah yang sama sudah ada di
@@ -103,7 +102,7 @@ class ModuleBoundariesTest extends TestCase
         'Imports → App\\Modules\\Purchase\\Services\\VendorBillService',
         // Fase 7 (impor saldo awal & aset tetap awal) — alasan identik: satu-
         // satunya cara mematuhi "importer wajib lewat service dokumen".
-        'Imports → App\\Modules\\OpeningBalance\\Services\\OpeningBalanceBatchService',
+        'Imports → App\\Modules\\OpeningBalance\\Services\\OpeningBalanceService',
         'Imports → App\\Modules\\FixedAssets\\Services\\FixedAssetService',
         // Kategori aset tetap disambungkan ke akun COA saat template diterapkan —
         // butuh chart_of_accounts.id, jadi harus setelah COA jadi. Arah yang sama

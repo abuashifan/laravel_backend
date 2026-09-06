@@ -4,6 +4,7 @@ namespace App\Modules\Imports\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Imports\Models\ImportBatch;
+use App\Modules\Imports\Requests\RevertImportRequest;
 use App\Modules\Imports\Requests\StoreImportRequest;
 use App\Modules\Imports\Requests\UpdateImportMappingRequest;
 use App\Modules\Imports\Services\DuplicateImportFileException;
@@ -111,6 +112,26 @@ class ImportController extends Controller
     public function commit(string $uuid): JsonResponse
     {
         return $this->successResponse($this->batches->commit($uuid), 'Import batch committed.');
+    }
+
+    /**
+     * Riwayat impor — tanpa ini batch lama tidak punya layar tempat ia bisa
+     * dibuka lagi, apalagi dibatalkan.
+     */
+    public function index(Request $request): JsonResponse
+    {
+        return $this->listResponse($this->batches->list($request->query()), $request, 'Import batches retrieved.');
+    }
+
+    /**
+     * Kebalikan commit: dokumen yang dihasilkan batch ini ditarik kembali.
+     */
+    public function revert(RevertImportRequest $request, string $uuid): JsonResponse
+    {
+        return $this->successResponse(
+            $this->batches->revert($uuid, (string) $request->validated('reason')),
+            'Import batch reverted.'
+        );
     }
 
     public function destroy(string $uuid): JsonResponse

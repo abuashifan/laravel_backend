@@ -6,10 +6,9 @@ use App\Modules\FixedAssets\Models\FixedAsset;
 use App\Modules\FixedAssets\Models\FixedAssetCategory;
 use App\Modules\Imports\Models\ImportBatch;
 use App\Modules\Imports\Models\ImportRow;
+use App\Modules\Journal\Models\JournalEntry;
 use App\Modules\MasterData\Models\AccountMapping;
 use App\Modules\MasterData\Models\ChartOfAccount;
-use App\Modules\OpeningBalance\Models\OpeningBalanceBatch;
-use App\Modules\Settings\Services\CompanySettingService;
 use App\Shared\Models\Company;
 use App\Shared\Models\CompanySetupState;
 use App\Shared\Models\CompanyUser;
@@ -25,235 +24,109 @@ use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
 /**
- * Profil impor saldo awal — Fase 7 rencana impor data.
+ * Profil impor saldo awal — Fase 8.
+ *
+ * Yang diuji di sini adalah tiga janji Fase 8: berkas jadi satu jurnal yang
+ * seimbang sendiri lewat akun perantara, akun aset tetap tidak lagi ditolak,
+ * dan tiap berkas bisa dibatalkan sendiri.
  */
 class OpeningBalanceImportTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_valid_rows_become_draft_opening_balance_lines(): void
+    public function test_file_becomes_one_posted_journal_balanced_by_the_clearing_account(): void
     {
         Storage::fake('local');
         $ctx = $this->setUpTenant();
-        $this->seedAccounts();
+        $accounts = $this->seedAccounts();
 
         $uuid = $this->uploadAndMap($ctx, [
             ['Account Code', 'Description', 'Debit', 'Credit'],
-            ['1101', 'Saldo awal kas', '5000000', '0'],
-            ['3100', 'Modal disetor', '0', '5000000'],
+            ['1101', 'Saldo awal kas', '10000000', '0'],
+            ['2100', 'Utang usaha', '0', '4000000'],
         ]);
 
         $this->postJson('/api/imports/'.$uuid.'/commit', [], $ctx['headers'])
             ->assertOk()
             ->assertJsonPath('data.committed_rows', 2);
 
-        $batch = OpeningBalanceBatch::query()->firstOrFail();
-        // Impor mengisi draft saja — user tetap menekan Validasi & Posting sendiri.
-        $this->assertSame('draft', $batch->status);
-        $this->assertSame(2, $batch->lines()->count());
-        $this->assertEqualsWithDelta(5000000, (float) $batch->total_debit, 0.001);
-        $this->assertEqualsWithDelta(5000000, (float) $batch->total_credit, 0.001);
-        $this->assertSame('opening_balance_import', $batch->lines()->first()->source_type);
+        $journal = JournalEntry::query()->where('source_module', 'opening_balance')->firstOrFail();
+        $this->assertSame('posted', $journal->status);
+
+        // Dua baris berkas + satu baris perantara yang dihitung sistem.
+        $this->assertSame(3, $journal->lines()->count());
+        $this->assertEqualsWithDelta(10000000, (float) $journal->lines()->sum('debit'), 0.001);
+        $this->assertEqualsWithDelta(10000000, (float) $journal->lines()->sum('credit'), 0.001);
+
+        $clearingLine = $journal->lines()->where('account_id', $accounts['clearing'])->firstOrFail();
+        $this->assertEqualsWithDelta(6000000, (float) $clearingLine->credit, 0.001);
+
+        $status = $this->getJson('/api/opening-balance/status', $ctx['headers'])->assertOk()->json('data');
+        $this->assertEqualsWithDelta(-6000000, (float) $status['clearing_balance'], 0.001);
+        $this->assertSame(1, $status['journal_count']);
     }
 
-    public function test_existing_manual_lines_are_preserved_not_replaced(): void
+    /**
+     * Berkas boleh dicicil: kas hari ini, piutang besok. Tiap berkas jadi
+     * jurnalnya sendiri, dan saldo perantara terakumulasi.
+     */
+    public function test_second_file_posts_its_own_journal(): void
     {
         Storage::fake('local');
         $ctx = $this->setUpTenant();
-        $accounts = $this->seedAccounts();
+        $this->seedAccounts();
 
-        // User sudah mengetik satu baris manual di halaman Saldo Awal.
-        $created = $this->postJson('/api/opening-balance/batches', [
-            'opening_date' => '2026-01-01',
-        ], $ctx['headers'])->assertCreated()->json('data');
+        foreach ([['1101', '10000000'], ['1102', '5000000']] as [$code, $amount]) {
+            $uuid = $this->uploadAndMap($ctx, [
+                ['Account Code', 'Description', 'Debit', 'Credit'],
+                [$code, 'Saldo awal', $amount, '0'],
+            ], filename: 'ob-'.$code.'.csv');
 
-        $this->putJson('/api/opening-balance/batches/'.$created['id'].'/lines', [
-            'lines' => [['account_id' => $accounts['bank'], 'debit' => 2000000, 'credit' => 0, 'description' => 'Diketik manual']],
-        ], $ctx['headers'])->assertOk();
+            $this->postJson('/api/imports/'.$uuid.'/commit', [], $ctx['headers'])->assertOk();
+        }
+
+        $this->assertSame(2, JournalEntry::query()->where('source_module', 'opening_balance')->count());
+        $status = $this->getJson('/api/opening-balance/status', $ctx['headers'])->assertOk()->json('data');
+        $this->assertEqualsWithDelta(-15000000, (float) $status['clearing_balance'], 0.001);
+    }
+
+    /**
+     * Regresi TERBALIK dari Fase 7: akun harga perolehan aset tetap dulu ditolak
+     * per baris karena baris kontrolnya dihasilkan otomatis dari register.
+     * Sejak Fase 8 register tidak lagi menyentuh buku besar, jadi akunnya diisi
+     * lewat berkas ini seperti akun lain.
+     */
+    public function test_fixed_asset_accounts_are_accepted(): void
+    {
+        Storage::fake('local');
+        $ctx = $this->setUpTenant();
+        $this->seedAccounts();
 
         $uuid = $this->uploadAndMap($ctx, [
             ['Account Code', 'Description', 'Debit', 'Credit'],
-            ['1101', 'Saldo awal kas', '5000000', '0'],
+            ['1530', 'Peralatan', '18000000', '0'],
+            ['1531', 'Akumulasi penyusutan peralatan', '0', '4500000'],
         ]);
 
         $this->postJson('/api/imports/'.$uuid.'/commit', [], $ctx['headers'])
             ->assertOk()
-            ->assertJsonPath('data.committed_rows', 1);
-
-        // Keputusan 7B-1: impor MENGGABUNG. `replaceLines()` menghapus semua
-        // baris sebelum insert, jadi tanpa baca-gabung-tulis baris manual ini
-        // akan hilang tanpa jejak.
-        $batch = OpeningBalanceBatch::query()->findOrFail($created['id']);
-        $this->assertSame(2, $batch->lines()->count());
-        $this->assertTrue($batch->lines()->where('description', 'Diketik manual')->exists());
+            ->assertJsonPath('data.committed_rows', 2);
     }
-
-    public function test_account_already_in_batch_is_rejected(): void
-    {
-        Storage::fake('local');
-        $ctx = $this->setUpTenant();
-        $accounts = $this->seedAccounts();
-
-        $created = $this->postJson('/api/opening-balance/batches', [
-            'opening_date' => '2026-01-01',
-        ], $ctx['headers'])->assertCreated()->json('data');
-
-        $this->putJson('/api/opening-balance/batches/'.$created['id'].'/lines', [
-            'lines' => [['account_id' => $accounts['cash'], 'debit' => 2000000, 'credit' => 0]],
-        ], $ctx['headers'])->assertOk();
-
-        $uuid = $this->uploadAndMap($ctx, [
-            ['Account Code', 'Description', 'Debit', 'Credit'],
-            ['1101', 'Saldo awal kas', '5000000', '0'],
-        ], expectedFailedRows: 1);
-
-        $this->assertStringContainsString('sudah punya baris saldo awal', $this->firstRowErrors($uuid)['account_code'][0]);
-    }
-
-    public function test_parent_account_is_rejected(): void
-    {
-        Storage::fake('local');
-        $ctx = $this->setUpTenant();
-        $accounts = $this->seedAccounts();
-
-        ChartOfAccount::query()->create([
-            'account_code' => '1101.1', 'account_name' => 'Kas Kecil', 'account_type' => 'asset',
-            'normal_balance' => 'debit', 'parent_account_id' => $accounts['cash'], 'is_active' => true,
-        ]);
-
-        $uuid = $this->uploadAndMap($ctx, [
-            ['Account Code', 'Description', 'Debit', 'Credit'],
-            ['1101', 'Saldo awal kas', '5000000', '0'],
-        ], expectedFailedRows: 1);
-
-        $this->assertStringContainsString('akun induk', $this->firstRowErrors($uuid)['account_code'][0]);
-    }
-
-    public function test_fixed_asset_control_account_is_rejected_with_guidance(): void
-    {
-        Storage::fake('local');
-        $ctx = $this->setUpTenant();
-        $this->seedAccounts();
-
-        $uuid = $this->uploadAndMap($ctx, [
-            ['Account Code', 'Description', 'Debit', 'Credit'],
-            ['1530', 'Peralatan', '10000000', '0'],
-        ], expectedFailedRows: 1);
-
-        // Akun ini dihasilkan otomatis oleh fixedAssetSystemLines(); baris manual
-        // dengan akun sama membuat batch ditolak FIXED_ASSET_CONTROL_DUPLICATE
-        // dengan pesan yang tidak menyebut baris mana. Ditangkap lebih awal.
-        $message = $this->firstRowErrors($uuid)['account_code'][0];
-        $this->assertStringContainsString('akun kontrol aset tetap', $message);
-        $this->assertStringContainsString('profil Aset Tetap Awal', $message);
-    }
-
-    public function test_duplicate_account_within_file_is_rejected(): void
-    {
-        Storage::fake('local');
-        $ctx = $this->setUpTenant();
-        $this->seedAccounts();
-
-        $uuid = $this->uploadAndMap($ctx, [
-            ['Account Code', 'Description', 'Debit', 'Credit'],
-            ['1101', 'Saldo awal kas', '5000000', '0'],
-            ['1101', 'Saldo awal kas lagi', '1000000', '0'],
-        ], expectedFailedRows: 1);
-
-        // Baris data pertama ada di row_number 2 (baris 1 = header), jadi yang
-        // ditandai duplikat adalah row_number 3. Dicari lewat status supaya
-        // test tidak pecah kalau penomoran baris pembaca berubah.
-        $batchId = ImportBatch::query()->where('uuid', $uuid)->firstOrFail()->id;
-        $invalid = ImportRow::query()->where('import_batch_id', $batchId)->where('status', 'invalid')->firstOrFail();
-        $this->assertSame(3, (int) $invalid->row_number);
-        $this->assertStringContainsString('lebih dari sekali', ((array) $invalid->errors)['account_code'][0]);
-    }
-
-    public function test_row_with_both_debit_and_credit_is_rejected(): void
-    {
-        Storage::fake('local');
-        $ctx = $this->setUpTenant();
-        $this->seedAccounts();
-
-        $uuid = $this->uploadAndMap($ctx, [
-            ['Account Code', 'Description', 'Debit', 'Credit'],
-            ['1101', 'Dua sisi', '5000000', '5000000'],
-        ], expectedFailedRows: 1);
-
-        $this->assertArrayHasKey('debit', $this->firstRowErrors($uuid));
-    }
-
-    public function test_import_is_blocked_when_opening_balance_already_posted(): void
-    {
-        Storage::fake('local');
-        $ctx = $this->setUpTenant();
-        $accounts = $this->seedAccounts();
-
-        $created = $this->postJson('/api/opening-balance/batches', [
-            'opening_date' => '2026-01-01',
-        ], $ctx['headers'])->assertCreated()->json('data');
-
-        $this->putJson('/api/opening-balance/batches/'.$created['id'].'/lines', [
-            'lines' => [
-                ['account_id' => $accounts['cash'], 'debit' => 1000000, 'credit' => 0],
-                ['account_id' => $accounts['equity'], 'debit' => 0, 'credit' => 1000000],
-            ],
-        ], $ctx['headers'])->assertOk();
-        $this->postJson('/api/opening-balance/batches/'.$created['id'].'/validate', [], $ctx['headers'])->assertOk();
-        $this->postJson('/api/opening-balance/batches/'.$created['id'].'/post', [], $ctx['headers'])->assertOk();
-
-        $uuid = $this->uploadAndMap($ctx, [
-            ['Account Code', 'Description', 'Debit', 'Credit'],
-            ['1102', 'Saldo awal bank', '5000000', '0'],
-        ], expectedFailedRows: 1);
-
-        $this->assertStringContainsString('sudah diposting', $this->firstRowErrors($uuid)['account_code'][0]);
-    }
-
-    // ── Helpers ──────────────────────────────────────────────────────────
 
     /**
-     * Urutan wajib: aset tetap awal DULU, saldo awal belakangan.
-     *
-     * Baris harga perolehan & akumulasi penyusutan di batch saldo awal lahir
-     * otomatis dari register aset, jadi berkas saldo awal yang masuk lebih dulu
-     * akan mengunci neraca pembuka pada angka tanpa aset -- dan impor asetnya
-     * ditolak begitu saldo awal diposting. Ditolak di titik paling awal yang
-     * masih bisa diperbaiki tanpa reopen.
+     * Urutan bebas — inti Fase 8. Aset didaftarkan lebih dulu, saldo awal
+     * menyusul, dan tidak ada satu pun penolakan.
      */
-    public function test_import_is_blocked_when_fixed_assets_enabled_but_opening_assets_missing(): void
+    public function test_import_order_does_not_matter(): void
     {
         Storage::fake('local');
         $ctx = $this->setUpTenant();
         $this->seedAccounts();
-        app(CompanySettingService::class)->updateModuleSetting($ctx['company'], ['fixed_asset_enabled' => true]);
-
-        $uuid = $this->uploadAndMap($ctx, [
-            ['Account Code', 'Description', 'Debit', 'Credit'],
-            ['1101', 'Saldo awal kas', '5000000', '0'],
-            ['3100', 'Modal disetor', '0', '5000000'],
-        ], expectedFailedRows: 2);
-
-        $errors = $this->firstRowErrors($uuid);
-        $this->assertStringContainsString('aset tetap awal belum diimpor', $errors['account_code'][0]);
-
-        // Tidak ada baris valid sama sekali -- commit ditolak, batch saldo awal
-        // tidak pernah dibuat.
-        $this->postJson('/api/imports/'.$uuid.'/commit', [], $ctx['headers'])->assertStatus(422);
-        $this->assertSame(0, OpeningBalanceBatch::query()->count());
-    }
-
-    public function test_import_proceeds_once_opening_fixed_assets_are_registered(): void
-    {
-        Storage::fake('local');
-        $ctx = $this->setUpTenant();
-        $this->seedAccounts();
-        app(CompanySettingService::class)->updateModuleSetting($ctx['company'], ['fixed_asset_enabled' => true]);
         $this->registerOpeningAsset();
 
         $uuid = $this->uploadAndMap($ctx, [
             ['Account Code', 'Description', 'Debit', 'Credit'],
-            ['1101', 'Saldo awal kas', '5000000', '0'],
+            ['1530', 'Peralatan', '18000000', '0'],
         ]);
 
         $this->postJson('/api/imports/'.$uuid.'/commit', [], $ctx['headers'])
@@ -261,40 +134,47 @@ class OpeningBalanceImportTest extends TestCase
             ->assertJsonPath('data.committed_rows', 1);
     }
 
+    public function test_nominal_and_parent_accounts_are_rejected(): void
+    {
+        Storage::fake('local');
+        $ctx = $this->setUpTenant();
+        $this->seedAccounts();
+
+        $parent = $this->account('1', 'AKTIVA', 'asset', 'debit');
+        $this->account('1199', 'Kas Lain', 'asset', 'debit', parentId: $parent);
+        $this->account('4100', 'Pendapatan', 'revenue', 'credit');
+
+        $uuid = $this->uploadAndMap($ctx, [
+            ['Account Code', 'Description', 'Debit', 'Credit'],
+            ['1', 'Akun induk', '1000', '0'],
+            ['4100', 'Pendapatan', '0', '1000'],
+        ], expectedFailedRows: 2);
+
+        $errors = $this->rowErrors($uuid);
+        $this->assertStringContainsString('akun induk', $errors[0]['account_code'][0]);
+        $this->assertStringContainsString('nominal', $errors[1]['account_code'][0]);
+    }
+
+    public function test_duplicate_account_in_the_same_file_is_rejected(): void
+    {
+        Storage::fake('local');
+        $ctx = $this->setUpTenant();
+        $this->seedAccounts();
+
+        $uuid = $this->uploadAndMap($ctx, [
+            ['Account Code', 'Description', 'Debit', 'Credit'],
+            ['1101', 'Kas', '1000', '0'],
+            ['1101', 'Kas lagi', '2000', '0'],
+        ], expectedFailedRows: 1);
+
+        $this->assertStringContainsString('lebih dari sekali', $this->rowErrors($uuid)[1]['account_code'][0]);
+    }
+
     /**
-     * Jalan keluar kedua, sama persis dengan yang diterima
-     * `SetupWizardService::validateOpeningFixedAssets()`: perusahaan yang modul
-     * Aktiva Tetapnya aktif tapi memang tidak punya aset warisan. Tanpa jalur
-     * ini, mengaktifkan modul akan mengunci impor saldo awal selamanya.
+     * Pembatalan: jurnalnya di-void, saldo perantara kembali, dan batch impornya
+     * tetap tersimpan sebagai riwayat.
      */
-    public function test_import_proceeds_when_absence_of_opening_fixed_assets_is_confirmed(): void
-    {
-        Storage::fake('local');
-        $ctx = $this->setUpTenant();
-        $this->seedAccounts();
-        app(CompanySettingService::class)->updateModuleSetting($ctx['company'], ['fixed_asset_enabled' => true]);
-
-        $this->postJson('/api/setup/validate-step', [
-            'step' => 'opening_fixed_assets',
-            'confirm_no_opening_fixed_assets' => true,
-        ], $ctx['headers'])->assertOk();
-
-        $this->assertTrue(
-            (bool) ((array) CompanySetupState::query()->where('company_id', $ctx['company']->id)->firstOrFail()->metadata)['opening_fixed_assets_confirmed_none']
-        );
-
-        $uuid = $this->uploadAndMap($ctx, [
-            ['Account Code', 'Description', 'Debit', 'Credit'],
-            ['1101', 'Saldo awal kas', '5000000', '0'],
-        ]);
-
-        $this->postJson('/api/imports/'.$uuid.'/commit', [], $ctx['headers'])
-            ->assertOk()
-            ->assertJsonPath('data.committed_rows', 1);
-    }
-
-    /** Modul Aktiva Tetap mati -- gerbang urutan tidak berlaku sama sekali. */
-    public function test_import_is_unaffected_when_fixed_asset_module_is_disabled(): void
+    public function test_revert_voids_the_journal_and_restores_the_clearing_balance(): void
     {
         Storage::fake('local');
         $ctx = $this->setUpTenant();
@@ -302,18 +182,101 @@ class OpeningBalanceImportTest extends TestCase
 
         $uuid = $this->uploadAndMap($ctx, [
             ['Account Code', 'Description', 'Debit', 'Credit'],
-            ['1101', 'Saldo awal kas', '5000000', '0'],
+            ['1101', 'Saldo awal kas', '10000000', '0'],
         ]);
+        $this->postJson('/api/imports/'.$uuid.'/commit', [], $ctx['headers'])->assertOk();
 
-        $this->postJson('/api/imports/'.$uuid.'/commit', [], $ctx['headers'])
+        $this->postJson('/api/imports/'.$uuid.'/revert', ['reason' => 'Angka kasnya salah'], $ctx['headers'])
             ->assertOk()
-            ->assertJsonPath('data.committed_rows', 1);
+            ->assertJsonPath('data.status', 'reverted')
+            ->assertJsonPath('data.committed_rows', 0);
+
+        $this->assertSame('void', JournalEntry::query()->where('source_module', 'opening_balance')->firstOrFail()->status);
+        $status = $this->getJson('/api/opening-balance/status', $ctx['headers'])->assertOk()->json('data');
+        $this->assertEqualsWithDelta(0, (float) $status['clearing_balance'], 0.001);
+        $this->assertSame(0, $status['journal_count']);
+
+        // Riwayatnya tetap ada — justru itu yang dibutuhkan saat ada yang salah.
+        $this->getJson('/api/imports?page=1&per_page=25', $ctx['headers'])
+            ->assertOk()
+            ->assertJsonPath('data.data.0.status', 'reverted')
+            ->assertJsonPath('data.total', 1);
     }
 
     /**
-     * Satu baris register aset warisan. Ditulis langsung ke model, bukan lewat
-     * impor aset: yang diuji di kelas ini adalah gerbangnya, bukan committer
-     * aset tetap (itu punya FixedAssetOpeningImportTest sendiri).
+     * Berkas yang sama boleh diunggah ulang setelah dibatalkan tanpa dihadang
+     * peringatan duplikat — itulah jalur perbaikan yang normal.
+     */
+    public function test_same_file_can_be_re_uploaded_after_revert(): void
+    {
+        Storage::fake('local');
+        $ctx = $this->setUpTenant();
+        $this->seedAccounts();
+
+        $rows = [
+            ['Account Code', 'Description', 'Debit', 'Credit'],
+            ['1101', 'Saldo awal kas', '10000000', '0'],
+        ];
+
+        $uuid = $this->uploadAndMap($ctx, $rows);
+        $this->postJson('/api/imports/'.$uuid.'/commit', [], $ctx['headers'])->assertOk();
+        $this->postJson('/api/imports/'.$uuid.'/revert', ['reason' => 'salah angka'], $ctx['headers'])->assertOk();
+
+        $this->postJson('/api/imports', [
+            'profile' => 'opening_balance',
+            'file' => $this->csvFile('ob.csv', $rows),
+        ], $ctx['headers'])->assertCreated()->assertJsonPath('data.duplicate_file', null);
+    }
+
+    public function test_committed_batch_cannot_be_cancelled(): void
+    {
+        Storage::fake('local');
+        $ctx = $this->setUpTenant();
+        $this->seedAccounts();
+
+        $uuid = $this->uploadAndMap($ctx, [
+            ['Account Code', 'Description', 'Debit', 'Credit'],
+            ['1101', 'Saldo awal kas', '10000000', '0'],
+        ]);
+        $this->postJson('/api/imports/'.$uuid.'/commit', [], $ctx['headers'])->assertOk();
+
+        $this->deleteJson('/api/imports/'.$uuid, [], $ctx['headers'])->assertStatus(422);
+    }
+
+    /**
+     * Penutupan perantara: modal pemilik tidak diketik, ia sisa perantara.
+     */
+    public function test_closing_the_clearing_account_moves_the_balance_to_equity(): void
+    {
+        Storage::fake('local');
+        $ctx = $this->setUpTenant();
+        $accounts = $this->seedAccounts();
+
+        $uuid = $this->uploadAndMap($ctx, [
+            ['Account Code', 'Description', 'Debit', 'Credit'],
+            ['1101', 'Saldo awal kas', '10000000', '0'],
+            ['2100', 'Utang usaha', '0', '4000000'],
+        ]);
+        $this->postJson('/api/imports/'.$uuid.'/commit', [], $ctx['headers'])->assertOk();
+
+        $this->postJson('/api/opening-balance/close-clearing', [], $ctx['headers'])->assertOk();
+
+        $status = $this->getJson('/api/opening-balance/status', $ctx['headers'])->assertOk()->json('data');
+        $this->assertEqualsWithDelta(0, (float) $status['clearing_balance'], 0.001);
+        $this->assertTrue($status['is_complete']);
+
+        $equityCredit = (float) \DB::connection('tenant')->table('journal_entry_lines')
+            ->where('account_id', $accounts['equity'])
+            ->sum('credit');
+        $this->assertEqualsWithDelta(6000000, $equityCredit, 0.001);
+
+        // Sudah nol — tidak ada lagi yang perlu ditutup.
+        $this->postJson('/api/opening-balance/close-clearing', [], $ctx['headers'])->assertStatus(422);
+    }
+
+    /**
+     * Satu baris register aset warisan, ditulis langsung ke model: yang diuji di
+     * kelas ini adalah profil saldo awal, bukan committer aset tetap.
      */
     private function registerOpeningAsset(): void
     {
@@ -333,11 +296,11 @@ class OpeningBalanceImportTest extends TestCase
         ]);
     }
 
-    private function uploadAndMap(array $ctx, array $rows, int $expectedFailedRows = 0): string
+    private function uploadAndMap(array $ctx, array $rows, int $expectedFailedRows = 0, string $filename = 'ob.csv'): string
     {
         $batch = $this->postJson('/api/imports', [
             'profile' => 'opening_balance',
-            'file' => $this->csvFile('ob.csv', $rows),
+            'file' => $this->csvFile($filename, $rows),
         ], $ctx['headers'])->assertCreated()->json('data.batch');
 
         $this->patchJson('/api/imports/'.$batch['uuid'].'/mapping', [
@@ -352,11 +315,19 @@ class OpeningBalanceImportTest extends TestCase
         return $batch['uuid'];
     }
 
-    private function firstRowErrors(string $uuid): array
+    /**
+     * @return array<int, array<string, list<string>>>
+     */
+    private function rowErrors(string $uuid): array
     {
         $batchId = ImportBatch::query()->where('uuid', $uuid)->firstOrFail()->id;
 
-        return (array) ImportRow::query()->where('import_batch_id', $batchId)->firstOrFail()->errors;
+        return ImportRow::query()
+            ->where('import_batch_id', $batchId)
+            ->orderBy('row_number')
+            ->get()
+            ->map(fn (ImportRow $row): array => (array) $row->errors)
+            ->all();
     }
 
     /**
@@ -366,12 +337,15 @@ class OpeningBalanceImportTest extends TestCase
     {
         $cash = $this->account('1101', 'Kas', 'asset', 'debit');
         $bank = $this->account('1102', 'Bank', 'asset', 'debit');
+        $payable = $this->account('2100', 'Utang Usaha', 'liability', 'credit');
         $equity = $this->account('3100', 'Modal Disetor', 'equity', 'credit');
+        $clearing = $this->account('3900', 'Saldo Awal (Perantara)', 'equity', 'credit');
         $faCost = $this->account('1530', 'Peralatan', 'asset', 'debit');
         $faAccumulated = $this->account('1531', 'Akumulasi Penyusutan Peralatan', 'asset', 'credit');
 
         foreach ([
             'opening_balance.equity' => ['opening_balance', $equity],
+            'opening_balance.clearing' => ['opening_balance', $clearing],
             'fixed_assets.cost' => ['fixed_assets', $faCost],
             'fixed_assets.equipment_accumulated_depreciation' => ['fixed_assets', $faAccumulated],
         ] as $key => [$module, $accountId]) {
@@ -381,16 +355,20 @@ class OpeningBalanceImportTest extends TestCase
             );
         }
 
-        return ['cash' => $cash, 'bank' => $bank, 'equity' => $equity, 'fa_cost' => $faCost];
+        return [
+            'cash' => $cash, 'bank' => $bank, 'payable' => $payable,
+            'equity' => $equity, 'clearing' => $clearing, 'fa_cost' => $faCost,
+        ];
     }
 
-    private function account(string $code, string $name, string $type, string $normalBalance): int
+    private function account(string $code, string $name, string $type, string $normalBalance, ?int $parentId = null): int
     {
         return (int) ChartOfAccount::query()->create([
             'account_code' => $code,
             'account_name' => $name,
             'account_type' => $type,
             'normal_balance' => $normalBalance,
+            'parent_account_id' => $parentId,
             'is_active' => true,
         ])->id;
     }
@@ -406,6 +384,10 @@ class OpeningBalanceImportTest extends TestCase
         CompanyUser::query()->create([
             'company_id' => $company->id, 'user_id' => $user->id,
             'role' => $role, 'status' => 'active', 'joined_at' => now(),
+        ]);
+        CompanySetupState::query()->create([
+            'company_id' => $company->id,
+            'opening_date' => '2026-01-01',
         ]);
         $tenantPath = database_path('tenants/test_obi_'.$company->id.'_'.uniqid().'.sqlite');
         File::ensureDirectoryExists(dirname($tenantPath));

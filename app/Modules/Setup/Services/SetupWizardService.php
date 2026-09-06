@@ -4,7 +4,7 @@ namespace App\Modules\Setup\Services;
 
 use App\Modules\MasterData\Models\AccountMapping;
 use App\Modules\MasterData\Models\ChartOfAccount;
-use App\Modules\OpeningBalance\Services\OpeningBalanceBatchService;
+use App\Modules\OpeningBalance\Services\OpeningBalanceService;
 use App\Shared\Audit\AuditLogService;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Models\Company;
@@ -35,8 +35,7 @@ class SetupWizardService
         'accounting_settings',
         'chart_of_accounts',
         'account_mappings',
-        'opening_fixed_assets',
-        'opening_balance_preview',
+        'opening_balance',
         'final_review',
         'finalized',
     ];
@@ -44,7 +43,7 @@ class SetupWizardService
     public function __construct(
         private readonly TenantContext $tenantContext,
         private readonly AuditLogService $auditLogService,
-        private readonly OpeningBalanceBatchService $openingBalanceBatchService,
+        private readonly OpeningBalanceService $openingBalanceService,
     ) {}
 
     public function status(): array
@@ -55,7 +54,7 @@ class SetupWizardService
             'state' => $this->serializeState($state),
             'steps' => $this->buildSteps($state),
             'gate' => $this->gate($state),
-            'opening_fixed_assets' => $this->openingFixedAssetsGate($state),
+            'opening_balance' => $this->openingBalanceService->status(),
         ];
     }
 
@@ -67,7 +66,7 @@ class SetupWizardService
             'steps' => $this->buildSteps($state),
             'state' => $this->serializeState($state),
             'gate' => $this->gate($state),
-            'opening_fixed_assets' => $this->openingFixedAssetsGate($state),
+            'opening_balance' => $this->openingBalanceService->status(),
         ];
     }
 
@@ -88,36 +87,6 @@ class SetupWizardService
             'is_finalized' => $isFinalized,
             'has_operational_data' => $hasOperationalData,
             'initial_setup_available' => ! $isFinalized && ! $hasOperationalData,
-        ];
-    }
-
-    /**
-     * Jawaban tunggal untuk pertanyaan "boleh belum mengisi saldo awal?".
-     *
-     * Aset tetap awal harus beres lebih dulu: baris harga perolehan dan
-     * akumulasi penyusutan di batch saldo awal dihasilkan otomatis dari register
-     * aset (`OpeningBalanceBatchService::fixedAssetSystemLines()`), jadi saldo
-     * awal yang diisi duluan mengunci neraca pembuka pada angka tanpa aset.
-     * Aturan yang sama ditegakkan di jalur impor oleh
-     * `OpeningBalanceImportCommitter::openingFixedAssetsPrecondition()`.
-     *
-     * `settled` memakai dua syarat yang persis sama dengan
-     * `validateOpeningFixedAssets()` — disatukan di sini supaya wizard dan
-     * halaman impor tidak pernah menampilkan dua kesimpulan berbeda.
-     *
-     * @return array{module_enabled: bool, imported_count: int, confirmed_none: bool, settled: bool}
-     */
-    private function openingFixedAssetsGate(CompanySetupState $state): array
-    {
-        $enabled = $this->fixedAssetsEnabled();
-        $importedCount = $enabled ? $this->openingFixedAssetTotals()['count'] : 0;
-        $confirmedNone = (bool) (((array) $state->metadata)['opening_fixed_assets_confirmed_none'] ?? false);
-
-        return [
-            'module_enabled' => $enabled,
-            'imported_count' => $importedCount,
-            'confirmed_none' => $confirmedNone,
-            'settled' => ! $enabled || $importedCount > 0 || $confirmedNone,
         ];
     }
 
@@ -158,18 +127,6 @@ class SetupWizardService
 
         if (isset($data['opening_date'])) {
             $state->opening_date = Carbon::parse((string) $data['opening_date'])->toDateString();
-        }
-
-        if ($step === 'opening_fixed_assets' && array_key_exists('confirm_no_opening_fixed_assets', $data)) {
-            $metadata = (array) $state->metadata;
-            $metadata['opening_fixed_assets_confirmed_none'] = (bool) $data['confirm_no_opening_fixed_assets'];
-            $state->metadata = $metadata;
-        }
-
-        if ($step === 'opening_balance_preview' && array_key_exists('confirm_opening_balance_skipped', $data)) {
-            $metadata = (array) $state->metadata;
-            $metadata['opening_balance_skipped'] = (bool) $data['confirm_opening_balance_skipped'];
-            $state->metadata = $metadata;
         }
 
         $result = $this->validateStepKey($state, $step);
@@ -226,17 +183,20 @@ class SetupWizardService
         ];
     }
 
+    /**
+     * Ringkasan saldo awal untuk wizard — sumbernya sama persis dengan papan
+     * pemantau Saldo Awal, supaya keduanya tidak pernah berbeda pendapat.
+     */
     public function openingBalancePreview(): array
     {
-        $state = $this->state();
-        $preview = $this->buildOpeningBalancePreview($state);
+        $status = $this->openingBalanceService->status();
 
-        $this->audit('setup.opening_balance_preview', 'Setup opening balance preview generated.', [
-            'reconciled' => $preview['reconciled'],
-            'blocking_error_count' => count($preview['blocking_errors']),
+        $this->audit('setup.opening_balance_preview', 'Setup opening balance summary generated.', [
+            'clearing_balance' => $status['clearing_balance'],
+            'journal_count' => $status['journal_count'],
         ]);
 
-        return $preview;
+        return $status;
     }
 
     public function finalize(): array
@@ -267,8 +227,6 @@ class SetupWizardService
                 ];
             }
 
-            $this->assertOpeningBalanceReadyForFinalization($state);
-
             $state->forceFill([
                 'status' => self::STATUS_FINALIZED,
                 'current_step' => 'finalized',
@@ -279,7 +237,6 @@ class SetupWizardService
                 ]),
             ])->save();
 
-            $this->lockOpeningBalanceRecords();
             $this->lockOpeningFixedAssetRecords();
 
             $this->audit('setup.finalized', 'Setup finalized.', [
@@ -361,18 +318,13 @@ class SetupWizardService
 
     private function validateStepKey(CompanySetupState $state, string $step): array
     {
-        if ($step === 'opening_fixed_assets' && ! $this->fixedAssetsEnabled()) {
-            return $this->validResult(['skipped' => true]);
-        }
-
         return match ($step) {
             'company_profile' => $this->validateCompanyProfile(),
             'module_selection' => $this->validateModuleSelection(),
             'accounting_settings' => $this->validateAccountingSettings($state),
             'chart_of_accounts' => $this->validateChartOfAccounts(),
             'account_mappings' => $this->validateAccountMappings(),
-            'opening_fixed_assets' => $this->validateOpeningFixedAssets($state),
-            'opening_balance_preview' => $this->validateOpeningBalancePreview($state),
+            'opening_balance' => $this->validateOpeningBalance($state),
             'final_review' => $this->validateFinalReview([]),
             'finalized' => $state->status === self::STATUS_FINALIZED
                 ? $this->validResult()
@@ -484,51 +436,45 @@ class SetupWizardService
         return $this->resultFromErrors($errors, ['required_modules' => $modules]);
     }
 
-    private function validateOpeningFixedAssets(CompanySetupState $state): array
+    /**
+     * Satu-satunya syarat: tanggal saldo awal sudah ditetapkan.
+     *
+     * Sengaja TIDAK menuntut saldo perantara nol, dan tidak menuntut aset tetap
+     * sudah didaftarkan. Sejak Fase 8, mengisi saldo awal adalah pekerjaan yang
+     * boleh dicicil: berkas kas hari ini, piutang besok, aset menyusul. Wizard
+     * yang menahan user sampai semuanya beres akan menahan mereka berhari-hari.
+     *
+     * Yang belum beres dilaporkan sebagai **peringatan** — terbaca di layar
+     * final review dan di papan pemantau Saldo Awal, tanpa memblokir.
+     */
+    private function validateOpeningBalance(CompanySetupState $state): array
     {
-        if (! $this->fixedAssetsEnabled()) {
-            return $this->validResult(['skipped' => true]);
+        if (! $state->opening_date) {
+            return $this->invalidResult('OPENING_DATE_REQUIRED', 'Tanggal saldo awal harus ditetapkan sebelum setup bisa diselesaikan.');
         }
 
-        if (! Schema::connection('tenant')->hasTable('fixed_assets')) {
-            return $this->invalidResult('FIXED_ASSET_MODULE_NOT_AVAILABLE', 'Fixed asset module tables are not available.');
+        $status = $this->openingBalanceService->status();
+        $warnings = [];
+
+        if ($status['journal_count'] === 0) {
+            $warnings[] = 'Belum ada jurnal saldo awal. Perusahaan ini akan mulai dari nol.';
+        } elseif (abs((float) $status['clearing_balance']) >= 0.01) {
+            $warnings[] = sprintf(
+                'Saldo akun perantara masih %s dan belum ditutup ke ekuitas.',
+                number_format((float) $status['clearing_balance'], 2, ',', '.'),
+            );
         }
 
-        $openingAssets = DB::connection('tenant')->table('fixed_assets')
-            ->where('source_type', 'opening_import')
-            ->count();
-
-        $metadata = (array) $state->metadata;
-        $confirmedNone = (bool) ($metadata['opening_fixed_assets_confirmed_none'] ?? false);
-        if ($openingAssets < 1 && ! $confirmedNone) {
-            return $this->invalidResult('OPENING_FIXED_ASSETS_NOT_CONFIRMED', 'Opening fixed assets must be imported or explicitly confirmed as none.');
+        if (($status['fixed_asset_reconciliation']['has_difference'] ?? false) === true) {
+            $warnings[] = 'Nilai akun aset tetap di buku besar belum sama dengan kartu aset yang terdaftar.';
         }
 
-        return $this->validResult([
-            'opening_asset_count' => $openingAssets,
-            'confirmed_none' => $confirmedNone,
-            'totals' => $this->openingFixedAssetTotals(),
-        ]);
-    }
-
-    private function validateOpeningBalancePreview(CompanySetupState $state): array
-    {
-        $preview = $this->buildOpeningBalancePreview($state);
-
-        if ($this->openingBalanceSkipped($state) && $preview['opening_balance_batch'] === null) {
-            return $this->validResult(['skipped' => true]);
-        }
-
-        if ($preview['blocking_errors'] !== []) {
-            return [
-                'valid' => false,
-                'errors' => $preview['blocking_errors'],
-                'warnings' => $preview['warnings'],
-                'metadata' => ['preview' => $preview],
-            ];
-        }
-
-        return $this->validResult(['preview' => $preview]);
+        return [
+            'valid' => true,
+            'errors' => [],
+            'warnings' => $warnings,
+            'metadata' => ['opening_balance' => $status],
+        ];
     }
 
     private function validateFinalReview(array $results): array
@@ -542,124 +488,6 @@ class SetupWizardService
         }
 
         return $this->validResult();
-    }
-
-    private function buildOpeningBalancePreview(CompanySetupState $state): array
-    {
-        $blocking = [];
-        $warnings = [];
-        if (! Schema::connection('tenant')->hasTable('opening_balance_batches')) {
-            $blocking[] = $this->error('OPENING_BALANCE_MODULE_NOT_IMPLEMENTED', 'Opening Balance persistence is not implemented yet.');
-
-            return [
-                'state' => $this->serializeState($state),
-                'implemented' => false,
-                'reconciled' => false,
-                'blocking_errors' => $blocking,
-                'warnings' => $warnings,
-                'opening_balance_batch' => null,
-                'opening_balance_totals' => ['debit' => 0.0, 'credit' => 0.0, 'difference' => 0.0],
-                'fixed_asset_totals' => $this->fixedAssetsEnabled() ? $this->openingFixedAssetTotals() : null,
-            ];
-        }
-
-        $batch = $this->openingBalanceBatchService->latestActiveBatch();
-        if (! $batch) {
-            $blocking[] = $this->error('OPENING_BALANCE_BATCH_REQUIRED', 'Opening balance batch is required.');
-
-            return [
-                'state' => $this->serializeState($state),
-                'implemented' => true,
-                'reconciled' => false,
-                'blocking_errors' => $blocking,
-                'warnings' => $warnings,
-                'opening_balance_batch' => null,
-                'opening_balance_totals' => ['debit' => 0.0, 'credit' => 0.0, 'difference' => 0.0],
-                'fixed_asset_totals' => $this->fixedAssetsEnabled() ? $this->openingFixedAssetTotals() : null,
-            ];
-        }
-
-        $preview = $this->openingBalanceBatchService->preview($batch);
-        $blocking = array_values(array_merge($blocking, $preview['blocking_errors']));
-        $warnings = array_values(array_merge($warnings, $preview['warnings']));
-        $fixedAssetTotals = $this->fixedAssetsEnabled() ? $this->openingFixedAssetTotals() : null;
-        if ($this->fixedAssetsEnabled() && $fixedAssetTotals && abs($fixedAssetTotals['net_book_value'] - ($fixedAssetTotals['cost'] - $fixedAssetTotals['accumulated_depreciation'])) > 0.005) {
-            $blocking[] = $this->error('FIXED_ASSET_NBV_MISMATCH', 'Opening fixed asset net book value does not match cost minus accumulated depreciation.');
-        } else {
-            $fixedAssetTotals = $preview['fixed_asset_totals'] ?? $fixedAssetTotals;
-        }
-
-        return [
-            'state' => $this->serializeState($state),
-            'implemented' => true,
-            'reconciled' => $blocking === [],
-            'blocking_errors' => $blocking,
-            'warnings' => $warnings,
-            'opening_balance_batch' => $batch,
-            'opening_balance_totals' => [
-                'debit' => $preview['total_debit'],
-                'credit' => $preview['total_credit'],
-                'difference' => $preview['difference'],
-            ],
-            'fixed_asset_totals' => $fixedAssetTotals,
-            'opening_balance_preview' => $preview,
-        ];
-    }
-
-    /**
-     * Perusahaan baru yang benar-benar tidak punya saldo historis boleh
-     * menyelesaikan wizard tanpa batch saldo awal -- flag ini diset lewat
-     * `validateStep('opening_balance_preview', {confirm_opening_balance_skipped})`
-     * saat user klik "Lewati, isi nanti" di Step 5. Sama seperti
-     * `opening_fixed_assets_confirmed_none`, hanya berlaku selama belum ada
-     * batch sungguhan -- begitu batch dibuat, validasi normal berlaku lagi.
-     */
-    private function openingBalanceSkipped(CompanySetupState $state): bool
-    {
-        $metadata = (array) $state->metadata;
-
-        return (bool) ($metadata['opening_balance_skipped'] ?? false);
-    }
-
-    private function assertOpeningBalanceReadyForFinalization(CompanySetupState $state): void
-    {
-        $preview = $this->buildOpeningBalancePreview($state);
-
-        if ($this->openingBalanceSkipped($state) && $preview['opening_balance_batch'] === null) {
-            return;
-        }
-
-        if ($preview['blocking_errors'] !== []) {
-            throw ApiException::make('OPENING_BALANCE_NOT_READY', 'Opening balance is not ready for setup finalization.', 422, [
-                'blocking_errors' => $preview['blocking_errors'],
-            ]);
-        }
-
-        $batch = $this->openingBalanceBatchService->latestActiveBatch();
-        if (! $batch) {
-            throw ApiException::make('OPENING_BALANCE_BATCH_REQUIRED', 'Opening balance batch is required.', 422);
-        }
-
-        $posted = $this->openingBalanceBatchService->post($batch);
-        if ($posted->status !== 'locked') {
-            $this->openingBalanceBatchService->lock($posted);
-        }
-    }
-
-    private function lockOpeningBalanceRecords(): void
-    {
-        if (! Schema::connection('tenant')->hasTable('opening_balance_batches')) {
-            return;
-        }
-
-        DB::connection('tenant')->table('opening_balance_batches')
-            ->whereIn('status', ['posted', 'validated'])
-            ->update([
-                'status' => 'locked',
-                'locked_at' => now(),
-                'locked_by' => auth()->id(),
-                'updated_at' => now(),
-            ]);
     }
 
     private function lockOpeningFixedAssetRecords(): void
@@ -752,9 +580,6 @@ class SetupWizardService
             if ($step === 'finalized') {
                 return false;
             }
-            if ($step === 'opening_fixed_assets') {
-                return $this->fixedAssetsEnabled();
-            }
 
             return true;
         }));
@@ -770,7 +595,7 @@ class SetupWizardService
             'key' => $step,
             'order' => $this->stepOrder($step),
             'active' => in_array($step, $required, true) || $step === 'finalized',
-            'skipped' => $step === 'opening_fixed_assets' && ! $this->fixedAssetsEnabled(),
+            'skipped' => false,
             'completed' => in_array($step, $completed, true) || ($step === 'finalized' && $state->status === self::STATUS_FINALIZED),
             'current' => $state->current_step === $step,
             'errors' => $errors[$step] ?? [],
@@ -837,30 +662,6 @@ class SetupWizardService
     private function fixedAssetsEnabled(): bool
     {
         return $this->moduleFlags()['fixed_asset_enabled'];
-    }
-
-    private function openingFixedAssetTotals(): array
-    {
-        if (! Schema::connection('tenant')->hasTable('fixed_assets')) {
-            return [
-                'count' => 0,
-                'cost' => 0.0,
-                'accumulated_depreciation' => 0.0,
-                'net_book_value' => 0.0,
-            ];
-        }
-
-        $row = DB::connection('tenant')->table('fixed_assets')
-            ->where('source_type', 'opening_import')
-            ->selectRaw('COUNT(*) as total_count, COALESCE(SUM(acquisition_cost), 0) as total_cost, COALESCE(SUM(accumulated_depreciation), 0) as total_accumulated, COALESCE(SUM(net_book_value), 0) as total_nbv')
-            ->first();
-
-        return [
-            'count' => (int) ($row->total_count ?? 0),
-            'cost' => round((float) ($row->total_cost ?? 0), 2),
-            'accumulated_depreciation' => round((float) ($row->total_accumulated ?? 0), 2),
-            'net_book_value' => round((float) ($row->total_nbv ?? 0), 2),
-        ];
     }
 
     private function firstInvalidStep(array $results, string $fallback): string
