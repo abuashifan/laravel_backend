@@ -44,8 +44,17 @@ class AuthController extends Controller
         // Akun pengelola aplikasi tidak boleh masuk lewat pintu client. Sesi
         // yang lahir di sini hanya membawa ability `client`, jadi token dari
         // pintu ini tidak akan pernah bisa memanggil endpoint /admin.
+        //
+        // Ditolak seolah-olah akunnya tidak ada, dan sengaja TIDAK menyebut
+        // adanya halaman login admin: pesan lama ("Masuk lewat halaman login
+        // admin") memberi tahu penyerang bahwa email ini punya hak istimewa
+        // sekaligus menunjukkan pintu mana yang harus digedor. Bentuk galatnya
+        // disamakan dengan kredensial salah -- galat validasi di field email,
+        // bukan 403 -- supaya tidak ada lagi yang membedakan keduanya dari luar.
         if ($user->is_platform_admin) {
-            return $this->errorResponse('Akun ini admin aplikasi. Masuk lewat halaman login admin.', 403);
+            throw ValidationException::withMessages([
+                'email' => ['Akun tidak ditemukan.'],
+            ]);
         }
 
         // Kunci penuh di titik login, bukan di EnsureCompanyAccess (Fase 3

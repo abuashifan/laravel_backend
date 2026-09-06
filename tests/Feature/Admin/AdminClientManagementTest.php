@@ -34,13 +34,19 @@ class AdminClientManagementTest extends TestCase
 
     // ── Pemisahan pintu masuk ────────────────────────────────────────────────
 
+    /**
+     * Penolakannya berbentuk galat validasi, bukan 403: pintu client tidak boleh
+     * membocorkan bahwa email ini punya hak istimewa. Rinciannya diuji di
+     * `Tests\Feature\Auth\ClientLoginDoorTest`.
+     */
     public function test_platform_admin_cannot_login_through_client_endpoint(): void
     {
         $admin = $this->platformAdmin();
 
         $this->postJson('/api/auth/login', ['email' => $admin->email, 'password' => 'password123'])
-            ->assertStatus(403)
-            ->assertJsonPath('success', false);
+            ->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('errors.email.0', 'Akun tidak ditemukan.');
     }
 
     public function test_client_cannot_login_through_admin_endpoint(): void
