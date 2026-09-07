@@ -50,6 +50,39 @@ class ImportEngineTest extends TestCase
         $this->assertSame('imports/'.$ctx['company']->id.'/'.$csv['batch']['uuid'].'.csv', $csv['batch']['stored_path']);
     }
 
+    /**
+     * Metadata profil yang dipakai frontend menyusun layar impor. `money_fields`
+     * menentukan sel mana yang diformat sebagai nilai uang di pratinjau —
+     * menebaknya dari isi sel tidak bisa: kode akun '1100' juga angka.
+     */
+    public function test_profiles_endpoint_exposes_money_fields(): void
+    {
+        $ctx = $this->setUpTenant();
+
+        $profiles = collect($this->getJson('/api/imports/profiles', $ctx['headers'])->assertOk()->json('data'));
+
+        $this->assertSame(['debit', 'credit'], $profiles->firstWhere('key', 'opening_balance')['money_fields']);
+        $this->assertSame(
+            ['acquisition_cost', 'accumulated_depreciation', 'salvage_value'],
+            $profiles->firstWhere('key', 'fixed_asset_opening')['money_fields'],
+        );
+        // Profil tanpa nilai uang tetap mengembalikan array, bukan null.
+        $this->assertSame([], $profiles->firstWhere('key', 'contact')['money_fields']);
+    }
+
+    /**
+     * Salah ketik di `money_fields` tidak akan pernah melempar galat — selnya
+     * cuma diam-diam tidak diformat. Invarian ini yang menangkapnya.
+     */
+    public function test_money_fields_only_name_fields_the_profile_actually_has(): void
+    {
+        foreach ((array) config('imports.profiles') as $key => $profile) {
+            $unknown = array_diff((array) ($profile['money_fields'] ?? []), (array) ($profile['fields'] ?? []));
+
+            $this->assertSame([], array_values($unknown), "Profil {$key} menandai field uang yang tidak ada di 'fields'.");
+        }
+    }
+
     public function test_header_only_file_is_rejected_with_readable_error(): void
     {
         Storage::fake('local');

@@ -73,11 +73,101 @@ class ImportBatchService
             'created_by' => auth()->id(),
         ]);
 
+        $guess = $this->guessColumnMap($profile, $headers);
+
         return [
             'batch' => $this->batchPayload($batch),
             'headers' => $headers,
             'duplicate_file' => $duplicate,
+            'suggested_column_map' => $guess['map'],
+            'unmapped_required_fields' => $guess['unmapped_required'],
+            // Frontend melewati layar pemetaan sepenuhnya kalau ini true.
+            'auto_mapped' => $guess['unmapped_required'] === [],
         ];
+    }
+
+    /**
+     * Tebak pemetaan kolom dari header berkas — Fase 8.
+     *
+     * Layar "Petakan Kolom" ada untuk berkas yang headernya tidak dikenal.
+     * Masalahnya, sampai sekarang ia MUNCUL SELALU, termasuk untuk berkas yang
+     * headernya sudah persis templat — user diminta memilih ulang empat kolom
+     * yang jawabannya sudah pasti. Penebakan dipindahkan ke sini supaya
+     * jawabannya dihitung sekali, di tempat yang memang tahu bentuk profilnya.
+     *
+     * Tiga lapis pencocokan, berhenti di yang pertama kena:
+     *   1. header templat milik field ini  → berkas templat apa adanya
+     *   2. nama field itu sendiri          → ekspor sistem lain
+     *   3. alias di `config/imports.php` → `column_aliases` → berkas berbahasa Indonesia
+     *
+     * Urutan kolom di berkas tidak berpengaruh: pencocokan lewat peta header,
+     * bukan lewat posisi. Yang TIDAK boleh dilakukan adalah mencoba seluruh
+     * header templat untuk setiap field — itu membuat `account_code` mengklaim
+     * kolom "Debit" hanya karena "Debit" ada di templat yang sama.
+     *
+     * Satu header hanya boleh dipakai satu field: begitu terpakai ia dikeluarkan
+     * dari kandidat, jadi dua field tidak pernah menunjuk kolom yang sama.
+     *
+     * @param  list<string>  $headers
+     * @return array{map: array<string, string>, unmapped_required: list<string>}
+     */
+    public function guessColumnMap(string $profile, array $headers): array
+    {
+        $fields = (array) config("imports.profiles.{$profile}.fields", []);
+        $templateHeaders = array_values((array) config("imports.profiles.{$profile}.headers", []));
+        $aliases = (array) config('imports.column_aliases', []);
+
+        // Header berkas, dikunci bentuk normalnya → nama aslinya. Bentuk normal
+        // membuang huruf besar, spasi, dan tanda baca, sehingga "Kode Akun",
+        // "kode_akun", dan "KODE  AKUN" jatuh ke kunci yang sama.
+        $available = [];
+        foreach ($headers as $header) {
+            $key = $this->normalizeHeaderKey((string) $header);
+            if ($key !== '' && ! array_key_exists($key, $available)) {
+                $available[$key] = (string) $header;
+            }
+        }
+
+        $map = [];
+
+        foreach (array_values($fields) as $index => $field) {
+            $candidates = [];
+
+            if (isset($templateHeaders[$index])) {
+                $candidates[] = $templateHeaders[$index];
+            }
+            $candidates[] = (string) $field;
+            foreach ((array) ($aliases[$field] ?? []) as $alias) {
+                $candidates[] = (string) $alias;
+            }
+
+            foreach ($candidates as $candidate) {
+                $key = $this->normalizeHeaderKey((string) $candidate);
+
+                if ($key !== '' && isset($available[$key])) {
+                    $map[$field] = $available[$key];
+                    unset($available[$key]);
+                    break;
+                }
+            }
+        }
+
+        $unmapped = array_values(array_filter(
+            $this->requiredFields($profile),
+            fn (string $field): bool => ! isset($map[$field]),
+        ));
+
+        return ['map' => $map, 'unmapped_required' => $unmapped];
+    }
+
+    /**
+     * Bentuk normal sebuah header: huruf kecil, tanpa apa pun selain huruf dan
+     * angka. Disengaja seagresif ini — perbedaan yang dibuangnya ("Kode Akun"
+     * vs "kode_akun") tidak pernah berarti kolom yang berbeda.
+     */
+    private function normalizeHeaderKey(string $value): string
+    {
+        return (string) preg_replace('/[^a-z0-9]/', '', mb_strtolower(trim($value)));
     }
 
     public function applyMapping(string $uuid, array $columnMap): array
@@ -176,9 +266,48 @@ class ImportBatchService
         return $this->show($uuid);
     }
 
+    /**
+     * Satu batch, LENGKAP dengan header berkasnya — Fase 8.
+     *
+     * `headers` tidak disimpan di tabel: ia hidup di berkas. Sampai sekarang ia
+     * hanya dikembalikan oleh `upload()`, jadi begitu halaman di-reload batch
+     * yang belum di-commit tidak punya jalan pulang — layar pemetaan butuh
+     * daftar header untuk bisa digambar sama sekali. Dibaca ulang dari berkas
+     * di sini, satu kali per buka batch, bukan per baris riwayat.
+     */
     public function show(string $uuid): array
     {
-        return $this->batchPayload($this->find($uuid));
+        $batch = $this->find($uuid);
+        $headers = $this->storedHeaders($batch);
+        $guess = $this->guessColumnMap($batch->profile, $headers);
+
+        return $this->batchPayload($batch) + [
+            'headers' => $headers,
+            'suggested_column_map' => $guess['map'],
+        ];
+    }
+
+    /**
+     * Header dari berkas tersimpan. Mengembalikan array kosong, bukan melempar,
+     * kalau berkasnya sudah tidak ada atau rusak: batch yang sudah di-commit
+     * tetap harus bisa dibuka riwayatnya meski berkasnya hilang.
+     *
+     * @return list<string>
+     */
+    private function storedHeaders(ImportBatch $batch): array
+    {
+        if (! Storage::disk('local')->exists($batch->stored_path)) {
+            return [];
+        }
+
+        try {
+            $extension = strtolower(pathinfo($batch->stored_path, PATHINFO_EXTENSION));
+
+            return $this->readerFactory->make($extension)
+                ->headers(Storage::disk('local')->path($batch->stored_path));
+        } catch (Throwable) {
+            return [];
+        }
     }
 
     public function rows(string $uuid, array $filters = []): LengthAwarePaginator

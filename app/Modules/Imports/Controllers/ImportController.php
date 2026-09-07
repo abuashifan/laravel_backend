@@ -43,6 +43,8 @@ class ImportController extends Controller
                 'fields' => $profile['fields'] ?? [],
                 'headers' => $profile['headers'],
                 'required_fields' => $profile['required_fields'],
+                // Dipakai pratinjau impor untuk memformat sel nilai uang.
+                'money_fields' => $profile['money_fields'] ?? [],
             ])
             ->values();
 
