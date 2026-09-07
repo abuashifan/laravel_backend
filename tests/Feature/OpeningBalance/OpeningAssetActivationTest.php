@@ -132,6 +132,57 @@ class OpeningAssetActivationTest extends JournalTestCase
             ->assertJsonPath('data.fixed_asset_reconciliation.has_difference', false);
     }
 
+    /**
+     * Baris akumulasi penyusutan: buku besar menyimpannya sebagai saldo KREDIT
+     * (negatif kalau diukur debit-minus-kredit), sedangkan kartu aset menyimpan
+     * besarannya sebagai angka positif. Membandingkan keduanya apa adanya
+     * menghasilkan selisih sebesar DUA KALI nilainya — padahal tidak ada yang
+     * salah dengan datanya. Yang dibandingkan harus besarannya, bukan tandanya.
+     */
+    public function test_accumulated_depreciation_row_compares_magnitudes_not_signs(): void
+    {
+        $ctx = $this->setUpOpeningTenant();
+        $this->createOpeningVehicle();
+        app(FixedAssetService::class)->activateOpeningAssets('2026-01-01');
+
+        // Akun diambil dari register itu sendiri — sumber yang sama dipakai
+        // rekonsiliasi, jadi test ini tidak ikut menebak isi templat COA.
+        $totals = app(FixedAssetService::class)->openingAssetTotals('2026-01-01');
+        $costAccountId = (int) array_key_first($totals['cost_by_account']);
+        $accumulatedAccountId = (int) array_key_first($totals['accumulated_by_account']);
+
+        // Persis seperti berkas saldo awal yang benar: harga perolehan di debit,
+        // akumulasi penyusutannya di kredit.
+        app(OpeningBalanceService::class)->postOpeningJournal([
+            [
+                'account_id' => $costAccountId,
+                'debit' => self::COST,
+                'credit' => 0,
+                'description' => 'Saldo awal kendaraan',
+            ],
+            [
+                'account_id' => $accumulatedAccountId,
+                'debit' => 0,
+                'credit' => self::ACCUMULATED,
+                'description' => 'Akumulasi penyusutan kendaraan',
+            ],
+        ]);
+
+        $reconciliation = $this->getJson('/api/opening-balance/status', $ctx['headers'])
+            ->assertOk()
+            ->json('data.fixed_asset_reconciliation');
+
+        $row = collect($reconciliation['rows'])->firstWhere('account_id', $accumulatedAccountId);
+
+        $this->assertSame('accumulated', $row['kind']);
+        $this->assertEqualsWithDelta(self::ACCUMULATED, (float) $row['gl_amount'], 0.001);
+        $this->assertEqualsWithDelta(self::ACCUMULATED, (float) $row['register_amount'], 0.001);
+        $this->assertEqualsWithDelta(0.0, (float) $row['difference'], 0.001);
+
+        // Register sudah lengkap: tidak boleh ada peringatan sama sekali.
+        $this->assertFalse($reconciliation['has_difference']);
+    }
+
     public function test_reverting_an_import_deletes_its_asset_cards(): void
     {
         $this->setUpOpeningTenant();
