@@ -1018,9 +1018,10 @@ class FixedAssetService
      *     (mis. sistem lamanya memakai metode lain), penyesuaiannya terserap
      *     otomatis dan asetnya tetap habis tepat di akhir masa manfaat.
      *
-     * Tanpa jadwal (umur sudah habis, atau tidak menyusut sama sekali) aset
-     * dibiarkan tanpa baris — `syncLifecycleStatus()` yang menandainya
-     * `fully_depreciated`.
+     * Aset yang umurnya sudah habis dibiarkan tanpa baris —
+     * `syncLifecycleStatus()` yang menandainya `fully_depreciated`. Aset yang
+     * memang tidak menyusut (tanah, CIP, goodwill) juga tidak dapat baris, tapi
+     * statusnya tetap `active`; lihat `syncLifecycleStatus()`.
      */
     private function generateOpeningSchedules(FixedAsset $asset, string $openingDate): void
     {
@@ -1072,9 +1073,23 @@ class FixedAssetService
         $asset->schedules()->createMany($rows);
     }
 
+    /**
+     * Tandai aset yang jadwalnya sudah habis sebagai `fully_depreciated`.
+     *
+     * "Tidak punya jadwal tersisa" hanya berarti "sudah habis disusutkan" untuk
+     * aset yang memang menyusut. Kategori `none` (tanah, aset dalam
+     * penyelesaian) dan `impairment_only` (goodwill) tidak pernah punya jadwal
+     * sejak awal — menandainya `fully_depreciated` membuat register mengklaim
+     * tanah sudah habis nilainya padahal akumulasinya nol dan nilai bukunya
+     * utuh. Aset seperti itu tetap `active` selamanya.
+     */
     private function syncLifecycleStatus(FixedAsset $asset): void
     {
         if ($asset->disposed_at || ! in_array((string) $asset->status, ['active', 'capitalized', 'partially_disposed'], true)) {
+            return;
+        }
+
+        if (! in_array((string) $asset->depreciation_type, ['depreciation', 'amortization'], true)) {
             return;
         }
 

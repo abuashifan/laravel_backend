@@ -68,6 +68,27 @@ class FixedAssetServiceLifecycleTest extends JournalTestCase
         $this->assertSame(0, FixedAssetTransaction::query()->where('fixed_asset_id', $asset->id)->whereIn('transaction_type', ['depreciation', 'amortization'])->count());
     }
 
+    public function test_opening_activation_keeps_non_depreciating_assets_active(): void
+    {
+        $ctx = $this->setUpTenant(role: 'owner');
+        $this->seedFixedAssetMappings();
+        $this->setTenantContext($ctx);
+
+        $land = $this->createOpeningAsset('FA-TEST-LAND', 'none', 250000000.00);
+        $goodwill = $this->createOpeningAsset('FA-TEST-GOODWILL', 'impairment_only', 50000000.00);
+
+        $this->assertSame(2, app(FixedAssetService::class)->activateOpeningAssets('2026-01-01'));
+
+        foreach ([$land, $goodwill] as $asset) {
+            $asset->refresh();
+
+            $this->assertSame('active', $asset->status);
+            $this->assertSame(0.00, (float) $asset->accumulated_depreciation);
+            $this->assertSame((float) $asset->acquisition_cost, (float) $asset->net_book_value);
+            $this->assertSame(0, FixedAssetDepreciationSchedule::query()->where('fixed_asset_id', $asset->id)->count());
+        }
+    }
+
     private function setTenantContext(array $ctx): void
     {
         $tenantDatabase = TenantDatabase::query()->where('company_id', $ctx['company']->id)->firstOrFail();
@@ -160,6 +181,48 @@ class FixedAssetServiceLifecycleTest extends JournalTestCase
             'acquisition_cost' => $cost,
             'salvage_value' => 0,
             'depreciable_basis' => $basis,
+            'accumulated_depreciation' => 0,
+            'net_book_value' => $cost,
+        ]);
+    }
+
+    /**
+     * Aset saldo awal dari kategori yang tidak menyusut: tanpa masa manfaat,
+     * tanpa periode penyusutan, dan tanpa jadwal yang bisa dibuat.
+     */
+    private function createOpeningAsset(string $number, string $depreciationType, float $cost): FixedAsset
+    {
+        $category = FixedAssetCategory::query()->create([
+            'code' => 'TEST-'.$number,
+            'name' => 'Test Category '.$number,
+            'asset_class' => 'tangible',
+            'depreciation_type' => $depreciationType,
+            'default_useful_life_years' => null,
+            'is_active' => true,
+        ]);
+
+        return FixedAsset::query()->create([
+            'asset_number' => $number,
+            'name' => 'Test Asset '.$number,
+            'description' => null,
+            'fixed_asset_category_id' => $category->id,
+            'asset_class' => 'tangible',
+            'depreciation_type' => $depreciationType,
+            'depreciation_method' => 'none',
+            'status' => 'draft',
+            'source_type' => 'opening_import',
+            'acquisition_date' => '2022-01-10',
+            'service_start_date' => '2022-01-10',
+            'first_depreciation_period' => null,
+            'last_depreciation_period' => null,
+            'useful_life_years' => null,
+            'useful_life_months' => null,
+            'quantity' => 1,
+            'remaining_quantity' => 1,
+            'unit_acquisition_cost' => $cost,
+            'acquisition_cost' => $cost,
+            'salvage_value' => 0,
+            'depreciable_basis' => $cost,
             'accumulated_depreciation' => 0,
             'net_book_value' => $cost,
         ]);
