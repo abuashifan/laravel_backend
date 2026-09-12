@@ -3,7 +3,7 @@ FROM serversideup/php:8.3-fpm-nginx
 USER root
 
 # Pastikan extension PostgreSQL terpasang
-RUN install-php-extensions pdo_pgsql pgsql
+RUN install-php-extensions pdo_pgsql pgsql gd
 
 # Copy kode aplikasi dengan ownership yang benar
 COPY --chown=www-data:www-data . /var/www/html
