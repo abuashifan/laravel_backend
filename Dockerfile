@@ -1,20 +1,23 @@
-FROM richarvey/nginx-php-fpm:3.1.6
+FROM serversideup/php:8.3-fpm-nginx
 
-COPY . .
+USER root
 
-# Image config
-ENV SKIP_COMPOSER 1
-ENV WEBROOT /var/www/html/public
-ENV PHP_ERRORS_STDERR 1
-ENV RUN_SCRIPTS 1
-ENV REAL_IP_HEADER 1
+# Pastikan extension PostgreSQL terpasang
+RUN install-php-extensions pdo_pgsql pgsql
 
-# Laravel config
-ENV APP_ENV production
-ENV APP_DEBUG false
-ENV LOG_CHANNEL stderr
+# Copy kode aplikasi dengan ownership yang benar
+COPY --chown=www-data:www-data . /var/www/html
 
-# Allow composer to run as root
-ENV COMPOSER_ALLOW_SUPERUSER 1
+WORKDIR /var/www/html
 
-CMD ["/start.sh"]
+# Install dependency PHP sebagai user non-root (best practice image ini)
+USER www-data
+RUN composer install --no-dev --optimize-autoloader --no-interaction
+
+ENV APP_ENV=production
+ENV PHP_OPCACHE_ENABLE=1
+
+# Otomatis jalankan migration & storage:link setiap container start
+ENV AUTORUN_ENABLED=true
+ENV AUTORUN_LARAVEL_MIGRATION=true
+ENV AUTORUN_LARAVEL_STORAGE_LINK=true
