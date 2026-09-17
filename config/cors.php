@@ -12,6 +12,8 @@ return [
     'allowed_origins' => [
         'http://localhost:3000',
         'http://127.0.0.1:3000',
+        'https://app.finlite.my.id',
+        'https://react-frontend-three-eta.vercel.app', // domain vercel default, jaga-jaga
     ],
 
     'allowed_origins_patterns' => [],
