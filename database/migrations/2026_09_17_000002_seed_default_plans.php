@@ -18,11 +18,24 @@ use Illuminate\Database\Migrations\Migration;
  * `migrations` sehingga tidak akan otomatis terpanggil ulang di deploy
  * berikutnya (jadi tidak menimpa perubahan harga/fitur yang nanti diubah
  * manual dari database).
+ *
+ * Sengaja skip di `testing`: `RefreshDatabase` menjalankan migration ini
+ * juga, dan banyak test (`tests/Feature/Admin`, `Companies`, `Subscription`)
+ * sengaja bikin plan sendiri dengan `code` yang sama (mis. 'free', 'pro')
+ * mengasumsikan tabel `plans` kosong sehabis migrate. Tanpa guard ini,
+ * insert mereka bentrok UNIQUE constraint dengan baris yang sudah diseed
+ * migration ini — bukan skenario yang mau diuji migration ini sama sekali.
+ * Test yang MEMANG mau plan standar sudah punya jalurnya sendiri:
+ * `TestCase::seedTierPlans()` memanggil `PlanSeeder` langsung.
  */
 return new class extends Migration
 {
     public function up(): void
     {
+        if (app()->environment('testing')) {
+            return;
+        }
+
         (new PlanSeeder())->run();
     }
 

@@ -23,6 +23,14 @@ return new class extends Migration
 {
     public function up(): void
     {
+        // Aman tanpa ini juga (no-op kalau env var kosong), tapi eksplisit
+        // menjaga migration ini tidak pernah ikut campur di test suite
+        // (RefreshDatabase menjalankannya juga) — sama pola dengan migration
+        // seed plan di sebelahnya.
+        if (app()->environment('testing')) {
+            return;
+        }
+
         $email = trim((string) env('PLATFORM_ADMIN_EMAIL', ''));
         $password = (string) env('PLATFORM_ADMIN_PASSWORD', '');
 

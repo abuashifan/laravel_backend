@@ -94,7 +94,11 @@ class PlanSeeder extends Seeder
                 'name' => 'Pro',
                 'description' => 'Untuk UMKM berkembang: + multi-gudang, jejak audit, laporan tersimpan, banding multi-periode, alur persetujuan.',
                 'max_users' => 5,
-                'max_companies' => 3,
+                // Satu perusahaan di semua tier bertingkat (Free/Basic/Pro/
+                // Enterprise) — pembedanya jumlah user & fitur, bukan jumlah
+                // perusahaan. Client yang butuh lebih dari satu perusahaan
+                // pakai tier Custom (kuotanya manual per client).
+                'max_companies' => 1,
                 'max_transactions_per_month' => null,
                 'storage_quota_mb' => 2048,
                 'import_retention_days' => 30,
@@ -125,7 +129,10 @@ class PlanSeeder extends Seeder
                 'name' => 'Enterprise',
                 'description' => 'Untuk perusahaan dengan beberapa unit usaha: + anggaran, dimensi departemen & proyek, role kustom.',
                 'max_users' => 10,
-                'max_companies' => 5,
+                // Satu perusahaan juga di Enterprise — "beberapa unit usaha"
+                // dilayani lewat dimensi departemen & proyek DALAM satu
+                // pembukuan, bukan lewat banyak perusahaan terpisah.
+                'max_companies' => 1,
                 'max_transactions_per_month' => null,
                 'storage_quota_mb' => 5120,
                 'import_retention_days' => 90,
