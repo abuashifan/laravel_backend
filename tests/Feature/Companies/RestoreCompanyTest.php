@@ -110,6 +110,7 @@ class RestoreCompanyTest extends TestCase
     public function test_restore_preserves_member_statuses_exactly(): void
     {
         $owner = User::factory()->create(['status' => 'active']);
+        $this->activeSubscriptionFor($owner);
         Sanctum::actingAs($owner, ['*']);
 
         $companyId = (int) $this->postJson('/api/companies', ['name' => 'PT Maju Jaya'])
@@ -152,6 +153,7 @@ class RestoreCompanyTest extends TestCase
         ]);
 
         $owner = User::factory()->create(['status' => 'active', 'plan_id' => $plan->id]);
+        $this->activeSubscriptionFor($owner, $plan);
         Sanctum::actingAs($owner, ['*']);
 
         $firstId = (int) $this->postJson('/api/companies', ['name' => 'PT Pertama'])
@@ -273,6 +275,7 @@ class RestoreCompanyTest extends TestCase
         );
 
         $owner = User::factory()->create(['status' => 'active', 'plan_id' => $plan->id]);
+        $this->activeSubscriptionFor($owner, $plan);
         Sanctum::actingAs($owner, ['*']);
 
         $companyId = (int) $this->postJson('/api/companies', ['name' => $name])

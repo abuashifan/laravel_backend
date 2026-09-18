@@ -10,6 +10,7 @@ use App\Shared\Subscription\SubscriptionService;
 use App\Shared\Subscription\UserQuotaService;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\File;
 
 /**
  * Pengelolaan akun client oleh admin aplikasi.
@@ -182,6 +183,8 @@ class ClientUserService
             ->map(function ($company) {
                 $summary = $this->storageQuotaService->summaryFor($company);
 
+                $tenantPath = $company->tenantDatabase?->database_path;
+
                 return [
                     'id' => $company->id,
                     'name' => $company->name,
@@ -191,6 +194,11 @@ class ClientUserService
                     // area admin, supaya kelihatan sebelum client benar-benar
                     // mentok dan mulai gagal mengunggah.
                     'near_limit' => $summary['percent_used'] >= 90,
+                    // File SQLite tenant bisa hilang (disk ephemeral tanpa
+                    // persistent disk) walau baris `tenant_databases` masih
+                    // ada — dipakai frontend memunculkan tombol "Buat Ulang
+                    // Database" saat memang rusak, bukan selalu ditampilkan.
+                    'tenant_file_exists' => is_string($tenantPath) && $tenantPath !== '' && File::exists($tenantPath),
                 ];
             })
             ->values()

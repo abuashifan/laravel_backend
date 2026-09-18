@@ -5,11 +5,15 @@ namespace App\Modules\Companies\Controllers;
 use App\Http\Controllers\Controller;
 use App\Modules\Companies\Requests\DeleteCompanyRequest;
 use App\Modules\Companies\Services\CompanyCreationService;
+use App\Shared\Api\ApiErrorCode;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Api\ApiResponseBuilder;
 use App\Shared\Company\CompanyDeletionService;
 use App\Shared\Models\Company;
 use App\Shared\Models\CompanyUser;
 use App\Shared\Subscription\CompanyQuotaService;
+use App\Shared\Subscription\SubscriptionService;
+use App\Shared\Subscription\UpgradeLinkBuilder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -53,7 +57,9 @@ class CompanyController extends Controller
     public function store(
         Request $request,
         CompanyCreationService $creationService,
-        CompanyQuotaService $quotaService
+        CompanyQuotaService $quotaService,
+        SubscriptionService $subscriptionService,
+        UpgradeLinkBuilder $upgradeLinkBuilder
     ): JsonResponse {
         $data = $request->validate([
             'name' => ['required', 'string', 'min:3', 'max:100'],
@@ -61,6 +67,26 @@ class CompanyController extends Controller
 
         $user = $request->user();
         $name = trim($data['name']);
+
+        // Gerbang langganan. `plan_id` (diatur admin di tab Kuota Paket) cuma
+        // menentukan APA yang boleh dipakai KALAU sudah berlangganan — bukan
+        // izin pakai itu sendiri. Tanpa gerbang ini, admin menempelkan plan_id
+        // saja (tanpa pernah klik "Mulai Langganan") sudah cukup membuka akses
+        // penuh selamanya, tanpa catatan billing sama sekali: `state` client
+        // itu tetap `none`, yang tidak pernah dianggap terkunci di manapun
+        // (lihat SubscriptionService::isLocked()). Login tetap dibuka untuk
+        // state itu (client baru wajar belum berlangganan), tapi membuat
+        // perusahaan pertama harus menunggu langganan benar-benar dimulai.
+        $subscriptionState = $subscriptionService->stateFor($user);
+        if (! in_array($subscriptionState, [SubscriptionService::STATE_ACTIVE, SubscriptionService::STATE_GRACE], true)) {
+            return ApiResponseBuilder::error(
+                ApiErrorCode::SUBSCRIPTION_REQUIRED,
+                null,
+                [],
+                403,
+                ['renewal_url' => $upgradeLinkBuilder->renewalLinkFor($user)]
+            );
+        }
 
         // Gerbang kuota. Menurunkan paket tidak mencabut perusahaan yang sudah
         // ada, jadi `used` bisa saja melebihi `limit` — yang ditahan hanya

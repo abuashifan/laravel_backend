@@ -27,6 +27,16 @@ class ApiErrorCode
     public const SUBSCRIPTION_EXPIRED = 'SUBSCRIPTION_EXPIRED';
 
     /**
+     * Client belum pernah punya langganan sama sekali (state `none`) dan
+     * mencoba aksi yang butuh langganan aktif — beda dari SUBSCRIPTION_EXPIRED
+     * (pernah aktif, sekarang habis). Login tetap dibuka untuk state `none`
+     * (lihat AuthController::login), tapi membuat perusahaan baru butuh
+     * langganan yang benar-benar sudah dimulai, bukan cuma plan_id yang
+     * ditempel admin tanpa catatan billing.
+     */
+    public const SUBSCRIPTION_REQUIRED = 'SUBSCRIPTION_REQUIRED';
+
+    /**
      * Kuota penyimpanan perusahaan sudah penuh (Fase 4, skema tier). Menahan
      * penambahan data baru — bukan mengunci akses baca, sejalan dengan aturan
      * yang berlaku di seluruh rencana ini.

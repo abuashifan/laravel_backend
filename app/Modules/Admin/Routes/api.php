@@ -27,11 +27,13 @@ Route::prefix('admin')->group(function () {
         Route::get('/clients/{id}/storage', [ClientUserController::class, 'storage']);
         Route::post('/clients', [ClientUserController::class, 'store']);
         Route::patch('/clients/{id}', [ClientUserController::class, 'update']);
+        Route::delete('/clients/{id}', [ClientUserController::class, 'destroy'])->middleware('throttle:10,1');
         Route::patch('/clients/{id}/plan', [ClientUserController::class, 'updatePlan']);
         Route::post('/clients/{id}/reset-password', [ClientUserController::class, 'resetPassword']);
         Route::post('/clients/{id}/subscribe', [ClientUserController::class, 'subscribe']);
         Route::post('/clients/{id}/renew', [ClientUserController::class, 'renew']);
         Route::post('/clients/{id}/unlock', [ClientUserController::class, 'unlock']);
+        Route::post('/clients/{id}/companies/{companyId}/repair-tenant', [ClientUserController::class, 'repairTenant'])->middleware('throttle:10,1');
 
         // Pemulihan perusahaan terhapus — hanya super admin, bukan client.
         Route::get('/companies/deleted', [DeletedCompanyController::class, 'index']);

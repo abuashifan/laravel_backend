@@ -265,6 +265,7 @@ class AdminClientManagementTest extends TestCase
             ->assertStatus(200)
             ->assertJsonPath('data.companies_limit', 0);
 
+        $this->activeSubscriptionFor($client->fresh(), $custom);
         Sanctum::actingAs($client->fresh(), ['*']);
 
         $this->postJson('/api/companies', ['name' => 'PT Ditolak'])
@@ -402,6 +403,108 @@ class AdminClientManagementTest extends TestCase
                 'Route admin tidak boleh memakai company.access: '.$route->uri()
             );
         }
+    }
+
+    // ── Hapus client & perbaikan tenant ─────────────────────────────────────
+
+    public function test_admin_can_delete_client_and_owned_company_is_purged(): void
+    {
+        $admin = $this->platformAdmin();
+        [$client, $company] = $this->seedClientWithCompany();
+        $tenantPath = $company->tenantDatabase->database_path;
+
+        $this->actingAsAdmin($admin)
+            ->deleteJson('/api/admin/clients/'.$client->id, ['confirm_email' => $client->email])
+            ->assertStatus(200);
+
+        $this->assertDatabaseMissing('users', ['id' => $client->id]);
+        $this->assertDatabaseMissing('companies', ['id' => $company->id]);
+        $this->assertDatabaseMissing('company_users', ['company_id' => $company->id]);
+        $this->assertDatabaseMissing('tenant_databases', ['company_id' => $company->id]);
+        $this->assertFalse(File::exists($tenantPath));
+    }
+
+    public function test_delete_client_requires_matching_email_confirmation(): void
+    {
+        $admin = $this->platformAdmin();
+        $client = User::factory()->create(['status' => 'active']);
+
+        $this->actingAsAdmin($admin)
+            ->deleteJson('/api/admin/clients/'.$client->id, ['confirm_email' => 'salah@example.com'])
+            ->assertStatus(422)
+            ->assertJsonStructure(['errors' => ['confirm_email']]);
+
+        $this->assertDatabaseHas('users', ['id' => $client->id]);
+    }
+
+    public function test_admin_cannot_delete_platform_admin_account(): void
+    {
+        $admin = $this->platformAdmin();
+        $otherAdmin = $this->platformAdmin();
+
+        $this->actingAsAdmin($admin)
+            ->deleteJson('/api/admin/clients/'.$otherAdmin->id, ['confirm_email' => $otherAdmin->email])
+            ->assertStatus(404);
+
+        $this->assertDatabaseHas('users', ['id' => $otherAdmin->id]);
+    }
+
+    /**
+     * `subscriptions.user_id` dibatasi `restrictOnDelete` — tanpa membuang
+     * baris ini lebih dulu, penghapusan client dengan langganan aktif akan
+     * gagal kena constraint database, bukan berhasil bersih.
+     */
+    public function test_delete_client_with_active_subscription_removes_subscription_too(): void
+    {
+        $admin = $this->platformAdmin();
+        $plan = $this->plan('pro', 'Pro', 3);
+        $client = User::factory()->create(['status' => 'active', 'plan_id' => $plan->id]);
+        $this->activeSubscriptionFor($client, $plan);
+
+        $this->actingAsAdmin($admin)
+            ->deleteJson('/api/admin/clients/'.$client->id, ['confirm_email' => $client->email])
+            ->assertStatus(200);
+
+        $this->assertDatabaseMissing('subscriptions', ['user_id' => $client->id]);
+        $this->assertDatabaseMissing('users', ['id' => $client->id]);
+    }
+
+    public function test_admin_can_repair_missing_tenant_database(): void
+    {
+        $admin = $this->platformAdmin();
+        [$client, $company] = $this->seedClientWithCompany();
+        $tenantPath = $company->tenantDatabase->database_path;
+
+        // Simulasikan file hilang (disk ephemeral kena wipe deploy).
+        File::delete($tenantPath);
+        $this->assertFalse(File::exists($tenantPath));
+
+        $this->actingAsAdmin($admin)
+            ->postJson("/api/admin/clients/{$client->id}/companies/{$company->id}/repair-tenant")
+            ->assertStatus(200)
+            ->assertJsonPath('data.0.tenant_file_exists', true);
+
+        $this->assertTrue(File::exists($tenantPath));
+        $this->assertDatabaseHas('tenant_databases', ['company_id' => $company->id, 'status' => 'active']);
+    }
+
+    public function test_repair_tenant_rejects_company_not_owned_by_client(): void
+    {
+        $admin = $this->platformAdmin();
+        [$clientA] = $this->seedClientWithCompany();
+
+        $otherOwner = User::factory()->create(['status' => 'active']);
+        $companyB = Company::query()->create([
+            'name' => 'PT Punya Orang Lain',
+            'slug' => 'pt-punya-orang-lain',
+            'code' => 'CMP-008002',
+            'status' => 'active',
+            'created_by' => $otherOwner->id,
+        ]);
+
+        $this->actingAsAdmin($admin)
+            ->postJson("/api/admin/clients/{$clientA->id}/companies/{$companyB->id}/repair-tenant")
+            ->assertStatus(404);
     }
 
     // ── Helper ───────────────────────────────────────────────────────────────

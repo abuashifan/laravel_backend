@@ -50,6 +50,7 @@ class CompanyQuotaTest extends TestCase
         $this->seedPlans();
 
         $user = User::factory()->create(['status' => 'active']);
+        $this->activeSubscriptionFor($user);
         Sanctum::actingAs($user, ['*']);
 
         $companyId = (int) $this->postJson('/api/companies', ['name' => 'PT Pertama'])
@@ -72,6 +73,7 @@ class CompanyQuotaTest extends TestCase
         $plans = $this->seedPlans();
 
         $user = User::factory()->create(['status' => 'active', 'plan_id' => $plans['pro']->id]);
+        $this->activeSubscriptionFor($user, $plans['pro']);
         Sanctum::actingAs($user, ['*']);
 
         foreach (['PT Satu', 'PT Dua', 'PT Tiga'] as $name) {
@@ -111,6 +113,7 @@ class CompanyQuotaTest extends TestCase
             'joined_at' => now(),
         ]);
 
+        $this->activeSubscriptionFor($staff);
         Sanctum::actingAs($staff, ['*']);
 
         $companyId = (int) $this->postJson('/api/companies', ['name' => 'PT Milik Sendiri'])
@@ -124,6 +127,7 @@ class CompanyQuotaTest extends TestCase
         $plans = $this->seedPlans();
 
         $user = User::factory()->create(['status' => 'active', 'plan_id' => $plans['pro']->id]);
+        $this->activeSubscriptionFor($user, $plans['pro']);
         Sanctum::actingAs($user, ['*']);
 
         foreach (['PT Satu', 'PT Dua'] as $name) {

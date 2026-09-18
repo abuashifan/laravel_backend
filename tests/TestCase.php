@@ -5,6 +5,7 @@ namespace Tests;
 use App\Shared\Models\Company;
 use App\Shared\Models\CompanyUser;
 use App\Shared\Models\Plan;
+use App\Shared\Models\Subscription;
 use App\Shared\Models\TenantDatabase;
 use App\Shared\Models\User;
 use App\Shared\Subscription\PlanPermissionResolver;
@@ -115,6 +116,35 @@ abstract class TestCase extends BaseTestCase
         ]);
 
         return $company;
+    }
+
+    /**
+     * Langganan aktif untuk `$user` — dibutuhkan `POST /api/companies` sejak
+     * gerbang SUBSCRIPTION_REQUIRED (client dengan `plan_id` tertempel tapi
+     * belum pernah "Mulai Langganan" tidak boleh bikin perusahaan). Plan
+     * dipakai dari `$user->plan` kalau sudah diisi (mis. lewat `clientOn()`),
+     * kalau tidak ada plan apa pun dibuat seadanya — kolom `plan_id` di
+     * `subscriptions` NOT NULL tapi test company-creation ini biasanya tidak
+     * peduli tier-nya yang mana.
+     */
+    protected function activeSubscriptionFor(User $user, ?Plan $plan = null): Subscription
+    {
+        $plan ??= $user->plan ?? Plan::query()->first() ?? Plan::query()->create([
+            'name' => 'Test Plan',
+            'code' => 'test-plan-'.uniqid(),
+            'max_users' => 10,
+            'max_companies' => 10,
+            'status' => 'active',
+        ]);
+
+        return Subscription::query()->create([
+            'user_id' => $user->id,
+            'plan_id' => $plan->id,
+            'starts_at' => now()->subDay(),
+            'ends_at' => now()->addYear(),
+            'billing_cycle' => 'monthly',
+            'price' => 0,
+        ]);
     }
 
     /**

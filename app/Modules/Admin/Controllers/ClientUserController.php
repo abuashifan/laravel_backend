@@ -5,9 +5,12 @@ namespace App\Modules\Admin\Controllers;
 use App\Http\Controllers\Controller;
 use App\Modules\Admin\Services\ClientUserService;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Company\CompanyPurgeService;
 use App\Shared\Models\Plan;
+use App\Shared\Models\Subscription;
 use App\Shared\Models\User;
 use App\Shared\Subscription\SubscriptionService;
+use App\Shared\Tenant\TenantRepairService;
 use App\Shared\Users\UserRegistrationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -102,6 +105,49 @@ class ClientUserController extends Controller
         $user->forceFill($this->extraAttributes($data, $user->plan_id))->save();
 
         return $this->successResponse($this->service->payload($user->refresh()), 'Client updated successfully');
+    }
+
+    /**
+     * Penghapusan permanen — titik tanpa kembali, dipakai membersihkan akun
+     * test/rusak (bukan alur normal untuk client sungguhan; nonaktifkan lewat
+     * `status` kalau cuma perlu menahan akses).
+     *
+     * Semua perusahaan yang DIMILIKI client ini (`created_by`) ikut dihapus
+     * permanen lewat `CompanyPurgeService` — baris pusatnya (company_users,
+     * tenant_databases, dst.) beserta file SQLite tenant-nya. Perusahaan
+     * tempat client ini cuma staf tidak tersentuh, keanggotaannya saja yang
+     * ikut hilang lewat cascade FK saat baris user dihapus.
+     *
+     * Baris `subscriptions` dihapus eksplisit lebih dulu: kolomnya
+     * `restrictOnDelete` terhadap `users`, jadi baris user tidak akan pernah
+     * terhapus kalau masih ada langganan yang menunjuknya.
+     */
+    public function destroy(int $id, Request $request, CompanyPurgeService $purgeService): JsonResponse
+    {
+        $user = $this->client($id);
+
+        $data = $request->validate([
+            'confirm_email' => ['required', 'string'],
+        ]);
+
+        if (trim($data['confirm_email']) !== $user->email) {
+            return $this->validationErrorResponse(
+                ['confirm_email' => ['Email tidak cocok.']],
+                'Konfirmasi email tidak cocok.'
+            );
+        }
+
+        $admin = $request->user();
+
+        foreach ($user->ownedCompanies()->get() as $company) {
+            $purgeService->purge($company, $admin);
+        }
+
+        Subscription::query()->where('user_id', $user->id)->delete();
+        $user->tokens()->delete();
+        $user->delete();
+
+        return $this->successResponse(null, 'Client dan seluruh perusahaannya berhasil dihapus permanen.');
     }
 
     /**
@@ -275,6 +321,33 @@ class ClientUserController extends Controller
         return $this->successResponse(
             $this->service->companiesWithStorage($this->client($id)),
             'Client storage usage retrieved successfully'
+        );
+    }
+
+    /**
+     * Buat ulang tenant database sebuah company milik client ini — dipakai
+     * admin memperbaiki company yang file SQLite tenant-nya hilang (disk
+     * ephemeral tanpa persistent disk, lihat `TenantRepairService`). Data
+     * lama TIDAK bisa dipulihkan; hasilnya tenant database kosong baru.
+     */
+    public function repairTenant(int $id, int $companyId, TenantRepairService $repairService): JsonResponse
+    {
+        $client = $this->client($id);
+        $company = $client->ownedCompanies()->find($companyId);
+
+        if (! $company) {
+            return $this->errorResponse('Perusahaan tidak ditemukan untuk client ini.', 404);
+        }
+
+        $result = $repairService->repair($company);
+
+        if (! ($result['success'] ?? false)) {
+            return $this->errorResponse($result['reason'] ?? 'Gagal membuat ulang tenant database.', 422);
+        }
+
+        return $this->successResponse(
+            $this->service->companiesWithStorage($client),
+            'Tenant database berhasil dibuat ulang.'
         );
     }
 

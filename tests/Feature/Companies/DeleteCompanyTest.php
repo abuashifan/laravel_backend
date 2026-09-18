@@ -52,6 +52,7 @@ class DeleteCompanyTest extends TestCase
     public function test_owner_can_delete_company_with_matching_confirmation(): void
     {
         $user = User::factory()->create(['status' => 'active']);
+        $this->activeSubscriptionFor($user);
         Sanctum::actingAs($user, ['*']);
 
         $companyId = (int) $this->postJson('/api/companies', ['name' => 'PT Maju Jaya'])
@@ -102,6 +103,7 @@ class DeleteCompanyTest extends TestCase
     public function test_delete_preserves_existing_member_statuses(): void
     {
         $owner = User::factory()->create(['status' => 'active']);
+        $this->activeSubscriptionFor($owner);
         Sanctum::actingAs($owner, ['*']);
 
         $companyId = (int) $this->postJson('/api/companies', ['name' => 'PT Maju Jaya'])
@@ -139,6 +141,7 @@ class DeleteCompanyTest extends TestCase
     public function test_delete_requires_matching_confirm_name(): void
     {
         $user = User::factory()->create(['status' => 'active']);
+        $this->activeSubscriptionFor($user);
         Sanctum::actingAs($user, ['*']);
 
         $companyId = (int) $this->postJson('/api/companies', ['name' => 'PT Maju Jaya'])
@@ -160,6 +163,7 @@ class DeleteCompanyTest extends TestCase
     public function test_non_owner_member_cannot_delete_company(): void
     {
         $owner = User::factory()->create(['status' => 'active']);
+        $this->activeSubscriptionFor($owner);
         Sanctum::actingAs($owner, ['*']);
 
         $companyId = (int) $this->postJson('/api/companies', ['name' => 'PT Maju Jaya'])
@@ -191,6 +195,7 @@ class DeleteCompanyTest extends TestCase
     public function test_user_without_access_cannot_delete_company(): void
     {
         $owner = User::factory()->create(['status' => 'active']);
+        $this->activeSubscriptionFor($owner);
         Sanctum::actingAs($owner, ['*']);
 
         $companyId = (int) $this->postJson('/api/companies', ['name' => 'PT Maju Jaya'])

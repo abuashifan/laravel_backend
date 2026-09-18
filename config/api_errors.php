@@ -8,6 +8,7 @@ return [
         'PERMISSION_DENIED' => 'You do not have permission to perform this action.',
         'FEATURE_NOT_IN_PLAN' => 'Fitur ini tidak termasuk dalam paket langganan Anda. Hubungi penyedia aplikasi untuk meningkatkan paket.',
         'SUBSCRIPTION_EXPIRED' => 'Langganan Anda sudah berakhir. Hubungi penyedia aplikasi untuk memperpanjang.',
+        'SUBSCRIPTION_REQUIRED' => 'Anda belum punya langganan aktif. Hubungi penyedia aplikasi untuk memulai langganan.',
         'STORAGE_QUOTA_EXCEEDED' => 'Kuota penyimpanan perusahaan ini sudah penuh. Hapus data lama atau hubungi penyedia aplikasi.',
         'COMPANY_ACCESS_DENIED' => 'You do not have access to this company.',
         'COMPANY_NOT_FOUND' => 'Company tidak ditemukan.',

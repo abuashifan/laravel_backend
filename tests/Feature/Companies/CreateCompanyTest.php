@@ -70,6 +70,7 @@ class CreateCompanyTest extends TestCase
     public function test_authenticated_user_can_create_company_and_becomes_owner(): void
     {
         $user = User::factory()->create(['status' => 'active']);
+        $this->activeSubscriptionFor($user);
         Sanctum::actingAs($user, ['*']);
 
         $response = $this->postJson('/api/companies', ['name' => 'PT Maju Jaya'])
@@ -99,6 +100,7 @@ class CreateCompanyTest extends TestCase
     public function test_created_company_tenant_database_is_migrated_and_selectable(): void
     {
         $user = User::factory()->create(['status' => 'active']);
+        $this->activeSubscriptionFor($user);
         Sanctum::actingAs($user, ['*']);
 
         $companyId = (int) $this->postJson('/api/companies', ['name' => 'PT Migrasi'])
@@ -133,6 +135,7 @@ class CreateCompanyTest extends TestCase
         ]);
 
         $user = User::factory()->create(['status' => 'active']);
+        $this->activeSubscriptionFor($user);
         Sanctum::actingAs($user, ['*']);
 
         $response = $this->postJson('/api/companies', ['name' => 'PT Maju Jaya'])
@@ -153,6 +156,7 @@ class CreateCompanyTest extends TestCase
         ]);
 
         $user = User::factory()->create(['status' => 'active', 'plan_id' => $plan->id]);
+        $this->activeSubscriptionFor($user, $plan);
         Sanctum::actingAs($user, ['*']);
 
         $companyId = (int) $this->postJson('/api/companies', ['name' => 'PT Maju Jaya'])
@@ -172,6 +176,26 @@ class CreateCompanyTest extends TestCase
         $this->assertSame(1, TenantDatabase::query()->count());
     }
 
+    /**
+     * `plan_id` tertempel tanpa pernah "Mulai Langganan" tidak cukup — client
+     * dengan state `none` ditahan membuat perusahaan pertamanya, walau
+     * kuotanya (dari plan) sebenarnya cukup.
+     */
+    public function test_client_without_active_subscription_cannot_create_company(): void
+    {
+        $plan = Plan::query()->create([
+            'name' => 'Pro', 'code' => 'pro', 'max_users' => 10, 'max_companies' => 3, 'status' => 'active',
+        ]);
+        $user = User::factory()->create(['status' => 'active', 'plan_id' => $plan->id]);
+        Sanctum::actingAs($user, ['*']);
+
+        $this->postJson('/api/companies', ['name' => 'PT Ditahan'])
+            ->assertStatus(403)
+            ->assertJsonPath('code', 'SUBSCRIPTION_REQUIRED');
+
+        $this->assertSame(0, Company::query()->count());
+    }
+
     public function test_name_is_validated(): void
     {
         $user = User::factory()->create(['status' => 'active']);
@@ -187,6 +211,8 @@ class CreateCompanyTest extends TestCase
     {
         $userA = User::factory()->create(['status' => 'active']);
         $userB = User::factory()->create(['status' => 'active']);
+        $this->activeSubscriptionFor($userA);
+        $this->activeSubscriptionFor($userB);
 
         Sanctum::actingAs($userA, ['*']);
         $companyAId = (int) $this->postJson('/api/companies', ['name' => 'PT Punya A'])
