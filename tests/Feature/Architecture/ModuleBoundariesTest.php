@@ -270,7 +270,16 @@ class ModuleBoundariesTest extends TestCase
 
     private function relative(SplFileInfo $file): string
     {
-        return str_replace(base_path().'/', '', $file->getPathname());
+        // Separator dinormalkan ke '/' lebih dulu. Di Windows getPathname()
+        // memakai '\', sehingga str_replace(base_path().'/') tidak pernah cocok
+        // dan metode ini mengembalikan path absolut utuh — akibatnya daftar
+        // pengecualian di test (yang ditulis dengan '/') tidak pernah cocok dan
+        // file yang sudah sah terdaftar tetap dilaporkan sebagai pelanggaran.
+        // Di Linux/CI gejala ini tidak pernah muncul.
+        $path = str_replace('\\', '/', $file->getPathname());
+        $base = str_replace('\\', '/', base_path()).'/';
+
+        return str_replace($base, '', $path);
     }
 
     /** @return list<string> */
