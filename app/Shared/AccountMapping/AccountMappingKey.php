@@ -54,10 +54,6 @@ class AccountMappingKey
 
     public const FIXED_ASSETS_COST = 'fixed_assets.cost';
 
-    public const FIXED_ASSETS_ACCUMULATED_DEPRECIATION = 'fixed_assets.accumulated_depreciation';
-
-    public const FIXED_ASSETS_DEPRECIATION_EXPENSE = 'fixed_assets.depreciation_expense';
-
     public const FIXED_ASSETS_ACCUMULATED_AMORTIZATION = 'fixed_assets.accumulated_amortization';
 
     public const FIXED_ASSETS_AMORTIZATION_EXPENSE = 'fixed_assets.amortization_expense';
@@ -65,6 +61,33 @@ class AccountMappingKey
     public const FIXED_ASSETS_DISPOSAL_GAIN = 'fixed_assets.disposal_gain';
 
     public const FIXED_ASSETS_DISPOSAL_LOSS = 'fixed_assets.disposal_loss';
+
+    // Fixed Assets -- per kelas aset. Optional: dipakai sebagai acuan akun
+    // kategori aset tetap. Untuk penyusutan tidak ada lagi key generik --
+    // kelas Peralatan yang jadi fallback posting (lihat FixedAssetService).
+    public const FIXED_ASSETS_VEHICLE_COST = 'fixed_assets.vehicle_cost';
+
+    public const FIXED_ASSETS_VEHICLE_ACCUMULATED_DEPRECIATION = 'fixed_assets.vehicle_accumulated_depreciation';
+
+    public const FIXED_ASSETS_VEHICLE_DEPRECIATION_EXPENSE = 'fixed_assets.vehicle_depreciation_expense';
+
+    public const FIXED_ASSETS_BUILDING_COST = 'fixed_assets.building_cost';
+
+    public const FIXED_ASSETS_BUILDING_ACCUMULATED_DEPRECIATION = 'fixed_assets.building_accumulated_depreciation';
+
+    public const FIXED_ASSETS_BUILDING_DEPRECIATION_EXPENSE = 'fixed_assets.building_depreciation_expense';
+
+    public const FIXED_ASSETS_EQUIPMENT_COST = 'fixed_assets.equipment_cost';
+
+    public const FIXED_ASSETS_EQUIPMENT_ACCUMULATED_DEPRECIATION = 'fixed_assets.equipment_accumulated_depreciation';
+
+    public const FIXED_ASSETS_EQUIPMENT_DEPRECIATION_EXPENSE = 'fixed_assets.equipment_depreciation_expense';
+
+    public const FIXED_ASSETS_SOFTWARE_COST = 'fixed_assets.software_cost';
+
+    public const FIXED_ASSETS_SOFTWARE_ACCUMULATED_AMORTIZATION = 'fixed_assets.software_accumulated_amortization';
+
+    public const FIXED_ASSETS_SOFTWARE_AMORTIZATION_EXPENSE = 'fixed_assets.software_amortization_expense';
 
     // Cash/Bank
     public const CASH_BANK_DEFAULT_CASH = 'cash_bank.default_cash';
@@ -77,6 +100,8 @@ class AccountMappingKey
 
     // Opening/Closing
     public const OPENING_BALANCE_EQUITY = 'opening_balance.equity';
+
+    public const OPENING_BALANCE_CLEARING = 'opening_balance.clearing';
 
     public const CLOSING_RETAINED_EARNINGS = 'closing.retained_earnings';
 

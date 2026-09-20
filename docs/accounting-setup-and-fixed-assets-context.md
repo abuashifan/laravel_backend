@@ -1105,8 +1105,6 @@ Cr Fixed Asset
 Add mappings:
 
 - `fixed_assets.asset_cost`
-- `fixed_assets.accumulated_depreciation`
-- `fixed_assets.depreciation_expense`
 - `fixed_assets.disposal_gain`
 - `fixed_assets.disposal_loss`
 - `fixed_assets.clearing`
@@ -1114,7 +1112,18 @@ Add mappings:
 - `fixed_assets.amortization_expense`
 - `fixed_assets.impairment_loss`
 
+Depreciation is mapped per asset class, not through one combined pair. The
+generic `fixed_assets.accumulated_depreciation` / `fixed_assets.depreciation_expense`
+keys were removed once the per-class keys landed — keeping both made the
+Account Mapping page show two fields for the same account. Use:
+
+- `fixed_assets.{vehicle,building,equipment}_accumulated_depreciation`
+- `fixed_assets.{vehicle,building,equipment}_depreciation_expense`
+- `fixed_assets.software_accumulated_amortization` / `fixed_assets.software_amortization_expense`
+
 Category-level account fields should override global mappings when present.
+When a category leaves them null, posting falls back to the equipment-class
+keys (see `FixedAssetService::accumulatedAccount()`).
 
 ## Document Number Types
 

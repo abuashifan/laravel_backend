@@ -8,6 +8,7 @@ use App\Modules\Journal\Models\JournalEntry;
 use App\Modules\MasterData\Models\AccountMapping;
 use App\Modules\MasterData\Models\ChartOfAccount;
 use App\Modules\Settings\Services\CompanySettingService;
+use App\Shared\Models\CompanyModuleSetting;
 use App\Shared\Models\CompanySetupState;
 use Tests\Feature\Journal\JournalTestCase;
 
@@ -82,52 +83,104 @@ class SetupWizardTest extends JournalTestCase
             ->assertJsonPath('data.gate.initial_setup_available', false);
     }
 
-    public function test_validate_all_blocks_when_opening_balance_batch_is_missing(): void
-    {
-        $ctx = $this->setUpTenant(role: 'owner');
-        app(CompanySettingService::class)->getOrCreateModuleSetting($ctx['company']);
-        $this->seedSetupCoaAndMappings();
-
-        $this->patchJson('/api/setup/current-step', [
-            'current_step' => 'final_review',
-            'opening_date' => '2026-01-01',
-        ], $ctx['headers'])->assertOk();
-
-        $response = $this->postJson('/api/setup/validate-all', [], $ctx['headers'])
-            ->assertOk();
-
-        $response->assertJsonPath('data.valid', false);
-        $response->assertJsonPath('data.results.opening_balance_preview.errors.0.code', 'OPENING_BALANCE_BATCH_REQUIRED');
-        $response->assertJsonPath('data.state.status', 'in_progress');
-    }
-
     /**
-     * Wizard menawarkan "Lewati, isi nanti" untuk saldo awal (perusahaan baru tanpa
-     * saldo historis wajar tidak punya apa pun untuk diinput). Tanpa flag skip ini
-     * finalize selalu gagal 422 walau semua step lain valid -- lihat
-     * SetupWizardService::openingBalanceSkipped().
+     * Fase 8: langkah saldo awal cuma menuntut satu hal — tanggalnya.
+     *
+     * Sampai Fase 7 ia menuntut sebuah batch yang seimbang dan tervalidasi,
+     * yang berarti user tidak bisa menyelesaikan setup sebelum seluruh neraca
+     * pembukanya beres. Mengisi saldo awal adalah pekerjaan yang boleh dicicil,
+     * jadi wizard tidak lagi menahannya.
      */
-    public function test_opening_balance_can_be_explicitly_skipped_for_finalization(): void
+    public function test_opening_balance_step_only_requires_the_opening_date(): void
     {
         $ctx = $this->setUpTenant(role: 'owner');
         app(CompanySettingService::class)->getOrCreateModuleSetting($ctx['company']);
         $this->seedSetupCoaAndMappings();
 
-        $this->patchJson('/api/setup/current-step', [
-            'current_step' => 'final_review',
-            'opening_date' => '2026-01-01',
-        ], $ctx['headers'])->assertOk();
+        $this->postJson('/api/setup/validate-step', ['step' => 'opening_balance'], $ctx['headers'])
+            ->assertOk()
+            ->assertJsonPath('data.result.valid', false)
+            ->assertJsonPath('data.result.errors.0.code', 'OPENING_DATE_REQUIRED');
 
         $this->postJson('/api/setup/validate-step', [
-            'step' => 'opening_balance_preview',
-            'confirm_opening_balance_skipped' => true,
+            'step' => 'opening_balance',
+            'opening_date' => '2026-01-01',
         ], $ctx['headers'])
             ->assertOk()
             ->assertJsonPath('data.result.valid', true);
+    }
 
-        $response = $this->postJson('/api/setup/finalize', [], $ctx['headers'])->assertOk();
-        $response->assertJsonPath('data.finalized', true);
-        $response->assertJsonPath('data.state.status', 'finalized');
+    /**
+     * Belum ada satu pun jurnal pembuka bukan penghalang — ia peringatan.
+     * Tidak ada lagi flag "lewati" yang harus dikirim frontend.
+     */
+    public function test_finalization_succeeds_without_any_opening_balance_journal(): void
+    {
+        $ctx = $this->setUpTenant(role: 'owner');
+        app(CompanySettingService::class)->getOrCreateModuleSetting($ctx['company']);
+        $this->seedSetupCoaAndMappings();
+
+        $this->patchJson('/api/setup/current-step', [
+            'current_step' => 'final_review',
+            'opening_date' => '2026-01-01',
+        ], $ctx['headers'])->assertOk();
+
+        $this->postJson('/api/setup/validate-all', [], $ctx['headers'])
+            ->assertOk()
+            ->assertJsonPath('data.valid', true)
+            ->assertJsonPath('data.results.opening_balance.warnings.0', 'Belum ada jurnal saldo awal. Perusahaan ini akan mulai dari nol.');
+
+        $this->postJson('/api/setup/finalize', [], $ctx['headers'])
+            ->assertOk()
+            ->assertJsonPath('data.finalized', true)
+            ->assertJsonPath('data.state.status', 'finalized');
+    }
+
+    /**
+     * Regresi terbalik dari Fase 7: modul Aktiva Tetap yang aktif tanpa aset
+     * terdaftar dulu memblokir finalisasi sampai user mencentang "tidak punya
+     * aset tetap awal". Sejak Fase 8 aset boleh didaftarkan kapan saja — bahkan
+     * setelah setup selesai — jadi tidak ada yang perlu dikonfirmasi.
+     */
+    public function test_enabled_fixed_asset_module_no_longer_blocks_finalization(): void
+    {
+        $ctx = $this->setUpTenant(role: 'owner');
+        CompanyModuleSetting::query()->updateOrCreate(
+            ['company_id' => $ctx['company']->id],
+            ['fixed_asset_enabled' => true],
+        );
+        $this->seedSetupCoaAndMappings();
+        $this->seedFixedAssetMappings();
+
+        $this->patchJson('/api/setup/current-step', [
+            'current_step' => 'final_review',
+            'opening_date' => '2026-01-01',
+        ], $ctx['headers'])->assertOk();
+
+        $this->postJson('/api/setup/validate-all', [], $ctx['headers'])
+            ->assertOk()
+            ->assertJsonPath('data.valid', true);
+
+        $this->postJson('/api/setup/finalize', [], $ctx['headers'])
+            ->assertOk()
+            ->assertJsonPath('data.finalized', true);
+    }
+
+    /**
+     * Status wizard membawa papan pemantau saldo awal, bukan gerbang urutan:
+     * tidak ada lagi urutan yang perlu dijaga.
+     */
+    public function test_status_exposes_the_opening_balance_board(): void
+    {
+        $ctx = $this->setUpTenant(role: 'owner');
+        $this->seedSetupCoaAndMappings();
+
+        $this->getJson('/api/setup/status', $ctx['headers'])
+            ->assertOk()
+            ->assertJsonPath('data.opening_balance.journal_count', 0)
+            ->assertJsonPath('data.opening_balance.is_complete', false)
+            ->assertJsonPath('data.opening_balance.ready', true)
+            ->assertJsonPath('data.opening_balance.clearing_account.account_code', '3990');
     }
 
     public function test_finalized_setup_cannot_be_downgraded_by_stale_current_step_request(): void
@@ -169,11 +222,51 @@ class SetupWizardTest extends JournalTestCase
             'cash_bank.default_cash' => ['cash_bank', $asset],
             'cash_bank.default_bank' => ['cash_bank', $asset],
             'opening_balance.equity' => ['opening_balance', $equity],
+            'opening_balance.clearing' => ['opening_balance', $this->account('3990', 'Setup Clearing', 'equity', 'credit')],
         ] as $key => [$module, $accountId]) {
             AccountMapping::query()->updateOrCreate(
                 ['mapping_key' => $key],
                 [
                     'module' => $module,
+                    'account_id' => $accountId,
+                    'is_required' => true,
+                    'is_active' => true,
+                ]
+            );
+        }
+    }
+
+    /**
+     * Mengaktifkan modul Aktiva Tetap membuat 4 mapping key `fixed_assets.*`
+     * jadi wajib (lihat AccountMappingHealthTest / config/account_mappings.php);
+     * kunci penyusutan per kelas ikut diisi di sini karena jadi fallback posting
+     * setelah kunci generiknya dihapus.
+     * Di wizard sungguhan ini terisi otomatis lewat
+     * AccountMappingStorageService::syncDefaultMappingsFromConfig() setelah
+     * Step3 menerapkan template COA -- di sini diisi manual karena test tidak
+     * lewat endpoint template.
+     */
+    private function seedFixedAssetMappings(): void
+    {
+        $asset = $this->account('1590', 'Fixed Asset Clearing', 'asset', 'debit');
+        $cost = $this->account('1530', 'Peralatan', 'asset', 'debit');
+        $accumulated = $this->account('1531', 'Akumulasi Penyusutan Peralatan', 'asset', 'debit');
+        $expense = $this->account('6172', 'Beban Penyusutan Peralatan', 'expense', 'debit');
+        $gain = $this->account('7200', 'Laba Pelepasan Aset Tetap', 'revenue', 'credit');
+        $loss = $this->account('8200', 'Rugi Pelepasan Aset Tetap', 'expense', 'debit');
+
+        foreach ([
+            'fixed_assets.clearing' => $asset,
+            'fixed_assets.cost' => $cost,
+            'fixed_assets.equipment_accumulated_depreciation' => $accumulated,
+            'fixed_assets.equipment_depreciation_expense' => $expense,
+            'fixed_assets.disposal_gain' => $gain,
+            'fixed_assets.disposal_loss' => $loss,
+        ] as $key => $accountId) {
+            AccountMapping::query()->updateOrCreate(
+                ['mapping_key' => $key],
+                [
+                    'module' => 'fixed_assets',
                     'account_id' => $accountId,
                     'is_required' => true,
                     'is_active' => true,

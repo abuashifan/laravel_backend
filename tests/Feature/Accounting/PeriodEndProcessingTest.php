@@ -97,8 +97,8 @@ class PeriodEndProcessingTest extends JournalTestCase
         foreach ([
             'fixed_assets.clearing' => $asset->id,
             'fixed_assets.cost' => $asset->id,
-            'fixed_assets.accumulated_depreciation' => $asset->id,
-            'fixed_assets.depreciation_expense' => $expense->id,
+            'fixed_assets.equipment_accumulated_depreciation' => $asset->id,
+            'fixed_assets.equipment_depreciation_expense' => $expense->id,
             'fixed_assets.disposal_gain' => $revenue->id,
             'fixed_assets.disposal_loss' => $expense->id,
         ] as $key => $accountId) {

@@ -22,6 +22,7 @@ class ImportBatch extends Model
         'total_rows',
         'valid_rows',
         'failed_rows',
+        'warning_rows',
         'committed_rows',
         'error_message',
         'created_by',
@@ -32,6 +33,7 @@ class ImportBatch extends Model
         'total_rows' => 'integer',
         'valid_rows' => 'integer',
         'failed_rows' => 'integer',
+        'warning_rows' => 'integer',
         'committed_rows' => 'integer',
     ];
 

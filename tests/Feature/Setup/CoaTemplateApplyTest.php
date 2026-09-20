@@ -137,6 +137,82 @@ class CoaTemplateApplyTest extends JournalTestCase
         $this->assertFalse(ChartOfAccount::query()->where('account_code', '1131')->where('metadata->template_id', 'trading')->exists());
     }
 
+    /**
+     * Aset tetap tidak boleh kembali menjadi satu akun gabungan: tiap kelas
+     * (kendaraan, gedung, peralatan, software) wajib punya akun harga perolehan,
+     * akumulasi penyusutan/amortisasi, dan beban sendiri di setiap template.
+     */
+    public function test_every_template_splits_fixed_asset_accounts_per_class(): void
+    {
+        $expected = [
+            '1510' => 'asset', '1511' => 'asset', '6170' => 'expense',
+            '1520' => 'asset', '1521' => 'asset', '6171' => 'expense',
+            '1530' => 'asset', '1531' => 'asset', '6172' => 'expense',
+            '1540' => 'asset', '1541' => 'asset', '6175' => 'expense',
+        ];
+
+        foreach ((array) config('coa_templates.templates') as $templateId => $template) {
+            $accounts = (array) ($template['accounts'] ?? []);
+            if ($accounts === []) {
+                continue; // template 'blank' memang tanpa akun
+            }
+
+            $byCode = [];
+            foreach ($accounts as $row) {
+                $byCode[(string) $row['code']] = $row;
+            }
+
+            foreach ($expected as $code => $type) {
+                $this->assertArrayHasKey($code, $byCode, "Template [{$templateId}] kehilangan akun [{$code}].");
+                $this->assertSame($type, (string) $byCode[$code]['type'], "Akun [{$code}] di template [{$templateId}] salah tipe.");
+            }
+
+            $this->assertArrayNotHasKey(
+                'Akumulasi Penyusutan Aset Tetap',
+                array_flip(array_column($accounts, 'name')),
+                "Template [{$templateId}] masih memakai akun akumulasi penyusutan gabungan."
+            );
+        }
+    }
+
+    public function test_apply_maps_each_fixed_asset_class_to_its_own_accounts(): void
+    {
+        $ctx = $this->setUpTenant(role: 'owner');
+
+        $this->postJson('/api/setup/coa-templates/apply', [
+            'template_id' => 'trading',
+            'accounts' => (array) config('coa_templates.templates.trading.accounts'),
+        ], $ctx['headers'])->assertOk();
+
+        $expected = [
+            'fixed_assets.vehicle_cost' => '1510',
+            'fixed_assets.vehicle_accumulated_depreciation' => '1511',
+            'fixed_assets.vehicle_depreciation_expense' => '6170',
+            'fixed_assets.building_cost' => '1520',
+            'fixed_assets.building_accumulated_depreciation' => '1521',
+            'fixed_assets.building_depreciation_expense' => '6171',
+            'fixed_assets.equipment_cost' => '1530',
+            'fixed_assets.equipment_accumulated_depreciation' => '1531',
+            'fixed_assets.equipment_depreciation_expense' => '6172',
+            'fixed_assets.software_cost' => '1540',
+            'fixed_assets.software_accumulated_amortization' => '1541',
+            'fixed_assets.software_amortization_expense' => '6175',
+        ];
+
+        foreach ($expected as $key => $code) {
+            $accountId = ChartOfAccount::query()->where('account_code', $code)->value('id');
+            $this->assertSame(
+                $accountId,
+                AccountMapping::query()->where('mapping_key', $key)->value('account_id'),
+                "Mapping [{$key}] harus menunjuk akun [{$code}]."
+            );
+        }
+
+        // Key generik tetap terisi sebagai fallback posting (kelas Peralatan).
+        $peralatan = ChartOfAccount::query()->where('account_code', '1530')->value('id');
+        $this->assertSame($peralatan, AccountMapping::query()->where('mapping_key', 'fixed_assets.cost')->value('account_id'));
+    }
+
     public function test_apply_rejects_child_row_whose_parent_code_appears_later(): void
     {
         $ctx = $this->setUpTenant(role: 'owner');

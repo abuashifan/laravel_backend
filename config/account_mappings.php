@@ -188,7 +188,10 @@ return [
             'required' => true,
             'account_types' => ['asset'],
             'description' => 'Default inventory asset account.',
-            'default_account_codes' => ['1130', '1106.10'],
+            // 1130 lebih dulu karena di sebagian COA akun itu leaf. Di template
+            // gas_agent/trading/manufacture 1130 adalah induk, jadi resolusi
+            // default melewatinya dan jatuh ke akun anaknya.
+            'default_account_codes' => ['1130', '1131', '1133', '1106.10'],
             'visible_in_settings' => true,
             'settings_section' => 'Akun Standar Barang',
             'settings_order' => 110,
@@ -234,7 +237,7 @@ return [
 
         'fixed_assets.clearing' => [
             'module' => 'fixed_assets',
-            'label' => 'Fixed Asset Clearing',
+            'label' => 'Akun Sementara Aset Tetap (Clearing)',
             'required' => true,
             'account_types' => ['asset'],
             'description' => 'Temporary clearing account for fixed asset acquisitions from vendor bills.',
@@ -243,56 +246,52 @@ return [
             'settings_section' => 'Aset Tetap',
             'settings_order' => 300,
         ],
+        /*
+         * Key generik di bawah ini adalah FALLBACK terakhir saat kategori aset
+         * (`fixed_asset_categories.*_account_id`) belum mengisi akunnya sendiri --
+         * lihat FixedAssetService::assetAccount() dkk. Defaultnya menunjuk kelas
+         * Peralatan karena akun induk `15` tidak bisa dipakai transaksi, jadi
+         * fallback wajib akun leaf. Kode lama (1520/1510) tetap ada di daftar
+         * supaya tenant yang menerapkan template versi sebelumnya tidak
+         * kehilangan pemetaan.
+         *
+         * Pasangan penyusutan generiknya (`accumulated_depreciation` dan
+         * `depreciation_expense`) SENGAJA TIDAK ADA di sini: keduanya sudah
+         * dipecah per kelas aset di bawah, dan membiarkannya berdampingan
+         * membuat halaman Pemetaan Akun menampilkan dua field untuk akun yang
+         * sama. Fallback-nya sekarang kunci kelas Peralatan -- akun default
+         * yang sama persis (1531 / 6172) dengan yang dipakai key generik itu.
+         * Amortisasi belum dipecah selain Perangkat Lunak, jadi generiknya
+         * masih dipertahankan.
+         */
         'fixed_assets.cost' => [
             'module' => 'fixed_assets',
-            'label' => 'Fixed Asset Cost',
+            'label' => 'Akun Aset Tetap (Default)',
             'required' => true,
             'account_types' => ['asset'],
-            'description' => 'Default fixed asset control account.',
-            'default_account_codes' => ['1520', '1510'],
+            'description' => 'Fallback fixed asset control account when the asset category has none.',
+            'default_account_codes' => ['1530', '1520', '1510'],
             'visible_in_settings' => true,
             'settings_section' => 'Aset Tetap',
             'settings_order' => 310,
         ],
-        'fixed_assets.accumulated_depreciation' => [
-            'module' => 'fixed_assets',
-            'label' => 'Accumulated Depreciation',
-            'required' => true,
-            'account_types' => ['asset'],
-            'description' => 'Contra asset account for accumulated depreciation.',
-            'default_account_codes' => ['1521', '1511', '1531'],
-            'visible_in_settings' => true,
-            'settings_section' => 'Aset Tetap',
-            'settings_order' => 320,
-        ],
-        'fixed_assets.depreciation_expense' => [
-            'module' => 'fixed_assets',
-            'label' => 'Depreciation Expense',
-            'required' => true,
-            'account_types' => ['expense'],
-            'description' => 'Default depreciation expense account.',
-            'default_account_codes' => ['6170', '6172'],
-            'visible_in_settings' => true,
-            'settings_section' => 'Aset Tetap',
-            'settings_order' => 330,
-        ],
         'fixed_assets.accumulated_amortization' => [
             'module' => 'fixed_assets',
-            'label' => 'Accumulated Amortization',
+            'label' => 'Akumulasi Amortisasi (Default)',
             'required' => false,
             'account_types' => ['asset'],
-            'description' => 'Contra asset account for accumulated amortization.',
-            'default_account_codes' => ['1601'],
+            'description' => 'Fallback contra asset account for accumulated amortization.',
+            'default_account_codes' => ['1541', '1601'],
             'visible_in_settings' => true,
             'settings_section' => 'Aset Tetap',
             'settings_order' => 340,
         ],
         'fixed_assets.amortization_expense' => [
             'module' => 'fixed_assets',
-            'label' => 'Amortization Expense',
+            'label' => 'Beban Amortisasi (Default)',
             'required' => false,
             'account_types' => ['expense'],
-            'description' => 'Default amortization expense account.',
+            'description' => 'Fallback amortization expense account.',
             'default_account_codes' => ['6175'],
             'visible_in_settings' => true,
             'settings_section' => 'Aset Tetap',
@@ -300,7 +299,7 @@ return [
         ],
         'fixed_assets.disposal_gain' => [
             'module' => 'fixed_assets',
-            'label' => 'Gain on Fixed Asset Disposal',
+            'label' => 'Laba Pelepasan Aset Tetap',
             'required' => true,
             'account_types' => ['revenue'],
             'description' => 'Gain account for fixed asset disposals.',
@@ -311,7 +310,7 @@ return [
         ],
         'fixed_assets.disposal_loss' => [
             'module' => 'fixed_assets',
-            'label' => 'Loss on Fixed Asset Disposal',
+            'label' => 'Rugi Pelepasan Aset Tetap',
             'required' => true,
             'account_types' => ['expense'],
             'description' => 'Loss account for fixed asset disposals.',
@@ -320,6 +319,201 @@ return [
             'settings_section' => 'Aset Tetap',
             'settings_order' => 370,
         ],
+
+        /*
+         * Pemetaan per kelas aset tetap. Dipisah dari key generik di atas supaya
+         * neraca dan jurnal penyusutan terbaca per jenis aset -- satu akun
+         * "Akumulasi Penyusutan Aset Tetap" untuk kendaraan, gedung, peralatan,
+         * dan software sekaligus membuat mutasi tiap kelas tidak bisa ditelusuri.
+         *
+         * Semuanya optional: perusahaan yang tidak memiliki salah satu kelas
+         * tidak boleh terblokir di wizard. Akun yang dipilih di sini jadi acuan
+         * saat mengisi akun pada kategori aset tetap (Master Data -> Kategori
+         * Aset Tetap), yang dipakai FixedAssetService saat menyusun jurnal.
+         */
+        'fixed_assets.vehicle_cost' => [
+            'module' => 'fixed_assets',
+            'label' => 'Akun Kendaraan',
+            'required' => false,
+            'account_types' => ['asset'],
+            'description' => 'Fixed asset cost account for the vehicle class.',
+            'default_account_codes' => ['1510'],
+            'visible_in_settings' => true,
+            'settings_section' => 'Aset Tetap',
+            'settings_order' => 400,
+        ],
+        'fixed_assets.vehicle_accumulated_depreciation' => [
+            'module' => 'fixed_assets',
+            'label' => 'Akumulasi Penyusutan Kendaraan',
+            'required' => false,
+            'account_types' => ['asset'],
+            'description' => 'Accumulated depreciation account for the vehicle class.',
+            'default_account_codes' => ['1511'],
+            'visible_in_settings' => true,
+            'settings_section' => 'Aset Tetap',
+            'settings_order' => 401,
+        ],
+        'fixed_assets.vehicle_depreciation_expense' => [
+            'module' => 'fixed_assets',
+            'label' => 'Beban Penyusutan Kendaraan',
+            'required' => false,
+            'account_types' => ['expense'],
+            'description' => 'Depreciation expense account for the vehicle class.',
+            'default_account_codes' => ['6170'],
+            'visible_in_settings' => true,
+            'settings_section' => 'Aset Tetap',
+            'settings_order' => 402,
+        ],
+        'fixed_assets.building_cost' => [
+            'module' => 'fixed_assets',
+            'label' => 'Akun Gedung',
+            'required' => false,
+            'account_types' => ['asset'],
+            'description' => 'Fixed asset cost account for the building class.',
+            'default_account_codes' => ['1520'],
+            'visible_in_settings' => true,
+            'settings_section' => 'Aset Tetap',
+            'settings_order' => 410,
+        ],
+        'fixed_assets.building_accumulated_depreciation' => [
+            'module' => 'fixed_assets',
+            'label' => 'Akumulasi Penyusutan Gedung',
+            'required' => false,
+            'account_types' => ['asset'],
+            'description' => 'Accumulated depreciation account for the building class.',
+            'default_account_codes' => ['1521'],
+            'visible_in_settings' => true,
+            'settings_section' => 'Aset Tetap',
+            'settings_order' => 411,
+        ],
+        'fixed_assets.building_depreciation_expense' => [
+            'module' => 'fixed_assets',
+            'label' => 'Beban Penyusutan Gedung',
+            'required' => false,
+            'account_types' => ['expense'],
+            'description' => 'Depreciation expense account for the building class.',
+            'default_account_codes' => ['6171'],
+            'visible_in_settings' => true,
+            'settings_section' => 'Aset Tetap',
+            'settings_order' => 412,
+        ],
+        'fixed_assets.equipment_cost' => [
+            'module' => 'fixed_assets',
+            'label' => 'Akun Peralatan',
+            'required' => false,
+            'account_types' => ['asset'],
+            'description' => 'Fixed asset cost account for the equipment class.',
+            'default_account_codes' => ['1530'],
+            'visible_in_settings' => true,
+            'settings_section' => 'Aset Tetap',
+            'settings_order' => 420,
+        ],
+        'fixed_assets.equipment_accumulated_depreciation' => [
+            'module' => 'fixed_assets',
+            'label' => 'Akumulasi Penyusutan Peralatan',
+            'required' => false,
+            'account_types' => ['asset'],
+            'description' => 'Accumulated depreciation account for the equipment class.',
+            'default_account_codes' => ['1531'],
+            'visible_in_settings' => true,
+            'settings_section' => 'Aset Tetap',
+            'settings_order' => 421,
+        ],
+        'fixed_assets.equipment_depreciation_expense' => [
+            'module' => 'fixed_assets',
+            'label' => 'Beban Penyusutan Peralatan',
+            'required' => false,
+            'account_types' => ['expense'],
+            'description' => 'Depreciation expense account for the equipment class.',
+            'default_account_codes' => ['6172'],
+            'visible_in_settings' => true,
+            'settings_section' => 'Aset Tetap',
+            'settings_order' => 422,
+        ],
+        'fixed_assets.software_cost' => [
+            'module' => 'fixed_assets',
+            'label' => 'Akun Perangkat Lunak (Software)',
+            'required' => false,
+            'account_types' => ['asset'],
+            'description' => 'Cost account for software / intangible assets.',
+            'default_account_codes' => ['1540'],
+            'visible_in_settings' => true,
+            'settings_section' => 'Aset Tetap',
+            'settings_order' => 430,
+        ],
+        'fixed_assets.software_accumulated_amortization' => [
+            'module' => 'fixed_assets',
+            'label' => 'Akumulasi Amortisasi Perangkat Lunak',
+            'required' => false,
+            'account_types' => ['asset'],
+            'description' => 'Accumulated amortization account for software / intangible assets.',
+            'default_account_codes' => ['1541'],
+            'visible_in_settings' => true,
+            'settings_section' => 'Aset Tetap',
+            'settings_order' => 431,
+        ],
+        'fixed_assets.software_amortization_expense' => [
+            'module' => 'fixed_assets',
+            'label' => 'Beban Amortisasi Perangkat Lunak',
+            'required' => false,
+            'account_types' => ['expense'],
+            'description' => 'Amortization expense account for software / intangible assets.',
+            'default_account_codes' => ['6175'],
+            'visible_in_settings' => true,
+            'settings_section' => 'Aset Tetap',
+            'settings_order' => 432,
+        ],
+
+        /*
+         * Kelas aset tetap yang TIDAK disusutkan.
+         *
+         * Ketiganya hanya punya akun harga perolehan -- tidak ada akumulasi dan
+         * tidak ada beban, karena memang tidak pernah disusutkan. Itu sebabnya
+         * ia tidak boleh memakai fallback `fixed_assets.cost`: fallback itu
+         * menunjuk akun Peralatan, akun untuk aset yang DISUSUTKAN, sehingga
+         * nilai tanah mendarat di baris Peralatan pada neraca.
+         *
+         * `required` sengaja false supaya wizard tidak terblokir bagi klien yang
+         * tidak punya tanah/CIP/goodwill sama sekali. Yang menegakkan aturannya
+         * bukan flag ini, melainkan `FixedAssetService::assetAccount()`: ia
+         * menolak melayani kategori non-penyusutan yang akunnya belum disetel,
+         * jadi kegagalannya muncul tepat pada perusahaan yang benar-benar punya
+         * asetnya -- bukan pada semua orang.
+         */
+        'fixed_assets.land_cost' => [
+            'module' => 'fixed_assets',
+            'label' => 'Akun Tanah',
+            'required' => false,
+            'account_types' => ['asset'],
+            'description' => 'Cost account for land. Land is never depreciated, so it has no accumulated or expense account.',
+            'default_account_codes' => ['1500'],
+            'visible_in_settings' => true,
+            'settings_section' => 'Aset Tetap',
+            'settings_order' => 440,
+        ],
+        'fixed_assets.construction_in_progress_cost' => [
+            'module' => 'fixed_assets',
+            'label' => 'Akun Aset Dalam Penyelesaian',
+            'required' => false,
+            'account_types' => ['asset'],
+            'description' => 'Cost account for construction in progress. Not depreciated until the asset is placed in service.',
+            'default_account_codes' => ['1550'],
+            'visible_in_settings' => true,
+            'settings_section' => 'Aset Tetap',
+            'settings_order' => 450,
+        ],
+        'fixed_assets.goodwill_cost' => [
+            'module' => 'fixed_assets',
+            'label' => 'Akun Goodwill',
+            'required' => false,
+            'account_types' => ['asset'],
+            'description' => 'Cost account for goodwill. Tested for impairment rather than amortized.',
+            'default_account_codes' => ['1560'],
+            'visible_in_settings' => true,
+            'settings_section' => 'Aset Tetap',
+            'settings_order' => 460,
+        ],
+
         'cash_bank.default_cash' => [
             'module' => 'cash_bank',
             'label' => 'Default Cash',
@@ -362,9 +556,32 @@ return [
             'label' => 'Opening Balance Equity',
             'required' => true,
             'account_types' => ['equity'],
-            'description' => 'Default balancing equity account for opening balances if needed.',
+            'description' => 'Akun ekuitas tujuan saat saldo perantara saldo awal ditutup.',
             'default_account_codes' => ['3100'],
-            'visible_in_settings' => false,
+            'visible_in_settings' => true,
+        ],
+
+        /*
+         * Lawan universal setiap jurnal saldo awal (Fase 8).
+         *
+         * Berkas neraca saldo klien diimpor apa adanya, satu sisi per baris;
+         * selisihnya jatuh ke akun ini, sehingga jurnalnya selalu seimbang
+         * tanpa user perlu menghitung ekuitas pembuka lebih dulu. Saldo akun
+         * ini adalah ekuitas pembuka yang belum diakui -- ia ditutup ke
+         * `opening_balance.equity` lewat satu langkah eksplisit di akhir.
+         *
+         * Akun sendiri, bukan langsung 3100: selama saldonya bukan nol, neraca
+         * pembuka belum selesai -- dan itu harus terbaca dari saldo satu akun,
+         * bukan dari status sebuah dokumen.
+         */
+        'opening_balance.clearing' => [
+            'module' => 'opening_balance',
+            'label' => 'Saldo Awal (Perantara)',
+            'required' => true,
+            'account_types' => ['equity'],
+            'description' => 'Akun perantara yang jadi lawan setiap jurnal saldo awal sebelum ditutup ke ekuitas.',
+            'default_account_codes' => ['3900'],
+            'visible_in_settings' => true,
         ],
 
         'closing.retained_earnings' => [

@@ -6,6 +6,8 @@ use App\Jobs\ImportBatchJob;
 use App\Modules\Imports\Models\ImportBatch;
 use App\Modules\Imports\Models\ImportRow;
 use App\Modules\Imports\Services\Committers\ImportCommitterFactory;
+use App\Modules\Imports\Services\Committers\ProvidesImportWarnings;
+use App\Modules\Imports\Services\Committers\RevertsImport;
 use App\Shared\Api\ApiErrorCode;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Subscription\StorageQuotaService;
@@ -71,11 +73,101 @@ class ImportBatchService
             'created_by' => auth()->id(),
         ]);
 
+        $guess = $this->guessColumnMap($profile, $headers);
+
         return [
             'batch' => $this->batchPayload($batch),
             'headers' => $headers,
             'duplicate_file' => $duplicate,
+            'suggested_column_map' => $guess['map'],
+            'unmapped_required_fields' => $guess['unmapped_required'],
+            // Frontend melewati layar pemetaan sepenuhnya kalau ini true.
+            'auto_mapped' => $guess['unmapped_required'] === [],
         ];
+    }
+
+    /**
+     * Tebak pemetaan kolom dari header berkas — Fase 8.
+     *
+     * Layar "Petakan Kolom" ada untuk berkas yang headernya tidak dikenal.
+     * Masalahnya, sampai sekarang ia MUNCUL SELALU, termasuk untuk berkas yang
+     * headernya sudah persis templat — user diminta memilih ulang empat kolom
+     * yang jawabannya sudah pasti. Penebakan dipindahkan ke sini supaya
+     * jawabannya dihitung sekali, di tempat yang memang tahu bentuk profilnya.
+     *
+     * Tiga lapis pencocokan, berhenti di yang pertama kena:
+     *   1. header templat milik field ini  → berkas templat apa adanya
+     *   2. nama field itu sendiri          → ekspor sistem lain
+     *   3. alias di `config/imports.php` → `column_aliases` → berkas berbahasa Indonesia
+     *
+     * Urutan kolom di berkas tidak berpengaruh: pencocokan lewat peta header,
+     * bukan lewat posisi. Yang TIDAK boleh dilakukan adalah mencoba seluruh
+     * header templat untuk setiap field — itu membuat `account_code` mengklaim
+     * kolom "Debit" hanya karena "Debit" ada di templat yang sama.
+     *
+     * Satu header hanya boleh dipakai satu field: begitu terpakai ia dikeluarkan
+     * dari kandidat, jadi dua field tidak pernah menunjuk kolom yang sama.
+     *
+     * @param  list<string>  $headers
+     * @return array{map: array<string, string>, unmapped_required: list<string>}
+     */
+    public function guessColumnMap(string $profile, array $headers): array
+    {
+        $fields = (array) config("imports.profiles.{$profile}.fields", []);
+        $templateHeaders = array_values((array) config("imports.profiles.{$profile}.headers", []));
+        $aliases = (array) config('imports.column_aliases', []);
+
+        // Header berkas, dikunci bentuk normalnya → nama aslinya. Bentuk normal
+        // membuang huruf besar, spasi, dan tanda baca, sehingga "Kode Akun",
+        // "kode_akun", dan "KODE  AKUN" jatuh ke kunci yang sama.
+        $available = [];
+        foreach ($headers as $header) {
+            $key = $this->normalizeHeaderKey((string) $header);
+            if ($key !== '' && ! array_key_exists($key, $available)) {
+                $available[$key] = (string) $header;
+            }
+        }
+
+        $map = [];
+
+        foreach (array_values($fields) as $index => $field) {
+            $candidates = [];
+
+            if (isset($templateHeaders[$index])) {
+                $candidates[] = $templateHeaders[$index];
+            }
+            $candidates[] = (string) $field;
+            foreach ((array) ($aliases[$field] ?? []) as $alias) {
+                $candidates[] = (string) $alias;
+            }
+
+            foreach ($candidates as $candidate) {
+                $key = $this->normalizeHeaderKey((string) $candidate);
+
+                if ($key !== '' && isset($available[$key])) {
+                    $map[$field] = $available[$key];
+                    unset($available[$key]);
+                    break;
+                }
+            }
+        }
+
+        $unmapped = array_values(array_filter(
+            $this->requiredFields($profile),
+            fn (string $field): bool => ! isset($map[$field]),
+        ));
+
+        return ['map' => $map, 'unmapped_required' => $unmapped];
+    }
+
+    /**
+     * Bentuk normal sebuah header: huruf kecil, tanpa apa pun selain huruf dan
+     * angka. Disengaja seagresif ini — perbedaan yang dibuangnya ("Kode Akun"
+     * vs "kode_akun") tidak pernah berarti kolom yang berbeda.
+     */
+    private function normalizeHeaderKey(string $value): string
+    {
+        return (string) preg_replace('/[^a-z0-9]/', '', mb_strtolower(trim($value)));
     }
 
     public function applyMapping(string $uuid, array $columnMap): array
@@ -115,23 +207,33 @@ class ImportBatchService
                     'column_map' => $normalizedMap,
                     'valid_rows' => 0,
                     'failed_rows' => 0,
+                    'warning_rows' => 0,
                     'error_message' => null,
                 ]);
                 $batch->rows()->delete();
 
                 $validRows = 0;
                 $failedRows = 0;
+                $warningRows = 0;
 
                 foreach ($reader->rows($path) as $rowNumber => $raw) {
                     $normalized = $this->normalizeRow($raw, $normalizedMap);
                     $externalRef = $this->externalRef($normalized);
                     $errors = $this->validateRow($batch, $normalized, $externalRef, $requiredFields);
                     $status = $errors === [] ? 'valid' : 'invalid';
+                    // Peringatan hanya dihitung untuk baris yang lolos: pada
+                    // baris yang sudah gagal ia cuma menambah kebisingan di
+                    // sebelah galat yang sudah menjelaskan masalahnya.
+                    $warnings = $status === 'valid' ? $this->warnRow($batch, $normalized) : [];
 
                     if ($status === 'valid') {
                         $validRows++;
                     } else {
                         $failedRows++;
+                    }
+
+                    if ($warnings !== []) {
+                        $warningRows++;
                     }
 
                     ImportRow::query()->create([
@@ -142,6 +244,7 @@ class ImportBatchService
                         'normalized' => $normalized,
                         'status' => $status,
                         'errors' => $errors,
+                        'warnings' => $warnings,
                         'external_ref' => $externalRef,
                     ]);
                 }
@@ -150,6 +253,7 @@ class ImportBatchService
                     'status' => 'previewed',
                     'valid_rows' => $validRows,
                     'failed_rows' => $failedRows,
+                    'warning_rows' => $warningRows,
                 ]);
             });
         } catch (ApiException $exception) {
@@ -162,9 +266,48 @@ class ImportBatchService
         return $this->show($uuid);
     }
 
+    /**
+     * Satu batch, LENGKAP dengan header berkasnya — Fase 8.
+     *
+     * `headers` tidak disimpan di tabel: ia hidup di berkas. Sampai sekarang ia
+     * hanya dikembalikan oleh `upload()`, jadi begitu halaman di-reload batch
+     * yang belum di-commit tidak punya jalan pulang — layar pemetaan butuh
+     * daftar header untuk bisa digambar sama sekali. Dibaca ulang dari berkas
+     * di sini, satu kali per buka batch, bukan per baris riwayat.
+     */
     public function show(string $uuid): array
     {
-        return $this->batchPayload($this->find($uuid));
+        $batch = $this->find($uuid);
+        $headers = $this->storedHeaders($batch);
+        $guess = $this->guessColumnMap($batch->profile, $headers);
+
+        return $this->batchPayload($batch) + [
+            'headers' => $headers,
+            'suggested_column_map' => $guess['map'],
+        ];
+    }
+
+    /**
+     * Header dari berkas tersimpan. Mengembalikan array kosong, bukan melempar,
+     * kalau berkasnya sudah tidak ada atau rusak: batch yang sudah di-commit
+     * tetap harus bisa dibuka riwayatnya meski berkasnya hilang.
+     *
+     * @return list<string>
+     */
+    private function storedHeaders(ImportBatch $batch): array
+    {
+        if (! Storage::disk('local')->exists($batch->stored_path)) {
+            return [];
+        }
+
+        try {
+            $extension = strtolower(pathinfo($batch->stored_path, PATHINFO_EXTENSION));
+
+            return $this->readerFactory->make($extension)
+                ->headers(Storage::disk('local')->path($batch->stored_path));
+        } catch (Throwable) {
+            return [];
+        }
     }
 
     public function rows(string $uuid, array $filters = []): LengthAwarePaginator
@@ -177,6 +320,38 @@ class ImportBatchService
             ->paginate($perPage);
     }
 
+    /**
+     * Riwayat impor. Tanpa ini batch lama tidak bisa dibuka lagi begitu halaman
+     * ditinggalkan — UUID-nya cuma hidup di state frontend — apalagi dibatalkan.
+     */
+    public function list(array $filters = []): LengthAwarePaginator
+    {
+        $perPage = min(max((int) ($filters['per_page'] ?? 25), 1), 100);
+
+        $query = ImportBatch::query()->orderByDesc('id');
+
+        if (! empty($filters['profile'])) {
+            $query->where('profile', (string) $filters['profile']);
+        }
+        if (! empty($filters['status'])) {
+            $query->where('status', (string) $filters['status']);
+        }
+
+        $paginator = $query->paginate($perPage);
+        $paginator->getCollection()->transform(fn (ImportBatch $batch): array => $this->batchPayload($batch));
+
+        return $paginator;
+    }
+
+    /**
+     * Batalkan batch yang BELUM di-commit: berkasnya dibuang, jejaknya ikut.
+     *
+     * Sengaja tidak lagi menerima batch `completed`. Sampai Fase 7 ia menerima
+     * status apa pun kecuali `committing`, yang berarti "batalkan" pada batch
+     * yang sudah selesai justru menghapus jejak impornya **tanpa menghapus
+     * datanya** — jalur yang menyesatkan sejak awal. Yang membatalkan hasil
+     * commit sekarang adalah `revert()`.
+     */
     public function cancel(string $uuid): void
     {
         $batch = $this->find($uuid);
@@ -185,10 +360,70 @@ class ImportBatchService
             throw ApiException::make(ApiErrorCode::VALIDATION_ERROR, 'Batch impor sedang diproses dan belum bisa dibatalkan.', 422);
         }
 
+        if (in_array((string) $batch->status, ['completed', 'reverted'], true)) {
+            throw ApiException::make(
+                ApiErrorCode::VALIDATION_ERROR,
+                'Batch ini sudah di-commit. Pakai Batalkan Impor (revert) untuk menarik kembali datanya.',
+                422
+            );
+        }
+
         DB::connection('tenant')->transaction(function () use ($batch): void {
             Storage::disk('local')->delete($batch->stored_path);
             $batch->delete();
         });
+    }
+
+    /**
+     * Kebalikan `commit()` — Fase 8.
+     *
+     * Batchnya TIDAK dihapus: statusnya jadi `reverted` dan barisnya ikut,
+     * sehingga riwayatnya tetap menceritakan apa yang pernah masuk dan ditarik
+     * lagi. Jejak itu justru yang paling dibutuhkan saat ada yang salah.
+     */
+    public function revert(string $uuid, string $reason): array
+    {
+        $batch = $this->find($uuid);
+
+        if (! in_array((string) $batch->status, ['completed', 'failed'], true)) {
+            throw ApiException::make(
+                ApiErrorCode::VALIDATION_ERROR,
+                'Hanya batch yang sudah selesai di-commit yang bisa dibatalkan.',
+                422
+            );
+        }
+
+        if (! $this->committers->has($batch->profile)) {
+            throw ApiException::make(ApiErrorCode::VALIDATION_ERROR, 'Profil impor ini tidak dikenal.', 422);
+        }
+
+        $committer = $this->committers->make($batch->profile);
+
+        if (! $committer instanceof RevertsImport) {
+            throw ApiException::make(
+                ApiErrorCode::VALIDATION_ERROR,
+                'Impor profil ini tidak bisa dibatalkan otomatis. Data yang sudah masuk mungkin sudah dipakai dokumen lain — hapus atau perbaiki lewat menu modulnya.',
+                422
+            );
+        }
+
+        DB::connection('tenant')->transaction(function () use ($batch, $committer, $reason): void {
+            $committer->revert($batch, $reason);
+
+            $batch->rows()->where('status', 'committed')->update([
+                'status' => 'reverted',
+                'document_id' => null,
+                'document_type' => null,
+            ]);
+
+            $batch->update([
+                'status' => 'reverted',
+                'committed_rows' => 0,
+                'error_message' => 'Dibatalkan: '.$reason,
+            ]);
+        });
+
+        return $this->show($uuid);
     }
 
     /**
@@ -381,6 +616,32 @@ class ImportBatchService
         return $normalized;
     }
 
+    /**
+     * Peringatan tingkat baris — hal yang MUNGKIN salah tapi tetap boleh
+     * di-commit. Tidak pernah mengubah status baris.
+     *
+     * Profil yang tidak mengimplementasikan `ProvidesImportWarnings` tidak
+     * punya peringatan sama sekali, dan itu wajar: kebanyakan profil master
+     * data hanya mengenal benar/salah.
+     *
+     * @param  array<string, string>  $normalized
+     * @return array<string, list<string>>
+     */
+    private function warnRow(ImportBatch $batch, array $normalized): array
+    {
+        if (! $this->committers->has($batch->profile)) {
+            return [];
+        }
+
+        $committer = $this->committers->make($batch->profile);
+
+        if (! $committer instanceof ProvidesImportWarnings) {
+            return [];
+        }
+
+        return $committer->warnRow($batch, $normalized);
+    }
+
     private function validateRow(ImportBatch $batch, array $normalized, ?string $externalRef, array $requiredFields): array
     {
         $errors = [];
@@ -435,11 +696,18 @@ class ImportBatchService
         return ImportBatch::query()->where('uuid', $uuid)->firstOrFail();
     }
 
+    /**
+     * Batch `reverted` sengaja dilewati: berkas yang sama diunggah ulang setelah
+     * pembatalan adalah jalur perbaikan yang normal — memperingatkannya sebagai
+     * duplikat berarti menghadang user tepat saat ia sedang membetulkan
+     * kesalahan.
+     */
     private function duplicateFile(string $profile, string $fileHash): ?array
     {
         $batch = ImportBatch::query()
             ->where('profile', $profile)
             ->where('file_hash', $fileHash)
+            ->where('status', '!=', 'reverted')
             ->latest('id')
             ->first();
 
@@ -549,6 +817,7 @@ class ImportBatchService
             'total_rows' => $batch->total_rows,
             'valid_rows' => $batch->valid_rows,
             'failed_rows' => $batch->failed_rows,
+            'warning_rows' => $batch->warning_rows,
             'committed_rows' => $batch->committed_rows,
             'error_message' => $batch->error_message,
             'created_by' => $batch->created_by,

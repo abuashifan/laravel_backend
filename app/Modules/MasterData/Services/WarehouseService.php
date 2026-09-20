@@ -50,6 +50,12 @@ class WarehouseService
             ]);
         }
 
+        if (! empty($data['name']) && $this->nameIsTaken((string) $data['name'])) {
+            throw ApiException::make('DUPLICATE_WAREHOUSE_NAME', 'Warehouse name is already in use.', 422, [
+                'name' => ['Name is already in use.'],
+            ]);
+        }
+
         $warehouse = Warehouse::query()->create($data);
 
         if ((bool) ($data['is_default'] ?? false)) {
@@ -69,6 +75,12 @@ class WarehouseService
             }
         }
 
+        if (! empty($data['name']) && $this->nameIsTaken((string) $data['name'], $warehouse->id)) {
+            throw ApiException::make('DUPLICATE_WAREHOUSE_NAME', 'Warehouse name is already in use.', 422, [
+                'name' => ['Name is already in use.'],
+            ]);
+        }
+
         $warehouse->fill($data);
         $warehouse->save();
 
@@ -77,6 +89,25 @@ class WarehouseService
         }
 
         return $warehouse->refresh();
+    }
+
+    /**
+     * Nama dibandingkan tanpa memedulikan huruf besar/kecil dan spasi di ujung,
+     * supaya "Gudang Utama" dan "gudang utama " tidak lolos sebagai dua gudang
+     * berbeda -- dropdown gudang di modul lain menampilkan nama, bukan kode,
+     * jadi nama kembar tidak bisa dibedakan user. Berbeda dengan `code`, tidak
+     * ada unique index di DB untuk `name`, jadi guard ini hanya di aplikasi.
+     */
+    protected function nameIsTaken(string $name, ?int $ignoreId = null): bool
+    {
+        $query = Warehouse::query()
+            ->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower(trim($name))]);
+
+        if ($ignoreId !== null) {
+            $query->where('id', '!=', $ignoreId);
+        }
+
+        return $query->exists();
     }
 
     public function deactivate(Warehouse $warehouse): Warehouse

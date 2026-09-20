@@ -19,6 +19,7 @@ class ImportRow extends Model
         'normalized',
         'status',
         'errors',
+        'warnings',
         'document_id',
         'document_type',
         'external_ref',
@@ -29,6 +30,7 @@ class ImportRow extends Model
         'raw' => 'array',
         'normalized' => 'array',
         'errors' => 'array',
+        'warnings' => 'array',
         'document_id' => 'integer',
     ];
 

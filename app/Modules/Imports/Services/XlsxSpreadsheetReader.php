@@ -7,10 +7,25 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
 
 class XlsxSpreadsheetReader implements SpreadsheetReader
 {
-    public function headers(string $path): array
+    /**
+     * Selalu sheet PERTAMA, bukan `getActiveSheet()`.
+     *
+     * Templat unduhan berisi sheet kedua "Referensi" (daftar master data untuk
+     * dropdown). Sheet aktif adalah sheet yang kebetulan terpilih saat berkas
+     * terakhir disimpan — kalau user menutup Excel sambil membuka Referensi,
+     * `getActiveSheet()` mengembalikan daftar master data dan SELURUH impor
+     * gagal dengan pesan header tidak cocok, tanpa petunjuk penyebabnya.
+     */
+    private function firstSheet(string $path): array
     {
         $spreadsheet = IOFactory::load($path);
-        $sheet = $spreadsheet->getActiveSheet();
+
+        return [$spreadsheet, $spreadsheet->getSheet(0)];
+    }
+
+    public function headers(string $path): array
+    {
+        [$spreadsheet, $sheet] = $this->firstSheet($path);
         $highestColumn = $sheet->getHighestDataColumn();
         $row = $sheet->rangeToArray("A1:{$highestColumn}1", null, true, false)[0] ?? [];
         $spreadsheet->disconnectWorksheets();
@@ -20,8 +35,7 @@ class XlsxSpreadsheetReader implements SpreadsheetReader
 
     public function rows(string $path): Generator
     {
-        $spreadsheet = IOFactory::load($path);
-        $sheet = $spreadsheet->getActiveSheet();
+        [$spreadsheet, $sheet] = $this->firstSheet($path);
         $highestColumn = $sheet->getHighestDataColumn();
         $highestRow = $sheet->getHighestDataRow();
         $headers = $this->headers($path);

@@ -125,9 +125,20 @@ class AccountMappingStorageService
                 ->where('is_active', true)
                 ->first();
 
-            if ($account && $req->allowsAccountType($account->account_type)) {
-                return (int) $account->id;
+            if (! $account || ! $req->allowsAccountType($account->account_type)) {
+                continue;
             }
+
+            // Guard yang sama dengan setMapping(): akun induk hanya untuk rekap
+            // saldo dan ditolak JournalValidationService saat posting. Tanpa cek
+            // ini, sync default memasang nilai yang user sendiri tidak boleh
+            // pilih lewat halaman Pemetaan Akun -- dan setiap jurnal yang memakai
+            // mapping itu gagal posting.
+            if ($account->children()->exists()) {
+                continue;
+            }
+
+            return (int) $account->id;
         }
 
         return null;

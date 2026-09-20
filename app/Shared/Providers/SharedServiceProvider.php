@@ -42,8 +42,6 @@ use App\Modules\MasterData\Models\ProductCategory;
 use App\Modules\MasterData\Models\Project;
 use App\Modules\MasterData\Models\Unit;
 use App\Modules\MasterData\Models\Warehouse;
-use App\Modules\OpeningBalance\Models\OpeningBalanceBatch;
-use App\Modules\OpeningBalance\Models\OpeningBalanceLine;
 use App\Modules\Purchase\Models\GoodsReceipt;
 use App\Modules\Purchase\Models\GoodsReceiptLine;
 use App\Modules\Purchase\Models\PurchaseOrder;
@@ -180,8 +178,6 @@ class SharedServiceProvider extends ServiceProvider
             'App\\Models\\Tenant\\BudgetLine' => BudgetLine::class,
             'App\\Models\\Tenant\\BudgetPeriod' => BudgetPeriod::class,
             'App\\Models\\Tenant\\BudgetSubmission' => BudgetSubmission::class,
-            'App\\Models\\Tenant\\OpeningBalanceBatch' => OpeningBalanceBatch::class,
-            'App\\Models\\Tenant\\OpeningBalanceLine' => OpeningBalanceLine::class,
             'App\\Models\\Tenant\\StockAdjustment' => StockAdjustment::class,
             'App\\Models\\Tenant\\StockAdjustmentLine' => StockAdjustmentLine::class,
             'App\\Models\\Tenant\\StockBalance' => StockBalance::class,
