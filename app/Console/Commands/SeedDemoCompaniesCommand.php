@@ -6,6 +6,7 @@ use App\Modules\Companies\Services\CompanyUserAssignmentService;
 use App\Shared\Models\Company;
 use App\Shared\Models\TenantDatabase;
 use App\Shared\Models\User;
+use App\Shared\Tenant\Storage\TenantStorageManager;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Hash;
@@ -15,6 +16,11 @@ class SeedDemoCompaniesCommand extends Command
     protected $signature = 'company:seed-demo';
 
     protected $description = 'Seed demo companies and assignments (idempotent, internal only)';
+
+    public function __construct(private readonly TenantStorageManager $storages)
+    {
+        parent::__construct();
+    }
 
     public function handle(CompanyUserAssignmentService $assignmentService): int
     {
@@ -89,19 +95,27 @@ class SeedDemoCompaniesCommand extends Command
         return self::SUCCESS;
     }
 
+    /**
+     * `$databaseName` yang diteruskan pemanggil hanya berlaku untuk SQLite.
+     * Nama kanonik selalu ditanyakan ke penyimpanan yang berlaku supaya demo
+     * seeding tetap jalan saat tenant disimpan sebagai schema Postgres.
+     */
     private function ensureTenantDatabase(int $companyId, string $databaseName): void
     {
-        $databasePath = database_path('tenants/'.$databaseName);
-        if (! File::exists($databasePath)) {
-            File::put($databasePath, '');
+        $storage = $this->storages->default();
+        $name = $storage->driver() === 'sqlite' ? $databaseName : $storage->nameFor($companyId);
+        $path = $storage->pathFor($name);
+
+        if (! $storage->exists($name, $path)) {
+            $storage->create($name, $path);
         }
 
         TenantDatabase::updateOrCreate(
             ['company_id' => $companyId],
             [
-                'database_name' => $databaseName,
-                'database_path' => $databasePath,
-                'driver' => 'sqlite',
+                'database_name' => $name,
+                'database_path' => $path,
+                'driver' => $storage->driver(),
                 'status' => 'active',
             ]
         );

@@ -6,8 +6,8 @@ use App\Shared\Models\Company;
 use App\Shared\Models\CompanyUser;
 use App\Shared\Models\TenantDatabase;
 use App\Shared\Models\User;
+use App\Shared\Tenant\Storage\TenantStorageManager;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 use RuntimeException;
@@ -15,6 +15,8 @@ use Throwable;
 
 class TenantProvisioningService
 {
+    public function __construct(private readonly TenantStorageManager $storages) {}
+
     /**
      * @return array{
      *   company: Company,
@@ -57,23 +59,18 @@ class TenantProvisioningService
             throw new InvalidArgumentException('Company slug sudah digunakan.');
         }
 
-        $tenantDirectory = config('tenant.database_path');
-        if (! is_string($tenantDirectory) || $tenantDirectory === '') {
-            throw new RuntimeException('Konfigurasi tenant.database_path tidak valid.');
-        }
+        $storage = $this->storages->default();
 
-        if (! File::isDirectory($tenantDirectory)) {
-            throw new RuntimeException("Folder tenant database tidak ditemukan: {$tenantDirectory}");
-        }
+        // Kesiapan penyimpanan diperiksa SEBELUM baris apa pun ditulis. Kalau
+        // folder tenant tidak writable atau Postgres tidak terjangkau, lebih
+        // baik gagal di sini daripada meninggalkan company tanpa tenant.
+        $storage->assertReady();
 
-        if (! is_writable($tenantDirectory)) {
-            throw new RuntimeException("Folder tenant database tidak writable: {$tenantDirectory}");
-        }
-
-        $createdTenantFilePath = null;
+        $tenantDirectory = (string) config('tenant.database_path');
+        $createdTenant = null;
 
         try {
-            return DB::transaction(function () use ($name, $slug, $owner, $tenantDirectory, &$createdTenantFilePath) {
+            return DB::transaction(function () use ($name, $slug, $owner, $storage, $tenantDirectory, &$createdTenant) {
                 $tempCode = 'TMP-'.Str::uuid()->toString();
 
                 $company = Company::query()->create([
@@ -87,30 +84,21 @@ class TenantProvisioningService
                 $companyCode = 'CMP-'.str_pad((string) $company->id, 6, '0', STR_PAD_LEFT);
                 $company->forceFill(['code' => $companyCode])->save();
 
-                $databaseName = $this->generateDatabaseName($company->id);
-                // Dibentuk dari config('tenant.database_path') — direktori yang
-                // barusan divalidasi ada & writable di atas. Defaultnya tetap
-                // database_path('tenants'), jadi perilaku produksi tidak berubah;
-                // test bisa mengarahkannya ke folder sementara supaya tidak
-                // menyentuh file tenant milik lingkungan dev.
-                $databasePath = rtrim($tenantDirectory, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.$databaseName;
+                $databaseName = $storage->nameFor($company->id);
+                $databasePath = $storage->pathFor($databaseName);
 
                 if (TenantDatabase::query()->where('database_name', $databaseName)->exists()) {
                     throw new RuntimeException("Generated database_name sudah ada di tenant_databases: {$databaseName}");
                 }
 
-                if (File::exists($databasePath)) {
-                    throw new RuntimeException("File tenant database sudah ada: {$databasePath}");
-                }
-
-                File::put($databasePath, '');
-                $createdTenantFilePath = $databasePath;
+                $storage->create($databaseName, $databasePath);
+                $createdTenant = [$storage, $databaseName, $databasePath];
 
                 $tenantDatabase = TenantDatabase::query()->create([
                     'company_id' => $company->id,
                     'database_name' => $databaseName,
                     'database_path' => $databasePath,
-                    'driver' => 'sqlite',
+                    'driver' => $storage->driver(),
                     'status' => 'active',
                 ]);
 
@@ -133,19 +121,20 @@ class TenantProvisioningService
                 ];
             });
         } catch (Throwable $e) {
-            if ($createdTenantFilePath && File::exists($createdTenantFilePath)) {
-                File::delete($createdTenantFilePath);
+            // Wadah tenant hidup di luar transaksi database central (berkas di
+            // disk, atau schema yang CREATE-nya tidak ikut rollback), jadi
+            // pembersihannya harus eksplisit.
+            if ($createdTenant !== null) {
+                [$usedStorage, $usedName, $usedPath] = $createdTenant;
+
+                try {
+                    $usedStorage->drop($usedName, $usedPath);
+                } catch (Throwable) {
+                    // Kegagalan pembersihan tidak boleh menutupi error aslinya.
+                }
             }
 
             throw $e;
         }
-    }
-
-    private function generateDatabaseName(int $companyId): string
-    {
-        $prefix = (string) config('tenant.database_prefix', 'company_');
-        $extension = (string) config('tenant.database_extension', '.sqlite');
-
-        return $prefix.str_pad((string) $companyId, 6, '0', STR_PAD_LEFT).$extension;
     }
 }

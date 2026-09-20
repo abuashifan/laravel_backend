@@ -3,50 +3,37 @@
 namespace App\Shared\Tenant;
 
 use App\Shared\Models\TenantDatabase;
-use Illuminate\Support\Facades\Config;
+use App\Shared\Tenant\Storage\TenantStorageManager;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\File;
 use RuntimeException;
 
+/**
+ * Mengarahkan koneksi `tenant` ke satu perusahaan.
+ *
+ * Sejak tenant bisa disimpan sebagai berkas SQLite ATAU schema Postgres, kelas
+ * ini tidak lagi tahu-menahu soal berkas: seluruh urusan penyimpanan didelegasikan
+ * ke `TenantStorage` sesuai kolom `driver` milik tenant tersebut. Yang tersisa di
+ * sini hanya kontrak yang sudah dipakai lintas aplikasi (middleware, job, command).
+ */
 class TenantConnectionManager
 {
+    public function __construct(private readonly TenantStorageManager $storages) {}
+
     public function connect(string|TenantDatabase $database): void
     {
-        $databasePath = $database instanceof TenantDatabase
-            ? $this->resolveDatabasePath($database)
-            : $database;
-
-        if (! File::exists($databasePath)) {
-            throw new RuntimeException("Tenant database file does not exist at resolved path: {$databasePath}");
-        }
-
-        Config::set('database.connections.tenant.database', $databasePath);
-
-        DB::purge('tenant');
-        DB::reconnect('tenant');
-
-        $driver = (string) config('database.connections.tenant.driver');
-
-        if ($driver !== 'sqlite') {
-            return;
-        }
-
-        // Some CI/dev sandboxes restrict SQLite rollback journal file creation.
-        // For tests we can safely keep SQLite journals in memory to avoid disk I/O errors.
-        if (app()->environment('testing')) {
-            DB::connection('tenant')->statement('PRAGMA journal_mode = MEMORY');
-            DB::connection('tenant')->statement('PRAGMA synchronous = OFF');
+        if ($database instanceof TenantDatabase) {
+            $this->storages->for($database)->connect(
+                (string) $database->database_name,
+                (string) $database->database_path,
+            );
 
             return;
         }
 
-        // Fase 2 rencana impor data: WAL (Write-Ahead Logging) membiarkan
-        // pembaca dan penulis berjalan bersamaan — pola akses yang muncul
-        // saat worker antrean menulis sementara user bekerja di browser.
-        // busy_timeout memberi ruang tunggu 5 detik sebelum SQLITE_BUSY,
-        // alih-alih langsung gagal.
-        DB::connection('tenant')->statement('PRAGMA journal_mode = WAL');
-        DB::connection('tenant')->statement('PRAGMA busy_timeout = 5000');
+        // Bentuk string hanya bermakna untuk SQLite: pemanggil lama menyerahkan
+        // path berkas secara langsung. Postgres selalu lewat TenantDatabase
+        // karena butuh nama schema, bukan lokasi di disk.
+        $this->storages->driver('sqlite')->connect(basename($database), $database);
     }
 
     public function disconnect(): void
@@ -54,48 +41,50 @@ class TenantConnectionManager
         DB::disconnect('tenant');
     }
 
+    /**
+     * Lokasi tenant seperti yang dipakai penyimpanannya: path berkas untuk
+     * SQLite, nama schema untuk Postgres. Dipakai untuk diagnosa dan tampilan
+     * di command, bukan untuk operasi berkas langsung.
+     *
+     * @throws RuntimeException kalau tenant-nya tidak ada
+     */
     public function resolveDatabasePath(TenantDatabase $tenantDatabase): string
     {
-        $tenantDirectory = (string) config('tenant.database_path', database_path('tenants'));
-        $databaseName = trim((string) $tenantDatabase->database_name);
-        $storedPath = trim((string) $tenantDatabase->database_path);
-        $candidates = [];
+        $storage = $this->storages->for($tenantDatabase);
+        $name = (string) $tenantDatabase->database_name;
+        $path = (string) $tenantDatabase->database_path;
 
-        if ($storedPath !== '' && File::isFile($storedPath)) {
-            $candidates[] = $storedPath;
+        if (! $storage->exists($name, $path)) {
+            throw new RuntimeException(json_encode([
+                'message' => 'Tenant database is missing.',
+                'company_id' => $tenantDatabase->company_id,
+                'driver' => $storage->driver(),
+                'database_name' => $tenantDatabase->database_name,
+                'database_path' => $tenantDatabase->database_path,
+            ], JSON_UNESCAPED_SLASHES));
         }
 
-        if ($databaseName !== '') {
-            $candidates[] = $tenantDirectory.DIRECTORY_SEPARATOR.basename($databaseName);
-            $candidates[] = database_path('tenants/'.basename($databaseName));
-        }
+        return $storage->driver() === 'sqlite'
+            ? $this->existingSqlitePath($tenantDatabase)
+            : $name;
+    }
 
-        if ($storedPath !== '') {
-            $candidates[] = $tenantDirectory.DIRECTORY_SEPARATOR.basename($storedPath);
-        }
+    /**
+     * Path berkas SQLite yang benar-benar ada. Folder tenant bisa berpindah
+     * antar lingkungan, jadi nilai di kolom belum tentu masih berlaku.
+     */
+    private function existingSqlitePath(TenantDatabase $tenantDatabase): string
+    {
+        $storage = $this->storages->driver('sqlite');
+        $name = basename((string) $tenantDatabase->database_name);
+        $stored = (string) $tenantDatabase->database_path;
 
-        foreach ([$databaseName, basename($storedPath)] as $name) {
-            if (preg_match('/^company_(\d+)\.sqlite$/', (string) $name, $matches) === 1) {
-                $candidates[] = $tenantDirectory.DIRECTORY_SEPARATOR.'company_'.str_pad($matches[1], 6, '0', STR_PAD_LEFT).'.sqlite';
-            }
-        }
-
-        foreach (array_unique(array_filter($candidates)) as $candidate) {
-            if (File::isFile($candidate)) {
+        foreach ([$stored, $storage->pathFor($name)] as $candidate) {
+            if ($candidate !== '' && is_file($candidate)) {
                 return $candidate;
             }
         }
 
-        $resolvedPath = $databaseName !== ''
-            ? $tenantDirectory.DIRECTORY_SEPARATOR.basename($databaseName)
-            : $storedPath;
-
-        throw new RuntimeException(json_encode([
-            'message' => 'Tenant database file is missing.',
-            'company_id' => $tenantDatabase->company_id,
-            'database_name' => $tenantDatabase->database_name,
-            'database_path' => $tenantDatabase->database_path,
-            'resolved_path' => $resolvedPath,
-        ], JSON_UNESCAPED_SLASHES));
+        return $storage->pathFor($name);
     }
 }

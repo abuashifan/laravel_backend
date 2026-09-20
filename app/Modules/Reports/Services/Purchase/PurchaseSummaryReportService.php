@@ -3,6 +3,7 @@
 namespace App\Modules\Reports\Services\Purchase;
 
 use App\Modules\Purchase\Models\VendorBill;
+use App\Shared\Database\DatePeriodExpression;
 
 class PurchaseSummaryReportService
 {
@@ -14,25 +15,11 @@ class PurchaseSummaryReportService
     {
         $groupBy = $filters['group_by'] ?? 'month';
 
-        $isSqlite = (new VendorBill)->getConnection()->getDriverName() === 'sqlite';
-        [$periodSelectExpr, $periodGroupExpr] = match (true) {
-            $isSqlite && $groupBy === 'day' => [
-                "strftime('%Y-%m-%d', bill_date) as period",
-                "strftime('%Y-%m-%d', bill_date)",
-            ],
-            $isSqlite => [
-                "strftime('%Y-%m', bill_date) as period",
-                "strftime('%Y-%m', bill_date)",
-            ],
-            $groupBy === 'day' => [
-                "DATE_FORMAT(bill_date, '%Y-%m-%d') as period",
-                "DATE_FORMAT(bill_date, '%Y-%m-%d')",
-            ],
-            default => [
-                "DATE_FORMAT(bill_date, '%Y-%m') as period",
-                "DATE_FORMAT(bill_date, '%Y-%m')",
-            ],
-        };
+        [$periodSelectExpr, $periodGroupExpr] = DatePeriodExpression::for(
+            (new VendorBill)->getConnection()->getDriverName(),
+            'bill_date',
+            $groupBy,
+        );
 
         $query = VendorBill::query()
             ->where('status', 'posted')

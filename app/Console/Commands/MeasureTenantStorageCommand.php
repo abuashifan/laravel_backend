@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Shared\Models\TenantDatabase;
+use App\Shared\Tenant\Storage\TenantStorageManager;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Storage;
 
@@ -12,14 +13,20 @@ use Illuminate\Support\Facades\Storage;
  * ditulis command ini; boleh basi sampai satu hari, sejalan dengan §"Kapan
  * diperiksa" di rencana.
  *
- * Yang diukur: ukuran berkas sqlite tenant + seluruh berkas impor tersimpan
- * untuk perusahaan itu (`storage/app/private/imports/{company_id}/`).
+ * Yang diukur: ukuran data tenant (berkas sqlite atau schema Postgres,
+ * tergantung driver) + seluruh berkas impor tersimpan untuk perusahaan itu
+ * (`storage/app/private/imports/{company_id}/`).
  */
 class MeasureTenantStorageCommand extends Command
 {
     protected $signature = 'storage:measure';
 
-    protected $description = 'Ukur ukuran penyimpanan tiap tenant (sqlite + berkas impor) untuk kuota penyimpanan';
+    protected $description = 'Ukur ukuran penyimpanan tiap tenant (data tenant + berkas impor) untuk kuota penyimpanan';
+
+    public function __construct(private readonly TenantStorageManager $storages)
+    {
+        parent::__construct();
+    }
 
     public function handle(): int
     {
@@ -34,9 +41,14 @@ class MeasureTenantStorageCommand extends Command
         $rows = [];
 
         foreach ($tenants as $tenant) {
-            $sqliteBytes = is_file($tenant->database_path) ? (int) filesize($tenant->database_path) : 0;
+            // Cara mengukur bergantung driver: ukuran berkas untuk SQLite,
+            // pg_total_relation_size per schema untuk Postgres.
+            $tenantBytes = $this->storages->for($tenant)->sizeBytes(
+                (string) $tenant->database_name,
+                (string) $tenant->database_path,
+            ) ?? 0;
             $importBytes = $this->importFilesSize((int) $tenant->company_id);
-            $totalBytes = $sqliteBytes + $importBytes;
+            $totalBytes = $tenantBytes + $importBytes;
 
             $tenant->forceFill([
                 'size_bytes' => $totalBytes,
@@ -46,13 +58,13 @@ class MeasureTenantStorageCommand extends Command
             $rows[] = [
                 $tenant->company_id,
                 $tenant->database_name,
-                $this->formatMb($sqliteBytes),
+                $this->formatMb($tenantBytes),
                 $this->formatMb($importBytes),
                 $this->formatMb($totalBytes),
             ];
         }
 
-        $this->table(['Company ID', 'Tenant DB', 'SQLite (MB)', 'Impor (MB)', 'Total (MB)'], $rows);
+        $this->table(['Company ID', 'Tenant DB', 'Tenant (MB)', 'Impor (MB)', 'Total (MB)'], $rows);
         $this->info(sprintf('Selesai. %d tenant diukur.', $tenants->count()));
 
         return self::SUCCESS;

@@ -6,9 +6,10 @@ use App\Shared\Audit\AuditLogService;
 use App\Shared\Models\Company;
 use App\Shared\Models\TenantDatabase;
 use App\Shared\Models\User;
+use App\Shared\Tenant\Storage\TenantStorageManager;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\File;
+use Throwable;
 
 /**
  * Penghapusan permanen — titik tanpa kembali.
@@ -30,6 +31,7 @@ class CompanyPurgeService
 {
     public function __construct(
         private readonly AuditLogService $auditLogService,
+        private readonly TenantStorageManager $storages,
     ) {}
 
     /**
@@ -63,13 +65,24 @@ class CompanyPurgeService
             $company->forceDelete();
         });
 
-        // File dihapus setelah transaksi commit. Urutan ini disengaja: kalau
-        // transaksinya rollback, file tenant masih utuh dan datanya belum
-        // hilang — kebalikannya tidak bisa diperbaiki.
+        // Wadah tenant dibuang setelah transaksi commit. Urutan ini disengaja:
+        // kalau transaksinya rollback, data tenant masih utuh dan belum hilang —
+        // kebalikannya tidak bisa diperbaiki. Bentuk wadahnya bergantung driver
+        // (berkas SQLite atau schema Postgres), jadi diserahkan ke penyimpanannya.
         $fileDeleted = false;
 
-        if (is_string($databasePath) && $databasePath !== '' && File::exists($databasePath)) {
-            $fileDeleted = File::delete($databasePath);
+        if ($tenantDatabase !== null) {
+            try {
+                $fileDeleted = $this->storages->for($tenantDatabase)->drop(
+                    (string) $tenantDatabase->database_name,
+                    (string) $tenantDatabase->database_path,
+                );
+            } catch (Throwable $e) {
+                // Company-nya sudah benar-benar hilang dari central; kegagalan
+                // membuang wadahnya tidak boleh membatalkan purge yang sudah
+                // terjadi. Sisanya ditangani `companies:sweep-deleted`.
+                report($e);
+            }
         }
 
         return ['database_path' => $databasePath, 'file_deleted' => $fileDeleted];

@@ -7,12 +7,15 @@ use App\Shared\Models\CompanyUser;
 use App\Shared\Models\TenantDatabase;
 use App\Shared\Models\User;
 use App\Shared\Subscription\UserQuotaService;
-use Illuminate\Support\Facades\File;
+use App\Shared\Tenant\Storage\TenantStorageManager;
 use InvalidArgumentException;
 
 class CompanyUserAssignmentService
 {
-    public function __construct(private readonly UserQuotaService $userQuotaService) {}
+    public function __construct(
+        private readonly UserQuotaService $userQuotaService,
+        private readonly TenantStorageManager $storages,
+    ) {}
 
     /**
      * @param  array{company_id:int,email:string,role:string}  $input
@@ -67,9 +70,18 @@ class CompanyUserAssignmentService
             throw new InvalidArgumentException('Tenant database belum aktif.');
         }
 
-        $databasePath = $tenantDatabase->database_path ?: database_path('tenants/'.$tenantDatabase->database_name);
-        if (! File::exists($databasePath)) {
-            throw new InvalidArgumentException('File SQLite tenant tidak ditemukan.');
+        // Keberadaan wadah tenant ditanyakan ke penyimpanannya. Pemeriksaan
+        // `File::exists()` yang dulu ada di sini selalu gagal saat tenant
+        // disimpan sebagai schema Postgres, sehingga setiap penambahan anggota
+        // perusahaan ditolak dengan alasan yang menyesatkan.
+        $storage = $this->storages->for($tenantDatabase);
+
+        if (! $storage->exists((string) $tenantDatabase->database_name, (string) $tenantDatabase->database_path)) {
+            throw new InvalidArgumentException(
+                $storage->driver() === 'sqlite'
+                    ? 'File SQLite tenant tidak ditemukan.'
+                    : 'Schema Postgres tenant tidak ditemukan.'
+            );
         }
 
         $assignment = CompanyUser::query()

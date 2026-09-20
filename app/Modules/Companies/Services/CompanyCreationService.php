@@ -6,11 +6,12 @@ use App\Shared\Models\Company;
 use App\Shared\Models\CompanyUser;
 use App\Shared\Models\TenantDatabase;
 use App\Shared\Models\User;
+use App\Shared\Tenant\Storage\TenantStorageManager;
 use App\Shared\Tenant\TenantMigrationService;
 use App\Shared\Tenant\TenantProvisioningService;
-use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 use RuntimeException;
+use Throwable;
 
 /**
  * Pembuatan perusahaan oleh user dari halaman pilih perusahaan.
@@ -26,6 +27,7 @@ class CompanyCreationService
     public function __construct(
         private readonly TenantProvisioningService $provisioningService,
         private readonly TenantMigrationService $migrationService,
+        private readonly TenantStorageManager $storages,
     ) {}
 
     public function createForUser(User $owner, string $name): Company
@@ -45,7 +47,7 @@ class CompanyCreationService
             // Tanpa ini user berakhir punya perusahaan dengan tenant database
             // kosong yang tetap lolos POST /companies/select — endpoint itu
             // hanya memeriksa tenant_databases.status, bukan isi skemanya.
-            $this->rollbackProvisioning($company, $result['database_path'] ?? null);
+            $this->rollbackProvisioning($company, $result['tenant_database'] ?? null);
 
             throw new RuntimeException(
                 'Migrasi tenant gagal: '.($migration['reason'] ?? 'Unknown error')
@@ -80,10 +82,21 @@ class CompanyCreationService
         return $candidate;
     }
 
-    private function rollbackProvisioning(Company $company, ?string $databasePath): void
+    private function rollbackProvisioning(Company $company, ?TenantDatabase $tenantDatabase): void
     {
-        if (is_string($databasePath) && $databasePath !== '' && File::exists($databasePath)) {
-            File::delete($databasePath);
+        // Wadah tenant dibuang lewat penyimpanannya sendiri. Sebelumnya di sini
+        // ada `File::delete()` langsung, yang diam-diam tidak melakukan apa pun
+        // saat tenant disimpan sebagai schema Postgres — schema-nya tertinggal
+        // yatim setiap kali migrasi gagal.
+        if ($tenantDatabase !== null) {
+            try {
+                $this->storages->for($tenantDatabase)->drop(
+                    (string) $tenantDatabase->database_name,
+                    (string) $tenantDatabase->database_path,
+                );
+            } catch (Throwable $e) {
+                report($e);
+            }
         }
 
         TenantDatabase::query()->where('company_id', $company->id)->delete();

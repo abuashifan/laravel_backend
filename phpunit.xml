@@ -11,6 +11,12 @@
         <testsuite name="Feature">
             <directory>tests/Feature</directory>
         </testsuite>
+        <!-- Hanya jalan kalau TENANT_TEST_PGSQL_URL disetel; tanpa itu seluruh
+             test di dalamnya di-skip. Sengaja TIDAK ikut di suite default supaya
+             `php artisan test` tetap jalan di mesin tanpa Postgres. -->
+        <testsuite name="TenantPgsql">
+            <directory>tests/TenantPgsql</directory>
+        </testsuite>
     </testsuites>
     <!-- Fase 5, skema tier §5d: tripwire kebocoran berkas tenant test. Lihat
          tests/Support/TenantFileLeakGuardExtension.php. -->

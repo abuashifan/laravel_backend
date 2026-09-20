@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Shared\Models\TenantDatabase;
+use App\Shared\Tenant\Storage\TenantStorageManager;
 use App\Shared\Tenant\TenantConnectionManager;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -13,25 +14,30 @@ class CheckTenantStorageCommand extends Command
 {
     protected $signature = 'tenant:check-storage';
 
-    protected $description = 'Check tenant database storage directory';
+    protected $description = 'Check tenant database storage readiness';
+
+    public function __construct(private readonly TenantStorageManager $storages)
+    {
+        parent::__construct();
+    }
 
     public function handle(TenantConnectionManager $connectionManager): int
     {
-        $path = config('tenant.database_path');
+        // Pemeriksaan kesiapan penyimpanan diserahkan ke driver yang berlaku:
+        // folder writable untuk SQLite, koneksi hidup untuk Postgres. Dulu
+        // bagian ini selalu memeriksa folder, sehingga command ini gagal di
+        // production yang tenant-nya sama sekali tidak memakai berkas.
+        $storage = $this->storages->default();
 
-        if (! is_dir($path)) {
-            $this->error("Tenant directory does not exist: {$path}");
+        try {
+            $storage->assertReady();
+        } catch (Throwable $e) {
+            $this->error($e->getMessage());
 
             return self::FAILURE;
         }
 
-        if (! is_writable($path)) {
-            $this->error("Tenant directory is not writable: {$path}");
-
-            return self::FAILURE;
-        }
-
-        $this->info("Tenant directory is ready: {$path}");
+        $this->info(sprintf('Penyimpanan tenant siap (driver: %s).', $storage->driver()));
 
         $tenantDatabases = TenantDatabase::query()
             ->where('status', 'active')

@@ -4,13 +4,17 @@ namespace App\Shared\Tenant;
 
 use App\Shared\Models\Company;
 use App\Shared\Models\TenantDatabase;
+use App\Shared\Tenant\Storage\TenantStorageManager;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\File;
 use Throwable;
 
 class TenantMigrationService
 {
-    public function __construct(private readonly TenantConnectionManager $connectionManager) {}
+    public function __construct(
+        private readonly TenantConnectionManager $connectionManager,
+        private readonly TenantStorageManager $storages,
+    ) {}
 
     /**
      * @return array{
@@ -158,13 +162,6 @@ class TenantMigrationService
             ];
         }
 
-        $databasePath = database_path('tenants/'.$databaseName);
-        try {
-            $databasePath = $this->connectionManager->resolveDatabasePath($tenantDatabase);
-        } catch (Throwable) {
-            // Keep the canonical path in the failure result below.
-        }
-
         $migrationPath = base_path('database/migrations/tenant');
         if (! File::isDirectory($migrationPath)) {
             return [
@@ -175,19 +172,18 @@ class TenantMigrationService
             ];
         }
 
-        if (! File::exists($databasePath)) {
-            return [
-                'success' => false,
-                'reason' => 'File SQLite tenant tidak ditemukan.',
-                'company' => $company,
-                'tenant_database' => $tenantDatabase,
-            ];
-        }
+        // Keberadaan wadah tenant ditanyakan ke penyimpanannya sendiri: berkas di
+        // disk untuk SQLite, schema untuk Postgres. Pemeriksaan `is_writable()`
+        // yang dulu ada di sini dibuang — hanya bermakna untuk berkas, dan untuk
+        // SQLite pun sudah tercakup saat koneksi dibuka di bawah.
+        $storage = $this->storages->for($tenantDatabase);
 
-        if (! is_writable($databasePath)) {
+        if (! $storage->exists($databaseName, (string) $tenantDatabase->database_path)) {
             return [
                 'success' => false,
-                'reason' => 'File SQLite tenant tidak writable.',
+                'reason' => $storage->driver() === 'sqlite'
+                    ? 'File SQLite tenant tidak ditemukan.'
+                    : 'Schema Postgres tenant tidak ditemukan.',
                 'company' => $company,
                 'tenant_database' => $tenantDatabase,
             ];

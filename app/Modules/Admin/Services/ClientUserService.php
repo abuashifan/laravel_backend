@@ -8,9 +8,9 @@ use App\Shared\Subscription\CompanyQuotaService;
 use App\Shared\Subscription\StorageQuotaService;
 use App\Shared\Subscription\SubscriptionService;
 use App\Shared\Subscription\UserQuotaService;
+use App\Shared\Tenant\Storage\TenantStorageManager;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Facades\File;
 
 /**
  * Pengelolaan akun client oleh admin aplikasi.
@@ -26,6 +26,7 @@ class ClientUserService
         private readonly UserQuotaService $userQuotaService,
         private readonly SubscriptionService $subscriptionService,
         private readonly StorageQuotaService $storageQuotaService,
+        private readonly TenantStorageManager $storages,
     ) {}
 
     /**
@@ -183,7 +184,7 @@ class ClientUserService
             ->map(function ($company) {
                 $summary = $this->storageQuotaService->summaryFor($company);
 
-                $tenantPath = $company->tenantDatabase?->database_path;
+                $tenantDatabase = $company->tenantDatabase;
 
                 return [
                     'id' => $company->id,
@@ -194,11 +195,15 @@ class ClientUserService
                     // area admin, supaya kelihatan sebelum client benar-benar
                     // mentok dan mulai gagal mengunggah.
                     'near_limit' => $summary['percent_used'] >= 90,
-                    // File SQLite tenant bisa hilang (disk ephemeral tanpa
-                    // persistent disk) walau baris `tenant_databases` masih
-                    // ada — dipakai frontend memunculkan tombol "Buat Ulang
-                    // Database" saat memang rusak, bukan selalu ditampilkan.
-                    'tenant_file_exists' => is_string($tenantPath) && $tenantPath !== '' && File::exists($tenantPath),
+                    // Wadah tenant bisa hilang walau baris `tenant_databases`
+                    // masih ada — berkas SQLite kena wipe disk ephemeral, atau
+                    // schema Postgres terhapus. Dipakai frontend memunculkan
+                    // tombol "Buat Ulang Database" saat memang rusak, bukan
+                    // selalu ditampilkan.
+                    'tenant_file_exists' => $tenantDatabase !== null && $this->storages->for($tenantDatabase)->exists(
+                        (string) $tenantDatabase->database_name,
+                        (string) $tenantDatabase->database_path,
+                    ),
                 ];
             })
             ->values()

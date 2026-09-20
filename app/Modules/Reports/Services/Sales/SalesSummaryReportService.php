@@ -3,6 +3,7 @@
 namespace App\Modules\Reports\Services\Sales;
 
 use App\Modules\Sales\Models\SalesInvoice;
+use App\Shared\Database\DatePeriodExpression;
 
 class SalesSummaryReportService
 {
@@ -14,25 +15,11 @@ class SalesSummaryReportService
     {
         $groupBy = $filters['group_by'] ?? 'month';
 
-        $isSqlite = (new SalesInvoice)->getConnection()->getDriverName() === 'sqlite';
-        [$periodSelectExpr, $periodGroupExpr] = match (true) {
-            $isSqlite && $groupBy === 'day' => [
-                "strftime('%Y-%m-%d', invoice_date) as period",
-                "strftime('%Y-%m-%d', invoice_date)",
-            ],
-            $isSqlite => [
-                "strftime('%Y-%m', invoice_date) as period",
-                "strftime('%Y-%m', invoice_date)",
-            ],
-            $groupBy === 'day' => [
-                "DATE_FORMAT(invoice_date, '%Y-%m-%d') as period",
-                "DATE_FORMAT(invoice_date, '%Y-%m-%d')",
-            ],
-            default => [
-                "DATE_FORMAT(invoice_date, '%Y-%m') as period",
-                "DATE_FORMAT(invoice_date, '%Y-%m')",
-            ],
-        };
+        [$periodSelectExpr, $periodGroupExpr] = DatePeriodExpression::for(
+            (new SalesInvoice)->getConnection()->getDriverName(),
+            'invoice_date',
+            $groupBy,
+        );
 
         $query = SalesInvoice::query()
             ->where('status', 'posted')
