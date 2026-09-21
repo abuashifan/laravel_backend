@@ -129,7 +129,21 @@ class CompanyController extends Controller
         } catch (Throwable $e) {
             report($e);
 
-            return $this->errorResponse('Gagal menyiapkan database perusahaan. Coba lagi.', 500);
+            // Alasan kegagalan sebenarnya SUDAH diketahui di sini — provisioning
+            // dan migrasi tenant mengembalikan pesan yang spesifik — tapi selama
+            // ini ditelan dan diganti kalimat generik. Akibatnya kegagalan
+            // provisioning hanya bisa didiagnosa lewat log server, yang belum
+            // tentu terjangkau saat itu juga.
+            //
+            // Saat APP_DEBUG menyala, alasan aslinya ikut dikirim ke layar. Di
+            // production pesannya tetap generik, karena isi exception bisa
+            // memuat detail infrastruktur yang tidak untuk dibaca client.
+            return $this->errorResponse(
+                config('app.debug')
+                    ? 'Gagal menyiapkan database perusahaan: '.$e->getMessage()
+                    : 'Gagal menyiapkan database perusahaan. Coba lagi.',
+                500
+            );
         }
 
         return $this->successResponse(
