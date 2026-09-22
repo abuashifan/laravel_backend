@@ -7,7 +7,9 @@ use App\Shared\Models\CompanyUser;
 use App\Shared\Models\Plan;
 use App\Shared\Models\TenantDatabase;
 use App\Shared\Models\User;
+use App\Shared\Tenant\TenantConnectionManager;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -121,6 +123,36 @@ class CreateCompanyTest extends TestCase
         $this->getJson('/api/setup/status', ['X-Company-ID' => (string) $companyId])
             ->assertStatus(200)
             ->assertJsonPath('success', true);
+    }
+
+    public function test_created_company_starts_with_default_warehouse_and_unit(): void
+    {
+        $user = User::factory()->create(['status' => 'active']);
+        $this->activeSubscriptionFor($user);
+        Sanctum::actingAs($user, ['*']);
+
+        $companyId = (int) $this->postJson('/api/companies', ['name' => 'PT Bawaan'])
+            ->assertStatus(201)
+            ->json('data.id');
+
+        $tenantDatabase = TenantDatabase::query()->where('company_id', $companyId)->firstOrFail();
+        $this->trackTenantFile($tenantDatabase->database_path);
+
+        app(TenantConnectionManager::class)->connect($tenantDatabase);
+        $tenant = DB::connection('tenant');
+
+        $warehouses = $tenant->table('warehouses')->get();
+        $this->assertCount(1, $warehouses);
+        $this->assertSame('Gudang Utama', $warehouses[0]->name);
+        $this->assertTrue((bool) $warehouses[0]->is_default);
+
+        $this->assertSame(['PCS'], $tenant->table('units')->pluck('code')->all());
+
+        // Syarat pembayaran sudah diisi migration tenant; data bawaan di sini
+        // tidak boleh menduplikasinya.
+        $this->assertSame(1, $tenant->table('payment_terms')->where('code', 'COD')->count());
+
+        app(TenantConnectionManager::class)->disconnect();
     }
 
     public function test_slug_collision_gets_numeric_suffix(): void

@@ -24,6 +24,7 @@ class TenantRepairService
     public function __construct(
         private readonly TenantMigrationService $migrationService,
         private readonly TenantStorageManager $storages,
+        private readonly TenantStarterDataService $starterData,
     ) {}
 
     /**
@@ -108,7 +109,10 @@ class TenantRepairService
             ];
         }
 
-        return ['success' => true, 'tenant_database' => $tenantDatabase->refresh()];
+        $tenantDatabase->refresh();
+        $this->starterData->seed($tenantDatabase);
+
+        return ['success' => true, 'tenant_database' => $tenantDatabase];
     }
 
     /**

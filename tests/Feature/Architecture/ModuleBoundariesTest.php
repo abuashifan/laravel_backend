@@ -108,6 +108,11 @@ class ModuleBoundariesTest extends TestCase
         // butuh chart_of_accounts.id, jadi harus setelah COA jadi. Arah yang sama
         // dengan Setup → MasterData\\Services\\* di atas.
         'Setup → App\\Modules\\FixedAssets\\Services\\FixedAssetCategoryAccountLinker',
+        // Template COA membawa preset modul untuk jenis usahanya. Preset itu
+        // ditulis lewat service Settings yang sama dengan halaman Pengaturan,
+        // bukan langsung ke model, supaya aturan konsistensi modul/akuntansinya
+        // tidak terlewati. Preseden arahnya sama dengan Sales/Purchase/Journal.
+        'Setup → App\\Modules\\Settings\\Services\\CompanySettingService',
     ];
 
     /**

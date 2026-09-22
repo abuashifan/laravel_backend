@@ -9,6 +9,7 @@ use App\Shared\Models\User;
 use App\Shared\Tenant\Storage\TenantStorageManager;
 use App\Shared\Tenant\TenantMigrationService;
 use App\Shared\Tenant\TenantProvisioningService;
+use App\Shared\Tenant\TenantStarterDataService;
 use Illuminate\Support\Str;
 use RuntimeException;
 use Throwable;
@@ -28,6 +29,7 @@ class CompanyCreationService
         private readonly TenantProvisioningService $provisioningService,
         private readonly TenantMigrationService $migrationService,
         private readonly TenantStorageManager $storages,
+        private readonly TenantStarterDataService $starterData,
     ) {}
 
     public function createForUser(User $owner, string $name): Company
@@ -52,6 +54,10 @@ class CompanyCreationService
             throw new RuntimeException(
                 'Migrasi tenant gagal: '.($migration['reason'] ?? 'Unknown error')
             );
+        }
+
+        if (($result['tenant_database'] ?? null) instanceof TenantDatabase) {
+            $this->starterData->seed($result['tenant_database']);
         }
 
         return $company->refresh();

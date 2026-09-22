@@ -8,6 +8,7 @@ use App\Modules\Journal\Models\JournalEntry;
 use App\Modules\Journal\Models\JournalEntryLine;
 use App\Modules\MasterData\Models\AccountMapping;
 use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Shared\Models\CompanyModuleSetting;
 use Tests\Feature\Journal\JournalTestCase;
 
 class CoaTemplateApplyTest extends JournalTestCase
@@ -239,5 +240,72 @@ class CoaTemplateApplyTest extends JournalTestCase
             ],
         ], $ctx['headers'])
             ->assertStatus(422);
+    }
+
+    public function test_applying_service_template_turns_off_inventory_modules(): void
+    {
+        $ctx = $this->setUpTenant(role: 'owner');
+
+        $this->applyTemplate('service', $ctx['headers']);
+
+        $modules = CompanyModuleSetting::query()->where('company_id', $ctx['company']->id)->firstOrFail();
+        $this->assertFalse((bool) $modules->inventory_enabled);
+        $this->assertFalse((bool) $modules->warehouse_enabled);
+        $this->assertTrue((bool) $modules->sales_enabled);
+        $this->assertTrue((bool) $modules->fixed_asset_enabled);
+    }
+
+    public function test_reapplying_same_template_keeps_modules_the_user_changed(): void
+    {
+        $ctx = $this->setUpTenant(role: 'owner');
+
+        $this->applyTemplate('service', $ctx['headers']);
+
+        // Preset bukan kunci: perusahaan jasa yang juga menjual barang boleh
+        // menyalakan Persediaan sendiri, dan kembali ke langkah COA lalu menekan
+        // Lanjutkan lagi tidak boleh mematikannya diam-diam.
+        $this->patchJson('/api/settings/company/modules', ['inventory_enabled' => true], $ctx['headers'])
+            ->assertOk();
+
+        $this->applyTemplate('service', $ctx['headers']);
+
+        $this->assertTrue((bool) CompanyModuleSetting::query()
+            ->where('company_id', $ctx['company']->id)
+            ->value('inventory_enabled'));
+    }
+
+    public function test_switching_template_applies_the_new_preset(): void
+    {
+        $ctx = $this->setUpTenant(role: 'owner');
+
+        $this->applyTemplate('service', $ctx['headers']);
+        $this->applyTemplate('trading', $ctx['headers']);
+
+        $this->assertTrue((bool) CompanyModuleSetting::query()
+            ->where('company_id', $ctx['company']->id)
+            ->value('inventory_enabled'));
+    }
+
+    public function test_blank_template_leaves_modules_untouched(): void
+    {
+        $ctx = $this->setUpTenant(role: 'owner');
+
+        $this->patchJson('/api/settings/company/modules', ['inventory_enabled' => true], $ctx['headers'])
+            ->assertOk();
+
+        $this->applyTemplate('blank', $ctx['headers']);
+
+        $this->assertTrue((bool) CompanyModuleSetting::query()
+            ->where('company_id', $ctx['company']->id)
+            ->value('inventory_enabled'));
+    }
+
+    /** @param array<string, string> $headers */
+    private function applyTemplate(string $templateId, array $headers): void
+    {
+        $this->postJson('/api/setup/coa-templates/apply', [
+            'template_id' => $templateId,
+            'accounts' => (array) config("coa_templates.templates.{$templateId}.accounts"),
+        ], $headers)->assertOk();
     }
 }

@@ -28,12 +28,19 @@ class SetupWizardService
 
     private const STATUS_REOPENED = 'reopened';
 
-    /** @var array<int, string> */
+    /**
+     * COA sebelum modul: template COA mewakili jenis usaha dan membawa preset
+     * modulnya (lihat config/coa_templates.php), jadi langkah Modul menampilkan
+     * hasil preset itu untuk disesuaikan user. Account mapping tetap sesudah
+     * keduanya karena mapping yang dituntut bergantung pada modul yang aktif.
+     *
+     * @var array<int, string>
+     */
     private array $steps = [
         'company_profile',
-        'module_selection',
         'accounting_settings',
         'chart_of_accounts',
+        'module_selection',
         'account_mappings',
         'opening_balance',
         'final_review',

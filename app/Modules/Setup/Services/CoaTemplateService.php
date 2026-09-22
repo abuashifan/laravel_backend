@@ -7,7 +7,9 @@ use App\Modules\Journal\Models\JournalEntryLine;
 use App\Modules\MasterData\Models\ChartOfAccount;
 use App\Modules\MasterData\Services\AccountMappingStorageService;
 use App\Modules\MasterData\Services\ChartOfAccountService;
+use App\Modules\Settings\Services\CompanySettingService;
 use App\Shared\Exceptions\ApiException;
+use App\Shared\Tenant\TenantContext;
 use Illuminate\Support\Facades\DB;
 
 class CoaTemplateService
@@ -16,10 +18,12 @@ class CoaTemplateService
         private readonly ChartOfAccountService $chartOfAccountService,
         private readonly AccountMappingStorageService $accountMappingStorageService,
         private readonly FixedAssetCategoryAccountLinker $fixedAssetCategoryAccountLinker,
+        private readonly CompanySettingService $companySettingService,
+        private readonly TenantContext $tenantContext,
     ) {}
 
     /**
-     * @return array<int, array{id:string, label:string, description:string, account_count:int, accounts:array}>
+     * @return array<int, array{id:string, label:string, description:string, account_count:int, accounts:array, modules:array<string, bool>}>
      */
     public function templates(): array
     {
@@ -34,6 +38,7 @@ class CoaTemplateService
                 'description' => (string) ($template['description'] ?? ''),
                 'account_count' => count($accounts),
                 'accounts' => $accounts,
+                'modules' => (array) ($template['modules'] ?? []),
             ];
         }
 
@@ -57,7 +62,9 @@ class CoaTemplateService
             ]);
         }
 
-        return DB::connection('tenant')->transaction(function () use ($templateId, $accounts) {
+        $previousTemplateId = $this->appliedTemplateId();
+
+        $created = DB::connection('tenant')->transaction(function () use ($templateId, $accounts) {
             $this->replacePreviousTemplateAccounts();
 
             $codeToId = [];
@@ -105,6 +112,49 @@ class CoaTemplateService
 
             return $created;
         });
+
+        // Setelah transaksi tenant commit: pengaturan modul tinggal di database
+        // central, jadi tidak bisa ikut transaksi di atas. Kalau ini gagal, COA
+        // tetap terpasang dan modul hanya belum mengikuti -- user masih bisa
+        // mengaturnya sendiri di langkah berikutnya.
+        if ($previousTemplateId !== $templateId) {
+            $this->applyModulePreset($templateId);
+        }
+
+        return $created;
+    }
+
+    /**
+     * Template mewakili jenis usaha, jadi modulnya ikut disesuaikan (lihat
+     * `modules` di config/coa_templates.php). Hanya saat template BERGANTI:
+     * menerapkan ulang template yang sama -- mis. user kembali ke langkah COA
+     * lalu menekan Lanjutkan lagi -- tidak boleh menimpa modul yang sudah ia
+     * atur sendiri. Lewat CompanySettingService supaya aturan konsistensi
+     * modul/akuntansinya tetap berlaku.
+     */
+    private function applyModulePreset(string $templateId): void
+    {
+        $preset = (array) config("coa_templates.templates.{$templateId}.modules", []);
+        $company = $this->tenantContext->company();
+
+        if ($preset === [] || ! $company) {
+            return;
+        }
+
+        $this->companySettingService->updateModuleSetting($company, $preset);
+    }
+
+    /** Template yang terakhir diterapkan, dibaca dari penanda akun hasil template. */
+    private function appliedTemplateId(): ?string
+    {
+        $account = ChartOfAccount::query()
+            ->where('is_system_default', true)
+            ->orderBy('id')
+            ->first();
+
+        $templateId = $account?->metadata['template_id'] ?? null;
+
+        return is_string($templateId) ? $templateId : null;
     }
 
     /**

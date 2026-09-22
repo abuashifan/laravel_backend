@@ -50,6 +50,15 @@
  * 1520/1521 tetap dipakai (kini untuk Gedung) supaya tenant yang sudah
  * menerapkan template versi lama tetap punya akun dengan kode yang sama.
  *
+ * `modules` adalah preset modul untuk jenis usaha yang diwakili template --
+ * memilih template Jasa berarti perusahaannya bergerak di bidang jasa, jadi
+ * Persediaan dan Gudang ikut dimatikan. Preset ini hanya titik awal, bukan
+ * kunci: diterapkan `CoaTemplateService::applyTemplate()` HANYA saat template
+ * berganti, dan user tetap bebas mengubah modulnya di langkah Modul wizard
+ * maupun di Pengaturan → Perusahaan. `tax_enabled` dan `approval_enabled`
+ * sengaja tidak ikut: status PKP dan alur persetujuan bukan soal jenis usaha.
+ * Template tanpa `modules` (Kosong) tidak menyentuh pilihan modul sama sekali.
+ *
  * `normal_balance` sengaja tidak diisi di sini -- diturunkan dari `type` oleh
  * `ChartOfAccountService::validateNormalBalance()` saat akun dibuat.
  */
@@ -59,6 +68,7 @@ return [
         'gas_agent' => [
             'label' => 'Agen Gas',
             'description' => 'COA standar untuk bisnis distribusi gas LPG',
+            'modules' => ['sales_enabled' => true, 'purchase_enabled' => true, 'cash_bank_enabled' => true, 'inventory_enabled' => true, 'warehouse_enabled' => false, 'fixed_asset_enabled' => true, 'reports_enabled' => true],
             'accounts' => [
                 ['code' => '1', 'name' => 'AKTIVA LANCAR', 'type' => 'asset', 'parent_code' => null],
                 ['code' => '1100', 'name' => 'Kas', 'type' => 'asset', 'parent_code' => '1', 'is_cash_bank' => true],
@@ -122,6 +132,7 @@ return [
         'trading' => [
             'label' => 'Perdagangan Umum',
             'description' => 'COA standar untuk bisnis dagang barang',
+            'modules' => ['sales_enabled' => true, 'purchase_enabled' => true, 'cash_bank_enabled' => true, 'inventory_enabled' => true, 'warehouse_enabled' => false, 'fixed_asset_enabled' => true, 'reports_enabled' => true],
             'accounts' => [
                 ['code' => '1', 'name' => 'AKTIVA LANCAR', 'type' => 'asset', 'parent_code' => null],
                 ['code' => '1100', 'name' => 'Kas', 'type' => 'asset', 'parent_code' => '1', 'is_cash_bank' => true],
@@ -184,6 +195,7 @@ return [
         'service' => [
             'label' => 'Jasa',
             'description' => 'COA standar untuk bisnis jasa dan konsultan',
+            'modules' => ['sales_enabled' => true, 'purchase_enabled' => true, 'cash_bank_enabled' => true, 'inventory_enabled' => false, 'warehouse_enabled' => false, 'fixed_asset_enabled' => true, 'reports_enabled' => true],
             'accounts' => [
                 ['code' => '1', 'name' => 'AKTIVA LANCAR', 'type' => 'asset', 'parent_code' => null],
                 ['code' => '1100', 'name' => 'Kas', 'type' => 'asset', 'parent_code' => '1', 'is_cash_bank' => true],
@@ -242,6 +254,7 @@ return [
         'manufacture' => [
             'label' => 'Manufaktur',
             'description' => 'COA standar untuk bisnis produksi',
+            'modules' => ['sales_enabled' => true, 'purchase_enabled' => true, 'cash_bank_enabled' => true, 'inventory_enabled' => true, 'warehouse_enabled' => true, 'fixed_asset_enabled' => true, 'reports_enabled' => true],
             'accounts' => [
                 ['code' => '1', 'name' => 'AKTIVA LANCAR', 'type' => 'asset', 'parent_code' => null],
                 ['code' => '1100', 'name' => 'Kas', 'type' => 'asset', 'parent_code' => '1', 'is_cash_bank' => true],
