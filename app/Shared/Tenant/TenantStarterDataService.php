@@ -15,7 +15,8 @@ use Throwable;
  * Sengaja TIDAK berupa migration tenant: puluhan test membuat satuan `PCS` dan
  * gudangnya sendiri di atas tenant hasil migrate, dan baris bawaan di migration
  * akan bentrok dengan unique `code` mereka. Dipanggil hanya dari jalur yang
- * menghasilkan tenant kosong baru -- pembuatan perusahaan dan perbaikan tenant.
+ * menghasilkan tenant kosong baru -- pembuatan perusahaan dan perbaikan tenant --
+ * serta dari penerapan template COA di wizard (lihat seedCurrent()).
  *
  * Masing-masing hanya diisi kalau tabelnya masih kosong, jadi aman dipanggil
  * ulang dan tidak pernah menambah baris ke tenant yang sudah berisi.
@@ -37,7 +38,28 @@ class TenantStarterDataService
     {
         try {
             $this->connectionManager->connect($tenantDatabase);
+            $this->seedCurrent();
+        } catch (Throwable $e) {
+            report($e);
+        } finally {
+            try {
+                $this->connectionManager->disconnect();
+            } catch (Throwable) {
+                // Kegagalan memutus koneksi tidak relevan bagi pemanggil.
+            }
+        }
+    }
 
+    /**
+     * Versi untuk koneksi `tenant` yang SUDAH terbuka -- dipakai di dalam
+     * request ber-konteks perusahaan (penerapan template COA di wizard), yang
+     * tidak boleh diputus di tengah jalan. Jalur ini yang menjangkau
+     * perusahaan yang dibuat sebelum data bawaan ada: seed() hanya berjalan
+     * saat tenant dibangun, sedangkan setiap wizard pasti melewati COA.
+     */
+    public function seedCurrent(): void
+    {
+        try {
             $tenant = DB::connection('tenant');
             $now = now();
 
@@ -64,12 +86,6 @@ class TenantStarterDataService
             }
         } catch (Throwable $e) {
             report($e);
-        } finally {
-            try {
-                $this->connectionManager->disconnect();
-            } catch (Throwable) {
-                // Kegagalan memutus koneksi tidak relevan bagi pemanggil.
-            }
         }
     }
 }

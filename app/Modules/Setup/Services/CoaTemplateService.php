@@ -10,6 +10,7 @@ use App\Modules\MasterData\Services\ChartOfAccountService;
 use App\Modules\Settings\Services\CompanySettingService;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
+use App\Shared\Tenant\TenantStarterDataService;
 use Illuminate\Support\Facades\DB;
 
 class CoaTemplateService
@@ -20,6 +21,7 @@ class CoaTemplateService
         private readonly FixedAssetCategoryAccountLinker $fixedAssetCategoryAccountLinker,
         private readonly CompanySettingService $companySettingService,
         private readonly TenantContext $tenantContext,
+        private readonly TenantStarterDataService $starterData,
     ) {}
 
     /**
@@ -120,6 +122,10 @@ class CoaTemplateService
         if ($previousTemplateId !== $templateId) {
             $this->applyModulePreset($templateId);
         }
+
+        // Langkah Master Data datang sesudah ini; perusahaan lama yang belum
+        // pernah mendapat Gudang Utama/PCS saat dibuat ikut terisi di sini.
+        $this->starterData->seedCurrent();
 
         return $created;
     }

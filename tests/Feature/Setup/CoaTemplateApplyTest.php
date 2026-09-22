@@ -8,6 +8,8 @@ use App\Modules\Journal\Models\JournalEntry;
 use App\Modules\Journal\Models\JournalEntryLine;
 use App\Modules\MasterData\Models\AccountMapping;
 use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\MasterData\Models\Unit;
+use App\Modules\MasterData\Models\Warehouse;
 use App\Shared\Models\CompanyModuleSetting;
 use Tests\Feature\Journal\JournalTestCase;
 
@@ -307,5 +309,30 @@ class CoaTemplateApplyTest extends JournalTestCase
             'template_id' => $templateId,
             'accounts' => (array) config("coa_templates.templates.{$templateId}.accounts"),
         ], $headers)->assertOk();
+    }
+
+    public function test_applying_template_gives_existing_company_default_warehouse_and_unit(): void
+    {
+        // Perusahaan yang dibuat sebelum data bawaan ada tidak pernah melewati
+        // TenantStarterDataService::seed(); wizard-nya harus tetap mendapatkannya.
+        $ctx = $this->setUpTenant(role: 'owner');
+
+        $this->applyTemplate('service', $ctx['headers']);
+
+        $this->assertSame(['Gudang Utama'], Warehouse::query()->pluck('name')->all());
+        $this->assertSame(['PCS'], Unit::query()->pluck('code')->all());
+    }
+
+    public function test_applying_template_does_not_add_defaults_to_company_that_has_its_own(): void
+    {
+        $ctx = $this->setUpTenant(role: 'owner');
+
+        Warehouse::query()->create(['code' => 'GD-A', 'name' => 'Gudang A', 'is_active' => true]);
+        Unit::query()->create(['code' => 'KG', 'name' => 'Kilogram', 'precision' => 2, 'is_active' => true]);
+
+        $this->applyTemplate('service', $ctx['headers']);
+
+        $this->assertSame(['GD-A'], Warehouse::query()->pluck('code')->all());
+        $this->assertSame(['KG'], Unit::query()->pluck('code')->all());
     }
 }
