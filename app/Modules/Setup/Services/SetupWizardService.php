@@ -503,12 +503,28 @@ class SetupWizardService
             return;
         }
 
-        DB::connection('tenant')->table('fixed_assets')
+        // Metadata digabung di PHP, bukan lewat `json_set()` di SQL: fungsi itu
+        // hanya ada di SQLite/MySQL, dan Postgres menolak query-nya saat parsing
+        // -- bahkan ketika tidak ada satu pun aset hasil import -- sehingga
+        // finalize setup selalu gagal 500 di tenant Postgres. Jumlah barisnya
+        // sebatas aset saldo awal, jadi update per baris tidak jadi masalah.
+        $tenant = DB::connection('tenant');
+        $now = now();
+
+        $tenant->table('fixed_assets')
             ->where('source_type', 'opening_import')
-            ->update([
-                'metadata' => DB::raw("json_set(COALESCE(metadata, '{}'), '$.setup_locked', true)"),
-                'updated_at' => now(),
-            ]);
+            ->orderBy('id')
+            ->get(['id', 'metadata'])
+            ->each(function (object $asset) use ($tenant, $now): void {
+                $metadata = is_string($asset->metadata) ? json_decode($asset->metadata, true) : null;
+                $metadata = is_array($metadata) ? $metadata : [];
+                $metadata['setup_locked'] = true;
+
+                $tenant->table('fixed_assets')->where('id', $asset->id)->update([
+                    'metadata' => json_encode($metadata),
+                    'updated_at' => $now,
+                ]);
+            });
     }
 
     /**

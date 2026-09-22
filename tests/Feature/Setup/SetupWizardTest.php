@@ -10,6 +10,7 @@ use App\Modules\MasterData\Models\ChartOfAccount;
 use App\Modules\Settings\Services\CompanySettingService;
 use App\Shared\Models\CompanyModuleSetting;
 use App\Shared\Models\CompanySetupState;
+use Illuminate\Support\Facades\DB;
 use Tests\Feature\Journal\JournalTestCase;
 
 class SetupWizardTest extends JournalTestCase
@@ -164,6 +165,55 @@ class SetupWizardTest extends JournalTestCase
         $this->postJson('/api/setup/finalize', [], $ctx['headers'])
             ->assertOk()
             ->assertJsonPath('data.finalized', true);
+    }
+
+    /**
+     * Finalisasi mengunci aset hasil import saldo awal lewat penanda di
+     * metadata. Dulu ditulis dengan `json_set()` di SQL -- fungsi yang tidak
+     * ada di Postgres -- sehingga finalize selalu gagal 500 di tenant Postgres.
+     * Metadata lain di baris yang sama tidak boleh hilang, dan aset yang bukan
+     * dari import tidak boleh ikut terkunci.
+     */
+    public function test_finalization_locks_opening_import_assets_and_keeps_their_metadata(): void
+    {
+        $ctx = $this->setUpTenant(role: 'owner');
+        app(CompanySettingService::class)->getOrCreateModuleSetting($ctx['company']);
+        $this->seedSetupCoaAndMappings();
+
+        $categoryId = (int) DB::connection('tenant')->table('fixed_asset_categories')->value('id');
+        $asset = fn (string $name, ?string $source, ?array $metadata): int => (int) DB::connection('tenant')->table('fixed_assets')->insertGetId([
+            'name' => $name,
+            'fixed_asset_category_id' => $categoryId,
+            'asset_class' => 'equipment',
+            'depreciation_type' => 'depreciable',
+            'acquisition_date' => '2025-01-01',
+            'source_type' => $source,
+            'metadata' => $metadata === null ? null : json_encode($metadata),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $imported = $asset('Laptop Import', 'opening_import', ['import_row' => 7]);
+        $importedWithoutMetadata = $asset('Printer Import', 'opening_import', null);
+        $manual = $asset('Meja Manual', null, ['note' => 'manual']);
+
+        $this->patchJson('/api/setup/current-step', [
+            'current_step' => 'final_review',
+            'opening_date' => '2026-01-01',
+        ], $ctx['headers'])->assertOk();
+
+        $this->postJson('/api/setup/finalize', [], $ctx['headers'])
+            ->assertOk()
+            ->assertJsonPath('data.finalized', true);
+
+        $metadataOf = fn (int $id): ?array => json_decode(
+            (string) DB::connection('tenant')->table('fixed_assets')->where('id', $id)->value('metadata'),
+            true,
+        );
+
+        $this->assertSame(['import_row' => 7, 'setup_locked' => true], $metadataOf($imported));
+        $this->assertSame(['setup_locked' => true], $metadataOf($importedWithoutMetadata));
+        $this->assertSame(['note' => 'manual'], $metadataOf($manual));
     }
 
     /**
