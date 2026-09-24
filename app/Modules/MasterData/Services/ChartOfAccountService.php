@@ -156,8 +156,19 @@ class ChartOfAccountService
      * 3. Anchor `OR parent_account_id NOT IN (...)` -- menjaga baris yatim
      *    (induk sudah terhapus) tetap muncul sebagai root, bukan hilang.
      *
-     * Portabilitas: CTE-nya standar (MySQL 8+, MariaDB 10.2+, Postgres). Kalau
-     * tenant pindah dari SQLite, collation perlu ditinjau -- di MySQL
+     * Portabilitas: bentuk CTE-nya standar (MySQL 8+, MariaDB 10.2+, Postgres),
+     * tapi dua detail di dalamnya TIDAK -- dan keduanya membuat seluruh daftar
+     * akun gagal 500 di tenant Postgres, yang terbaca di layar seolah COA-nya
+     * tidak pernah terpasang:
+     *
+     * - `char(1)` fungsi SQLite. Di Postgres `char` adalah nama tipe data,
+     *   padanan fungsinya `chr()`; di MySQL perangkaian pakai `CONCAT()`
+     *   karena `||` di sana berarti OR.
+     * - Postgres menuntut tipe kolom cabang anchor dan cabang rekursif sama
+     *   persis: `account_code` itu varchar sedangkan hasil perangkaian bertipe
+     *   text, jadi anchor-nya harus di-CAST ke text.
+     *
+     * Kalau tenant pindah ke MySQL, collation perlu ditinjau -- di
      * `utf8mb4_*_ci` urutan path bisa berbeda dan butuh
      * `ORDER BY hierarchy_path COLLATE utf8mb4_bin`.
      *
@@ -167,15 +178,21 @@ class ChartOfAccountService
     {
         $maxDepth = self::MAX_DEPTH;
 
+        [$rootPath, $childPath] = match (ChartOfAccount::query()->getConnection()->getDriverName()) {
+            'pgsql' => ['CAST(a.account_code AS TEXT)', 't.hierarchy_path || chr(1) || c.account_code'],
+            'mysql', 'mariadb' => ['a.account_code', 'CONCAT(t.hierarchy_path, CHAR(1), c.account_code)'],
+            default => ['a.account_code', 't.hierarchy_path || char(1) || c.account_code'],
+        };
+
         // Raw tanpa binding, supaya urutan binding milik trait tidak bergeser.
         $cte = <<<SQL
         (WITH RECURSIVE coa_tree AS (
-            SELECT a.*, 0 AS depth, a.account_code AS hierarchy_path
+            SELECT a.*, 0 AS depth, {$rootPath} AS hierarchy_path
             FROM chart_of_accounts a
             WHERE a.parent_account_id IS NULL
                OR a.parent_account_id NOT IN (SELECT id FROM chart_of_accounts)
             UNION ALL
-            SELECT c.*, t.depth + 1, t.hierarchy_path || char(1) || c.account_code
+            SELECT c.*, t.depth + 1, {$childPath}
             FROM chart_of_accounts c
             INNER JOIN coa_tree t ON c.parent_account_id = t.id
             WHERE t.depth < {$maxDepth}
