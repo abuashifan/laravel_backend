@@ -93,15 +93,23 @@ class PostgresTenantProvisioningTest extends PostgresTenantTestCase
             'status' => 'active',
         ]);
 
+        // Didaftarkan SEBELUM perbaikan dijalankan, bukan sesudah assertion:
+        // nama schema-nya deterministik dari company id, dan kalau perbaikannya
+        // gagal di tengah (mis. koneksi ke server putus) schema yang terlanjur
+        // dibuat harus tetap terbuang. Versi lama mendaftarkannya setelah
+        // assertTrue, jadi satu kegagalan meninggalkan `tenant_000001` yang
+        // kemudian menjatuhkan test berikutnya dengan "Schema tenant sudah ada".
+        $expectedSchema = 'tenant_'.str_pad((string) $company->id, 6, '0', STR_PAD_LEFT);
+        $this->trackSchema($expectedSchema);
+
         $result = app(TenantRepairService::class)->repair($company);
 
         $this->assertTrue($result['success'], $result['reason'] ?? '');
 
         $repaired = TenantDatabase::query()->where('company_id', $company->id)->firstOrFail();
-        $this->trackSchema((string) $repaired->database_name);
 
         $this->assertSame('pgsql', $repaired->driver);
-        $this->assertSame('tenant_'.str_pad((string) $company->id, 6, '0', STR_PAD_LEFT), $repaired->database_name);
+        $this->assertSame($expectedSchema, $repaired->database_name);
         $this->assertTrue($this->storage()->exists((string) $repaired->database_name, (string) $repaired->database_path));
     }
 
