@@ -113,6 +113,13 @@ class ModuleBoundariesTest extends TestCase
         // bukan langsung ke model, supaya aturan konsistensi modul/akuntansinya
         // tidak terlewati. Preseden arahnya sama dengan Sales/Purchase/Journal.
         'Setup → App\\Modules\\Settings\\Services\\CompanySettingService',
+        // Impor COA custom di wizard (Step Template COA) membaca berkas
+        // CSV/XLSX lewat infrastruktur pembaca spreadsheet & penebak kolom milik
+        // modul Imports, bukan menduplikasinya -- hasilnya tetap lewat
+        // `apply()` yang sudah ada, jadi tidak menulis model langsung.
+        'Setup → App\\Modules\\Imports\\Services\\SpreadsheetReaderFactory',
+        'Setup → App\\Modules\\Imports\\Services\\ImportBatchService',
+        'Setup → App\\Modules\\Imports\\Services\\ImportTemplateService',
     ];
 
     /**

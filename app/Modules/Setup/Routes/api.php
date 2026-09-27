@@ -13,6 +13,10 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('setup')->group(fu
         ->middleware('permission:setup.view');
     Route::post('/coa-templates/apply', [CoaTemplateController::class, 'apply'])
         ->middleware('permission:setup.edit');
+    Route::post('/coa-templates/import', [CoaTemplateController::class, 'import'])
+        ->middleware('permission:setup.edit');
+    Route::get('/coa-templates/import-template', [CoaTemplateController::class, 'importTemplate'])
+        ->middleware('permission:setup.view');
     Route::patch('/current-step', [SetupWizardController::class, 'updateCurrentStep'])
         ->middleware('permission:setup.edit');
     Route::post('/validate-step', [SetupWizardController::class, 'validateStep'])
