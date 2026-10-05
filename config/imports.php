@@ -56,6 +56,7 @@ return [
         'unit_cost' => ['harga beli satuan', 'harga pokok'],
         'tax_code' => ['kode pajak', 'pajak'],
         'notes' => ['catatan', 'keterangan tambahan'],
+        'mapping_key' => ['kode mapping', 'kunci mapping', 'key'],
     ],
 
     /*
@@ -165,6 +166,20 @@ return [
             'fields' => ['code', 'name', 'type', 'parent_code', 'cash_bank'],
             'headers' => ['Code', 'Name', 'Type', 'Parent Code', 'Cash/Bank'],
             'sample' => ['1101', 'Kas Kecil', 'asset', '1100', 'yes'],
+        ],
+        // Dipakai AccountMappingStorageService::importFromFile() -- templatnya
+        // sendiri DINAMIS (satu baris per mapping key terdaftar, lihat
+        // importTemplate()), bukan lewat ImportTemplateService statis seperti
+        // profil lain. Entri ini murni untuk guessColumnMap(): 'account_code'
+        // boleh kosong per baris (berarti "biarkan, jangan disentuh"), jadi
+        // yang WAJIB ADA hanya kolomnya, bukan isinya per baris -- validasi
+        // isi per baris dilakukan di importFromFile(), bukan di sini.
+        'account_mapping' => [
+            'label' => 'Pemetaan Akun',
+            'required_fields' => ['mapping_key', 'account_code'],
+            'fields' => ['mapping_key', 'account_code'],
+            'headers' => ['Mapping Key', 'Account Code'],
+            'sample' => ['sales.accounts_receivable', '1120'],
         ],
     ],
 ];

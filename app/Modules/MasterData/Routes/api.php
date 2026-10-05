@@ -93,5 +93,7 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('master-data')->gr
 
     // Account Mappings
     Route::get('/account-mappings', [AccountMappingController::class, 'index'])->middleware('permission:settings.company.view');
+    Route::post('/account-mappings/import', [AccountMappingController::class, 'import'])->middleware('permission:settings.company.edit');
+    Route::get('/account-mappings/import-template', [AccountMappingController::class, 'importTemplate'])->middleware('permission:settings.company.view');
     Route::patch('/account-mappings/{mappingKey}', [AccountMappingController::class, 'update'])->middleware('permission:settings.company.edit');
 });
