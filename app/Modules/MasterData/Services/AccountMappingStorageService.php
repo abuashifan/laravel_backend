@@ -2,14 +2,21 @@
 
 namespace App\Modules\MasterData\Services;
 
+use App\Modules\Imports\Services\ImportBatchService;
+use App\Modules\Imports\Services\SpreadsheetReaderFactory;
 use App\Modules\MasterData\Models\AccountMapping;
 use App\Modules\MasterData\Models\ChartOfAccount;
 use App\Shared\AccountMapping\AccountMappingService;
 use App\Shared\Exceptions\ApiException;
+use Illuminate\Http\UploadedFile;
 
 class AccountMappingStorageService
 {
-    public function __construct(private readonly AccountMappingService $definitionService) {}
+    public function __construct(
+        private readonly AccountMappingService $definitionService,
+        private readonly SpreadsheetReaderFactory $readerFactory,
+        private readonly ImportBatchService $importBatches,
+    ) {}
 
     public function syncDefaultMappingsFromConfig(): void
     {
@@ -162,5 +169,149 @@ class AccountMappingStorageService
             ->all();
 
         return array_values(array_diff($requiredKeys, $existing));
+    }
+
+    /**
+     * Baca berkas CSV/XLSX (Mapping Key + Account Code) dan terapkan tiap
+     * baris lewat `updateMapping()` yang sudah ada -- tidak ada jalur
+     * penyimpanan baru, cuma cara lebih cepat memakai `updateMapping()`
+     * berkali-kali daripada klik satu-satu di layar.
+     *
+     * Baris dengan Account Code kosong SENGAJA dibiarkan (mapping yang sudah
+     * ada untuk key itu tidak disentuh) -- bukan diartikan "kosongkan". Impor
+     * parsial (cuma mengisi beberapa key) tidak boleh diam-diam menghapus
+     * mapping lain yang sudah benar.
+     *
+     * @return array{results: list<array{row:int, mapping_key:string, status:string, account_code:?string, message:?string}>, applied_count:int, skipped_count:int, error_count:int}
+     */
+    public function importFromFile(UploadedFile $file): array
+    {
+        $extension = strtolower($file->getClientOriginalExtension() ?: $file->extension());
+        $reader = $this->readerFactory->make($extension);
+        $path = $file->getRealPath();
+
+        if ($path === false) {
+            throw ApiException::make('ACCOUNT_MAPPING_IMPORT_FILE_INVALID', 'Berkas tidak bisa dibaca.', 422, [
+                'file' => ['Berkas tidak bisa dibaca.'],
+            ]);
+        }
+
+        $headers = $reader->headers($path);
+        $guess = $this->importBatches->guessColumnMap('account_mapping', $headers);
+
+        if ($guess['unmapped_required'] !== []) {
+            throw ApiException::make(
+                'ACCOUNT_MAPPING_IMPORT_HEADERS_NOT_RECOGNIZED',
+                'Kolom wajib tidak ditemukan di berkas: '.implode(', ', $guess['unmapped_required']).
+                '. Pastikan berkas punya kolom Mapping Key dan Account Code -- unduh templatnya lewat tombol Unduh Templat.',
+                422,
+            );
+        }
+
+        $columnMap = $guess['map'];
+        $results = [];
+        $appliedCount = 0;
+        $skippedCount = 0;
+        $errorCount = 0;
+
+        foreach ($reader->rows($path) as $rowNumber => $raw) {
+            $mappingKey = trim((string) ($raw[$columnMap['mapping_key'] ?? ''] ?? ''));
+            $accountCode = trim((string) ($raw[$columnMap['account_code'] ?? ''] ?? ''));
+
+            if ($mappingKey === '') {
+                $results[] = ['row' => $rowNumber, 'mapping_key' => '', 'status' => 'error', 'account_code' => null, 'message' => 'Mapping Key wajib diisi.'];
+                $errorCount++;
+
+                continue;
+            }
+
+            if (! $this->definitionService->exists($mappingKey)) {
+                $results[] = ['row' => $rowNumber, 'mapping_key' => $mappingKey, 'status' => 'error', 'account_code' => null, 'message' => "Mapping key \"{$mappingKey}\" tidak dikenal."];
+                $errorCount++;
+
+                continue;
+            }
+
+            if ($accountCode === '') {
+                $results[] = ['row' => $rowNumber, 'mapping_key' => $mappingKey, 'status' => 'skipped', 'account_code' => null, 'message' => null];
+                $skippedCount++;
+
+                continue;
+            }
+
+            $account = ChartOfAccount::query()->where('account_code', $accountCode)->first();
+
+            if (! $account) {
+                $results[] = ['row' => $rowNumber, 'mapping_key' => $mappingKey, 'status' => 'error', 'account_code' => $accountCode, 'message' => "Kode akun \"{$accountCode}\" tidak ditemukan."];
+                $errorCount++;
+
+                continue;
+            }
+
+            try {
+                $this->updateMapping($mappingKey, $account->id);
+                $results[] = ['row' => $rowNumber, 'mapping_key' => $mappingKey, 'status' => 'applied', 'account_code' => $accountCode, 'message' => null];
+                $appliedCount++;
+            } catch (ApiException $exception) {
+                $results[] = ['row' => $rowNumber, 'mapping_key' => $mappingKey, 'status' => 'error', 'account_code' => $accountCode, 'message' => $exception->getMessage()];
+                $errorCount++;
+            }
+        }
+
+        return [
+            'results' => $results,
+            'applied_count' => $appliedCount,
+            'skipped_count' => $skippedCount,
+            'error_count' => $errorCount,
+        ];
+    }
+
+    /**
+     * Templat unduhan: satu baris per mapping key TERDAFTAR SAAT INI (bukan
+     * contoh statis) -- user cukup isi/ubah kolom Account Code, bukan
+     * menghafal kunci yang valid. Kolom Account Code diisi awal dengan
+     * mapping yang sudah ada, supaya mengunggah ulang file ini apa adanya
+     * tanpa diubah bersifat no-op (sejalan dengan "kosong = jangan disentuh"
+     * di `importFromFile()`).
+     *
+     * @return array{filename:string, headers:list<string>, fields:list<string>, rows:list<list<string>>, reference:list<array{field:?string, title:string, headers:list<string>, rows:list<list<string>>}>}
+     */
+    public function importTemplate(): array
+    {
+        $this->syncDefaultMappingsFromConfig();
+
+        $currentByKey = AccountMapping::query()->with('account')->get()->keyBy('mapping_key');
+
+        $rows = [];
+        foreach ($this->definitionService->allRequirements() as $req) {
+            $current = $currentByKey->get($req->key);
+            $rows[] = [
+                $req->key,
+                $req->label,
+                $req->module,
+                $req->required ? 'Wajib' : 'Opsional',
+                implode(', ', $req->accountTypes),
+                $current?->account?->account_code ?? '',
+            ];
+        }
+
+        return [
+            'filename' => 'template-account-mapping',
+            'headers' => ['Mapping Key', 'Label', 'Modul', 'Wajib', 'Tipe Akun Diizinkan', 'Account Code'],
+            'fields' => ['mapping_key', 'label', 'module', 'required', 'account_types', 'account_code'],
+            'rows' => $rows,
+            'reference' => [[
+                'field' => 'account_code',
+                'title' => 'Chart of Account (akun anak/leaf saja)',
+                'headers' => ['Kode', 'Nama'],
+                'rows' => ChartOfAccount::query()
+                    ->where('is_active', true)
+                    ->whereDoesntHave('children')
+                    ->orderBy('account_code')
+                    ->get(['account_code', 'account_name'])
+                    ->map(fn (ChartOfAccount $account): array => [(string) $account->account_code, (string) $account->account_name])
+                    ->all(),
+            ]],
+        ];
     }
 }

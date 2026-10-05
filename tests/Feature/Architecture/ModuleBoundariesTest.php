@@ -120,6 +120,10 @@ class ModuleBoundariesTest extends TestCase
         'Setup → App\\Modules\\Imports\\Services\\SpreadsheetReaderFactory',
         'Setup → App\\Modules\\Imports\\Services\\ImportBatchService',
         'Setup → App\\Modules\\Imports\\Services\\ImportTemplateService',
+        // Impor Account Mapping (Pengaturan & wizard Step 3) membaca berkas
+        // lewat infrastruktur yang sama, preseden identik dengan Setup di atas.
+        'MasterData → App\\Modules\\Imports\\Services\\SpreadsheetReaderFactory',
+        'MasterData → App\\Modules\\Imports\\Services\\ImportBatchService',
     ];
 
     /**
