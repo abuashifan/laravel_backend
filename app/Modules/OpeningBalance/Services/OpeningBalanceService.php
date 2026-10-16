@@ -3,6 +3,7 @@
 namespace App\Modules\OpeningBalance\Services;
 
 use App\Modules\FixedAssets\Services\FixedAssetService;
+use App\Modules\Imports\Models\ImportBatch;
 use App\Modules\Journal\Models\JournalEntry;
 use App\Modules\MasterData\Models\AccountMapping;
 use App\Modules\MasterData\Models\ChartOfAccount;
@@ -376,12 +377,58 @@ class OpeningBalanceService
             return;
         }
 
-        $this->voidEffectService->voidJournalById((int) $journal->id, $reason);
+        DB::connection('tenant')->transaction(function () use ($journal, $reason): void {
+            $this->voidEffectService->voidJournalById((int) $journal->id, $reason);
+            $this->markSourceImportReverted($journal, $reason);
+        });
 
         $this->audit('opening_balance.journal_voided', 'Opening balance journal voided.', [
             'journal_entry_id' => $journal->id,
             'journal_number' => $journal->journal_number,
             'reason' => $reason,
+        ]);
+    }
+
+    /**
+     * Jurnal saldo awal hasil impor punya catatan batch impor sendiri. Kalau
+     * jurnalnya di-void dari halaman Saldo Awal, batch itu ikut ditandai
+     * dibatalkan -- tanpa ini riwayat Impor Data tetap menampilkan "selesai"
+     * untuk jurnal yang sudah void, dan user membatalkan dua kali.
+     *
+     * Dipanggil juga lewat jalur sebaliknya (revert dari halaman Impor Data);
+     * di sana `ImportBatchService::revert()` menulis ulang status yang sama,
+     * jadi idempoten.
+     */
+    private function markSourceImportReverted(JournalEntry $journal, string $reason): void
+    {
+        $batchUuid = $journal->metadata['import_batch_uuid'] ?? null;
+        if (! is_string($batchUuid) || $batchUuid === '' || ! Schema::connection('tenant')->hasTable('import_batches')) {
+            return;
+        }
+
+        $batch = ImportBatch::query()
+            ->where('uuid', $batchUuid)
+            ->whereIn('status', ['completed', 'failed'])
+            ->first();
+
+        if (! $batch instanceof ImportBatch) {
+            return;
+        }
+
+        $batch->rows()
+            ->where('status', 'committed')
+            ->where('document_type', JournalEntry::class)
+            ->where('document_id', $journal->id)
+            ->update(['status' => 'reverted', 'document_id' => null, 'document_type' => null]);
+
+        if ($batch->rows()->where('status', 'committed')->exists()) {
+            return;
+        }
+
+        $batch->update([
+            'status' => 'reverted',
+            'committed_rows' => 0,
+            'error_message' => 'Dibatalkan: '.$reason,
         ]);
     }
 
