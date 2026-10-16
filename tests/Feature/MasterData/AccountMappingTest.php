@@ -89,4 +89,51 @@ class AccountMappingTest extends MasterDataTestCase
             (int) AccountMapping::query()->where('mapping_key', 'sales.customer_deposit')->value('account_id')
         );
     }
+
+    public function test_reset_defaults_overwrites_filled_mappings_with_rescanned_coa_defaults(): void
+    {
+        $ctx = $this->setUpTenant();
+
+        $make = fn (string $code, string $name, string $type) => ChartOfAccount::query()->create([
+            'account_code' => $code,
+            'account_name' => $name,
+            'account_type' => $type,
+            'normal_balance' => in_array($type, ['asset', 'expense'], true) ? 'debit' : 'credit',
+            'is_active' => true,
+        ]);
+
+        $defaultAr = $make('1120', 'Piutang Usaha', 'asset');
+        $otherAr = $make('11211', 'Piutang Lama', 'asset');
+        $make('4100', 'Penjualan', 'revenue');
+
+        $this->getJson('/api/master-data/account-mappings', $ctx['headers'])->assertStatus(200);
+
+        // Pemetaan diarahkan manual ke akun non-default -- sync biasa tidak menyentuhnya.
+        $this->patchJson('/api/master-data/account-mappings/sales.accounts_receivable', [
+            'account_id' => $otherAr->id,
+        ], $ctx['headers'])->assertStatus(200);
+        $this->getJson('/api/master-data/account-mappings', $ctx['headers'])->assertStatus(200);
+        $this->assertSame((int) $otherAr->id, (int) AccountMapping::query()->where('mapping_key', 'sales.accounts_receivable')->value('account_id'));
+
+        $response = $this->postJson('/api/master-data/account-mappings/reset-defaults', [], $ctx['headers'])
+            ->assertStatus(200);
+
+        $this->assertSame((int) $defaultAr->id, (int) AccountMapping::query()->where('mapping_key', 'sales.accounts_receivable')->value('account_id'));
+        $this->assertSame(
+            (int) $defaultAr->id,
+            (int) collect($response->json('data.mappings'))->firstWhere('mapping_key', 'sales.accounts_receivable')['account_id']
+        );
+        $this->assertGreaterThanOrEqual(2, $response->json('data.summary.filled'));
+        // Key wajib tanpa akun default di COA dikosongkan dan dilaporkan.
+        $this->assertContains('purchase.accounts_payable', $response->json('data.summary.missing_required'));
+        $this->assertNull(AccountMapping::query()->where('mapping_key', 'purchase.accounts_payable')->value('account_id'));
+    }
+
+    public function test_reset_defaults_requires_settings_edit_permission(): void
+    {
+        $ctx = $this->setUpTenant('viewer');
+
+        $this->postJson('/api/master-data/account-mappings/reset-defaults', [], $ctx['headers'])
+            ->assertStatus(403);
+    }
 }

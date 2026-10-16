@@ -9,6 +9,7 @@ use App\Modules\MasterData\Models\ChartOfAccount;
 use App\Shared\AccountMapping\AccountMappingService;
 use App\Shared\Exceptions\ApiException;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 
 class AccountMappingStorageService
 {
@@ -42,6 +43,49 @@ class AccountMappingStorageService
         AccountMapping::query()
             ->whereNotIn('mapping_key', $validKeys)
             ->delete();
+    }
+
+    /**
+     * Reset SELURUH pemetaan ke akun default hasil scan ulang COA saat ini.
+     *
+     * Beda dengan `syncDefaultMappingsFromConfig()` yang hanya mengisi mapping
+     * kosong: di sini mapping yang sudah terisi ikut ditimpa. Dipakai tombol
+     * "Reset & Scan Ulang COA" -- mis. setelah COA diimpor ulang, mapping lama
+     * bisa masih menunjuk akun yang salah/tidak lagi ada sehingga sync biasa
+     * tidak menyentuhnya. Key yang tidak punya akun default di COA menjadi
+     * kosong (bukan dibiarkan menunjuk akun lama).
+     *
+     * @return array{filled:int, empty:int, missing_required:list<string>}
+     */
+    public function resetMappingsToDefaults(): array
+    {
+        return DB::connection('tenant')->transaction(function (): array {
+            $filled = 0;
+            $empty = 0;
+            $missingRequired = [];
+
+            foreach ($this->definitionService->allRequirements() as $req) {
+                $mapping = AccountMapping::query()->firstOrNew(['mapping_key' => $req->key]);
+                $mapping->module = $req->module;
+                $mapping->is_required = $req->required;
+                if (! $mapping->exists) {
+                    $mapping->is_active = true;
+                }
+                $mapping->account_id = $this->defaultAccountIdForRequirement($req);
+                $mapping->save();
+
+                if ($mapping->account_id !== null) {
+                    $filled++;
+                } else {
+                    $empty++;
+                    if ($req->required) {
+                        $missingRequired[] = $req->key;
+                    }
+                }
+            }
+
+            return ['filled' => $filled, 'empty' => $empty, 'missing_required' => $missingRequired];
+        });
     }
 
     public function list()

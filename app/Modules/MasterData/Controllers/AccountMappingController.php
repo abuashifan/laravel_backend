@@ -33,6 +33,21 @@ class AccountMappingController extends Controller
     }
 
     /**
+     * Tombol "Reset & Scan Ulang COA": timpa seluruh pemetaan dengan akun
+     * default yang ditemukan di COA saat ini -- lihat
+     * `AccountMappingStorageService::resetMappingsToDefaults()`.
+     */
+    public function resetDefaults(): JsonResponse
+    {
+        $summary = $this->service->resetMappingsToDefaults();
+
+        return $this->successResponse([
+            'summary' => $summary,
+            'mappings' => $this->service->list(),
+        ], 'Account mappings reset to defaults');
+    }
+
+    /**
      * Terapkan berkas Mapping Key + Account Code lewat `updateMapping()` yang
      * sudah ada -- dipakai ulang di halaman Pengaturan maupun Step 3 wizard
      * setup (keduanya sudah memakai endpoint/komponen yang sama).
