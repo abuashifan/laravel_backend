@@ -204,6 +204,37 @@ class OpeningBalanceImportTest extends TestCase
     }
 
     /**
+     * Void dari halaman Saldo Awal ikut menandai batch impor asalnya dibatalkan,
+     * jadi user tidak perlu membatalkan lagi di halaman Impor Data.
+     */
+    public function test_voiding_journal_from_opening_balance_page_marks_the_import_batch_reverted(): void
+    {
+        Storage::fake('local');
+        $ctx = $this->setUpTenant();
+        $this->seedAccounts();
+
+        $uuid = $this->uploadAndMap($ctx, [
+            ['Account Code', 'Description', 'Debit', 'Credit'],
+            ['1101', 'Saldo awal kas', '10000000', '0'],
+        ]);
+        $this->postJson('/api/imports/'.$uuid.'/commit', [], $ctx['headers'])->assertOk();
+        $journalId = (int) JournalEntry::query()->where('source_module', 'opening_balance')->value('id');
+
+        $this->deleteJson('/api/opening-balance/journals/'.$journalId, ['reason' => 'Angka kasnya salah'], $ctx['headers'])
+            ->assertOk();
+
+        $this->assertSame('void', JournalEntry::query()->findOrFail($journalId)->status);
+        $this->getJson('/api/imports/'.$uuid, $ctx['headers'])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'reverted')
+            ->assertJsonPath('data.committed_rows', 0);
+
+        // Batal lagi dari halaman Impor Data sudah tidak bisa -- batch sudah dibatalkan.
+        $this->postJson('/api/imports/'.$uuid.'/revert', ['reason' => 'lagi'], $ctx['headers'])
+            ->assertStatus(422);
+    }
+
+    /**
      * Berkas yang sama boleh diunggah ulang setelah dibatalkan tanpa dihadang
      * peringatan duplikat — itulah jalur perbaikan yang normal.
      */
