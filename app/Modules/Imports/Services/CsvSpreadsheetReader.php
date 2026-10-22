@@ -7,7 +7,12 @@ use RuntimeException;
 
 class CsvSpreadsheetReader implements SpreadsheetReader
 {
-    public function headers(string $path): array
+    public function sheetNames(string $path): array
+    {
+        return [];
+    }
+
+    public function headers(string $path, ?string $sheet = null): array
     {
         $handle = $this->open($path);
         $headers = $this->normalizeRow(fgetcsv($handle) ?: []);
@@ -16,7 +21,7 @@ class CsvSpreadsheetReader implements SpreadsheetReader
         return $headers;
     }
 
-    public function rows(string $path): Generator
+    public function rows(string $path, ?string $sheet = null): Generator
     {
         $handle = $this->open($path);
         $headers = $this->normalizeRow(fgetcsv($handle) ?: []);

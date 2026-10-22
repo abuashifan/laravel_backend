@@ -28,7 +28,11 @@ class ImportBatchService
         private readonly ImportCommitterFactory $committers,
     ) {}
 
-    public function upload(string $profile, UploadedFile $file, bool $confirmDuplicateFile = false): array
+    /**
+     * `$sheet` = nama sheet yang diimpor dari berkas .xlsx; null = sheet
+     * pertama. Diabaikan untuk CSV.
+     */
+    public function upload(string $profile, UploadedFile $file, bool $confirmDuplicateFile = false, ?string $sheet = null): array
     {
         $this->ensureProfileExists($profile);
         $this->ensureNoActiveBatch();
@@ -49,8 +53,11 @@ class ImportBatchService
             throw new DuplicateImportFileException($duplicate);
         }
 
-        [$headers, $totalRows] = $this->inspect($reader, $path);
-        $this->assertHeadersAndRowCount($headers, $totalRows);
+        $sheets = $this->sheetNames($reader, $path);
+        $sheetName = $this->resolveSheet($sheets, $sheet);
+
+        [$headers, $totalRows] = $this->inspect($reader, $path, $sheetName);
+        $this->assertHeadersAndRowCount($headers, $totalRows, $sheetName);
 
         $uuid = (string) Str::uuid();
         $storedPath = 'imports/'.$this->companyId().'/'.$uuid.'.'.$extension;
@@ -65,6 +72,7 @@ class ImportBatchService
             'original_filename' => $file->getClientOriginalName(),
             'stored_path' => $storedPath,
             'file_hash' => $fileHash,
+            'sheet_name' => $sheetName,
             'status' => 'draft',
             'total_rows' => $totalRows,
             'valid_rows' => 0,
@@ -77,6 +85,7 @@ class ImportBatchService
 
         return [
             'batch' => $this->batchPayload($batch),
+            'sheets' => $sheets,
             'headers' => $headers,
             'duplicate_file' => $duplicate,
             'suggested_column_map' => $guess['map'],
@@ -170,6 +179,68 @@ class ImportBatchService
         return (string) preg_replace('/[^a-z0-9]/', '', mb_strtolower(trim($value)));
     }
 
+    /**
+     * Ganti sheet yang diimpor dari batch yang belum di-commit.
+     *
+     * Pemetaan kolom dan hasil validasi lama dibuang: keduanya milik header
+     * sheet sebelumnya, dan membiarkannya akan memvalidasi sheet baru dengan
+     * peta kolom yang menunjuk header yang mungkin tidak ada.
+     */
+    public function selectSheet(string $uuid, string $sheet): array
+    {
+        $batch = $this->find($uuid);
+
+        if (in_array((string) $batch->status, ['committing', 'completed', 'reverted'], true)) {
+            throw ApiException::make(
+                ApiErrorCode::VALIDATION_ERROR,
+                "Batch impor sudah berstatus '{$batch->status}' dan sheet-nya tidak bisa diganti.",
+                422
+            );
+        }
+
+        $path = Storage::disk('local')->path($batch->stored_path);
+        $extension = strtolower(pathinfo($batch->stored_path, PATHINFO_EXTENSION));
+        $reader = $this->readerFactory->make($extension);
+        $sheets = $this->sheetNames($reader, $path);
+
+        if ($sheets === []) {
+            throw ApiException::make(
+                ApiErrorCode::VALIDATION_ERROR,
+                'Berkas ini tidak punya sheet untuk dipilih (hanya berkas .xlsx yang punya sheet).',
+                422,
+                ['sheet' => ['Berkas ini tidak punya sheet untuk dipilih.']]
+            );
+        }
+
+        $sheetName = $this->resolveSheet($sheets, $sheet);
+        [$headers, $totalRows] = $this->inspect($reader, $path, $sheetName);
+        $this->assertHeadersAndRowCount($headers, $totalRows, $sheetName);
+
+        DB::connection('tenant')->transaction(function () use ($batch, $sheetName, $totalRows): void {
+            $batch->rows()->delete();
+            $batch->update([
+                'sheet_name' => $sheetName,
+                'status' => 'draft',
+                'column_map' => null,
+                'total_rows' => $totalRows,
+                'valid_rows' => 0,
+                'failed_rows' => 0,
+                'warning_rows' => 0,
+                'error_message' => null,
+            ]);
+        });
+
+        $guess = $this->guessColumnMap($batch->profile, $headers);
+
+        return $this->batchPayload($batch->refresh()) + [
+            'sheets' => $sheets,
+            'headers' => $headers,
+            'suggested_column_map' => $guess['map'],
+            'unmapped_required_fields' => $guess['unmapped_required'],
+            'auto_mapped' => $guess['unmapped_required'] === [],
+        ];
+    }
+
     public function applyMapping(string $uuid, array $columnMap): array
     {
         $batch = $this->find($uuid);
@@ -187,9 +258,10 @@ class ImportBatchService
         $reader = $this->readerFactory->make($extension);
         $normalizedMap = $this->normalizeColumnMap($columnMap);
         $requiredFields = $this->requiredFields($batch->profile);
+        $sheetName = $batch->sheet_name;
 
         try {
-            $headers = $reader->headers($path);
+            $headers = $reader->headers($path, $sheetName);
             $missingHeaders = array_values(array_diff(array_values($normalizedMap), $headers));
 
             if ($missingHeaders !== []) {
@@ -201,7 +273,7 @@ class ImportBatchService
                 );
             }
 
-            DB::connection('tenant')->transaction(function () use ($batch, $reader, $path, $normalizedMap, $requiredFields): void {
+            DB::connection('tenant')->transaction(function () use ($batch, $reader, $path, $sheetName, $normalizedMap, $requiredFields): void {
                 $batch->update([
                     'status' => 'validating',
                     'column_map' => $normalizedMap,
@@ -216,7 +288,7 @@ class ImportBatchService
                 $failedRows = 0;
                 $warningRows = 0;
 
-                foreach ($reader->rows($path) as $rowNumber => $raw) {
+                foreach ($reader->rows($path, $sheetName) as $rowNumber => $raw) {
                     $normalized = $this->normalizeRow($raw, $normalizedMap);
                     $externalRef = $this->externalRef($normalized);
                     $errors = $this->validateRow($batch, $normalized, $externalRef, $requiredFields);
@@ -282,6 +354,7 @@ class ImportBatchService
         $guess = $this->guessColumnMap($batch->profile, $headers);
 
         return $this->batchPayload($batch) + [
+            'sheets' => $this->storedSheetNames($batch),
             'headers' => $headers,
             'suggested_column_map' => $guess['map'],
         ];
@@ -304,10 +377,74 @@ class ImportBatchService
             $extension = strtolower(pathinfo($batch->stored_path, PATHINFO_EXTENSION));
 
             return $this->readerFactory->make($extension)
-                ->headers(Storage::disk('local')->path($batch->stored_path));
+                ->headers(Storage::disk('local')->path($batch->stored_path), $batch->sheet_name);
         } catch (Throwable) {
             return [];
         }
+    }
+
+    /**
+     * Daftar sheet berkas tersimpan, untuk dropdown pilihan sheet. Kosong
+     * kalau berkasnya CSV, hilang, atau rusak -- sama alasannya dengan
+     * `storedHeaders()`.
+     *
+     * @return list<string>
+     */
+    private function storedSheetNames(ImportBatch $batch): array
+    {
+        if (! Storage::disk('local')->exists($batch->stored_path)) {
+            return [];
+        }
+
+        try {
+            $extension = strtolower(pathinfo($batch->stored_path, PATHINFO_EXTENSION));
+
+            return $this->readerFactory->make($extension)
+                ->sheetNames(Storage::disk('local')->path($batch->stored_path));
+        } catch (Throwable) {
+            return [];
+        }
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function sheetNames(SpreadsheetReader $reader, string $path): array
+    {
+        try {
+            return $reader->sheetNames($path);
+        } catch (Throwable) {
+            throw $this->fileError('Berkas impor kosong, rusak, atau tidak bisa dibaca.');
+        }
+    }
+
+    /**
+     * Sheet yang dipakai: yang diminta, atau null (= sheet pertama) kalau tidak
+     * ada yang diminta. Berkas tanpa sheet (CSV) selalu null.
+     *
+     * @param  list<string>  $sheets
+     */
+    private function resolveSheet(array $sheets, ?string $requested): ?string
+    {
+        $requested = trim((string) $requested);
+
+        if ($sheets === [] || $requested === '') {
+            return null;
+        }
+
+        if (! in_array($requested, $sheets, true)) {
+            $message = sprintf(
+                "Sheet '%s' tidak ada di berkas. Sheet yang tersedia: %s.",
+                $requested,
+                implode(', ', $sheets),
+            );
+
+            throw ApiException::make(ApiErrorCode::IMPORT_FILE_INVALID, $message, 422, ['sheet' => [$message]]);
+        }
+
+        // Sheet pertama disimpan sebagai null: sama artinya, dan batch lama
+        // (sebelum kolom ini ada) memang null.
+        return $requested === $sheets[0] ? null : $requested;
     }
 
     public function rows(string $uuid, array $filters = []): LengthAwarePaginator
@@ -544,13 +681,13 @@ class ImportBatchService
         return (bool) config("imports.profiles.{$profile}.async", false);
     }
 
-    private function inspect(SpreadsheetReader $reader, string $path): array
+    private function inspect(SpreadsheetReader $reader, string $path, ?string $sheet = null): array
     {
         try {
-            $headers = $reader->headers($path);
+            $headers = $reader->headers($path, $sheet);
             $totalRows = 0;
 
-            foreach ($reader->rows($path) as $_) {
+            foreach ($reader->rows($path, $sheet) as $_) {
                 $totalRows++;
 
                 if ($totalRows > (int) config('imports.max_rows', 1000)) {
@@ -564,14 +701,16 @@ class ImportBatchService
         }
     }
 
-    private function assertHeadersAndRowCount(array $headers, int $totalRows): void
+    private function assertHeadersAndRowCount(array $headers, int $totalRows, ?string $sheet = null): void
     {
+        $where = $sheet !== null ? "Sheet '{$sheet}'" : 'Berkas impor';
+
         if ($headers === [] || collect($headers)->every(fn (string $header): bool => $header === '')) {
-            throw $this->fileError('Berkas impor tidak memiliki header.');
+            throw $this->fileError("{$where} tidak memiliki header.");
         }
 
         if ($totalRows === 0) {
-            throw $this->fileError('Berkas impor harus memiliki minimal satu baris data.');
+            throw $this->fileError("{$where} harus memiliki minimal satu baris data.");
         }
 
         $maxRows = (int) config('imports.max_rows', 1000);
@@ -812,6 +951,7 @@ class ImportBatchService
             'original_filename' => $batch->original_filename,
             'stored_path' => $batch->stored_path,
             'file_hash' => $batch->file_hash,
+            'sheet_name' => $batch->sheet_name,
             'column_map' => $batch->column_map,
             'status' => $batch->status,
             'total_rows' => $batch->total_rows,

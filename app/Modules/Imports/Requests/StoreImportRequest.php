@@ -31,6 +31,8 @@ class StoreImportRequest extends FormRequest
                 'mimetypes:text/csv,text/plain,application/csv,text/x-csv,application/x-csv,text/comma-separated-values,application/vnd.ms-excel,application/octet-stream,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             ],
             'confirm_duplicate_file' => ['sometimes', 'boolean'],
+            // Nama sheet .xlsx yang diimpor; kosong = sheet pertama.
+            'sheet' => ['sometimes', 'nullable', 'string', 'max:255'],
         ];
     }
 
