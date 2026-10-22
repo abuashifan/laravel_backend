@@ -426,25 +426,7 @@ class ImportBatchService
      */
     private function resolveSheet(array $sheets, ?string $requested): ?string
     {
-        $requested = trim((string) $requested);
-
-        if ($sheets === [] || $requested === '') {
-            return null;
-        }
-
-        if (! in_array($requested, $sheets, true)) {
-            $message = sprintf(
-                "Sheet '%s' tidak ada di berkas. Sheet yang tersedia: %s.",
-                $requested,
-                implode(', ', $sheets),
-            );
-
-            throw ApiException::make(ApiErrorCode::IMPORT_FILE_INVALID, $message, 422, ['sheet' => [$message]]);
-        }
-
-        // Sheet pertama disimpan sebagai null: sama artinya, dan batch lama
-        // (sebelum kolom ini ada) memang null.
-        return $requested === $sheets[0] ? null : $requested;
+        return ImportSheetResolver::resolve($sheets, $requested);
     }
 
     public function rows(string $uuid, array $filters = []): LengthAwarePaginator

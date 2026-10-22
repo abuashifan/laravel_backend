@@ -4,6 +4,7 @@ namespace App\Modules\Setup\Services;
 
 use App\Modules\FixedAssets\Services\FixedAssetCategoryAccountLinker;
 use App\Modules\Imports\Services\ImportBatchService;
+use App\Modules\Imports\Services\ImportSheetResolver;
 use App\Modules\Imports\Services\SpreadsheetReaderFactory;
 use App\Modules\Journal\Models\JournalEntryLine;
 use App\Modules\MasterData\Models\ChartOfAccount;
@@ -217,7 +218,7 @@ class CoaTemplateService
      *
      * @return array{accounts: array<int, array{code:string, name:string, type:string, parent_code:?string, is_cash_bank:bool}>, skipped: list<array{row:?int, code:?string, errors:list<string>}>}
      */
-    public function importFromFile(UploadedFile $file): array
+    public function importFromFile(UploadedFile $file, ?string $sheet = null): array
     {
         $extension = strtolower($file->getClientOriginalExtension() ?: $file->extension());
         $reader = $this->readerFactory->make($extension);
@@ -229,7 +230,8 @@ class CoaTemplateService
             ]);
         }
 
-        $headers = $reader->headers($path);
+        $sheetName = ImportSheetResolver::resolve($reader->sheetNames($path), $sheet);
+        $headers = $reader->headers($path, $sheetName);
         $guess = $this->importBatches->guessColumnMap('chart_of_account', $headers);
 
         if ($guess['unmapped_required'] !== []) {
@@ -246,7 +248,7 @@ class CoaTemplateService
         $skipped = [];
         $seenCodes = [];
 
-        foreach ($reader->rows($path) as $rowNumber => $raw) {
+        foreach ($reader->rows($path, $sheetName) as $rowNumber => $raw) {
             $code = trim((string) ($raw[$columnMap['code'] ?? ''] ?? ''));
             $name = trim((string) ($raw[$columnMap['name'] ?? ''] ?? ''));
             $type = mb_strtolower(trim((string) ($raw[$columnMap['type'] ?? ''] ?? '')));

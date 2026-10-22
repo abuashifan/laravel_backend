@@ -3,6 +3,8 @@
 namespace App\Modules\MasterData\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Imports\Requests\ListImportSheetsRequest;
+use App\Modules\Imports\Services\ImportSheetLister;
 use App\Modules\MasterData\Requests\ImportAccountMappingFileRequest;
 use App\Modules\MasterData\Requests\UpdateAccountMappingRequest;
 use App\Modules\MasterData\Services\AccountMappingStorageService;
@@ -54,9 +56,18 @@ class AccountMappingController extends Controller
      */
     public function import(ImportAccountMappingFileRequest $request): JsonResponse
     {
-        $result = $this->service->importFromFile($request->file('file'));
+        $result = $this->service->importFromFile($request->file('file'), $request->validated('sheet'));
 
         return $this->successResponse($result, 'Account mapping file parsed successfully');
+    }
+
+    /**
+     * Daftar sheet berkas yang baru dipilih, supaya layar impor bisa menawarkan
+     * pilihan sheet sebelum berkasnya dibaca. Berkas CSV mengembalikan daftar kosong.
+     */
+    public function importSheets(ListImportSheetsRequest $request, ImportSheetLister $lister): JsonResponse
+    {
+        return $this->successResponse($lister->list($request->file('file')), 'Import sheets retrieved.');
     }
 
     /**
