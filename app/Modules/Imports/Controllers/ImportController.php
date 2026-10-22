@@ -5,6 +5,7 @@ namespace App\Modules\Imports\Controllers;
 use App\Http\Controllers\Controller;
 use App\Modules\Imports\Models\ImportBatch;
 use App\Modules\Imports\Requests\RevertImportRequest;
+use App\Modules\Imports\Requests\SelectImportSheetRequest;
 use App\Modules\Imports\Requests\StoreImportRequest;
 use App\Modules\Imports\Requests\UpdateImportMappingRequest;
 use App\Modules\Imports\Services\DuplicateImportFileException;
@@ -79,7 +80,8 @@ class ImportController extends Controller
             $result = $this->batches->upload(
                 (string) $request->validated('profile'),
                 $request->file('file'),
-                (bool) ($request->validated('confirm_duplicate_file') ?? false)
+                (bool) ($request->validated('confirm_duplicate_file') ?? false),
+                $request->validated('sheet')
             );
         } catch (DuplicateImportFileException $exception) {
             return $this->warningResponse(
@@ -91,6 +93,18 @@ class ImportController extends Controller
         }
 
         return $this->successResponse($result, 'Import batch created.', 201);
+    }
+
+    /**
+     * Pilih sheet lain dari berkas .xlsx yang sudah diunggah. Pemetaan kolom
+     * dan pratinjau sebelumnya direset.
+     */
+    public function sheet(SelectImportSheetRequest $request, string $uuid): JsonResponse
+    {
+        return $this->successResponse(
+            $this->batches->selectSheet($uuid, (string) $request->validated('sheet')),
+            'Import sheet selected.'
+        );
     }
 
     public function mapping(UpdateImportMappingRequest $request, string $uuid): JsonResponse

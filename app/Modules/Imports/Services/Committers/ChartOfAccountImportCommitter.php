@@ -97,7 +97,7 @@ class ChartOfAccountImportCommitter implements ImportProfileCommitter
         $reader = $this->readerFactory->make($extension);
 
         $codes = [];
-        foreach ($reader->rows($path) as $raw) {
+        foreach ($reader->rows($path, $batch->sheet_name) as $raw) {
             $value = mb_strtolower(trim((string) ($raw[$codeHeader] ?? '')));
             if ($value !== '') {
                 $codes[$value] = true;

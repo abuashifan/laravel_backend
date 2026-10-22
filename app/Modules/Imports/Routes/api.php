@@ -29,6 +29,7 @@ Route::middleware(['auth:sanctum', 'company.access', 'permission:masterdata.impo
         Route::get('/templates/{profile}', [ImportController::class, 'template']);
         Route::get('/batches', [ImportController::class, 'index']);
         Route::post('/', [ImportController::class, 'storeMaster']);
+        Route::patch('/{uuid}/sheet', [ImportController::class, 'sheet']);
         Route::patch('/{uuid}/mapping', [ImportController::class, 'mapping']);
         Route::get('/{uuid}', [ImportController::class, 'show']);
         Route::get('/{uuid}/rows', [ImportController::class, 'rows']);
@@ -46,6 +47,7 @@ Route::middleware(['auth:sanctum', 'company.access', 'permission:transactions.im
         Route::get('/templates/{profile}', [ImportController::class, 'template']);
         Route::get('/batches', [ImportController::class, 'index']);
         Route::post('/', [ImportController::class, 'storeTransaction']);
+        Route::patch('/{uuid}/sheet', [ImportController::class, 'sheet']);
         Route::patch('/{uuid}/mapping', [ImportController::class, 'mapping']);
         Route::get('/{uuid}', [ImportController::class, 'show']);
         Route::get('/{uuid}/rows', [ImportController::class, 'rows']);
@@ -67,6 +69,8 @@ Route::middleware(['auth:sanctum', 'company.access'])->group(function () {
         ->middleware('permission:imports.templates.view');
     Route::post('/imports', [ImportController::class, 'store'])
         ->middleware('permission:imports.upload');
+    Route::patch('/imports/{uuid}/sheet', [ImportController::class, 'sheet'])
+        ->middleware('permission:imports.map');
     Route::patch('/imports/{uuid}/mapping', [ImportController::class, 'mapping'])
         ->middleware('permission:imports.map');
     Route::get('/imports/{uuid}', [ImportController::class, 'show'])
