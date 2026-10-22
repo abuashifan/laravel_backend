@@ -11,6 +11,7 @@ use App\Modules\Inventory\Requests\VoidStockAdjustmentRequest;
 use App\Modules\Inventory\Services\StockAdjustmentService;
 use App\Shared\Api\ApiResponse;
 use App\Shared\Api\ResolvesAdjacentRecords;
+use App\Shared\TransactionLifecycle\DeleteTransactionRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -60,6 +61,13 @@ class StockAdjustmentController extends Controller
         $adj = StockAdjustment::query()->findOrFail($id);
 
         return $this->successResponse($this->service->post($adj), 'Stock adjustment posted successfully');
+    }
+
+    public function destroy(DeleteTransactionRequest $request, int $id): JsonResponse
+    {
+        $this->service->delete(StockAdjustment::query()->findOrFail($id), $request->validated('reason'));
+
+        return $this->successResponse(null, 'Stock adjustment deleted successfully');
     }
 
     public function void(VoidStockAdjustmentRequest $request, int $id): JsonResponse

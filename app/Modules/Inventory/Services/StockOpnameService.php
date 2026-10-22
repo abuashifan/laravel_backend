@@ -14,6 +14,9 @@ use App\Shared\DocumentNumbering\DocumentType;
 use App\Shared\Enums\SourceType;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
+use App\Shared\TransactionLifecycle\ChangesTransactionDocuments;
+use App\Shared\TransactionLifecycle\TransactionModule;
+use App\Shared\TransactionLifecycle\TransactionPolicyService;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -21,6 +24,7 @@ use Illuminate\Support\Facades\DB;
 class StockOpnameService
 {
     use AppliesListQuery;
+    use ChangesTransactionDocuments;
 
     /** Placeholder-nya cuma "Nomor opname...", jadi nomor saja. */
     protected array $listSearchable = ['opname_number'];
@@ -203,6 +207,98 @@ class StockOpnameService
         return $opname->refresh()->load('lines');
     }
 
+    /**
+     * Buka kembali stock opname yang sudah final (mode open) supaya hitungan
+     * fisiknya bisa diperbaiki: mutasi stok selisihnya di-void, status kembali
+     * ke "counted", lalu user menyimpan hitungan baru dan finalize ulang.
+     */
+    public function reopen(StockOpname $opname): StockOpname
+    {
+        $this->changePolicy()->assertDocumentChange(
+            TransactionPolicyService::CHANGE_EDIT,
+            TransactionModule::INVENTORY,
+            (string) $opname->status,
+            $this->dependents($opname),
+            $opname->opname_date?->toDateString(),
+            ['draft', 'counted'],
+        );
+
+        if ($opname->status !== 'finalized') {
+            return $opname->refresh()->load('lines');
+        }
+
+        return DB::connection('tenant')->transaction(function () use ($opname) {
+            $this->movementValidation->validatePeriodNotLocked((string) $opname->opname_date);
+            $this->reverseMovements($opname, 'Dibuka kembali untuk diedit');
+            $opname->stock_movement_id = null;
+            $opname->metadata = array_diff_key((array) ($opname->metadata ?? []), ['stock_movement_ids' => true]);
+            $opname->status = 'counted';
+            $opname->finalized_by = null;
+            $opname->finalized_at = null;
+            $opname->save();
+
+            $this->auditLogService->logSuccess([
+                'event' => 'inventory.stock_opname_reopened',
+                'module' => 'inventory',
+                'action' => 'stock_opname.reopen',
+                'message' => 'Stock opname reopened.',
+                'record_type' => 'stock_opname',
+                'record_id' => $opname->id,
+                'record_number' => $opname->opname_number,
+            ], tenant: true);
+
+            return $opname->refresh()->load('lines');
+        });
+    }
+
+    /**
+     * Hapus stock opname. Draft/counted belum memengaruhi stok, jadi dihapus
+     * permanen; yang sudah final di-void lalu ditandai terhapus.
+     */
+    public function delete(StockOpname $opname, ?string $reason = null): void
+    {
+        $this->changePolicy()->assertDocumentChange(
+            TransactionPolicyService::CHANGE_DELETE,
+            TransactionModule::INVENTORY,
+            (string) $opname->status,
+            $this->dependents($opname),
+            $opname->opname_date?->toDateString(),
+            ['draft', 'counted'],
+        );
+
+        $reason = trim((string) $reason);
+
+        DB::connection('tenant')->transaction(function () use ($opname, $reason): void {
+            if (in_array($opname->status, ['draft', 'counted'], true)) {
+                $opname->lines()->delete();
+                $opname->forceDelete();
+
+                return;
+            }
+
+            $voided = $this->void($opname, $this->deleteVoidReason($reason));
+            $this->markVoidedDocumentDeleted($voided, $reason);
+        });
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function dependents(StockOpname $opname): array
+    {
+        return [];
+    }
+
+    private function reverseMovements(StockOpname $opname, string $reason): void
+    {
+        foreach ($this->movementIdsForOpname($opname) as $mid) {
+            $m = StockMovement::query()->find($mid);
+            if ($m && $m->status !== 'void') {
+                $this->stockMovementService->void($m, $reason);
+            }
+        }
+    }
+
     public function finalize(StockOpname $opname): StockOpname
     {
         if ($opname->status !== 'counted') {
@@ -264,13 +360,7 @@ class StockOpnameService
 
         return DB::connection('tenant')->transaction(function () use ($opname, $reason) {
             if ($opname->status === 'finalized') {
-                $ids = $this->movementIdsForOpname($opname);
-                foreach ($ids as $mid) {
-                    $m = StockMovement::query()->find($mid);
-                    if ($m) {
-                        $this->stockMovementService->void($m, $reason);
-                    }
-                }
+                $this->reverseMovements($opname, $reason);
             }
 
             $opname->status = 'void';

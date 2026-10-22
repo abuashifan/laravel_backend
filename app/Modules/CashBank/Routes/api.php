@@ -59,6 +59,8 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('cash-bank')->grou
         ->middleware('permission:cash_bank.post');
     Route::patch('/bank-transfers/{id}/void', [BankTransferController::class, 'void'])
         ->middleware('permission:cash_bank.void');
+    Route::patch('/bank-transfers/{id}', [BankTransferController::class, 'update'])->middleware('permission:cash_bank.edit');
+    Route::delete('/bank-transfers/{id}', [BankTransferController::class, 'destroy'])->middleware('permission:cash_bank.edit|cash_bank.void');
 
     Route::get('/bank-reconciliations', [BankReconciliationController::class, 'index'])
         ->middleware('permission:cash_bank.view');

@@ -11,6 +11,7 @@ use App\Modules\Sales\Requests\UpdateDeliveryOrderRequest;
 use App\Modules\Sales\Services\DeliveryOrderService;
 use App\Shared\Api\ApiResponse;
 use App\Shared\Api\ResolvesAdjacentRecords;
+use App\Shared\TransactionLifecycle\DeleteTransactionRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -74,6 +75,13 @@ class DeliveryOrderController extends Controller
     public function cancel(SalesActionRequest $request, int $id): JsonResponse
     {
         return $this->successResponse($this->service->cancel(DeliveryOrder::query()->findOrFail($id), $request->validated('reason')), 'Delivery order cancelled successfully');
+    }
+
+    public function destroy(DeleteTransactionRequest $request, int $id): JsonResponse
+    {
+        $this->service->delete(DeliveryOrder::query()->findOrFail($id), $request->validated('reason'));
+
+        return $this->successResponse(null, 'Delivery order deleted successfully');
     }
 
     public function void(SalesActionRequest $request, int $id): JsonResponse

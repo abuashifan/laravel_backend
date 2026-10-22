@@ -14,6 +14,9 @@ use App\Shared\DocumentNumbering\DocumentType;
 use App\Shared\Enums\SourceType;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
+use App\Shared\TransactionLifecycle\ChangesTransactionDocuments;
+use App\Shared\TransactionLifecycle\TransactionModule;
+use App\Shared\TransactionLifecycle\TransactionPolicyService;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -21,6 +24,7 @@ use Illuminate\Support\Facades\DB;
 class StockAdjustmentService
 {
     use AppliesListQuery;
+    use ChangesTransactionDocuments;
 
     /** `reason` disertakan karena placeholder-nya "Nomor, alasan...". */
     protected array $listSearchable = ['adjustment_number', 'reason'];
@@ -115,11 +119,8 @@ class StockAdjustmentService
         });
     }
 
-    public function update(StockAdjustment $adjustment, array $data): StockAdjustment
+    private function updateDraft(StockAdjustment $adjustment, array $data): StockAdjustment
     {
-        if ($adjustment->status !== 'draft') {
-            throw ApiException::make('STOCK_ADJUSTMENT_NOT_EDITABLE', 'Stock adjustment is not editable.', 422);
-        }
 
         return DB::connection('tenant')->transaction(function () use ($adjustment, $data) {
             $adjustment->fill([
@@ -150,6 +151,110 @@ class StockAdjustmentService
 
             return $adjustment->refresh()->load('lines.product', 'lines.warehouse');
         });
+    }
+
+    /**
+     * Edit penyesuaian stok menurut mode lock/open. Draft diedit langsung;
+     * approved kembali ke draft; yang sudah posted (mode open) mutasi stoknya
+     * di-void lalu diposting ulang dengan nomor yang sama.
+     */
+    public function update(StockAdjustment $adjustment, array $data): StockAdjustment
+    {
+        $this->changePolicy()->assertDocumentChange(
+            TransactionPolicyService::CHANGE_EDIT,
+            TransactionModule::INVENTORY,
+            (string) $adjustment->status,
+            $this->dependents($adjustment),
+            $adjustment->adjustment_date?->toDateString(),
+        );
+
+        if ($adjustment->status === 'draft') {
+            return $this->updateDraft($adjustment, $data);
+        }
+
+        return DB::connection('tenant')->transaction(function () use ($adjustment, $data) {
+            $wasPosted = $adjustment->status === 'posted';
+            if ($wasPosted) {
+                $this->movementValidation->validatePeriodNotLocked((string) $adjustment->adjustment_date);
+                $this->reverseMovements($adjustment, 'Diedit setelah posting');
+                $adjustment->stock_movement_id = null;
+                $adjustment->metadata = array_diff_key((array) ($adjustment->metadata ?? []), ['stock_movement_ids' => true]);
+                $adjustment->posted_by = null;
+                $adjustment->posted_at = null;
+            }
+            $adjustment->status = 'draft';
+            $adjustment->save();
+            $this->auditLogService->logSuccess([
+                'event' => 'inventory.stock_adjustment_reopened',
+                'module' => 'inventory',
+                'action' => 'stock_adjustment.reopened',
+                'message' => 'Stock adjustment reopened.',
+                'record_type' => 'stock_adjustment',
+                'record_id' => $adjustment->id,
+                'record_number' => $adjustment->adjustment_number,
+                'metadata' => ['was_posted' => $wasPosted],
+            ], tenant: true);
+
+            $adjustment = $this->updateDraft($adjustment->refresh(), $data);
+            if (! $wasPosted) {
+                return $adjustment;
+            }
+
+            // Sudah pernah lolos approval; posting ulang tidak meminta approval lagi.
+            if ($this->approvalRequired()) {
+                $adjustment->status = 'approved';
+                $adjustment->save();
+            }
+
+            return $this->post($adjustment->refresh());
+        });
+    }
+
+    /**
+     * Hapus penyesuaian stok. Draft/approved dihapus permanen; yang sudah
+     * posted di-void lalu ditandai terhapus.
+     */
+    public function delete(StockAdjustment $adjustment, ?string $reason = null): void
+    {
+        $this->changePolicy()->assertDocumentChange(
+            TransactionPolicyService::CHANGE_DELETE,
+            TransactionModule::INVENTORY,
+            (string) $adjustment->status,
+            $this->dependents($adjustment),
+            $adjustment->adjustment_date?->toDateString(),
+        );
+
+        $reason = trim((string) $reason);
+
+        DB::connection('tenant')->transaction(function () use ($adjustment, $reason): void {
+            if (in_array($adjustment->status, ['draft', 'approved'], true)) {
+                $adjustment->lines()->delete();
+                $adjustment->forceDelete();
+
+                return;
+            }
+
+            $voided = $this->void($adjustment, $this->deleteVoidReason($reason));
+            $this->markVoidedDocumentDeleted($voided, $reason);
+        });
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function dependents(StockAdjustment $adjustment): array
+    {
+        return [];
+    }
+
+    private function reverseMovements(StockAdjustment $adjustment, string $reason): void
+    {
+        foreach ($this->movementIdsForAdjustment($adjustment) as $mid) {
+            $m = StockMovement::query()->find($mid);
+            if ($m && $m->status !== 'void') {
+                $this->stockMovementService->void($m, $reason);
+            }
+        }
     }
 
     public function approve(StockAdjustment $adjustment): StockAdjustment
@@ -273,13 +378,7 @@ class StockAdjustmentService
 
         return DB::connection('tenant')->transaction(function () use ($adjustment, $reason) {
             if ($adjustment->status === 'posted') {
-                $ids = $this->movementIdsForAdjustment($adjustment);
-                foreach ($ids as $mid) {
-                    $m = StockMovement::query()->find($mid);
-                    if ($m) {
-                        $this->stockMovementService->void($m, $reason);
-                    }
-                }
+                $this->reverseMovements($adjustment, $reason);
             }
 
             $adjustment->status = 'void';

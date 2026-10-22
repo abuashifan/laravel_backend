@@ -7,6 +7,8 @@ use App\Modules\MasterData\Models\AccountMapping;
 use App\Modules\Purchase\Models\GoodsReceipt;
 use App\Modules\Purchase\Models\PurchaseOrder;
 use App\Modules\Purchase\Models\PurchaseOrderLine;
+use App\Modules\Purchase\Models\PurchaseReturn;
+use App\Modules\Purchase\Models\VendorBill;
 use App\Modules\Purchase\Services\Concerns\HandlesPurchaseDocuments;
 use App\Shared\Api\AppliesListQuery;
 use App\Shared\Audit\AuditLogService;
@@ -14,7 +16,11 @@ use App\Shared\DocumentNumbering\DocumentNumberService;
 use App\Shared\DocumentNumbering\DocumentType;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
+use App\Shared\TransactionLifecycle\ChangesTransactionDocuments;
 use App\Shared\TransactionLifecycle\TransactionDateGuardService;
+use App\Shared\TransactionLifecycle\TransactionDependents;
+use App\Shared\TransactionLifecycle\TransactionModule;
+use App\Shared\TransactionLifecycle\TransactionPolicyService;
 use App\Shared\TransactionLifecycle\TransactionVoidEffectService;
 use App\Shared\Validation\BusinessReferenceValidator;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -24,6 +30,7 @@ use Illuminate\Support\Facades\DB;
 class GoodsReceiptService
 {
     use AppliesListQuery;
+    use ChangesTransactionDocuments;
     use HandlesPurchaseDocuments;
 
     protected array $listSearchable = ['receipt_number'];
@@ -95,11 +102,8 @@ class GoodsReceiptService
         });
     }
 
-    public function update(GoodsReceipt $goodsReceipt, array $data): GoodsReceipt
+    private function updateDraft(GoodsReceipt $goodsReceipt, array $data): GoodsReceipt
     {
-        if ($goodsReceipt->status !== 'draft') {
-            throw ApiException::make('GOODS_RECEIPT_NOT_EDITABLE', 'Goods receipt status is not editable.', 422);
-        }
 
         return DB::connection('tenant')->transaction(function () use ($goodsReceipt, $data) {
             $lines = $this->normalizeReceiptLines((array) ($data['lines'] ?? $goodsReceipt->lines()->get()->toArray()));
@@ -156,6 +160,131 @@ class GoodsReceiptService
             'source_revision' => $purchaseOrder->revision_no,
             'lines' => $lines,
         ], $overrides, ['lines' => $lines]));
+    }
+
+    /**
+     * Edit penerimaan barang menurut mode lock/open. Draft diedit langsung;
+     * yang sudah diterima (mode open) dibalik efeknya -- mutasi stok di-void,
+     * jumlah diterima di PO dikembalikan -- lalu diedit dan diterima ulang.
+     */
+    public function update(GoodsReceipt $goodsReceipt, array $data): GoodsReceipt
+    {
+        $this->changePolicy()->assertDocumentChange(
+            TransactionPolicyService::CHANGE_EDIT,
+            TransactionModule::PURCHASE,
+            (string) $goodsReceipt->status,
+            $this->dependents($goodsReceipt),
+            $goodsReceipt->receipt_date?->toDateString(),
+        );
+
+        if ($goodsReceipt->status === 'cancelled') {
+            throw ApiException::make('GOODS_RECEIPT_NOT_EDITABLE', 'Penerimaan barang yang dibatalkan tidak bisa diedit.', 422);
+        }
+
+        if ($goodsReceipt->status === 'draft') {
+            return $this->updateDraft($goodsReceipt, $data);
+        }
+
+        return DB::connection('tenant')->transaction(function () use ($goodsReceipt, $data) {
+            $this->guardGoodsReceiptVoidDate($goodsReceipt);
+            $this->reverseReceiveEffects($goodsReceipt, 'Diedit setelah diterima');
+            $goodsReceipt->status = 'draft';
+            $goodsReceipt->received_by = null;
+            $goodsReceipt->received_at = null;
+            $goodsReceipt->save();
+            $this->refreshOrderReceiptStatus($goodsReceipt);
+            $this->auditPurchase($this->auditLogService, 'goods_receipt.reopened', $goodsReceipt, 'receipt_number');
+
+            return $this->receive($this->updateDraft($goodsReceipt->refresh(), $data));
+        });
+    }
+
+    /**
+     * Hapus penerimaan barang. Draft/dibatalkan dihapus permanen; yang sudah
+     * diterima di-void lalu ditandai terhapus.
+     */
+    public function delete(GoodsReceipt $goodsReceipt, ?string $reason = null): void
+    {
+        $this->changePolicy()->assertDocumentChange(
+            TransactionPolicyService::CHANGE_DELETE,
+            TransactionModule::PURCHASE,
+            (string) $goodsReceipt->status,
+            $this->dependents($goodsReceipt),
+            $goodsReceipt->receipt_date?->toDateString(),
+            ['draft', 'cancelled'],
+        );
+
+        $reason = trim((string) $reason);
+
+        DB::connection('tenant')->transaction(function () use ($goodsReceipt, $reason): void {
+            if (in_array($goodsReceipt->status, ['draft', 'cancelled'], true)) {
+                $this->auditPurchase($this->auditLogService, 'goods_receipt.deleted', $goodsReceipt, 'receipt_number', ['reason' => $reason, 'permanent' => true]);
+                $goodsReceipt->lines()->delete();
+                $goodsReceipt->forceDelete();
+
+                return;
+            }
+
+            $voided = $this->void($goodsReceipt, $this->deleteVoidReason($reason));
+            $this->markVoidedDocumentDeleted($voided, $reason);
+            $this->auditPurchase($this->auditLogService, 'goods_receipt.deleted', $voided, 'receipt_number', ['reason' => $reason, 'permanent' => false]);
+        });
+    }
+
+    /**
+     * Tagihan dan retur yang memakai penerimaan barang ini.
+     *
+     * @return list<string>
+     */
+    public function dependents(GoodsReceipt $goodsReceipt): array
+    {
+        $deps = app(TransactionDependents::class);
+        $billed = (float) $goodsReceipt->lines()->sum('billed_quantity') > 0
+            ? $deps->documents('tagihan vendor', VendorBill::query()->where('goods_receipt_id', $goodsReceipt->id)->where('status', '!=', 'void')->pluck('bill_number'))
+            : [];
+
+        return array_merge(
+            $billed !== [] || (float) $goodsReceipt->lines()->sum('billed_quantity') <= 0 ? $billed : ['tagihan vendor'],
+            $deps->documents('retur pembelian', PurchaseReturn::query()->where('goods_receipt_id', $goodsReceipt->id)->where('status', '!=', 'void')->pluck('return_number')),
+        );
+    }
+
+    /**
+     * Efek penerimaan: mutasi stok masuk dan jumlah diterima di PO. Dipakai
+     * bersama void & edit-setelah-diterima.
+     *
+     * @return array<int>
+     */
+    private function reverseReceiveEffects(GoodsReceipt $goodsReceipt, string $reason): array
+    {
+        $goodsReceipt->load('lines');
+        $movementIds = $this->voidEffectService->voidStockMovementsForSource('goods_receipt', (int) $goodsReceipt->id, $reason);
+        foreach ($goodsReceipt->lines as $line) {
+            if (! $line->purchase_order_line_id) {
+                continue;
+            }
+            $orderLine = PurchaseOrderLine::query()->lockForUpdate()->findOrFail($line->purchase_order_line_id);
+            $orderLine->received_quantity = max(0, (float) $orderLine->received_quantity - (float) $line->quantity);
+            $orderLine->save();
+        }
+
+        return $movementIds;
+    }
+
+    private function refreshOrderReceiptStatus(GoodsReceipt $goodsReceipt): void
+    {
+        if ($goodsReceipt->purchase_order_id) {
+            $this->purchaseOrderService->refreshReceiptStatus(PurchaseOrder::query()->findOrFail($goodsReceipt->purchase_order_id));
+        }
+    }
+
+    private function guardGoodsReceiptVoidDate(GoodsReceipt $goodsReceipt): void
+    {
+        $check = $this->dateGuardService->check((string) $goodsReceipt->receipt_date, 'void', 'purchase');
+        if ($check->denied()) {
+            $arr = $check->toArray();
+            throw ApiException::make((string) $arr['code'], (string) $arr['message'], 422, (array) $arr['reasons'], (array) $arr['meta']);
+        }
     }
 
     public function receive(GoodsReceipt $goodsReceipt): GoodsReceipt
@@ -242,16 +371,7 @@ class GoodsReceiptService
         }
 
         return DB::connection('tenant')->transaction(function () use ($goodsReceipt, $reason) {
-            $goodsReceipt->load('lines');
-            $movementIds = $this->voidEffectService->voidStockMovementsForSource('goods_receipt', (int) $goodsReceipt->id, $reason);
-            foreach ($goodsReceipt->lines as $line) {
-                if (! $line->purchase_order_line_id) {
-                    continue;
-                }
-                $orderLine = PurchaseOrderLine::query()->lockForUpdate()->findOrFail($line->purchase_order_line_id);
-                $orderLine->received_quantity = max(0, (float) $orderLine->received_quantity - (float) $line->quantity);
-                $orderLine->save();
-            }
+            $movementIds = $this->reverseReceiveEffects($goodsReceipt, $reason);
 
             $goodsReceipt->status = 'void';
             $goodsReceipt->voided_by = auth()->id();

@@ -7,6 +7,7 @@ use App\Modules\Sales\Models\DeliveryOrder;
 use App\Modules\Sales\Models\SalesInvoice;
 use App\Modules\Sales\Models\SalesOrder;
 use App\Modules\Sales\Models\SalesOrderLine;
+use App\Modules\Sales\Models\SalesReturn;
 use App\Modules\Sales\Services\Concerns\HandlesSalesDocuments;
 use App\Shared\Api\AppliesListQuery;
 use App\Shared\Audit\AuditLogService;
@@ -14,7 +15,11 @@ use App\Shared\DocumentNumbering\DocumentNumberService;
 use App\Shared\DocumentNumbering\DocumentType;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
+use App\Shared\TransactionLifecycle\ChangesTransactionDocuments;
 use App\Shared\TransactionLifecycle\TransactionDateGuardService;
+use App\Shared\TransactionLifecycle\TransactionDependents;
+use App\Shared\TransactionLifecycle\TransactionModule;
+use App\Shared\TransactionLifecycle\TransactionPolicyService;
 use App\Shared\TransactionLifecycle\TransactionVoidEffectService;
 use App\Shared\Validation\BusinessReferenceValidator;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -24,6 +29,7 @@ use Illuminate\Support\Facades\DB;
 class DeliveryOrderService
 {
     use AppliesListQuery;
+    use ChangesTransactionDocuments;
     use HandlesSalesDocuments;
 
     protected array $listSearchable = ['delivery_number'];
@@ -88,11 +94,8 @@ class DeliveryOrderService
         });
     }
 
-    public function update(DeliveryOrder $deliveryOrder, array $data): DeliveryOrder
+    private function updateDraft(DeliveryOrder $deliveryOrder, array $data): DeliveryOrder
     {
-        if (! in_array($deliveryOrder->status, ['draft', 'ready'], true)) {
-            throw ApiException::make('DELIVERY_ORDER_NOT_EDITABLE', 'Delivery order status is not editable.', 422);
-        }
         $this->validateRemainingQuantities((array) ($data['lines'] ?? []), $deliveryOrder);
 
         return DB::connection('tenant')->transaction(function () use ($deliveryOrder, $data) {
@@ -136,6 +139,125 @@ class DeliveryOrderService
         ], $overrides, ['lines' => $lines]));
     }
 
+    /**
+     * Edit delivery order. Di mode lock tetap longgar seperti sebelumnya:
+     * draft & ready boleh diedit karena belum membukukan apa pun. Di mode open,
+     * DO yang sudah dikirim/terkirim juga boleh -- yang sudah delivered dibalik
+     * dulu efek stoknya, diedit, lalu di-deliver ulang.
+     */
+    public function update(DeliveryOrder $deliveryOrder, array $data): DeliveryOrder
+    {
+        $this->changePolicy()->assertDocumentChange(
+            TransactionPolicyService::CHANGE_EDIT,
+            TransactionModule::SALES,
+            (string) $deliveryOrder->status,
+            $this->dependents($deliveryOrder),
+            $deliveryOrder->delivery_date?->toDateString(),
+            ['draft', 'ready'],
+        );
+
+        if ($deliveryOrder->status === 'cancelled') {
+            throw ApiException::make('DELIVERY_ORDER_NOT_EDITABLE', 'Delivery order yang dibatalkan tidak bisa diedit.', 422);
+        }
+
+        if ($deliveryOrder->status !== 'delivered') {
+            return $this->updateDraft($deliveryOrder, $data);
+        }
+
+        return DB::connection('tenant')->transaction(function () use ($deliveryOrder, $data) {
+            $this->guardDeliveryVoidDate($deliveryOrder);
+            $this->reverseDeliveryEffects($deliveryOrder, 'Diedit setelah dikirim');
+            $deliveryOrder->status = 'draft';
+            $deliveryOrder->delivered_by = null;
+            $deliveryOrder->delivered_at = null;
+            $deliveryOrder->save();
+            $this->auditSales($this->auditLogService, 'delivery_order.reopened', 'sales', $deliveryOrder, 'delivery_number');
+
+            return $this->deliver($this->updateDraft($deliveryOrder->refresh(), $data));
+        });
+    }
+
+    /**
+     * Hapus delivery order. Yang belum delivered tidak punya efek stok, jadi
+     * dihapus permanen; yang sudah delivered di-void lalu ditandai terhapus.
+     */
+    public function delete(DeliveryOrder $deliveryOrder, ?string $reason = null): void
+    {
+        $this->changePolicy()->assertDocumentChange(
+            TransactionPolicyService::CHANGE_DELETE,
+            TransactionModule::SALES,
+            (string) $deliveryOrder->status,
+            $this->dependents($deliveryOrder),
+            $deliveryOrder->delivery_date?->toDateString(),
+            ['draft', 'ready', 'cancelled'],
+        );
+
+        $reason = trim((string) $reason);
+
+        DB::connection('tenant')->transaction(function () use ($deliveryOrder, $reason): void {
+            if ($deliveryOrder->status !== 'delivered') {
+                $this->auditSales($this->auditLogService, 'delivery_order.deleted', 'sales', $deliveryOrder, 'delivery_number', ['reason' => $reason, 'permanent' => true]);
+                $deliveryOrder->lines()->delete();
+                $deliveryOrder->forceDelete();
+
+                return;
+            }
+
+            $voided = $this->void($deliveryOrder, $this->deleteVoidReason($reason));
+            $this->markVoidedDocumentDeleted($voided, $reason);
+            $this->auditSales($this->auditLogService, 'delivery_order.deleted', 'sales', $voided, 'delivery_number', ['reason' => $reason, 'permanent' => false]);
+        });
+    }
+
+    /**
+     * Faktur dan retur yang dibuat dari DO ini.
+     *
+     * @return list<string>
+     */
+    public function dependents(DeliveryOrder $deliveryOrder): array
+    {
+        $deps = app(TransactionDependents::class);
+
+        return array_merge(
+            $deps->documents('faktur penjualan', SalesInvoice::query()->where('delivery_order_id', $deliveryOrder->id)->where('status', '!=', 'void')->pluck('invoice_number')),
+            $deps->documents('retur penjualan', SalesReturn::query()->where('delivery_order_id', $deliveryOrder->id)->where('status', '!=', 'void')->pluck('return_number')),
+        );
+    }
+
+    /**
+     * Efek pengiriman: mutasi stok keluar dan jumlah terkirim di SO. Dipakai
+     * bersama void & edit-setelah-dikirim.
+     *
+     * @return array<int>
+     */
+    private function reverseDeliveryEffects(DeliveryOrder $deliveryOrder, string $reason): array
+    {
+        $deliveryOrder->load('lines', 'salesOrder');
+        $movementIds = $this->voidEffectService->voidStockMovementsForSource('delivery_order', (int) $deliveryOrder->id, $reason);
+        if ($deliveryOrder->status === 'delivered') {
+            foreach ($deliveryOrder->lines as $line) {
+                if ($line->sales_order_line_id && ($orderLine = SalesOrderLine::query()->lockForUpdate()->find($line->sales_order_line_id))) {
+                    $orderLine->delivered_quantity = max(0, (float) $orderLine->delivered_quantity - (float) $line->quantity);
+                    $orderLine->save();
+                }
+            }
+            if ($deliveryOrder->salesOrder) {
+                $this->salesOrderService->refreshDeliveryStatus($deliveryOrder->salesOrder);
+            }
+        }
+
+        return $movementIds;
+    }
+
+    private function guardDeliveryVoidDate(DeliveryOrder $deliveryOrder): void
+    {
+        $check = $this->dateGuardService->check((string) $deliveryOrder->delivery_date, 'void', 'sales');
+        if ($check->denied()) {
+            $arr = $check->toArray();
+            throw ApiException::make((string) $arr['code'], (string) $arr['message'], 422, (array) $arr['reasons'], (array) $arr['meta']);
+        }
+    }
+
     public function markReady(DeliveryOrder $deliveryOrder): DeliveryOrder
     {
         return $this->transition($deliveryOrder, 'ready', 'ready_by', 'ready_at', ['draft']);
@@ -174,7 +296,7 @@ class DeliveryOrderService
                 $this->salesOrderService->refreshDeliveryStatus($deliveryOrder->salesOrder);
             }
 
-return $deliveryOrder->refresh()->load('lines', 'customer', 'salesOrder');
+            return $deliveryOrder->refresh()->load('lines', 'customer', 'salesOrder');
         });
     }
 
@@ -201,19 +323,7 @@ return $deliveryOrder->refresh()->load('lines', 'customer', 'salesOrder');
         }
 
         return DB::connection('tenant')->transaction(function () use ($deliveryOrder, $reason) {
-            $deliveryOrder->load('lines', 'salesOrder');
-            $movementIds = $this->voidEffectService->voidStockMovementsForSource('delivery_order', (int) $deliveryOrder->id, $reason);
-            if ($deliveryOrder->status === 'delivered') {
-                foreach ($deliveryOrder->lines as $line) {
-                    if ($line->sales_order_line_id && ($orderLine = SalesOrderLine::query()->lockForUpdate()->find($line->sales_order_line_id))) {
-                        $orderLine->delivered_quantity = max(0, (float) $orderLine->delivered_quantity - (float) $line->quantity);
-                        $orderLine->save();
-                    }
-                }
-                if ($deliveryOrder->salesOrder) {
-                    $this->salesOrderService->refreshDeliveryStatus($deliveryOrder->salesOrder);
-                }
-            }
+            $movementIds = $this->reverseDeliveryEffects($deliveryOrder, $reason);
             $deliveryOrder->status = 'void';
             $deliveryOrder->voided_by = auth()->id();
             $deliveryOrder->voided_at = now();

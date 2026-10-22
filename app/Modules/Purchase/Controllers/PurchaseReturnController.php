@@ -12,6 +12,7 @@ use App\Modules\Purchase\Requests\UpdatePurchaseReturnRequest;
 use App\Modules\Purchase\Services\PurchaseReturnService;
 use App\Shared\Api\ApiResponse;
 use App\Shared\Api\ResolvesAdjacentRecords;
+use App\Shared\TransactionLifecycle\DeleteTransactionRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -65,6 +66,13 @@ class PurchaseReturnController extends Controller
     public function post(int $id): JsonResponse
     {
         return $this->successResponse($this->service->post(PurchaseReturn::query()->findOrFail($id)), 'Purchase return posted successfully');
+    }
+
+    public function destroy(DeleteTransactionRequest $request, int $id): JsonResponse
+    {
+        $this->service->delete(PurchaseReturn::query()->findOrFail($id), $request->validated('reason'));
+
+        return $this->successResponse(null, 'Purchase return deleted successfully');
     }
 
     public function void(PurchaseRequestActionRequest $request, int $id): JsonResponse

@@ -53,6 +53,7 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('purchase')->group
     Route::patch('/goods-receipts/{id}/receive', [GoodsReceiptController::class, 'receive'])->middleware('permission:purchase.goods_receipts.receive');
     Route::patch('/goods-receipts/{id}/cancel', [GoodsReceiptController::class, 'cancel'])->middleware('permission:purchase.goods_receipts.cancel');
     Route::patch('/goods-receipts/{id}/void', [GoodsReceiptController::class, 'void'])->middleware('permission:purchase.goods_receipts.void');
+    Route::delete('/goods-receipts/{id}', [GoodsReceiptController::class, 'destroy'])->middleware('permission:purchase.goods_receipts.edit|purchase.goods_receipts.void');
 
     Route::get('/bills', [VendorBillController::class, 'index'])->middleware('permission:purchase.bills.view');
     Route::get('/bills/adjacent', [VendorBillController::class, 'adjacent'])->middleware('permission:purchase.bills.view');
@@ -74,6 +75,8 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('purchase')->group
     Route::get('/vendor-deposits/{id}', [VendorDepositController::class, 'show'])->middleware('permission:purchase.deposits.view');
     Route::patch('/vendor-deposits/{id}/post', [VendorDepositController::class, 'post'])->middleware('permission:purchase.deposits.post');
     Route::patch('/vendor-deposits/{id}/void', [VendorDepositController::class, 'void'])->middleware('permission:purchase.deposits.void');
+    Route::patch('/vendor-deposits/{id}', [VendorDepositController::class, 'update'])->middleware('permission:purchase.deposits.create');
+    Route::delete('/vendor-deposits/{id}', [VendorDepositController::class, 'destroy'])->middleware('permission:purchase.deposits.create|purchase.deposits.void');
     Route::patch('/vendor-deposits/{id}/refund', [VendorDepositController::class, 'refund'])->middleware('permission:purchase.deposits.refund');
     Route::post('/vendor-deposits/{id}/allocate-to-bill/{billId}', [VendorDepositController::class, 'allocateToBill'])->middleware('permission:purchase.deposits.post');
 
@@ -97,4 +100,5 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('purchase')->group
     Route::patch('/returns/{id}/approve', [PurchaseReturnController::class, 'approve'])->middleware('permission:purchase.returns.approve');
     Route::patch('/returns/{id}/post', [PurchaseReturnController::class, 'post'])->middleware('permission:purchase.returns.post');
     Route::patch('/returns/{id}/void', [PurchaseReturnController::class, 'void'])->middleware('permission:purchase.returns.void');
+    Route::delete('/returns/{id}', [PurchaseReturnController::class, 'destroy'])->middleware('permission:purchase.returns.create|purchase.returns.void');
 });

@@ -11,6 +11,7 @@ use App\Modules\Purchase\Requests\UpdateGoodsReceiptRequest;
 use App\Modules\Purchase\Services\GoodsReceiptService;
 use App\Shared\Api\ApiResponse;
 use App\Shared\Api\ResolvesAdjacentRecords;
+use App\Shared\TransactionLifecycle\DeleteTransactionRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -66,6 +67,13 @@ class GoodsReceiptController extends Controller
         $request->validated();
 
         return $this->successResponse($this->service->cancel(GoodsReceipt::query()->findOrFail($id), $request->input('reason')), 'Goods receipt cancelled successfully');
+    }
+
+    public function destroy(DeleteTransactionRequest $request, int $id): JsonResponse
+    {
+        $this->service->delete(GoodsReceipt::query()->findOrFail($id), $request->validated('reason'));
+
+        return $this->successResponse(null, 'Goods receipt deleted successfully');
     }
 
     public function void(PurchaseRequestActionRequest $request, int $id): JsonResponse

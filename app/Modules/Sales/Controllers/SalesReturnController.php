@@ -12,6 +12,7 @@ use App\Modules\Sales\Requests\UpdateSalesReturnRequest;
 use App\Modules\Sales\Services\SalesReturnService;
 use App\Shared\Api\ApiResponse;
 use App\Shared\Api\ResolvesAdjacentRecords;
+use App\Shared\TransactionLifecycle\DeleteTransactionRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -65,6 +66,13 @@ class SalesReturnController extends Controller
     public function post(int $id): JsonResponse
     {
         return $this->successResponse($this->service->post(SalesReturn::query()->findOrFail($id)), 'Sales return posted successfully');
+    }
+
+    public function destroy(DeleteTransactionRequest $request, int $id): JsonResponse
+    {
+        $this->service->delete(SalesReturn::query()->findOrFail($id), $request->validated('reason'));
+
+        return $this->successResponse(null, 'Sales return deleted successfully');
     }
 
     public function void(SalesActionRequest $request, int $id): JsonResponse

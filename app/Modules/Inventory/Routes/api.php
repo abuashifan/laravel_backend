@@ -29,6 +29,8 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('inventory')->grou
         ->middleware('permission:inventory.movements.post');
     Route::patch('/stock-movements/{id}/void', [StockMovementController::class, 'void'])
         ->middleware('permission:inventory.movements.void');
+    Route::patch('/stock-movements/{id}', [StockMovementController::class, 'update'])->middleware('permission:inventory.movements.create');
+    Route::delete('/stock-movements/{id}', [StockMovementController::class, 'destroy'])->middleware('permission:inventory.movements.create|inventory.movements.void');
 
     Route::get('/stock-adjustments', [StockAdjustmentController::class, 'index'])
         ->middleware('permission:inventory.adjustments.view');
@@ -46,6 +48,7 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('inventory')->grou
         ->middleware('permission:inventory.adjustments.post');
     Route::patch('/stock-adjustments/{id}/void', [StockAdjustmentController::class, 'void'])
         ->middleware('permission:inventory.adjustments.void');
+    Route::delete('/stock-adjustments/{id}', [StockAdjustmentController::class, 'destroy'])->middleware('permission:inventory.adjustments.edit|inventory.adjustments.void');
 
     Route::get('/stock-opnames', [StockOpnameController::class, 'index'])
         ->middleware('permission:inventory.opname.view');
@@ -65,6 +68,8 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('inventory')->grou
         ->middleware('permission:inventory.opname.finalize');
     Route::patch('/stock-opnames/{id}/void', [StockOpnameController::class, 'void'])
         ->middleware('permission:inventory.opname.finalize');
+    Route::patch('/stock-opnames/{id}/reopen', [StockOpnameController::class, 'reopen'])->middleware('permission:inventory.opname.finalize');
+    Route::delete('/stock-opnames/{id}', [StockOpnameController::class, 'destroy'])->middleware('permission:inventory.opname.edit|inventory.opname.finalize');
 
     Route::prefix('reports')->group(function () {
         Route::get('/stock-balances', [InventoryReportController::class, 'stockBalances'])->middleware('permission:inventory.reports.view');

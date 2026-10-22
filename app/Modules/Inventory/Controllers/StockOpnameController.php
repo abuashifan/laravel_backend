@@ -12,6 +12,7 @@ use App\Modules\Inventory\Requests\VoidStockOpnameRequest;
 use App\Modules\Inventory\Services\StockOpnameService;
 use App\Shared\Api\ApiResponse;
 use App\Shared\Api\ResolvesAdjacentRecords;
+use App\Shared\TransactionLifecycle\DeleteTransactionRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -68,6 +69,19 @@ class StockOpnameController extends Controller
         $opname = StockOpname::query()->findOrFail($id);
 
         return $this->successResponse($this->service->finalize($opname), 'Stock opname finalized successfully');
+    }
+
+    /** Buka kembali opname yang sudah final (mode open) supaya hitungannya bisa diperbaiki. */
+    public function reopen(int $id): JsonResponse
+    {
+        return $this->successResponse($this->service->reopen(StockOpname::query()->findOrFail($id)), 'Stock opname reopened successfully');
+    }
+
+    public function destroy(DeleteTransactionRequest $request, int $id): JsonResponse
+    {
+        $this->service->delete(StockOpname::query()->findOrFail($id), $request->validated('reason'));
+
+        return $this->successResponse(null, 'Stock opname deleted successfully');
     }
 
     public function void(VoidStockOpnameRequest $request, int $id): JsonResponse

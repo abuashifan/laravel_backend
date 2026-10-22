@@ -7,10 +7,12 @@ use App\Modules\MasterData\Models\Contact;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class VendorDeposit extends Model
 {
     use HasFactory;
+    use SoftDeletes;
 
     protected $connection = 'tenant';
 

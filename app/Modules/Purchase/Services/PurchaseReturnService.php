@@ -18,7 +18,10 @@ use App\Shared\DocumentNumbering\DocumentNumberService;
 use App\Shared\DocumentNumbering\DocumentType;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
+use App\Shared\TransactionLifecycle\ChangesTransactionDocuments;
 use App\Shared\TransactionLifecycle\TransactionDateGuardService;
+use App\Shared\TransactionLifecycle\TransactionModule;
+use App\Shared\TransactionLifecycle\TransactionPolicyService;
 use App\Shared\TransactionLifecycle\TransactionVoidEffectService;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
@@ -27,6 +30,7 @@ use Illuminate\Support\Facades\DB;
 class PurchaseReturnService
 {
     use AppliesListQuery;
+    use ChangesTransactionDocuments;
     use HandlesPurchaseDocuments;
 
     protected array $listSearchable = ['return_number'];
@@ -95,11 +99,8 @@ class PurchaseReturnService
         });
     }
 
-    public function update(PurchaseReturn $return, array $data): PurchaseReturn
+    private function updateDraft(PurchaseReturn $return, array $data): PurchaseReturn
     {
-        if ($return->status !== 'draft') {
-            throw ApiException::make('PURCHASE_RETURN_NOT_EDITABLE', 'Purchase return is not editable.', 422);
-        }
         $lines = $this->normalizeReturnLines((array) ($data['lines'] ?? $return->lines()->get()->toArray()));
         $this->validateReturnedQuantities($lines, $return);
 
@@ -136,6 +137,114 @@ class PurchaseReturnService
             'source_type' => 'goods_receipt', 'source_id' => $receipt->id, 'source_number' => $receipt->receipt_number, 'source_revision' => $receipt->revision_no,
             'lines' => $receipt->lines->map(fn ($line) => ['goods_receipt_line_id' => $line->id, 'product_id' => $line->product_id, 'product_code' => $line->product_code, 'description' => $line->description, 'quantity' => $line->quantity, 'unit_id' => $line->unit_id, 'unit_price' => 0, 'line_total' => 0, 'warehouse_id' => $line->warehouse_id, 'department_id' => $line->department_id, 'project_id' => $line->project_id, 'expense_account_id' => $line->expense_account_id, 'source_line_type' => 'goods_receipt_line', 'source_line_id' => $line->id, 'sort_order' => $line->sort_order])->toArray(),
         ], $overrides));
+    }
+
+    /**
+     * Edit retur pembelian menurut mode lock/open (`TransactionPolicyService`).
+     * Draft diedit langsung; yang approved kembali ke draft; yang sudah posted dibalik efeknya (jurnal di-void, stok & saldo tagihan dikembalikan) lalu diposting ulang dengan nomor yang sama.
+     */
+    public function update(PurchaseReturn $return, array $data): PurchaseReturn
+    {
+        $this->changePolicy()->assertDocumentChange(
+            TransactionPolicyService::CHANGE_EDIT,
+            TransactionModule::PURCHASE,
+            (string) $return->status,
+            $this->dependents($return),
+            $return->return_date?->toDateString(),
+        );
+
+        if ($return->status === 'draft') {
+            return $this->updateDraft($return, $data);
+        }
+
+        return DB::connection('tenant')->transaction(function () use ($return, $data) {
+            if ($return->status === 'approved') {
+                $return->status = 'draft';
+                $return->approved_by = null;
+                $return->approved_at = null;
+                $return->save();
+
+                return $this->updateDraft($return->refresh(), $data);
+            }
+
+            $this->reopenToDraft($return, 'Diedit setelah posting (revisi '.((int) ($return->revision_no ?? 0) + 1).')');
+            $return = $this->updateDraft($return->refresh(), $data);
+
+            return $this->post($return);
+        });
+    }
+
+    /**
+     * Hapus retur pembelian. Status tanpa efek dihapus permanen; yang sudah berefek
+     * di-void lewat jalur void biasa lalu ditandai terhapus.
+     */
+    public function delete(PurchaseReturn $return, ?string $reason = null): void
+    {
+        $this->changePolicy()->assertDocumentChange(
+            TransactionPolicyService::CHANGE_DELETE,
+            TransactionModule::PURCHASE,
+            (string) $return->status,
+            $this->dependents($return),
+            $return->return_date?->toDateString(),
+        );
+
+        $reason = trim((string) $reason);
+
+        DB::connection('tenant')->transaction(function () use ($return, $reason): void {
+            if (in_array($return->status, ['draft', 'approved'], true)) {
+                $this->auditPurchase($this->auditLogService, 'purchase_return.deleted', $return, 'return_number', ['reason' => $reason, 'permanent' => true]);
+                if (method_exists($return, 'lines')) {
+                    $return->lines()->delete();
+                }
+                $return->forceDelete();
+
+                return;
+            }
+
+            $voided = $this->void($return, $this->deleteVoidReason($reason));
+            $this->markVoidedDocumentDeleted($voided, $reason);
+            $this->auditPurchase($this->auditLogService, 'purchase_return.deleted', $voided, 'return_number', ['reason' => $reason, 'permanent' => false]);
+        });
+    }
+
+    /**
+     * Transaksi lain yang masih bergantung pada retur pembelian ini.
+     *
+     * @return list<string>
+     */
+    public function dependents(PurchaseReturn $return): array
+    {
+        return [];
+    }
+
+    private function reopenToDraft(PurchaseReturn $return, string $reason): void
+    {
+        $this->guardDate((string) $return->return_date, 'void');
+        $this->reversePostingEffects($return, $reason);
+        $return->status = 'draft';
+        $return->journal_entry_id = null;
+        $return->posted_by = null;
+        $return->posted_at = null;
+        $return->save();
+        $this->auditPurchase($this->auditLogService, 'purchase_return.reopened', $return, 'return_number', ['reason' => $reason]);
+    }
+
+    /**
+     * Efek posting retur: jurnal (di-void, tetap tersimpan), mutasi stok, dan
+     * saldo tagihan/penerimaan sumber. Dipakai bersama void & edit-setelah-posting.
+     *
+     * @return array{0: array<int>, 1: array<int>}
+     */
+    private function reversePostingEffects(PurchaseReturn $return, string $reason): array
+    {
+        $return->load('lines');
+        $journalIds = $this->voidEffectService->voidJournalsForSource('purchase_return', (int) $return->id, $reason);
+        $movementIds = $this->voidEffectService->voidStockMovementsForSource('purchase_return', (int) $return->id, $reason);
+        if ($return->status === 'posted') {
+            $this->restoreSource($return);
+        }
+
+        return [$journalIds, $movementIds];
     }
 
     public function approve(PurchaseReturn $return): PurchaseReturn
@@ -182,12 +291,7 @@ class PurchaseReturnService
         $this->guardDate((string) $return->return_date, 'void');
 
         return DB::connection('tenant')->transaction(function () use ($return, $reason) {
-            $return->load('lines');
-            $journalIds = $this->voidEffectService->voidJournalsForSource('purchase_return', (int) $return->id, $reason);
-            $movementIds = $this->voidEffectService->voidStockMovementsForSource('purchase_return', (int) $return->id, $reason);
-            if ($return->status === 'posted') {
-                $this->restoreSource($return);
-            }
+            [$journalIds, $movementIds] = $this->reversePostingEffects($return, $reason);
             $return->status = 'void';
             $return->voided_by = auth()->id();
             $return->voided_at = now();
@@ -319,7 +423,7 @@ class PurchaseReturnService
             throw ApiException::make('VENDOR_NOT_FOUND', 'Vendor not found.', 422);
         }
 
-return $this->accountResolver->getPayableAccountId($vendor);
+        return $this->accountResolver->getPayableAccountId($vendor);
     }
 
     private function mapping(string $key): int
@@ -329,7 +433,7 @@ return $this->accountResolver->getPayableAccountId($vendor);
             throw ApiException::make('ACCOUNT_MAPPING_MISSING', 'Required account mapping is missing: '.$key, 422);
         }
 
-return (int) $mapping->account_id;
+        return (int) $mapping->account_id;
     }
 
     private function guardDate(string $date, string $action = 'post'): void

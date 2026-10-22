@@ -16,7 +16,11 @@ use App\Shared\DocumentNumbering\DocumentNumberService;
 use App\Shared\DocumentNumbering\DocumentType;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
+use App\Shared\TransactionLifecycle\ChangesTransactionDocuments;
 use App\Shared\TransactionLifecycle\TransactionDateGuardService;
+use App\Shared\TransactionLifecycle\TransactionDependents;
+use App\Shared\TransactionLifecycle\TransactionModule;
+use App\Shared\TransactionLifecycle\TransactionPolicyService;
 use App\Shared\TransactionLifecycle\TransactionVoidEffectService;
 use App\Shared\Validation\BusinessReferenceValidator;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -26,6 +30,7 @@ use Illuminate\Support\Facades\DB;
 class CustomerDepositService
 {
     use AppliesListQuery;
+    use ChangesTransactionDocuments;
     use HandlesSalesDocuments;
 
     protected array $listSearchable = ['deposit_number'];
@@ -155,6 +160,116 @@ class CustomerDepositService
             'source_number' => $order->order_number,
             'source_revision' => $order->revision_no,
         ]));
+    }
+
+    /**
+     * Edit deposit pelanggan menurut mode lock/open (`TransactionPolicyService`).
+     * Draft diedit langsung; yang sudah posted (mode open) jurnal lamanya di-void lalu diposting ulang dengan nomor yang sama. Deposit yang sudah dialokasikan atau di-refund tertaut transaksi lain.
+     */
+    public function update(CustomerDeposit $deposit, array $data): CustomerDeposit
+    {
+        $this->changePolicy()->assertDocumentChange(
+            TransactionPolicyService::CHANGE_EDIT,
+            TransactionModule::SALES,
+            (string) $deposit->status,
+            $this->dependents($deposit),
+            $deposit->deposit_date?->toDateString(),
+        );
+
+        if ($deposit->status === 'draft') {
+            return $this->updateDraft($deposit, $data);
+        }
+
+        return DB::connection('tenant')->transaction(function () use ($deposit, $data) {
+            $this->reopenToDraft($deposit, 'Diedit setelah posting (revisi '.((int) ($deposit->revision_no ?? 0) + 1).')');
+            $deposit = $this->updateDraft($deposit->refresh(), $data);
+
+            return $this->post($deposit);
+        });
+    }
+
+    /**
+     * Hapus deposit pelanggan. Status tanpa efek dihapus permanen; yang sudah berefek
+     * di-void lewat jalur void biasa lalu ditandai terhapus.
+     */
+    public function delete(CustomerDeposit $deposit, ?string $reason = null): void
+    {
+        $this->changePolicy()->assertDocumentChange(
+            TransactionPolicyService::CHANGE_DELETE,
+            TransactionModule::SALES,
+            (string) $deposit->status,
+            $this->dependents($deposit),
+            $deposit->deposit_date?->toDateString(),
+        );
+
+        $reason = trim((string) $reason);
+
+        DB::connection('tenant')->transaction(function () use ($deposit, $reason): void {
+            if (in_array($deposit->status, ['draft'], true)) {
+                $this->auditSales($this->auditLogService, 'customer_deposit.deleted', 'sales', $deposit, 'deposit_number', ['reason' => $reason, 'permanent' => true]);
+                if (method_exists($deposit, 'lines')) {
+                    $deposit->lines()->delete();
+                }
+                $deposit->forceDelete();
+
+                return;
+            }
+
+            $voided = $this->void($deposit, $this->deleteVoidReason($reason));
+            $this->markVoidedDocumentDeleted($voided, $reason);
+            $this->auditSales($this->auditLogService, 'customer_deposit.deleted', 'sales', $voided, 'deposit_number', ['reason' => $reason, 'permanent' => false]);
+        });
+    }
+
+    /**
+     * Transaksi lain yang masih bergantung pada deposit pelanggan ini.
+     *
+     * @return list<string>
+     */
+    public function dependents(CustomerDeposit $deposit): array
+    {
+        $deps = app(TransactionDependents::class);
+        $docIds = CustomerDepositAllocation::query()->where('customer_deposit_id', $deposit->id)->where('status', 'posted')->pluck('sales_invoice_id');
+        $refund = $deposit->refund_journal_entry_id ? ['pengembalian (refund) deposit'] : [];
+
+        return array_merge(
+            $deps->documents('alokasi ke', SalesInvoice::query()->whereIn('id', $docIds)->pluck('invoice_number')),
+            $refund,
+            $deps->reconciledSource('customer_deposit', (int) $deposit->id),
+        );
+    }
+
+    private function reopenToDraft(CustomerDeposit $deposit, string $reason): void
+    {
+        $this->guardDate((string) $deposit->deposit_date, 'void');
+        $this->voidEffectService->voidJournalsForSource('customer_deposit', (int) $deposit->id, $reason);
+        $deposit->status = 'draft';
+        $deposit->journal_entry_id = null;
+        $deposit->posted_by = null;
+        $deposit->posted_at = null;
+        $deposit->allocated_amount = 0;
+        $deposit->remaining_amount = $deposit->amount;
+        $deposit->save();
+        $this->auditSales($this->auditLogService, 'customer_deposit.reopened', 'sales', $deposit, 'deposit_number', ['reason' => $reason]);
+    }
+
+    private function updateDraft(CustomerDeposit $deposit, array $data): CustomerDeposit
+    {
+        $amount = (float) ($data['amount'] ?? $deposit->amount);
+        if ($amount <= 0) {
+            throw ApiException::make('AMOUNT_INVALID', 'Amount must be greater than zero.', 422);
+        }
+        $this->ensureCustomerExists((int) ($data['customer_id'] ?? $deposit->customer_id));
+        $this->ensureCashBankAccount((int) ($data['cash_bank_account_id'] ?? $deposit->cash_bank_account_id));
+
+        $header = $data;
+        unset($header['deposit_number'], $header['status'], $header['allocated_amount'], $header['remaining_amount']);
+        $deposit->fill($header);
+        $deposit->allocated_amount = 0;
+        $deposit->remaining_amount = $amount;
+        $deposit->save();
+
+        return $deposit->refresh();
     }
 
     public function post(CustomerDeposit $deposit): CustomerDeposit

@@ -11,7 +11,11 @@ use App\Shared\DocumentNumbering\DocumentNumberService;
 use App\Shared\DocumentNumbering\DocumentType;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
+use App\Shared\TransactionLifecycle\ChangesTransactionDocuments;
 use App\Shared\TransactionLifecycle\TransactionDateGuardService;
+use App\Shared\TransactionLifecycle\TransactionDependents;
+use App\Shared\TransactionLifecycle\TransactionModule;
+use App\Shared\TransactionLifecycle\TransactionPolicyService;
 use App\Shared\TransactionLifecycle\TransactionVoidEffectService;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
@@ -21,6 +25,7 @@ class BankTransferService
 {
     use AppliesListQuery;
     use AttachesCreatorNames;
+    use ChangesTransactionDocuments;
 
     protected array $listSearchable = ['transfer_number', 'notes'];
 
@@ -93,6 +98,107 @@ class BankTransferService
 
             return $transfer->refresh()->load('fromCashBankAccount', 'toCashBankAccount');
         });
+    }
+
+    /**
+     * Edit transfer bank menurut mode lock/open (`TransactionPolicyService`).
+     * Draft diedit langsung; yang sudah posted (mode open) jurnal lamanya di-void lalu diposting ulang dengan nomor yang sama.
+     */
+    public function update(BankTransfer $transfer, array $data): BankTransfer
+    {
+        $this->changePolicy()->assertDocumentChange(
+            TransactionPolicyService::CHANGE_EDIT,
+            TransactionModule::CASH_BANK,
+            (string) $transfer->status,
+            $this->dependents($transfer),
+            $transfer->transfer_date?->toDateString(),
+        );
+
+        if ($transfer->status === 'draft') {
+            return $this->updateDraft($transfer, $data);
+        }
+
+        return DB::connection('tenant')->transaction(function () use ($transfer, $data) {
+            $this->reopenToDraft($transfer, 'Diedit setelah posting (revisi '.((int) ($transfer->revision_no ?? 0) + 1).')');
+            $transfer = $this->updateDraft($transfer->refresh(), $data);
+
+            return $this->post($transfer);
+        });
+    }
+
+    /**
+     * Hapus transfer bank. Status tanpa efek dihapus permanen; yang sudah berefek
+     * di-void lewat jalur void biasa lalu ditandai terhapus.
+     */
+    public function delete(BankTransfer $transfer, ?string $reason = null): void
+    {
+        $this->changePolicy()->assertDocumentChange(
+            TransactionPolicyService::CHANGE_DELETE,
+            TransactionModule::CASH_BANK,
+            (string) $transfer->status,
+            $this->dependents($transfer),
+            $transfer->transfer_date?->toDateString(),
+        );
+
+        $reason = trim((string) $reason);
+
+        DB::connection('tenant')->transaction(function () use ($transfer, $reason): void {
+            if (in_array($transfer->status, ['draft'], true)) {
+                $this->auditLogService?->logSuccess(['event' => 'cash_bank.bank_transfer_deleted', 'module' => 'cash_bank', 'record_type' => 'bank_transfer', 'record_id' => $transfer->id, 'record_number' => $transfer->transfer_number, 'user_id' => auth()->id(), 'metadata' => ['reason' => $reason, 'permanent' => true]], tenant: true);
+                if (method_exists($transfer, 'lines')) {
+                    $transfer->lines()->delete();
+                }
+                $transfer->forceDelete();
+
+                return;
+            }
+
+            $voided = $this->void($transfer, $this->deleteVoidReason($reason));
+            $this->markVoidedDocumentDeleted($voided, $reason);
+            $this->auditLogService?->logSuccess(['event' => 'cash_bank.bank_transfer_deleted', 'module' => 'cash_bank', 'record_type' => 'bank_transfer', 'record_id' => $voided->id, 'record_number' => $voided->transfer_number, 'user_id' => auth()->id(), 'metadata' => ['reason' => $reason, 'permanent' => false]], tenant: true);
+        });
+    }
+
+    /**
+     * Transaksi lain yang masih bergantung pada transfer bank ini.
+     *
+     * @return list<string>
+     */
+    public function dependents(BankTransfer $transfer): array
+    {
+        return app(TransactionDependents::class)->reconciledSource('bank_transfer', (int) $transfer->id);
+    }
+
+    private function reopenToDraft(BankTransfer $transfer, string $reason): void
+    {
+        $this->guardDate((string) $transfer->transfer_date, 'void');
+        $this->voidEffectService->voidJournalsForSource('bank_transfer', (int) $transfer->id, $reason);
+        $transfer->status = 'draft';
+        $transfer->journal_entry_id = null;
+        $transfer->posted_by = null;
+        $transfer->posted_at = null;
+        $transfer->save();
+        $this->auditLogService?->logSuccess(['event' => 'cash_bank.bank_transfer_reopened', 'module' => 'cash_bank', 'record_type' => 'bank_transfer', 'record_id' => $transfer->id, 'record_number' => $transfer->transfer_number, 'user_id' => auth()->id(), 'metadata' => ['reason' => $reason]], tenant: true);
+    }
+
+    private function updateDraft(BankTransfer $transfer, array $data): BankTransfer
+    {
+        $fromId = (int) ($data['from_cash_bank_account_id'] ?? $transfer->from_cash_bank_account_id);
+        $toId = (int) ($data['to_cash_bank_account_id'] ?? $transfer->to_cash_bank_account_id);
+
+        if (! $this->cashBankAccountService->isCashBankAccount($fromId) || ! $this->cashBankAccountService->isCashBankAccount($toId)) {
+            throw ApiException::make('CASH_BANK_ACCOUNT_REQUIRED', 'Both from/to accounts must be cash/bank marked COA.', 422);
+        }
+        if ($fromId === $toId) {
+            throw ApiException::make('SAME_ACCOUNT_NOT_ALLOWED', 'From and to cash/bank accounts must be different.', 422);
+        }
+
+        $header = $data;
+        unset($header['transfer_number'], $header['status']);
+        $transfer->fill($header);
+        $transfer->save();
+
+        return $transfer->refresh()->load('fromCashBankAccount', 'toCashBankAccount');
     }
 
     public function post(BankTransfer $transfer): BankTransfer

@@ -7,12 +7,14 @@ use App\Modules\Budget\Services\BudgetWarningService;
 use App\Modules\Budget\Support\CollectsBudgetWarnings;
 use App\Modules\Inventory\Models\StockMovement;
 use App\Modules\Inventory\Requests\StoreStockMovementRequest;
+use App\Modules\Inventory\Requests\UpdateStockMovementRequest;
 use App\Modules\Inventory\Requests\VoidStockMovementRequest;
 use App\Modules\Inventory\Services\InventoryAccountMappingService;
 use App\Modules\Inventory\Services\StockMovementService;
 use App\Shared\Api\ApiResponse;
 use App\Shared\Api\ResolvesAdjacentRecords;
 use App\Shared\Tenant\TenantContext;
+use App\Shared\TransactionLifecycle\DeleteTransactionRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -59,6 +61,18 @@ class StockMovementController extends Controller
             200,
             ['warnings' => $this->collectStockMovementBudgetWarnings($movement)],
         );
+    }
+
+    public function update(UpdateStockMovementRequest $request, int $id): JsonResponse
+    {
+        return $this->successResponse($this->service->update(StockMovement::query()->findOrFail($id), $request->validated()), 'Stock movement updated successfully');
+    }
+
+    public function destroy(DeleteTransactionRequest $request, int $id): JsonResponse
+    {
+        $this->service->delete(StockMovement::query()->findOrFail($id), $request->validated('reason'));
+
+        return $this->successResponse(null, 'Stock movement deleted successfully');
     }
 
     public function void(VoidStockMovementRequest $request, int $id): JsonResponse

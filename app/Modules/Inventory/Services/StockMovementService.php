@@ -11,6 +11,9 @@ use App\Shared\DocumentNumbering\DocumentNumberService;
 use App\Shared\DocumentNumbering\DocumentType;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
+use App\Shared\TransactionLifecycle\ChangesTransactionDocuments;
+use App\Shared\TransactionLifecycle\TransactionModule;
+use App\Shared\TransactionLifecycle\TransactionPolicyService;
 use Carbon\Carbon;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
@@ -19,6 +22,7 @@ use Illuminate\Support\Facades\DB;
 class StockMovementService
 {
     use AppliesListQuery;
+    use ChangesTransactionDocuments;
 
     /**
      * `source_number` disertakan karena placeholder halamannya berbunyi
@@ -280,6 +284,88 @@ class StockMovementService
 
             return $movement->refresh()->load('reversedBy');
         });
+    }
+
+    /**
+     * Edit mutasi stok MANUAL menurut mode lock/open. Mutasi yang dibuat
+     * otomatis oleh dokumen lain hanya bisa diubah lewat dokumennya.
+     *
+     * Draft diedit di tempat. Mutasi manual yang sudah posted (mode open)
+     * di-void (stoknya dibalik lewat mutasi pembalik) lalu diganti mutasi baru
+     * yang langsung diposting -- nomornya BARU, karena nomor lama tetap melekat
+     * pada jejak void-nya.
+     */
+    public function update(StockMovement $movement, array $data): StockMovement
+    {
+        $this->changePolicy()->assertDocumentChange(
+            TransactionPolicyService::CHANGE_EDIT,
+            TransactionModule::INVENTORY,
+            (string) $movement->status,
+            $this->dependents($movement),
+            $movement->movement_date?->toDateString(),
+        );
+
+        $data = array_merge($data, ['source_type' => null, 'source_id' => null]);
+
+        if ($movement->status === 'draft') {
+            return DB::connection('tenant')->transaction(function () use ($movement, $data) {
+                $movement->lines()->delete();
+                $movement->forceDelete();
+
+                return $this->createDraft($data);
+            });
+        }
+
+        return DB::connection('tenant')->transaction(function () use ($movement, $data) {
+            $voided = $this->void($movement, 'Diedit setelah posting');
+            $this->markVoidedDocumentDeleted($voided, 'Diganti oleh mutasi hasil edit');
+
+            return $this->post($this->createDraft($data));
+        });
+    }
+
+    /**
+     * Hapus mutasi stok manual. Draft dihapus permanen; yang sudah posted
+     * di-void (stoknya dibalik) lalu ditandai terhapus.
+     */
+    public function delete(StockMovement $movement, ?string $reason = null): void
+    {
+        $this->changePolicy()->assertDocumentChange(
+            TransactionPolicyService::CHANGE_DELETE,
+            TransactionModule::INVENTORY,
+            (string) $movement->status,
+            $this->dependents($movement),
+            $movement->movement_date?->toDateString(),
+        );
+
+        $reason = trim((string) $reason);
+
+        DB::connection('tenant')->transaction(function () use ($movement, $reason): void {
+            if ($movement->status === 'draft') {
+                $movement->lines()->delete();
+                $movement->forceDelete();
+
+                return;
+            }
+
+            $voided = $this->void($movement, $this->deleteVoidReason($reason));
+            $this->markVoidedDocumentDeleted($voided, $reason);
+        });
+    }
+
+    /**
+     * Mutasi yang dibuat otomatis oleh dokumen lain (faktur, penerimaan barang,
+     * penyesuaian, pembalik, dst.) dianggap tertaut ke dokumen sumbernya.
+     *
+     * @return list<string>
+     */
+    public function dependents(StockMovement $movement): array
+    {
+        if ($movement->source_type === null || $movement->source_type === '' || $movement->source_type === 'manual') {
+            return [];
+        }
+
+        return ['dibuat otomatis dari '.str_replace('_', ' ', (string) $movement->source_type).' '.($movement->source_number ?? '#'.$movement->source_id).' -- ubah lewat dokumen sumbernya'];
     }
 
     public function createAndPost(array $data): StockMovement

@@ -9,11 +9,13 @@ use App\Modules\Sales\Requests\AllocateCustomerDepositRequest;
 use App\Modules\Sales\Requests\RefundCustomerDepositRequest;
 use App\Modules\Sales\Requests\SalesActionRequest;
 use App\Modules\Sales\Requests\StoreCustomerDepositRequest;
+use App\Modules\Sales\Requests\UpdateCustomerDepositRequest;
 use App\Modules\Sales\Services\CustomerDepositService;
 use App\Shared\Api\ApiErrorCode;
 use App\Shared\Api\ApiResponse;
 use App\Shared\Api\ResolvesAdjacentRecords;
 use App\Shared\Permission\PermissionService;
+use App\Shared\TransactionLifecycle\DeleteTransactionRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -47,6 +49,18 @@ class CustomerDepositController extends Controller
     public function post(int $id): JsonResponse
     {
         return $this->successResponse($this->service->post(CustomerDeposit::query()->findOrFail($id)), 'Customer deposit posted successfully');
+    }
+
+    public function update(UpdateCustomerDepositRequest $request, int $id): JsonResponse
+    {
+        return $this->successResponse($this->service->update(CustomerDeposit::query()->findOrFail($id), $request->validated()), 'Customer deposit updated successfully');
+    }
+
+    public function destroy(DeleteTransactionRequest $request, int $id): JsonResponse
+    {
+        $this->service->delete(CustomerDeposit::query()->findOrFail($id), $request->validated('reason'));
+
+        return $this->successResponse(null, 'Customer deposit deleted successfully');
     }
 
     public function void(SalesActionRequest $request, int $id): JsonResponse

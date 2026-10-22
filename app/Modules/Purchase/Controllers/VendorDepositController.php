@@ -9,11 +9,13 @@ use App\Modules\Purchase\Requests\AllocateVendorDepositRequest;
 use App\Modules\Purchase\Requests\PurchaseRequestActionRequest;
 use App\Modules\Purchase\Requests\RefundVendorDepositRequest;
 use App\Modules\Purchase\Requests\StoreVendorDepositRequest;
+use App\Modules\Purchase\Requests\UpdateVendorDepositRequest;
 use App\Modules\Purchase\Services\VendorDepositService;
 use App\Shared\Api\ApiErrorCode;
 use App\Shared\Api\ApiResponse;
 use App\Shared\Api\ResolvesAdjacentRecords;
 use App\Shared\Permission\PermissionService;
+use App\Shared\TransactionLifecycle\DeleteTransactionRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -47,6 +49,18 @@ class VendorDepositController extends Controller
     public function post(int $id): JsonResponse
     {
         return $this->successResponse($this->service->post(VendorDeposit::query()->findOrFail($id)), 'Vendor deposit posted successfully');
+    }
+
+    public function update(UpdateVendorDepositRequest $request, int $id): JsonResponse
+    {
+        return $this->successResponse($this->service->update(VendorDeposit::query()->findOrFail($id), $request->validated()), 'Vendor deposit updated successfully');
+    }
+
+    public function destroy(DeleteTransactionRequest $request, int $id): JsonResponse
+    {
+        $this->service->delete(VendorDeposit::query()->findOrFail($id), $request->validated('reason'));
+
+        return $this->successResponse(null, 'Vendor deposit deleted successfully');
     }
 
     public function void(PurchaseRequestActionRequest $request, int $id): JsonResponse
