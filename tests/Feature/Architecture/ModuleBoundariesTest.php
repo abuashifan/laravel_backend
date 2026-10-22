@@ -124,6 +124,15 @@ class ModuleBoundariesTest extends TestCase
         // lewat infrastruktur yang sama, preseden identik dengan Setup di atas.
         'MasterData → App\\Modules\\Imports\\Services\\SpreadsheetReaderFactory',
         'MasterData → App\\Modules\\Imports\\Services\\ImportBatchService',
+        // Pilihan sheet .xlsx untuk dua impor di atas: aturan "sheet mana" dan
+        // pembacaan daftar sheet tinggal di Imports (satu sumber, dipakai juga
+        // oleh ImportBatchService), bukan disalin ke Setup/MasterData.
+        'Setup → App\\Modules\\Imports\\Services\\ImportSheetResolver',
+        'Setup → App\\Modules\\Imports\\Services\\ImportSheetLister',
+        'Setup → App\\Modules\\Imports\\Requests\\ListImportSheetsRequest',
+        'MasterData → App\\Modules\\Imports\\Services\\ImportSheetResolver',
+        'MasterData → App\\Modules\\Imports\\Services\\ImportSheetLister',
+        'MasterData → App\\Modules\\Imports\\Requests\\ListImportSheetsRequest',
     ];
 
     /**
