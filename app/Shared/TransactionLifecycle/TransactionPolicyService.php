@@ -77,6 +77,13 @@ class TransactionPolicyService
         $mode = $this->normalizeEditMode($settings?->transaction_edit_mode);
 
         if ($mode === self::EDIT_MODE_LOCK && ! $changeableInLock) {
+            // Tahun fiskal/periode tertutup lebih mendasar daripada mode lock:
+            // alasannya yang ditampilkan kalau keduanya berlaku.
+            $dateCheck = $this->dateGuard->check($transactionDate, TransactionAction::EDIT, $module);
+            if ($dateCheck->denied()) {
+                return $dateCheck;
+            }
+
             return $this->lockedResult($verb, $status);
         }
 
@@ -226,6 +233,11 @@ class TransactionPolicyService
                 // Mode lock menggantikan `allow_edit_posted_transactions`: hanya
                 // draft yang boleh diedit; sisanya lewat void.
                 if ($editMode === self::EDIT_MODE_LOCK && $status !== TransactionStatus::DRAFT) {
+                    $dateCheck = $this->dateGuard->check($transactionDate ?? $this->getTransactionDate($transaction), $action, $module);
+                    if ($dateCheck->denied()) {
+                        return $dateCheck;
+                    }
+
                     return $this->lockedResult('diedit', $status);
                 }
             }
