@@ -24,6 +24,8 @@ class ImportCoaFileRequest extends FormRequest
                 Rule::file()->extensions(['csv', 'txt', 'xlsx']),
                 'mimetypes:text/csv,text/plain,application/csv,text/x-csv,application/x-csv,text/comma-separated-values,application/vnd.ms-excel,application/octet-stream,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             ],
+            // Nama sheet .xlsx yang dibaca; kosong = sheet pertama.
+            'sheet' => ['sometimes', 'nullable', 'string', 'max:255'],
         ];
     }
 

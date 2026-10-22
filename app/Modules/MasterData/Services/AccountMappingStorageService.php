@@ -3,6 +3,7 @@
 namespace App\Modules\MasterData\Services;
 
 use App\Modules\Imports\Services\ImportBatchService;
+use App\Modules\Imports\Services\ImportSheetResolver;
 use App\Modules\Imports\Services\SpreadsheetReaderFactory;
 use App\Modules\MasterData\Models\AccountMapping;
 use App\Modules\MasterData\Models\ChartOfAccount;
@@ -228,7 +229,7 @@ class AccountMappingStorageService
      *
      * @return array{results: list<array{row:int, mapping_key:string, status:string, account_code:?string, message:?string}>, applied_count:int, skipped_count:int, error_count:int}
      */
-    public function importFromFile(UploadedFile $file): array
+    public function importFromFile(UploadedFile $file, ?string $sheet = null): array
     {
         $extension = strtolower($file->getClientOriginalExtension() ?: $file->extension());
         $reader = $this->readerFactory->make($extension);
@@ -240,7 +241,8 @@ class AccountMappingStorageService
             ]);
         }
 
-        $headers = $reader->headers($path);
+        $sheetName = ImportSheetResolver::resolve($reader->sheetNames($path), $sheet);
+        $headers = $reader->headers($path, $sheetName);
         $guess = $this->importBatches->guessColumnMap('account_mapping', $headers);
 
         if ($guess['unmapped_required'] !== []) {
@@ -258,7 +260,7 @@ class AccountMappingStorageService
         $skippedCount = 0;
         $errorCount = 0;
 
-        foreach ($reader->rows($path) as $rowNumber => $raw) {
+        foreach ($reader->rows($path, $sheetName) as $rowNumber => $raw) {
             $mappingKey = trim((string) ($raw[$columnMap['mapping_key'] ?? ''] ?? ''));
             $accountCode = trim((string) ($raw[$columnMap['account_code'] ?? ''] ?? ''));
 
