@@ -81,6 +81,8 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('sales')->group(fu
     Route::patch('/invoices/{id}/post', [SalesInvoiceController::class, 'post'])->middleware('permission:sales.invoices.post');
     Route::post('/invoices/bulk-post', [SalesInvoiceController::class, 'bulkPost'])->middleware('permission:sales.invoices.post');
     Route::patch('/invoices/{id}/void', [SalesInvoiceController::class, 'void'])->middleware('permission:sales.invoices.void');
+    // Hapus mengikuti mode lock/open; draft = izin edit, sudah berefek = dibatalkan seperti void.
+    Route::delete('/invoices/{id}', [SalesInvoiceController::class, 'destroy'])->middleware('permission:sales.invoices.edit|sales.invoices.void');
 
     Route::get('/customer-deposits', [CustomerDepositController::class, 'index'])->middleware('permission:sales.deposits.view');
     Route::get('/customer-deposits/adjacent', [CustomerDepositController::class, 'adjacent'])->middleware('permission:sales.deposits.view');
@@ -99,6 +101,8 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('sales')->group(fu
     Route::get('/receipts/{id}', [SalesReceiptController::class, 'show'])->middleware('permission:sales.receipts.view');
     Route::patch('/receipts/{id}/post', [SalesReceiptController::class, 'post'])->middleware('permission:sales.receipts.post');
     Route::patch('/receipts/{id}/void', [SalesReceiptController::class, 'void'])->middleware('permission:sales.receipts.void');
+    Route::patch('/receipts/{id}', [SalesReceiptController::class, 'update'])->middleware('permission:sales.receipts.create');
+    Route::delete('/receipts/{id}', [SalesReceiptController::class, 'destroy'])->middleware('permission:sales.receipts.create|sales.receipts.void');
 
     Route::get('/returns', [SalesReturnController::class, 'index'])->middleware('permission:sales.returns.view');
     Route::get('/returns/adjacent', [SalesReturnController::class, 'adjacent'])->middleware('permission:sales.returns.view');

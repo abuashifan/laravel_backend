@@ -22,6 +22,7 @@ class CompanySettingService
                 'auto_post_transactions' => true,
                 'allow_edit_transactions' => true,
                 'allow_edit_posted_transactions' => true,
+                'transaction_edit_mode' => 'lock',
                 'allow_void_transactions' => true,
                 'hide_voided_transactions' => true,
                 'require_void_reason' => true,

@@ -23,6 +23,7 @@ class CompanyAccountingSetting extends Model
         'auto_post_transactions',
         'allow_edit_transactions',
         'allow_edit_posted_transactions',
+        'transaction_edit_mode',
         'allow_void_transactions',
         'hide_voided_transactions',
         'require_void_reason',

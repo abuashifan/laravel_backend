@@ -25,6 +25,10 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('cash-bank')->grou
         ->middleware('permission:cash_bank.post');
     Route::patch('/cash-receipts/{id}/void', [CashReceiptController::class, 'void'])
         ->middleware('permission:cash_bank.void');
+    Route::patch('/cash-receipts/{id}', [CashReceiptController::class, 'update'])
+        ->middleware('permission:cash_bank.edit');
+    Route::delete('/cash-receipts/{id}', [CashReceiptController::class, 'destroy'])
+        ->middleware('permission:cash_bank.edit|cash_bank.void');
 
     Route::get('/cash-payments', [CashPaymentController::class, 'index'])
         ->middleware('permission:cash_bank.view');
@@ -38,6 +42,10 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('cash-bank')->grou
         ->middleware('permission:cash_bank.post');
     Route::patch('/cash-payments/{id}/void', [CashPaymentController::class, 'void'])
         ->middleware('permission:cash_bank.void');
+    Route::patch('/cash-payments/{id}', [CashPaymentController::class, 'update'])
+        ->middleware('permission:cash_bank.edit');
+    Route::delete('/cash-payments/{id}', [CashPaymentController::class, 'destroy'])
+        ->middleware('permission:cash_bank.edit|cash_bank.void');
 
     Route::get('/bank-transfers', [BankTransferController::class, 'index'])
         ->middleware('permission:cash_bank.view');

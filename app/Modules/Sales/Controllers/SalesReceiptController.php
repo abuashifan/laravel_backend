@@ -6,9 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Modules\Sales\Models\SalesReceipt;
 use App\Modules\Sales\Requests\SalesActionRequest;
 use App\Modules\Sales\Requests\StoreSalesReceiptRequest;
+use App\Modules\Sales\Requests\UpdateSalesReceiptRequest;
 use App\Modules\Sales\Services\SalesReceiptService;
 use App\Shared\Api\ApiResponse;
 use App\Shared\Api\ResolvesAdjacentRecords;
+use App\Shared\TransactionLifecycle\DeleteTransactionRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -39,6 +41,18 @@ class SalesReceiptController extends Controller
         $data = $request->validate(['customer_id' => ['required', 'integer']]);
 
         return $this->successResponse($this->service->customerContext((int) $data['customer_id']), 'Sales receipt customer context retrieved successfully');
+    }
+
+    public function update(UpdateSalesReceiptRequest $request, int $id): JsonResponse
+    {
+        return $this->successResponse($this->service->update(SalesReceipt::query()->findOrFail($id), $request->validated()), 'Sales receipt updated successfully');
+    }
+
+    public function destroy(DeleteTransactionRequest $request, int $id): JsonResponse
+    {
+        $this->service->delete(SalesReceipt::query()->findOrFail($id), $request->validated('reason'));
+
+        return $this->successResponse(null, 'Sales receipt deleted successfully');
     }
 
     public function show(int $id): JsonResponse

@@ -16,6 +16,7 @@ use App\Modules\Purchase\Models\VendorBillLine;
 use App\Modules\Purchase\Models\VendorDeposit;
 use App\Modules\Purchase\Models\VendorDepositAllocation;
 use App\Modules\Purchase\Models\VendorPayment;
+use App\Modules\Purchase\Models\VendorPaymentLine;
 use App\Modules\Purchase\Services\Concerns\HandlesPurchaseDocuments;
 use App\Shared\Api\AppliesListQuery;
 use App\Shared\Audit\AuditLogService;
@@ -25,6 +26,9 @@ use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
 use App\Shared\TransactionLifecycle\PaymentTermDueDateService;
 use App\Shared\TransactionLifecycle\TransactionDateGuardService;
+use App\Shared\TransactionLifecycle\TransactionDependents;
+use App\Shared\TransactionLifecycle\TransactionModule;
+use App\Shared\TransactionLifecycle\TransactionPolicyService;
 use App\Shared\TransactionLifecycle\TransactionVoidEffectService;
 use App\Shared\Validation\BusinessReferenceValidator;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -135,11 +139,117 @@ class VendorBillService
         });
     }
 
+    /**
+     * Edit tagihan menurut mode lock/open (`TransactionPolicyService`).
+     *
+     * Draft diedit langsung. Di mode open, tagihan approved kembali ke draft;
+     * yang sudah posted dibatalkan dulu efeknya (jurnal lama di-void sebagai
+     * jejak audit, stok & alokasi deposit dari PO dikembalikan), lalu diedit
+     * dan diposting ulang dengan nomor yang sama.
+     */
     public function update(VendorBill $bill, array $data): VendorBill
     {
-        if ($bill->status !== 'draft') {
-            throw ApiException::make('VENDOR_BILL_NOT_EDITABLE', 'Vendor bill status is not editable.', 422);
+        $this->changePolicy()->assertDocumentChange(
+            TransactionPolicyService::CHANGE_EDIT,
+            TransactionModule::PURCHASE,
+            (string) $bill->status,
+            $this->dependents($bill),
+            $bill->bill_date?->toDateString(),
+        );
+
+        if ($bill->status === 'draft') {
+            return $this->updateDraft($bill, $data);
         }
+
+        return DB::connection('tenant')->transaction(function () use ($bill, $data) {
+            $wasPosted = $bill->status !== 'approved';
+            $this->reopenToDraft($bill, 'Diedit setelah '.($wasPosted ? 'posting' : 'approve').' (revisi '.((int) $bill->revision_no + 1).')');
+            $bill = $this->updateDraft($bill->refresh(), $data);
+
+            // Dimuat ulang: hasil updateDraft membawa atribut tampilan
+            // (ringkasan deposit) yang bukan kolom dan akan ikut tersimpan.
+            return $wasPosted ? $this->post(VendorBill::query()->findOrFail($bill->id)) : $bill;
+        });
+    }
+
+    /**
+     * Hapus tagihan. Draft/approved belum berefek, jadi dihapus permanen; yang
+     * sudah posted di-void lewat jalur void biasa lalu ditandai terhapus.
+     */
+    public function delete(VendorBill $bill, ?string $reason = null): void
+    {
+        $this->changePolicy()->assertDocumentChange(
+            TransactionPolicyService::CHANGE_DELETE,
+            TransactionModule::PURCHASE,
+            (string) $bill->status,
+            $this->dependents($bill),
+            $bill->bill_date?->toDateString(),
+        );
+
+        $reason = trim((string) $reason);
+
+        DB::connection('tenant')->transaction(function () use ($bill, $reason): void {
+            if (in_array($bill->status, ['draft', 'approved'], true)) {
+                $this->auditPurchase($this->auditLogService, 'vendor_bill.deleted', $bill, 'bill_number', ['reason' => $reason, 'permanent' => true]);
+                $bill->lines()->delete();
+                $bill->forceDelete();
+
+                return;
+            }
+
+            $voided = $this->void($bill, $reason !== '' ? $reason : 'Dihapus');
+            $voided->deleted_by = auth()->id();
+            $voided->delete_reason = $reason !== '' ? $reason : null;
+            $voided->save();
+            $voided->delete();
+            $this->auditPurchase($this->auditLogService, 'vendor_bill.deleted', $voided, 'bill_number', ['reason' => $reason, 'permanent' => false]);
+        });
+    }
+
+    /**
+     * Transaksi lain yang masih bergantung pada tagihan ini.
+     *
+     * Deposit dari PO yang sama yang dialokasikan otomatis saat posting adalah
+     * efek tagihan sendiri (ikut dibatalkan & dibuat ulang). Alokasi dari
+     * deposit lain, atau yang melebihi jumlah deposit yang diterapkan
+     * tagihan, berarti ada alokasi manual -- itu transaksi lain.
+     *
+     * @return list<string>
+     */
+    public function dependents(VendorBill $bill): array
+    {
+        $deps = app(TransactionDependents::class);
+
+        $paymentIds = VendorPaymentLine::query()->where('vendor_bill_id', $bill->id)->pluck('vendor_payment_id')
+            ->merge(VendorPayment::query()->where('vendor_bill_id', $bill->id)->pluck('id'))
+            ->unique()->all();
+        $payments = VendorPayment::query()->whereIn('id', $paymentIds)->where('status', '!=', 'void')->pluck('payment_number');
+        $returns = PurchaseReturn::query()->where('vendor_bill_id', $bill->id)->where('status', '!=', 'void')->pluck('return_number');
+
+        $allocations = VendorDepositAllocation::query()->where('vendor_bill_id', $bill->id)->where('status', 'posted')->get();
+        $deposits = VendorDeposit::query()->whereIn('id', $allocations->pluck('vendor_deposit_id'))->get()->keyBy('id');
+        $isOwn = fn (VendorDepositAllocation $a): bool => $bill->purchase_order_id
+            && (int) ($deposits->get($a->vendor_deposit_id)?->purchase_order_id) === (int) $bill->purchase_order_id;
+        $ownTotal = (float) $allocations->filter($isOwn)->sum('allocated_amount');
+        $manual = $ownTotal - (float) $bill->applied_vendor_deposit_amount > 0.01
+            ? $allocations
+            : $allocations->reject($isOwn);
+        $manualDeposits = $manual->map(fn (VendorDepositAllocation $a): ?string => $deposits->get($a->vendor_deposit_id)?->deposit_number);
+
+        $capitalized = $bill->lines()->where('capitalized_amount', '>', 0)->exists()
+            ? ['baris aset tetap yang sudah dikapitalisasi']
+            : [];
+
+        return array_merge(
+            $deps->documents('pembayaran vendor', $payments),
+            $deps->documents('retur pembelian', $returns),
+            $deps->documents('alokasi deposit vendor', $manualDeposits),
+            $capitalized,
+        );
+    }
+
+    private function updateDraft(VendorBill $bill, array $data): VendorBill
+    {
         $data = $this->paymentTermDueDateService->apply(
             array_merge(['bill_date' => $bill->bill_date?->toDateString()], $data),
             'bill_date',
@@ -304,36 +414,7 @@ class VendorBillService
         }
 
         return DB::connection('tenant')->transaction(function () use ($bill, $reason) {
-            $bill->load('lines');
-            $journalIds = $this->voidEffectService->voidJournalsForSource('vendor_bill', (int) $bill->id, $reason);
-            $movementIds = $this->voidEffectService->voidStockMovementsForSource('vendor_bill', (int) $bill->id, $reason);
-            $allocations = VendorDepositAllocation::query()->where('vendor_bill_id', $bill->id)->where('status', 'posted')->get();
-            foreach ($allocations as $allocation) {
-                $deposit = VendorDeposit::query()->lockForUpdate()->find($allocation->vendor_deposit_id);
-                if ($deposit) {
-                    $deposit->allocated_amount = max(0, (float) $deposit->allocated_amount - (float) $allocation->allocated_amount);
-                    $deposit->remaining_amount = (float) $deposit->remaining_amount + (float) $allocation->allocated_amount;
-                    $deposit->status = 'posted';
-                    $deposit->save();
-                }
-                $this->voidEffectService->voidJournalById((int) $allocation->journal_entry_id, $reason);
-                $allocation->status = 'void';
-                $allocation->voided_by = auth()->id();
-                $allocation->voided_at = now();
-                $allocation->void_reason = $reason;
-                $allocation->save();
-            }
-            foreach ($bill->lines as $line) {
-                if ($line->purchase_order_line_id && ($orderLine = PurchaseOrderLine::query()->lockForUpdate()->find($line->purchase_order_line_id))) {
-                    $orderLine->billed_quantity = max(0, (float) $orderLine->billed_quantity - (float) $line->quantity);
-                    $orderLine->save();
-                }
-                if ($line->goods_receipt_line_id && ($receiptLine = GoodsReceiptLine::query()->lockForUpdate()->find($line->goods_receipt_line_id))) {
-                    $receiptLine->billed_quantity = max(0, (float) $receiptLine->billed_quantity - (float) $line->quantity);
-                    $receiptLine->save();
-                }
-            }
-            $this->refreshBillingSourceStatuses($bill);
+            [$journalIds, $movementIds, $allocations] = $this->reversePostingEffects($bill, $reason);
             $bill->status = 'void';
             $bill->voided_by = auth()->id();
             $bill->voided_at = now();
@@ -343,6 +424,79 @@ class VendorBillService
 
             return $bill->refresh()->load('lines', 'vendor');
         });
+    }
+
+    /**
+     * Batalkan seluruh efek posting tagihan: jurnal (di-void, tetap tersimpan),
+     * mutasi stok, alokasi deposit, dan progres dokumen sumber. Dipakai bersama
+     * oleh void dan edit-setelah-posting.
+     *
+     * @return array{0: array<int>, 1: array<int>, 2: \Illuminate\Support\Collection<int, VendorDepositAllocation>}
+     */
+    private function reversePostingEffects(VendorBill $bill, string $reason): array
+    {
+        $bill->load('lines');
+        $journalIds = $this->voidEffectService->voidJournalsForSource('vendor_bill', (int) $bill->id, $reason);
+        $movementIds = $this->voidEffectService->voidStockMovementsForSource('vendor_bill', (int) $bill->id, $reason);
+        $allocations = VendorDepositAllocation::query()->where('vendor_bill_id', $bill->id)->where('status', 'posted')->get();
+        foreach ($allocations as $allocation) {
+            $deposit = VendorDeposit::query()->lockForUpdate()->find($allocation->vendor_deposit_id);
+            if ($deposit) {
+                $deposit->allocated_amount = max(0, (float) $deposit->allocated_amount - (float) $allocation->allocated_amount);
+                $deposit->remaining_amount = (float) $deposit->remaining_amount + (float) $allocation->allocated_amount;
+                $deposit->status = 'posted';
+                $deposit->save();
+            }
+            $this->voidEffectService->voidJournalById((int) $allocation->journal_entry_id, $reason);
+            $allocation->status = 'void';
+            $allocation->voided_by = auth()->id();
+            $allocation->voided_at = now();
+            $allocation->void_reason = $reason;
+            $allocation->save();
+        }
+        foreach ($bill->lines as $line) {
+            if ($line->purchase_order_line_id && ($orderLine = PurchaseOrderLine::query()->lockForUpdate()->find($line->purchase_order_line_id))) {
+                $orderLine->billed_quantity = max(0, (float) $orderLine->billed_quantity - (float) $line->quantity);
+                $orderLine->save();
+            }
+            if ($line->goods_receipt_line_id && ($receiptLine = GoodsReceiptLine::query()->lockForUpdate()->find($line->goods_receipt_line_id))) {
+                $receiptLine->billed_quantity = max(0, (float) $receiptLine->billed_quantity - (float) $line->quantity);
+                $receiptLine->save();
+            }
+        }
+        $this->refreshBillingSourceStatuses($bill);
+
+        return [$journalIds, $movementIds, $allocations];
+    }
+
+    /**
+     * Kembalikan tagihan ke draft. Tagihan posted dibalik efeknya lebih dulu;
+     * tagihan approved belum punya efek, jadi cukup statusnya.
+     */
+    private function reopenToDraft(VendorBill $bill, string $reason): void
+    {
+        if ($bill->status !== 'approved') {
+            $this->guardDate((string) $bill->bill_date, 'void');
+            $this->reversePostingEffects($bill, $reason);
+            $bill->journal_entry_id = null;
+            $bill->deposit_allocation_journal_entry_id = null;
+            $bill->paid_amount = 0;
+            $bill->balance_due = (float) $bill->grand_total;
+            $bill->posted_by = null;
+            $bill->posted_at = null;
+        }
+
+        $bill->status = 'draft';
+        $bill->approved_by = null;
+        $bill->approved_at = null;
+        $bill->save();
+
+        $this->auditPurchase($this->auditLogService, 'vendor_bill.reopened', $bill, 'bill_number', ['reason' => $reason]);
+    }
+
+    private function changePolicy(): TransactionPolicyService
+    {
+        return app(TransactionPolicyService::class);
     }
 
     public function applyAvailableVendorDeposit(VendorBill $bill): VendorBill

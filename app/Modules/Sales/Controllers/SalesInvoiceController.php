@@ -19,6 +19,7 @@ use App\Shared\Api\ApiResponse;
 use App\Shared\Api\ResolvesAdjacentRecords;
 use App\Shared\Export\ExcelExportService;
 use App\Shared\Tenant\TenantContext;
+use App\Shared\TransactionLifecycle\DeleteTransactionRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -65,6 +66,13 @@ class SalesInvoiceController extends Controller
     public function update(UpdateSalesInvoiceRequest $request, int $id): JsonResponse
     {
         return $this->successResponse($this->service->update(SalesInvoice::query()->findOrFail($id), $request->validated()), 'Sales invoice updated successfully');
+    }
+
+    public function destroy(DeleteTransactionRequest $request, int $id): JsonResponse
+    {
+        $this->service->delete(SalesInvoice::query()->findOrFail($id), $request->validated('reason'));
+
+        return $this->successResponse(null, 'Sales invoice deleted successfully');
     }
 
     public function createFromSalesOrder(Request $request, int $salesOrderId): JsonResponse

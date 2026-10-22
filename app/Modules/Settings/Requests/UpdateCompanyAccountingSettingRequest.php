@@ -26,6 +26,8 @@ class UpdateCompanyAccountingSettingRequest extends FormRequest
             'auto_post_transactions' => ['nullable', 'boolean'],
             'allow_edit_transactions' => ['nullable', 'boolean'],
             'allow_edit_posted_transactions' => ['nullable', 'boolean'],
+            // lock = hanya draft yang boleh diedit/dihapus; open = semua status, selama tidak tertaut transaksi lain.
+            'transaction_edit_mode' => ['nullable', 'in:lock,open'],
             'allow_void_transactions' => ['nullable', 'boolean'],
             'hide_voided_transactions' => ['nullable', 'boolean'],
             'require_void_reason' => ['nullable', 'boolean'],

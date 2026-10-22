@@ -12,6 +12,7 @@ use App\Shared\DocumentNumbering\DocumentType;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Models\User;
 use App\Shared\Tenant\TenantContext;
+use App\Shared\TransactionLifecycle\TransactionDependents;
 use App\Shared\TransactionLifecycle\TransactionModule;
 use App\Shared\TransactionLifecycle\TransactionPolicyResult;
 use App\Shared\TransactionLifecycle\TransactionPolicyService;
@@ -264,6 +265,14 @@ class JournalEntryService
             throw ApiException::make(ApiErrorCode::TRANSACTION_ALREADY_VOID, 'Journal is void and cannot be edited.', 422);
         }
 
+        $this->policyService->assertDocumentChange(
+            TransactionPolicyService::CHANGE_EDIT,
+            TransactionModule::JOURNAL,
+            (string) $journal->status,
+            $this->dependents($journal),
+            $journal->journal_date?->toDateString(),
+        );
+
         $editReason = $data['edit_reason'] ?? null;
         if ($journal->isPosted() && (! is_string($editReason) || trim($editReason) === '')) {
             throw ApiException::make(ApiErrorCode::EDIT_REASON_REQUIRED, 'Edit reason is required for editing posted journal.', 422);
@@ -422,6 +431,57 @@ class JournalEntryService
         $this->audit('journal.voided', $journal, $userId, ['reason' => $reason]);
 
         return $journal;
+    }
+
+    /**
+     * Hapus jurnal manual.
+     *
+     * Draft/approved belum menyentuh buku besar, jadi dihapus permanen. Jurnal
+     * posted di-void dulu lewat jalur void biasa (jejak revisi & audit tetap
+     * ada), lalu ditandai terhapus supaya hilang dari daftar.
+     */
+    public function deleteManual(JournalEntry $journal, ?string $reason = null, ?int $userId = null): void
+    {
+        $userId ??= auth()->id();
+
+        if ($journal->isSystemGenerated()) {
+            throw ApiException::make(ApiErrorCode::SYSTEM_GENERATED_READ_ONLY, 'Jurnal buatan sistem tidak bisa dihapus langsung. Ubah atau hapus dokumen sumbernya.', 422);
+        }
+
+        $this->policyService->assertDocumentChange(
+            TransactionPolicyService::CHANGE_DELETE,
+            TransactionModule::JOURNAL,
+            (string) $journal->status,
+            $this->dependents($journal),
+            $journal->journal_date?->toDateString(),
+        );
+
+        $reason = trim((string) $reason);
+
+        DB::transaction(function () use ($journal, $reason, $userId): void {
+            if (! $journal->isPosted()) {
+                $this->audit('journal.deleted', $journal, $userId, ['reason' => $reason, 'permanent' => true]);
+                $journal->lines()->delete();
+                $journal->forceDelete();
+
+                return;
+            }
+
+            $voided = $this->void($journal, $reason !== '' ? $reason : 'Dihapus', $userId);
+            $voided->deleted_by = $userId;
+            $voided->delete_reason = $reason !== '' ? $reason : null;
+            $voided->save();
+            $voided->delete();
+            $this->audit('journal.deleted', $voided, $userId, ['reason' => $reason, 'permanent' => false]);
+        });
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function dependents(JournalEntry $journal): array
+    {
+        return app(TransactionDependents::class)->reconciledJournals([(int) $journal->id]);
     }
 
     private function audit(string $event, JournalEntry $journal, ?int $userId, array $meta = []): void

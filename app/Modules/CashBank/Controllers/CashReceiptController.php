@@ -6,9 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Modules\CashBank\Models\CashReceipt;
 use App\Modules\CashBank\Requests\CashBankActionRequest;
 use App\Modules\CashBank\Requests\StoreCashReceiptRequest;
+use App\Modules\CashBank\Requests\UpdateCashReceiptRequest;
 use App\Modules\CashBank\Services\CashReceiptService;
 use App\Shared\Api\ApiResponse;
 use App\Shared\Api\ResolvesAdjacentRecords;
+use App\Shared\TransactionLifecycle\DeleteTransactionRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -32,6 +34,18 @@ class CashReceiptController extends Controller
     public function store(StoreCashReceiptRequest $request): JsonResponse
     {
         return $this->successResponse($this->service->create($request->validated()), 'Cash receipt created successfully', 201);
+    }
+
+    public function update(UpdateCashReceiptRequest $request, int $id): JsonResponse
+    {
+        return $this->successResponse($this->service->update(CashReceipt::query()->findOrFail($id), $request->validated()), 'Cash receipt updated successfully');
+    }
+
+    public function destroy(DeleteTransactionRequest $request, int $id): JsonResponse
+    {
+        $this->service->delete(CashReceipt::query()->findOrFail($id), $request->validated('reason'));
+
+        return $this->successResponse(null, 'Cash receipt deleted successfully');
     }
 
     public function show(int $id): JsonResponse

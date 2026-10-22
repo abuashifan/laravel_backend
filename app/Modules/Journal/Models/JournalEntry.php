@@ -9,6 +9,7 @@ use App\Shared\TransactionLifecycle\HasTransactionLifecycle;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class JournalEntry extends Model
 {
@@ -19,6 +20,7 @@ class JournalEntry extends Model
     }
     use HasRevisionTracking;
     use HasTransactionLifecycle;
+    use SoftDeletes;
 
     protected $connection = 'tenant';
 

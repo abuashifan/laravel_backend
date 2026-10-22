@@ -8,10 +8,12 @@ use App\Modules\Budget\Support\CollectsBudgetWarnings;
 use App\Modules\CashBank\Models\CashPayment;
 use App\Modules\CashBank\Requests\CashBankActionRequest;
 use App\Modules\CashBank\Requests\StoreCashPaymentRequest;
+use App\Modules\CashBank\Requests\UpdateCashPaymentRequest;
 use App\Modules\CashBank\Services\CashPaymentService;
 use App\Shared\Api\ApiResponse;
 use App\Shared\Api\ResolvesAdjacentRecords;
 use App\Shared\Tenant\TenantContext;
+use App\Shared\TransactionLifecycle\DeleteTransactionRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -40,6 +42,18 @@ class CashPaymentController extends Controller
     public function store(StoreCashPaymentRequest $request): JsonResponse
     {
         return $this->successResponse($this->service->create($request->validated()), 'Cash payment created successfully', 201);
+    }
+
+    public function update(UpdateCashPaymentRequest $request, int $id): JsonResponse
+    {
+        return $this->successResponse($this->service->update(CashPayment::query()->findOrFail($id), $request->validated()), 'Cash payment updated successfully');
+    }
+
+    public function destroy(DeleteTransactionRequest $request, int $id): JsonResponse
+    {
+        $this->service->delete(CashPayment::query()->findOrFail($id), $request->validated('reason'));
+
+        return $this->successResponse(null, 'Cash payment deleted successfully');
     }
 
     public function show(int $id): JsonResponse

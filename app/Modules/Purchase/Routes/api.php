@@ -64,6 +64,8 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('purchase')->group
     Route::patch('/bills/{id}/approve', [VendorBillController::class, 'approve'])->middleware('permission:purchase.bills.approve');
     Route::patch('/bills/{id}/post', [VendorBillController::class, 'post'])->middleware('permission:purchase.bills.post');
     Route::patch('/bills/{id}/void', [VendorBillController::class, 'void'])->middleware('permission:purchase.bills.void');
+    // Hapus mengikuti mode lock/open; draft = izin edit, sudah berefek = dibatalkan seperti void.
+    Route::delete('/bills/{id}', [VendorBillController::class, 'destroy'])->middleware('permission:purchase.bills.edit|purchase.bills.void');
 
     Route::get('/vendor-deposits', [VendorDepositController::class, 'index'])->middleware('permission:purchase.deposits.view');
     Route::get('/vendor-deposits/adjacent', [VendorDepositController::class, 'adjacent'])->middleware('permission:purchase.deposits.view');
@@ -82,6 +84,8 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('purchase')->group
     Route::get('/payments/{id}', [VendorPaymentController::class, 'show'])->middleware('permission:purchase.payments.view');
     Route::patch('/payments/{id}/post', [VendorPaymentController::class, 'post'])->middleware('permission:purchase.payments.post');
     Route::patch('/payments/{id}/void', [VendorPaymentController::class, 'void'])->middleware('permission:purchase.payments.void');
+    Route::patch('/payments/{id}', [VendorPaymentController::class, 'update'])->middleware('permission:purchase.payments.create');
+    Route::delete('/payments/{id}', [VendorPaymentController::class, 'destroy'])->middleware('permission:purchase.payments.create|purchase.payments.void');
 
     Route::get('/returns', [PurchaseReturnController::class, 'index'])->middleware('permission:purchase.returns.view');
     Route::get('/returns/adjacent', [PurchaseReturnController::class, 'adjacent'])->middleware('permission:purchase.returns.view');

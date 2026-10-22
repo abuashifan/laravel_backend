@@ -12,7 +12,11 @@ use App\Shared\DocumentNumbering\DocumentNumberService;
 use App\Shared\DocumentNumbering\DocumentType;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
+use App\Shared\TransactionLifecycle\ChangesTransactionDocuments;
 use App\Shared\TransactionLifecycle\TransactionDateGuardService;
+use App\Shared\TransactionLifecycle\TransactionDependents;
+use App\Shared\TransactionLifecycle\TransactionModule;
+use App\Shared\TransactionLifecycle\TransactionPolicyService;
 use App\Shared\TransactionLifecycle\TransactionVoidEffectService;
 use App\Shared\Validation\BusinessReferenceValidator;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -22,6 +26,7 @@ use Illuminate\Support\Facades\DB;
 class SalesReceiptService
 {
     use AppliesListQuery;
+    use ChangesTransactionDocuments;
     use HandlesSalesDocuments;
 
     protected array $listSearchable = ['receipt_number'];
@@ -107,23 +112,7 @@ class SalesReceiptService
         $this->guardDate((string) $receipt->receipt_date, 'void');
 
         return DB::connection('tenant')->transaction(function () use ($receipt, $reason) {
-            $journalIds = $this->voidEffectService->voidJournalsForSource('sales_receipt', (int) $receipt->id, $reason);
-            if ($receipt->status === 'posted') {
-                $receipt->loadMissing('lines');
-                foreach ($receipt->lines as $line) {
-                    if (! $line->sales_invoice_id) {
-                        continue;
-                    }
-                    $invoice = SalesInvoice::query()->lockForUpdate()->find($line->sales_invoice_id);
-                    if ($invoice && $invoice->status !== 'void') {
-                        $amount = (float) $line->amount;
-                        $invoice->paid_amount = max(0, (float) $invoice->paid_amount - $amount);
-                        $invoice->balance_due = min((float) $invoice->grand_total, (float) $invoice->balance_due + $amount);
-                        $invoice->status = $invoice->paid_amount > 0 ? 'partially_paid' : 'posted';
-                        $invoice->save();
-                    }
-                }
-            }
+            $journalIds = $this->reversePostingEffects($receipt, $reason);
             $receipt->status = 'void';
             $receipt->voided_by = auth()->id();
             $receipt->voided_at = now();
@@ -133,6 +122,128 @@ class SalesReceiptService
 
             return $receipt->refresh();
         });
+    }
+
+    /**
+     * Edit penerimaan menurut mode lock/open. Draft diedit langsung; yang sudah
+     * posted (mode open) dibatalkan dulu efeknya -- jurnal lama di-void, saldo
+     * faktur dikembalikan -- lalu diedit dan diposting ulang dengan nomor sama.
+     */
+    public function update(SalesReceipt $receipt, array $data): SalesReceipt
+    {
+        $this->changePolicy()->assertDocumentChange(
+            TransactionPolicyService::CHANGE_EDIT,
+            TransactionModule::SALES,
+            (string) $receipt->status,
+            $this->dependents($receipt),
+            $receipt->receipt_date?->toDateString(),
+        );
+
+        return DB::connection('tenant')->transaction(function () use ($receipt, $data) {
+            $wasPosted = $receipt->status === 'posted';
+            if ($wasPosted) {
+                $this->reopenToDraft($receipt, 'Diedit setelah posting');
+            }
+            $receipt = $this->updateDraft($receipt->refresh(), $data);
+
+            return $wasPosted ? $this->post($receipt) : $receipt;
+        });
+    }
+
+    /**
+     * Hapus penerimaan. Draft dihapus permanen; yang sudah posted di-void lalu
+     * ditandai terhapus.
+     */
+    public function delete(SalesReceipt $receipt, ?string $reason = null): void
+    {
+        $this->changePolicy()->assertDocumentChange(
+            TransactionPolicyService::CHANGE_DELETE,
+            TransactionModule::SALES,
+            (string) $receipt->status,
+            $this->dependents($receipt),
+            $receipt->receipt_date?->toDateString(),
+        );
+
+        $reason = trim((string) $reason);
+
+        DB::connection('tenant')->transaction(function () use ($receipt, $reason): void {
+            if ($receipt->status === 'draft') {
+                $this->auditSales($this->auditLogService, 'sales_receipt.deleted', 'sales', $receipt, 'receipt_number', ['reason' => $reason, 'permanent' => true]);
+                $receipt->lines()->delete();
+                $receipt->forceDelete();
+
+                return;
+            }
+
+            $voided = $this->void($receipt, $this->deleteVoidReason($reason));
+            $this->markVoidedDocumentDeleted($voided, $reason);
+            $this->auditSales($this->auditLogService, 'sales_receipt.deleted', 'sales', $voided, 'receipt_number', ['reason' => $reason, 'permanent' => false]);
+        });
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function dependents(SalesReceipt $receipt): array
+    {
+        return app(TransactionDependents::class)->reconciledSource('sales_receipt', (int) $receipt->id);
+    }
+
+    private function updateDraft(SalesReceipt $receipt, array $data): SalesReceipt
+    {
+        $this->ensureCustomerExists((int) ($data['customer_id'] ?? $receipt->customer_id));
+        $header = $data;
+        unset($header['lines'], $header['receipt_number'], $header['status']);
+
+        $receipt->fill($header);
+        $receipt->save();
+        $receipt->lines()->delete();
+        $receipt->lines()->createMany($data['lines'] ?? [['sales_invoice_id' => $receipt->sales_invoice_id, 'amount' => $receipt->amount, 'description' => $receipt->notes]]);
+        $receipt = $receipt->refresh()->load('lines', 'customer', 'salesInvoice');
+        $this->auditSales($this->auditLogService, 'sales_receipt.updated', 'sales', $receipt, 'receipt_number');
+
+        return $receipt;
+    }
+
+    /**
+     * Batalkan efek posting penerimaan: jurnal di-void (tetap tersimpan) dan
+     * jumlah terbayar faktur dikembalikan. Dipakai void & edit-setelah-posting.
+     *
+     * @return array<int>
+     */
+    private function reversePostingEffects(SalesReceipt $receipt, string $reason): array
+    {
+        $journalIds = $this->voidEffectService->voidJournalsForSource('sales_receipt', (int) $receipt->id, $reason);
+        if ($receipt->status === 'posted') {
+            $receipt->loadMissing('lines');
+            foreach ($receipt->lines as $line) {
+                if (! $line->sales_invoice_id) {
+                    continue;
+                }
+                $invoice = SalesInvoice::query()->lockForUpdate()->find($line->sales_invoice_id);
+                if ($invoice && $invoice->status !== 'void') {
+                    $amount = (float) $line->amount;
+                    $invoice->paid_amount = max(0, (float) $invoice->paid_amount - $amount);
+                    $invoice->balance_due = min((float) $invoice->grand_total, (float) $invoice->balance_due + $amount);
+                    $invoice->status = $invoice->paid_amount > 0 ? 'partially_paid' : 'posted';
+                    $invoice->save();
+                }
+            }
+        }
+
+        return $journalIds;
+    }
+
+    private function reopenToDraft(SalesReceipt $receipt, string $reason): void
+    {
+        $this->guardDate((string) $receipt->receipt_date, 'void');
+        $this->reversePostingEffects($receipt, $reason);
+        $receipt->status = 'draft';
+        $receipt->journal_entry_id = null;
+        $receipt->posted_by = null;
+        $receipt->posted_at = null;
+        $receipt->save();
+        $this->auditSales($this->auditLogService, 'sales_receipt.reopened', 'sales', $receipt, 'receipt_number', ['reason' => $reason]);
     }
 
     public function applyToInvoice(SalesReceipt $receipt, SalesInvoice $invoice): void

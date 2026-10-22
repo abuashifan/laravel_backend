@@ -15,6 +15,7 @@ use App\Shared\Api\ApiResponse;
 use App\Shared\Api\ApiResponseBuilder;
 use App\Shared\Api\ResolvesAdjacentRecords;
 use App\Shared\Tenant\TenantContext;
+use App\Shared\TransactionLifecycle\DeleteTransactionRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -115,6 +116,14 @@ class JournalEntryController extends Controller
         }
 
         return $warnings;
+    }
+
+    public function destroy(DeleteTransactionRequest $request, int $id): JsonResponse
+    {
+        $journal = JournalEntry::query()->findOrFail($id);
+        $this->service->deleteManual($journal, $request->validated('reason'), auth()->id());
+
+        return $this->successResponse(null, 'Journal deleted successfully');
     }
 
     public function void(VoidJournalEntryRequest $request, int $id): JsonResponse

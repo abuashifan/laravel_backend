@@ -11,7 +11,11 @@ use App\Shared\DocumentNumbering\DocumentNumberService;
 use App\Shared\DocumentNumbering\DocumentType;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
+use App\Shared\TransactionLifecycle\ChangesTransactionDocuments;
 use App\Shared\TransactionLifecycle\TransactionDateGuardService;
+use App\Shared\TransactionLifecycle\TransactionDependents;
+use App\Shared\TransactionLifecycle\TransactionModule;
+use App\Shared\TransactionLifecycle\TransactionPolicyService;
 use App\Shared\TransactionLifecycle\TransactionVoidEffectService;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
@@ -21,6 +25,7 @@ class CashReceiptService
 {
     use AppliesListQuery;
     use AttachesCreatorNames;
+    use ChangesTransactionDocuments;
 
     /**
      * Rencana Fase 4 menyebut `description`; kolom itu tidak ada di
@@ -175,6 +180,112 @@ class CashReceiptService
 
             return $receipt->refresh();
         });
+    }
+
+    /**
+     * Edit kas masuk menurut mode lock/open. Draft diedit langsung; yang sudah
+     * posted (mode open) jurnal lamanya di-void dulu, lalu diedit dan
+     * diposting ulang dengan nomor yang sama.
+     */
+    public function update(CashReceipt $receipt, array $data): CashReceipt
+    {
+        $this->changePolicy()->assertDocumentChange(
+            TransactionPolicyService::CHANGE_EDIT,
+            TransactionModule::CASH_BANK,
+            (string) $receipt->status,
+            $this->dependents($receipt),
+            $receipt->receipt_date?->toDateString(),
+        );
+
+        return DB::connection('tenant')->transaction(function () use ($receipt, $data) {
+            $wasPosted = $receipt->status === 'posted';
+            if ($wasPosted) {
+                $this->guardDate((string) $receipt->receipt_date, 'void');
+                $this->voidEffectService->voidJournalsForSource('cash_receipt', (int) $receipt->id, 'Diedit setelah posting');
+                $receipt->status = 'draft';
+                $receipt->journal_entry_id = null;
+                $receipt->posted_by = null;
+                $receipt->posted_at = null;
+                $receipt->save();
+            }
+            $receipt = $this->updateDraft($receipt->refresh(), $data);
+
+            return $wasPosted ? $this->post($receipt) : $receipt;
+        });
+    }
+
+    /**
+     * Hapus kas masuk. Draft dihapus permanen; yang sudah posted di-void lalu
+     * ditandai terhapus.
+     */
+    public function delete(CashReceipt $receipt, ?string $reason = null): void
+    {
+        $this->changePolicy()->assertDocumentChange(
+            TransactionPolicyService::CHANGE_DELETE,
+            TransactionModule::CASH_BANK,
+            (string) $receipt->status,
+            $this->dependents($receipt),
+            $receipt->receipt_date?->toDateString(),
+        );
+
+        $reason = trim((string) $reason);
+
+        DB::connection('tenant')->transaction(function () use ($receipt, $reason): void {
+            if ($receipt->status === 'draft') {
+                $receipt->lines()->delete();
+                $receipt->forceDelete();
+
+                return;
+            }
+
+            $voided = $this->void($receipt, $this->deleteVoidReason($reason));
+            $this->markVoidedDocumentDeleted($voided, $reason);
+        });
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function dependents(CashReceipt $receipt): array
+    {
+        return app(TransactionDependents::class)->reconciledSource('cash_receipt', (int) $receipt->id);
+    }
+
+    private function updateDraft(CashReceipt $receipt, array $data): CashReceipt
+    {
+        $cashAccountId = (int) ($data['cash_bank_account_id'] ?? $receipt->cash_bank_account_id);
+        if (! $this->cashBankAccountService->isCashBankAccount($cashAccountId)) {
+            throw ApiException::make('CASH_BANK_ACCOUNT_REQUIRED', 'Cash/bank account must be a cash/bank marked COA.', 422);
+        }
+
+        $lines = $data['lines'] ?? $receipt->lines()->get()->map(fn ($line) => $line->only(['account_id', 'amount', 'description', 'department_id', 'project_id', 'line_order']))->all();
+        if ($lines === []) {
+            throw ApiException::make('LINES_REQUIRED', 'Cash receipt lines are required.', 422);
+        }
+
+        $amount = (float) ($data['amount'] ?? $receipt->amount);
+        $sum = 0.0;
+        foreach ($lines as $ln) {
+            $sum += (float) ($ln['amount'] ?? 0);
+        }
+        if (abs($sum - $amount) > 0.01) {
+            throw ApiException::make('AMOUNT_MISMATCH', 'Header amount must equal sum(lines.amount).', 422, [
+                'amount' => ['Header amount must equal sum of lines.'],
+            ], ['lines_sum' => $sum]);
+        }
+
+        $header = $data;
+        unset($header['lines'], $header['status']);
+        if (trim((string) ($header['receipt_number'] ?? '')) === '') {
+            unset($header['receipt_number']);
+        }
+
+        $receipt->fill($header);
+        $receipt->save();
+        $receipt->lines()->delete();
+        $receipt->lines()->createMany(array_map(fn ($ln) => array_merge($ln, ['line_order' => (int) ($ln['line_order'] ?? 1)]), $lines));
+
+        return $receipt->refresh()->load('lines', 'contact', 'cashBankAccount');
     }
 
     private function journal(CashReceipt $receipt): JournalEntry

@@ -128,21 +128,21 @@ class TransactionPolicyServiceTest extends TestCase
         $this->assertTrue($result->allowed());
     }
 
-    public function test_can_edit_posted_transaction_when_allow_edit_posted_true(): void
+    public function test_can_edit_posted_transaction_in_open_mode(): void
     {
-        $service = $this->makeService(['sales.edit'], ['allow_edit_posted_transactions' => true]);
+        $service = $this->makeService(['sales.edit'], ['transaction_edit_mode' => 'open']);
         $result = $service->canEdit('sales', ['status' => 'posted', 'transaction_date' => '2026-05-17']);
 
         $this->assertTrue($result->allowed());
     }
 
-    public function test_cannot_edit_posted_transaction_when_allow_edit_posted_false(): void
+    public function test_cannot_edit_posted_transaction_in_lock_mode(): void
     {
-        $service = $this->makeService(['sales.edit'], ['allow_edit_posted_transactions' => false]);
+        $service = $this->makeService(['sales.edit'], ['transaction_edit_mode' => 'lock']);
         $result = $service->canEdit('sales', ['status' => 'posted', 'transaction_date' => '2026-05-17']);
 
         $this->assertTrue($result->denied());
-        $this->assertSame('COMPANY_SETTING_EDIT_POSTED_DISABLED', $result->toArray()['code']);
+        $this->assertSame('TRANSACTION_LOCKED', $result->toArray()['code']);
     }
 
     public function test_cannot_edit_void_transaction(): void
@@ -203,7 +203,7 @@ class TransactionPolicyServiceTest extends TestCase
 
     public function test_posted_transaction_is_editable_by_lifecycle_but_can_be_blocked_by_company_setting(): void
     {
-        $service = $this->makeService(['sales.edit'], ['allow_edit_posted_transactions' => false]);
+        $service = $this->makeService(['sales.edit'], ['transaction_edit_mode' => 'lock']);
         $result = $service->canEdit('sales', ['status' => 'posted', 'transaction_date' => '2026-05-17']);
 
         $this->assertTrue($result->denied());

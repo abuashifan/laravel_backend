@@ -3,6 +3,7 @@
 namespace App\Shared\TransactionLifecycle;
 
 use App\Modules\Settings\Services\CompanySettingService;
+use App\Shared\Exceptions\ApiException;
 use App\Shared\Permission\PermissionService;
 use App\Shared\Tenant\TenantContext;
 use App\Shared\TransactionLifecycle\Contracts\TransactionDateGuard;
@@ -17,6 +18,130 @@ class TransactionPolicyService
         private readonly TransactionDependencyChecker $dependencyChecker,
         private readonly TransactionDateGuard $dateGuard,
     ) {}
+
+    /** Hanya draft yang boleh diedit/dihapus; approved/posted harus di-void dulu. */
+    public const EDIT_MODE_LOCK = 'lock';
+
+    /** Semua status (kecuali void) boleh diedit/dihapus selama tidak tertaut transaksi lain. */
+    public const EDIT_MODE_OPEN = 'open';
+
+    public const CHANGE_EDIT = 'edit';
+
+    public const CHANGE_DELETE = 'delete';
+
+    /**
+     * Mode ubah transaksi perusahaan aktif: `lock` (bawaan) atau `open`.
+     */
+    public function editMode(): string
+    {
+        $company = $this->tenantContext->company();
+        if (! $company) {
+            return self::EDIT_MODE_LOCK;
+        }
+
+        return $this->normalizeEditMode($this->companySettingService->getOrCreateAccountingSetting($company)->transaction_edit_mode);
+    }
+
+    /**
+     * Aturan bersama edit & hapus dokumen transaksi, menurut mode lock/open.
+     *
+     * Izin (permission) SENGAJA tidak dicek di sini -- rute tiap modul sudah
+     * memakai izin granularnya sendiri (mis. `sales.invoices.edit`).
+     *
+     * @param  string  $change  self::CHANGE_EDIT | self::CHANGE_DELETE
+     * @param  list<string>  $dependents  Transaksi lain yang tertaut (kalimat siap tampil). Tidak kosong = ditolak.
+     * @param  list<string>  $lockChangeableStatuses  Status yang tetap boleh diubah di mode lock (bawaan: draft saja).
+     */
+    public function checkDocumentChange(
+        string $change,
+        string $module,
+        string $status,
+        array $dependents = [],
+        ?string $transactionDate = null,
+        array $lockChangeableStatuses = [TransactionStatus::DRAFT],
+    ): TransactionPolicyResult {
+        $verb = $change === self::CHANGE_DELETE ? 'dihapus' : 'diedit';
+
+        if ($status === TransactionStatus::VOID) {
+            return TransactionPolicyResult::deny('TRANSACTION_ALREADY_VOID', "Transaksi sudah void dan tidak bisa {$verb}.");
+        }
+
+        $company = $this->tenantContext->company();
+        $settings = $company ? $this->companySettingService->getOrCreateAccountingSetting($company) : null;
+
+        if ($change === self::CHANGE_EDIT && ! (bool) ($settings?->allow_edit_transactions ?? true)) {
+            return TransactionPolicyResult::deny('COMPANY_SETTING_EDIT_DISABLED', 'Pengaturan perusahaan tidak mengizinkan transaksi diedit.');
+        }
+
+        $changeableInLock = in_array($status, $lockChangeableStatuses, true);
+        $mode = $this->normalizeEditMode($settings?->transaction_edit_mode);
+
+        if ($mode === self::EDIT_MODE_LOCK && ! $changeableInLock) {
+            return $this->lockedResult($verb, $status);
+        }
+
+        // Menghapus transaksi yang sudah berefek = membatalkan efeknya (void).
+        if ($change === self::CHANGE_DELETE && ! $changeableInLock && ! (bool) ($settings?->allow_void_transactions ?? true)) {
+            return TransactionPolicyResult::deny('COMPANY_SETTING_VOID_DISABLED', 'Pengaturan perusahaan tidak mengizinkan void, jadi transaksi yang sudah diposting tidak bisa dihapus.');
+        }
+
+        if ($dependents !== []) {
+            return TransactionPolicyResult::deny(
+                'TRANSACTION_HAS_DEPENDENCY',
+                "Transaksi ini tidak bisa {$verb} karena masih tertaut dengan transaksi lain: ".implode('; ', $dependents).'.',
+                ['dependents' => $dependents],
+            );
+        }
+
+        // Efek transaksi yang sudah dibukukan ikut dibatalkan, jadi periodenya
+        // harus masih terbuka -- sama dengan syarat void.
+        if (! $changeableInLock) {
+            $dateCheck = $this->dateGuard->check($transactionDate, TransactionAction::VOID, $module);
+            if ($dateCheck->denied()) {
+                return $dateCheck;
+            }
+        }
+
+        return TransactionPolicyResult::allow();
+    }
+
+    /**
+     * Sama dengan `checkDocumentChange()`, tapi langsung melempar galat API.
+     *
+     * @param  list<string>  $dependents
+     * @param  list<string>  $lockChangeableStatuses
+     */
+    public function assertDocumentChange(
+        string $change,
+        string $module,
+        string $status,
+        array $dependents = [],
+        ?string $transactionDate = null,
+        array $lockChangeableStatuses = [TransactionStatus::DRAFT],
+    ): void {
+        $result = $this->checkDocumentChange($change, $module, $status, $dependents, $transactionDate, $lockChangeableStatuses);
+
+        if ($result->denied()) {
+            $arr = $result->toArray();
+
+            throw ApiException::make((string) $arr['code'], (string) $arr['message'], 422, (array) $arr['reasons'], (array) $arr['meta']);
+        }
+    }
+
+    private function lockedResult(string $verb, string $status): TransactionPolicyResult
+    {
+        return TransactionPolicyResult::deny(
+            'TRANSACTION_LOCKED',
+            "Mode lock aktif: transaksi berstatus '{$status}' tidak bisa {$verb}. Void transaksinya dulu, lalu buat ulang.",
+            [],
+            ['transaction_edit_mode' => self::EDIT_MODE_LOCK, 'status' => $status],
+        );
+    }
+
+    private function normalizeEditMode(?string $mode): string
+    {
+        return $mode === self::EDIT_MODE_OPEN ? self::EDIT_MODE_OPEN : self::EDIT_MODE_LOCK;
+    }
 
     public function canView(string $module, mixed $transaction = null): TransactionPolicyResult
     {
@@ -76,7 +201,7 @@ class TransactionPolicyService
         }
 
         $allowEditTransactions = (bool) ($settings?->allow_edit_transactions ?? true);
-        $allowEditPostedTransactions = (bool) ($settings?->allow_edit_posted_transactions ?? true);
+        $editMode = $this->normalizeEditMode($settings?->transaction_edit_mode);
         $allowVoidTransactions = (bool) ($settings?->allow_void_transactions ?? true);
 
         // 4/5) Lifecycle + dependency (transaction required for some actions)
@@ -98,8 +223,10 @@ class TransactionPolicyService
                 if (! $allowEditTransactions) {
                     return TransactionPolicyResult::deny('COMPANY_SETTING_EDIT_DISABLED', 'Company setting disallows editing transactions.');
                 }
-                if ($status === TransactionStatus::POSTED && ! $allowEditPostedTransactions) {
-                    return TransactionPolicyResult::deny('COMPANY_SETTING_EDIT_POSTED_DISABLED', 'Company setting disallows editing posted transactions.');
+                // Mode lock menggantikan `allow_edit_posted_transactions`: hanya
+                // draft yang boleh diedit; sisanya lewat void.
+                if ($editMode === self::EDIT_MODE_LOCK && $status !== TransactionStatus::DRAFT) {
+                    return $this->lockedResult('diedit', $status);
                 }
             }
 

@@ -52,6 +52,7 @@ class CompanySettingController extends Controller
             'auto_post_transactions' => (bool) $accounting->auto_post_transactions,
             'approval_enabled' => (bool) $accounting->approval_enabled,
             'allow_void_transactions' => (bool) $accounting->allow_void_transactions,
+            'transaction_edit_mode' => (string) ($accounting->transaction_edit_mode ?? 'lock'),
         ], 'Company workflow settings retrieved successfully');
     }
 

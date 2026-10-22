@@ -11,7 +11,11 @@ use App\Shared\DocumentNumbering\DocumentNumberService;
 use App\Shared\DocumentNumbering\DocumentType;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
+use App\Shared\TransactionLifecycle\ChangesTransactionDocuments;
 use App\Shared\TransactionLifecycle\TransactionDateGuardService;
+use App\Shared\TransactionLifecycle\TransactionDependents;
+use App\Shared\TransactionLifecycle\TransactionModule;
+use App\Shared\TransactionLifecycle\TransactionPolicyService;
 use App\Shared\TransactionLifecycle\TransactionVoidEffectService;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
@@ -21,6 +25,7 @@ class CashPaymentService
 {
     use AppliesListQuery;
     use AttachesCreatorNames;
+    use ChangesTransactionDocuments;
 
     /** `notes`, bukan `description` -- lihat catatan di CashReceiptService. */
     protected array $listSearchable = ['payment_number', 'notes'];
@@ -162,6 +167,112 @@ class CashPaymentService
 
             return $payment->refresh();
         });
+    }
+
+    /**
+     * Edit kas keluar menurut mode lock/open. Draft diedit langsung; yang sudah
+     * posted (mode open) jurnal lamanya di-void dulu, lalu diedit dan
+     * diposting ulang dengan nomor yang sama.
+     */
+    public function update(CashPayment $payment, array $data): CashPayment
+    {
+        $this->changePolicy()->assertDocumentChange(
+            TransactionPolicyService::CHANGE_EDIT,
+            TransactionModule::CASH_BANK,
+            (string) $payment->status,
+            $this->dependents($payment),
+            $payment->payment_date?->toDateString(),
+        );
+
+        return DB::connection('tenant')->transaction(function () use ($payment, $data) {
+            $wasPosted = $payment->status === 'posted';
+            if ($wasPosted) {
+                $this->guardDate((string) $payment->payment_date, 'void');
+                $this->voidEffectService->voidJournalsForSource('cash_payment', (int) $payment->id, 'Diedit setelah posting');
+                $payment->status = 'draft';
+                $payment->journal_entry_id = null;
+                $payment->posted_by = null;
+                $payment->posted_at = null;
+                $payment->save();
+            }
+            $payment = $this->updateDraft($payment->refresh(), $data);
+
+            return $wasPosted ? $this->post($payment) : $payment;
+        });
+    }
+
+    /**
+     * Hapus kas keluar. Draft dihapus permanen; yang sudah posted di-void lalu
+     * ditandai terhapus.
+     */
+    public function delete(CashPayment $payment, ?string $reason = null): void
+    {
+        $this->changePolicy()->assertDocumentChange(
+            TransactionPolicyService::CHANGE_DELETE,
+            TransactionModule::CASH_BANK,
+            (string) $payment->status,
+            $this->dependents($payment),
+            $payment->payment_date?->toDateString(),
+        );
+
+        $reason = trim((string) $reason);
+
+        DB::connection('tenant')->transaction(function () use ($payment, $reason): void {
+            if ($payment->status === 'draft') {
+                $payment->lines()->delete();
+                $payment->forceDelete();
+
+                return;
+            }
+
+            $voided = $this->void($payment, $this->deleteVoidReason($reason));
+            $this->markVoidedDocumentDeleted($voided, $reason);
+        });
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function dependents(CashPayment $payment): array
+    {
+        return app(TransactionDependents::class)->reconciledSource('cash_payment', (int) $payment->id);
+    }
+
+    private function updateDraft(CashPayment $payment, array $data): CashPayment
+    {
+        $cashAccountId = (int) ($data['cash_bank_account_id'] ?? $payment->cash_bank_account_id);
+        if (! $this->cashBankAccountService->isCashBankAccount($cashAccountId)) {
+            throw ApiException::make('CASH_BANK_ACCOUNT_REQUIRED', 'Cash/bank account must be a cash/bank marked COA.', 422);
+        }
+
+        $lines = $data['lines'] ?? $payment->lines()->get()->map(fn ($line) => $line->only(['account_id', 'amount', 'description', 'department_id', 'project_id', 'line_order']))->all();
+        if ($lines === []) {
+            throw ApiException::make('LINES_REQUIRED', 'Cash payment lines are required.', 422);
+        }
+
+        $amount = (float) ($data['amount'] ?? $payment->amount);
+        $sum = 0.0;
+        foreach ($lines as $ln) {
+            $sum += (float) ($ln['amount'] ?? 0);
+        }
+        if (abs($sum - $amount) > 0.01) {
+            throw ApiException::make('AMOUNT_MISMATCH', 'Header amount must equal sum(lines.amount).', 422, [
+                'amount' => ['Header amount must equal sum of lines.'],
+            ], ['lines_sum' => $sum]);
+        }
+
+        $header = $data;
+        unset($header['lines'], $header['status']);
+        if (trim((string) ($header['payment_number'] ?? '')) === '') {
+            unset($header['payment_number']);
+        }
+
+        $payment->fill($header);
+        $payment->save();
+        $payment->lines()->delete();
+        $payment->lines()->createMany(array_map(fn ($ln) => array_merge($ln, ['line_order' => (int) ($ln['line_order'] ?? 1)]), $lines));
+
+        return $payment->refresh()->load('lines', 'contact', 'cashBankAccount');
     }
 
     private function journal(CashPayment $payment): JournalEntry

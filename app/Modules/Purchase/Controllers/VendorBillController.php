@@ -13,6 +13,7 @@ use App\Modules\Purchase\Requests\UpdateVendorBillRequest;
 use App\Modules\Purchase\Services\VendorBillService;
 use App\Shared\Api\ApiResponse;
 use App\Shared\Api\ResolvesAdjacentRecords;
+use App\Shared\TransactionLifecycle\DeleteTransactionRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -71,6 +72,13 @@ class VendorBillController extends Controller
     public function post(PostVendorBillRequest $request, int $id): JsonResponse
     {
         return $this->successResponse($this->service->post(VendorBill::query()->findOrFail($id), $request->validated('applied_vendor_deposit_amount')), 'Vendor bill posted successfully');
+    }
+
+    public function destroy(DeleteTransactionRequest $request, int $id): JsonResponse
+    {
+        $this->service->delete(VendorBill::query()->findOrFail($id), $request->validated('reason'));
+
+        return $this->successResponse(null, 'Vendor bill deleted successfully');
     }
 
     public function void(PurchaseRequestActionRequest $request, int $id): JsonResponse

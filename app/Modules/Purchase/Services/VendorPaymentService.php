@@ -13,7 +13,11 @@ use App\Shared\DocumentNumbering\DocumentNumberService;
 use App\Shared\DocumentNumbering\DocumentType;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
+use App\Shared\TransactionLifecycle\ChangesTransactionDocuments;
 use App\Shared\TransactionLifecycle\TransactionDateGuardService;
+use App\Shared\TransactionLifecycle\TransactionDependents;
+use App\Shared\TransactionLifecycle\TransactionModule;
+use App\Shared\TransactionLifecycle\TransactionPolicyService;
 use App\Shared\TransactionLifecycle\TransactionVoidEffectService;
 use App\Shared\Validation\BusinessReferenceValidator;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -23,6 +27,7 @@ use Illuminate\Support\Facades\DB;
 class VendorPaymentService
 {
     use AppliesListQuery;
+    use ChangesTransactionDocuments;
     use HandlesPurchaseDocuments;
 
     protected array $listSearchable = ['payment_number'];
@@ -125,23 +130,7 @@ class VendorPaymentService
         $this->guardDate((string) $payment->payment_date, 'void');
 
         return DB::connection('tenant')->transaction(function () use ($payment, $reason) {
-            $journalIds = $this->voidEffectService->voidJournalsForSource('vendor_payment', (int) $payment->id, $reason);
-            if ($payment->status === 'posted') {
-                $payment->loadMissing('lines');
-                foreach ($payment->lines as $line) {
-                    if (! $line->vendor_bill_id) {
-                        continue;
-                    }
-                    $bill = VendorBill::query()->lockForUpdate()->find($line->vendor_bill_id);
-                    if ($bill && $bill->status !== 'void') {
-                        $amount = (float) $line->amount;
-                        $bill->paid_amount = max(0, (float) $bill->paid_amount - $amount);
-                        $bill->balance_due = min((float) $bill->grand_total, (float) $bill->balance_due + $amount);
-                        $bill->status = $bill->paid_amount > 0 ? 'partially_paid' : 'posted';
-                        $bill->save();
-                    }
-                }
-            }
+            $journalIds = $this->reversePostingEffects($payment, $reason);
             $payment->status = 'void';
             $payment->voided_by = auth()->id();
             $payment->voided_at = now();
@@ -151,6 +140,132 @@ class VendorPaymentService
 
             return $payment->refresh()->load('lines.vendorBill', 'vendor', 'vendorBill');
         });
+    }
+
+    /**
+     * Edit pembayaran menurut mode lock/open. Draft diedit langsung; yang sudah
+     * posted (mode open) dibatalkan dulu efeknya -- jurnal lama di-void, saldo
+     * tagihan dikembalikan -- lalu diedit dan diposting ulang dengan nomor sama.
+     */
+    public function update(VendorPayment $payment, array $data): VendorPayment
+    {
+        $this->changePolicy()->assertDocumentChange(
+            TransactionPolicyService::CHANGE_EDIT,
+            TransactionModule::PURCHASE,
+            (string) $payment->status,
+            $this->dependents($payment),
+            $payment->payment_date?->toDateString(),
+        );
+
+        return DB::connection('tenant')->transaction(function () use ($payment, $data) {
+            $wasPosted = $payment->status === 'posted';
+            if ($wasPosted) {
+                $this->reopenToDraft($payment, 'Diedit setelah posting');
+            }
+            $payment = $this->updateDraft($payment->refresh(), $data);
+
+            return $wasPosted ? $this->post($payment) : $payment;
+        });
+    }
+
+    /**
+     * Hapus pembayaran. Draft dihapus permanen; yang sudah posted di-void lalu
+     * ditandai terhapus.
+     */
+    public function delete(VendorPayment $payment, ?string $reason = null): void
+    {
+        $this->changePolicy()->assertDocumentChange(
+            TransactionPolicyService::CHANGE_DELETE,
+            TransactionModule::PURCHASE,
+            (string) $payment->status,
+            $this->dependents($payment),
+            $payment->payment_date?->toDateString(),
+        );
+
+        $reason = trim((string) $reason);
+
+        DB::connection('tenant')->transaction(function () use ($payment, $reason): void {
+            if ($payment->status === 'draft') {
+                $this->auditPurchase($this->auditLogService, 'vendor_payment.deleted', $payment, 'payment_number', ['reason' => $reason, 'permanent' => true]);
+                $payment->lines()->delete();
+                $payment->forceDelete();
+
+                return;
+            }
+
+            $voided = $this->void($payment, $this->deleteVoidReason($reason));
+            $this->markVoidedDocumentDeleted($voided, $reason);
+            $this->auditPurchase($this->auditLogService, 'vendor_payment.deleted', $voided, 'payment_number', ['reason' => $reason, 'permanent' => false]);
+        });
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function dependents(VendorPayment $payment): array
+    {
+        return app(TransactionDependents::class)->reconciledSource('vendor_payment', (int) $payment->id);
+    }
+
+    private function updateDraft(VendorPayment $payment, array $data): VendorPayment
+    {
+        $this->ensureVendorExists((int) ($data['vendor_id'] ?? $payment->vendor_id));
+        $header = $data;
+        unset($header['lines'], $header['payment_number'], $header['status']);
+
+        $payment->fill($header);
+        $payment->save();
+        $payment->lines()->delete();
+        $payment->lines()->createMany($data['lines'] ?? [[
+            'vendor_bill_id' => $payment->vendor_bill_id,
+            'amount' => $payment->amount,
+            'description' => $payment->notes,
+        ]]);
+        $payment = $payment->refresh()->load('lines.vendorBill', 'vendor', 'vendorBill');
+        $this->auditPurchase($this->auditLogService, 'vendor_payment.updated', $payment, 'payment_number');
+
+        return $payment;
+    }
+
+    /**
+     * Batalkan efek posting pembayaran: jurnal di-void (tetap tersimpan) dan
+     * jumlah terbayar tagihan dikembalikan. Dipakai void & edit-setelah-posting.
+     *
+     * @return array<int>
+     */
+    private function reversePostingEffects(VendorPayment $payment, string $reason): array
+    {
+        $journalIds = $this->voidEffectService->voidJournalsForSource('vendor_payment', (int) $payment->id, $reason);
+        if ($payment->status === 'posted') {
+            $payment->loadMissing('lines');
+            foreach ($payment->lines as $line) {
+                if (! $line->vendor_bill_id) {
+                    continue;
+                }
+                $bill = VendorBill::query()->lockForUpdate()->find($line->vendor_bill_id);
+                if ($bill && $bill->status !== 'void') {
+                    $amount = (float) $line->amount;
+                    $bill->paid_amount = max(0, (float) $bill->paid_amount - $amount);
+                    $bill->balance_due = min((float) $bill->grand_total, (float) $bill->balance_due + $amount);
+                    $bill->status = $bill->paid_amount > 0 ? 'partially_paid' : 'posted';
+                    $bill->save();
+                }
+            }
+        }
+
+        return $journalIds;
+    }
+
+    private function reopenToDraft(VendorPayment $payment, string $reason): void
+    {
+        $this->guardDate((string) $payment->payment_date, 'void');
+        $this->reversePostingEffects($payment, $reason);
+        $payment->status = 'draft';
+        $payment->journal_entry_id = null;
+        $payment->posted_by = null;
+        $payment->posted_at = null;
+        $payment->save();
+        $this->auditPurchase($this->auditLogService, 'vendor_payment.reopened', $payment, 'payment_number', ['reason' => $reason]);
     }
 
     public function applyToBill(VendorPayment $payment, VendorBill $bill): void

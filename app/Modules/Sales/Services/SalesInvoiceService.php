@@ -15,6 +15,7 @@ use App\Modules\Sales\Models\SalesInvoice;
 use App\Modules\Sales\Models\SalesOrder;
 use App\Modules\Sales\Models\SalesOrderLine;
 use App\Modules\Sales\Models\SalesReceipt;
+use App\Modules\Sales\Models\SalesReceiptLine;
 use App\Modules\Sales\Models\SalesReturn;
 use App\Modules\Sales\Services\Concerns\HandlesSalesDocuments;
 use App\Shared\Api\AppliesListQuery;
@@ -25,6 +26,9 @@ use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
 use App\Shared\TransactionLifecycle\PaymentTermDueDateService;
 use App\Shared\TransactionLifecycle\TransactionDateGuardService;
+use App\Shared\TransactionLifecycle\TransactionDependents;
+use App\Shared\TransactionLifecycle\TransactionModule;
+use App\Shared\TransactionLifecycle\TransactionPolicyService;
 use App\Shared\TransactionLifecycle\TransactionVoidEffectService;
 use App\Shared\Validation\BusinessReferenceValidator;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -135,12 +139,107 @@ class SalesInvoiceService
         });
     }
 
+    /**
+     * Edit faktur menurut mode lock/open (`TransactionPolicyService`).
+     *
+     * Draft diedit langsung. Di mode open, faktur yang sudah approved kembali
+     * ke draft; yang sudah posted dibatalkan dulu efeknya (jurnal lama di-void
+     * sebagai jejak audit, stok & alokasi DP dikembalikan), lalu diedit dan
+     * diposting ulang dengan nomor yang sama.
+     */
     public function update(SalesInvoice $invoice, array $data): SalesInvoice
     {
-        if ($invoice->status !== 'draft') {
-            throw ApiException::make('SALES_INVOICE_NOT_EDITABLE', 'Sales invoice status is not editable.', 422);
+        $this->changePolicy()->assertDocumentChange(
+            TransactionPolicyService::CHANGE_EDIT,
+            TransactionModule::SALES,
+            (string) $invoice->status,
+            $this->dependents($invoice),
+            $invoice->invoice_date?->toDateString(),
+        );
+
+        if ($invoice->status === 'draft') {
+            return $this->updateDraft($invoice, $data);
         }
 
+        return DB::connection('tenant')->transaction(function () use ($invoice, $data) {
+            $wasPosted = $invoice->status !== 'approved';
+            $this->reopenToDraft($invoice, 'Diedit setelah '.($wasPosted ? 'posting' : 'approve').' (revisi '.((int) $invoice->revision_no + 1).')');
+            $invoice = $this->updateDraft($invoice->refresh(), $data);
+
+            // Dimuat ulang: hasil updateDraft membawa atribut tampilan
+            // (ringkasan deposit) yang bukan kolom dan akan ikut tersimpan.
+            return $wasPosted ? $this->post(SalesInvoice::query()->findOrFail($invoice->id)) : $invoice;
+        });
+    }
+
+    /**
+     * Hapus faktur. Draft/approved belum berefek, jadi dihapus permanen; yang
+     * sudah posted di-void lewat jalur void biasa lalu ditandai terhapus.
+     */
+    public function delete(SalesInvoice $invoice, ?string $reason = null): void
+    {
+        $this->changePolicy()->assertDocumentChange(
+            TransactionPolicyService::CHANGE_DELETE,
+            TransactionModule::SALES,
+            (string) $invoice->status,
+            $this->dependents($invoice),
+            $invoice->invoice_date?->toDateString(),
+        );
+
+        $reason = trim((string) $reason);
+
+        DB::connection('tenant')->transaction(function () use ($invoice, $reason): void {
+            if (in_array($invoice->status, ['draft', 'approved'], true)) {
+                $this->auditSales($this->auditLogService, 'sales_invoice.deleted', 'sales', $invoice, 'invoice_number', ['reason' => $reason, 'permanent' => true]);
+                $invoice->lines()->delete();
+                $invoice->forceDelete();
+
+                return;
+            }
+
+            $voided = $this->void($invoice, $reason !== '' ? $reason : 'Dihapus');
+            $voided->deleted_by = auth()->id();
+            $voided->delete_reason = $reason !== '' ? $reason : null;
+            $voided->save();
+            $voided->delete();
+            $this->auditSales($this->auditLogService, 'sales_invoice.deleted', 'sales', $voided, 'invoice_number', ['reason' => $reason, 'permanent' => false]);
+        });
+    }
+
+    /**
+     * Transaksi lain yang masih bergantung pada faktur ini. Alokasi DP milik
+     * faktur sendiri (dibuat saat posting) BUKAN dependensi -- ia ikut
+     * dibatalkan dan dibuat ulang; alokasi deposit manual dari layar deposit
+     * adalah transaksi lain.
+     *
+     * @return list<string>
+     */
+    public function dependents(SalesInvoice $invoice): array
+    {
+        $deps = app(TransactionDependents::class);
+
+        $receiptIds = SalesReceiptLine::query()->where('sales_invoice_id', $invoice->id)->pluck('sales_receipt_id')
+            ->merge(SalesReceipt::query()->where('sales_invoice_id', $invoice->id)->pluck('id'))
+            ->unique()->all();
+        $receipts = SalesReceipt::query()->whereIn('id', $receiptIds)->where('status', '!=', 'void')->pluck('receipt_number');
+        $returns = SalesReturn::query()->where('sales_invoice_id', $invoice->id)->where('status', '!=', 'void')->pluck('return_number');
+        $ownJournal = $invoice->deposit_allocation_journal_entry_id;
+        $manualAllocationDepositIds = CustomerDepositAllocation::query()
+            ->where('sales_invoice_id', $invoice->id)
+            ->where('status', 'posted')
+            ->when($ownJournal, fn ($q) => $q->where(fn ($w) => $w->whereNull('journal_entry_id')->orWhere('journal_entry_id', '!=', $ownJournal)))
+            ->pluck('customer_deposit_id');
+        $manualAllocations = CustomerDeposit::query()->whereIn('id', $manualAllocationDepositIds)->pluck('deposit_number');
+
+        return array_merge(
+            $deps->documents('penerimaan pembayaran', $receipts),
+            $deps->documents('retur penjualan', $returns),
+            $deps->documents('alokasi deposit pelanggan', $manualAllocations),
+        );
+    }
+
+    private function updateDraft(SalesInvoice $invoice, array $data): SalesInvoice
+    {
         $data = $this->paymentTermDueDateService->apply(
             array_merge(['invoice_date' => $invoice->invoice_date?->toDateString()], $data),
             'invoice_date',
@@ -342,11 +441,7 @@ class SalesInvoiceService
         }
 
         return DB::connection('tenant')->transaction(function () use ($invoice, $reason) {
-            $invoice->load('lines', 'proformaInvoice');
-            $journalIds = $this->voidEffectService->voidJournalsForSource('sales_invoice', (int) $invoice->id, $reason);
-            $movementIds = $this->voidEffectService->voidStockMovementsForSource('sales_invoice', (int) $invoice->id, $reason);
-            $this->reverseDepositAllocations($invoice, $reason);
-            $this->restoreSourceProgress($invoice);
+            [$journalIds, $movementIds] = $this->reversePostingEffects($invoice, $reason);
 
             $invoice->status = 'void';
             $invoice->voided_by = auth()->id();
@@ -362,6 +457,54 @@ class SalesInvoiceService
 
             return $invoice->refresh()->load('lines', 'customer');
         });
+    }
+
+    /**
+     * Batalkan seluruh efek posting faktur: jurnal (di-void, tetap tersimpan),
+     * mutasi stok, alokasi DP, dan progres dokumen sumber. Dipakai bersama
+     * oleh void dan edit-setelah-posting supaya keduanya membalik hal yang sama.
+     *
+     * @return array{0: array<int>, 1: array<int>}
+     */
+    private function reversePostingEffects(SalesInvoice $invoice, string $reason): array
+    {
+        $invoice->load('lines', 'proformaInvoice');
+        $journalIds = $this->voidEffectService->voidJournalsForSource('sales_invoice', (int) $invoice->id, $reason);
+        $movementIds = $this->voidEffectService->voidStockMovementsForSource('sales_invoice', (int) $invoice->id, $reason);
+        $this->reverseDepositAllocations($invoice, $reason);
+        $this->restoreSourceProgress($invoice);
+
+        return [$journalIds, $movementIds];
+    }
+
+    /**
+     * Kembalikan faktur ke draft. Faktur posted dibalik efeknya lebih dulu;
+     * faktur approved belum punya efek, jadi cukup statusnya.
+     */
+    private function reopenToDraft(SalesInvoice $invoice, string $reason): void
+    {
+        if ($invoice->status !== 'approved') {
+            $this->guardVoidDate((string) $invoice->invoice_date);
+            $this->reversePostingEffects($invoice, $reason);
+            $invoice->journal_entry_id = null;
+            $invoice->deposit_allocation_journal_entry_id = null;
+            $invoice->paid_amount = 0;
+            $invoice->balance_due = max(0, (float) $invoice->grand_total - (float) $invoice->applied_down_payment_amount);
+            $invoice->posted_by = null;
+            $invoice->posted_at = null;
+        }
+
+        $invoice->status = 'draft';
+        $invoice->approved_by = null;
+        $invoice->approved_at = null;
+        $invoice->save();
+
+        $this->auditSales($this->auditLogService, 'sales_invoice.reopened', 'sales', $invoice, 'invoice_number', ['reason' => $reason]);
+    }
+
+    private function changePolicy(): TransactionPolicyService
+    {
+        return app(TransactionPolicyService::class);
     }
 
     public function applyAvailableDownPayment(SalesInvoice $invoice): ?JournalEntry
@@ -916,7 +1059,7 @@ class SalesInvoiceService
                     'status' => 'posted',
                     'error' => null,
                 ];
-            } catch (\App\Shared\Exceptions\ApiException $e) {
+            } catch (ApiException $e) {
                 $failedCount++;
                 $results[] = [
                     'id' => $invoice->id,

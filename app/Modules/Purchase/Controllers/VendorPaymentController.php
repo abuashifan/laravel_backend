@@ -6,9 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Modules\Purchase\Models\VendorPayment;
 use App\Modules\Purchase\Requests\PurchaseRequestActionRequest;
 use App\Modules\Purchase\Requests\StoreVendorPaymentRequest;
+use App\Modules\Purchase\Requests\UpdateVendorPaymentRequest;
 use App\Modules\Purchase\Services\VendorPaymentService;
 use App\Shared\Api\ApiResponse;
 use App\Shared\Api\ResolvesAdjacentRecords;
+use App\Shared\TransactionLifecycle\DeleteTransactionRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -39,6 +41,18 @@ class VendorPaymentController extends Controller
         $data = $request->validate(['vendor_id' => ['required', 'integer']]);
 
         return $this->successResponse($this->service->vendorContext((int) $data['vendor_id']), 'Vendor payment context retrieved successfully');
+    }
+
+    public function update(UpdateVendorPaymentRequest $request, int $id): JsonResponse
+    {
+        return $this->successResponse($this->service->update(VendorPayment::query()->findOrFail($id), $request->validated()), 'Vendor payment updated successfully');
+    }
+
+    public function destroy(DeleteTransactionRequest $request, int $id): JsonResponse
+    {
+        $this->service->delete(VendorPayment::query()->findOrFail($id), $request->validated('reason'));
+
+        return $this->successResponse(null, 'Vendor payment deleted successfully');
     }
 
     public function show(int $id): JsonResponse
