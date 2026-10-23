@@ -15,6 +15,9 @@ class AccountMappingRequirement
         public readonly bool $visibleInSettings,
         public readonly ?string $settingsSection,
         public readonly int $settingsOrder,
+        public readonly array $defaultAccountKeywords = [],
+        public readonly array $defaultAccountExcludeKeywords = [],
+        public readonly bool $defaultAccountCashBankOnly = false,
     ) {}
 
     public static function fromConfig(string $key, array $config): self
@@ -30,6 +33,9 @@ class AccountMappingRequirement
             (bool) ($config['visible_in_settings'] ?? false),
             isset($config['settings_section']) ? (string) $config['settings_section'] : null,
             (int) ($config['settings_order'] ?? 999),
+            array_values((array) ($config['default_account_keywords'] ?? [])),
+            array_values((array) ($config['default_account_exclude_keywords'] ?? [])),
+            (bool) ($config['default_account_cash_bank_only'] ?? false),
         );
     }
 
@@ -43,6 +49,7 @@ class AccountMappingRequirement
             'account_types' => $this->accountTypes,
             'description' => $this->description,
             'default_account_codes' => $this->defaultAccountCodes,
+            'default_account_keywords' => $this->defaultAccountKeywords,
             'visible_in_settings' => $this->visibleInSettings,
             'settings_section' => $this->settingsSection,
             'settings_order' => $this->settingsOrder,

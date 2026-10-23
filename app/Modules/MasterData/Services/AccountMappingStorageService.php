@@ -193,7 +193,85 @@ class AccountMappingStorageService
             return (int) $account->id;
         }
 
+        return $this->keywordAccountIdForRequirement($req);
+    }
+
+    /**
+     * Cadangan saat tidak ada kode default yang cocok: cari akun daun aktif
+     * bertipe sesuai yang NAMANYA memuat kata kunci. COA hasil impor (kode
+     * milik perusahaan sendiri, mis. 1103.01 "Piutang Usaha") jarang memakai
+     * kode templat, jadi tanpa ini hampir semua mapping tetap kosong.
+     *
+     * Tiap kata kunci dicoba berurutan (paling spesifik dulu), pertama sebagai
+     * frasa utuh lalu sebagai kumpulan kata yang semuanya harus ada di nama
+     * ("akumulasi kendaraan" cocok dengan "Akumulasi Peny. Kendaraan"). Bila
+     * beberapa akun cocok, kode terkecil yang dipakai.
+     */
+    private function keywordAccountIdForRequirement($req): ?int
+    {
+        if ($req->defaultAccountKeywords === []) {
+            return null;
+        }
+
+        $candidates = ChartOfAccount::query()
+            ->where('is_active', true)
+            ->whereIn('account_type', $req->accountTypes)
+            ->when($req->defaultAccountCashBankOnly, fn ($query) => $query->where('is_cash_bank', true))
+            ->whereDoesntHave('children')
+            ->orderBy('account_code')
+            ->get(['id', 'account_code', 'account_name'])
+            ->map(fn (ChartOfAccount $account): array => [
+                'id' => (int) $account->id,
+                'name' => $this->normalizeAccountName((string) $account->account_name),
+            ])
+            ->reject(fn (array $account): bool => $this->nameContainsAny($account['name'], $req->defaultAccountExcludeKeywords));
+
+        // Putaran 1: frasa utuh ("biaya lain lain" tidak boleh kena "Biaya
+        // Kendaraan/Transport Lain-lain"); putaran 2: semua kata ada di nama.
+        foreach ([true, false] as $wholePhrase) {
+            foreach ($req->defaultAccountKeywords as $keyword) {
+                $match = $candidates->first(fn (array $account): bool => $wholePhrase
+                    ? str_contains($account['name'], $this->normalizeAccountName((string) $keyword))
+                    : $this->nameContainsAll($account['name'], (string) $keyword));
+                if ($match !== null) {
+                    return $match['id'];
+                }
+            }
+        }
+
         return null;
+    }
+
+    private function normalizeAccountName(string $name): string
+    {
+        return ' '.trim((string) preg_replace('/[^a-z0-9]+/', ' ', mb_strtolower($name))).' ';
+    }
+
+    private function nameContainsAll(string $name, string $keyword): bool
+    {
+        $words = array_filter(explode(' ', trim($this->normalizeAccountName($keyword))));
+
+        foreach ($words as $word) {
+            if (! str_contains($name, $word)) {
+                return false;
+            }
+        }
+
+        return $words !== [];
+    }
+
+    /**
+     * @param  list<string>  $keywords
+     */
+    private function nameContainsAny(string $name, array $keywords): bool
+    {
+        foreach ($keywords as $keyword) {
+            if ($this->nameContainsAll($name, (string) $keyword)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function requiredMappingsComplete(?string $module = null): bool
