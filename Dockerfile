@@ -10,6 +10,9 @@ COPY --chown=www-data:www-data . /var/www/html
 
 WORKDIR /var/www/html
 
+# Migrasi tenant otomatis setiap container start (lihat skrip di dalamnya)
+COPY --chmod=755 docker/entrypoint.d/ /etc/entrypoint.d/
+
 # Install dependency PHP sebagai user non-root (best practice image ini)
 USER www-data
 RUN composer install --no-dev --optimize-autoloader --no-interaction
