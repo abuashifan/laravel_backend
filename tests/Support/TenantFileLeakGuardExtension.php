@@ -30,6 +30,14 @@ final class TenantFileLeakGuardExtension implements Extension
         {
             public function notify(TestRunnerFinished $event): void
             {
+                // Tes paralel (`php artisan test --parallel`, dipakai CI): semua
+                // worker berbagi folder ini, jadi worker yang selesai duluan
+                // melihat berkas tenant milik worker lain yang masih jalan dan
+                // salah mengiranya bocor -- lalu exit sebelum hasilnya ditulis.
+                if (getenv('TEST_TOKEN') !== false || getenv('PARATEST') !== false) {
+                    return;
+                }
+
                 $directory = dirname(__DIR__, 2).'/database/tenants';
 
                 if (! is_dir($directory)) {
