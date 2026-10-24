@@ -268,6 +268,9 @@ return [
 
         // Audit
         'audit.view',
+        // Riwayat edit dokumen transaksi (isi sebelum/sesudah). Hanya peran
+        // tertentu; user biasa tidak melihat tab Riwayat Edit.
+        'audit.document_history.view',
 
         // Access Management
         'access.users.view',
@@ -378,6 +381,7 @@ return [
             'reports.save',
             'reports.multi_period',
             'audit.view',
+            'audit.document_history.view',
             'fiscal_year.view',
             'imports.view',
             'imports.upload',

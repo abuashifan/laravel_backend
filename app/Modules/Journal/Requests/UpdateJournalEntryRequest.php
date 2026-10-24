@@ -17,7 +17,6 @@ class UpdateJournalEntryRequest extends FormRequest
         return [
             'journal_date' => ['sometimes', 'date'],
             'description' => ['nullable', 'string'],
-            'edit_reason' => ['nullable', 'string'],
             'metadata' => ['nullable', 'array'],
             'lines' => ['required', 'array', 'min:2'],
             'lines.*.account_id' => ['required', 'integer'],

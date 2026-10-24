@@ -25,6 +25,7 @@ use App\Shared\DocumentNumbering\DocumentType;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
 use App\Shared\TransactionLifecycle\PaymentTermDueDateService;
+use App\Shared\TransactionLifecycle\TracksDocumentHistory;
 use App\Shared\TransactionLifecycle\TransactionDateGuardService;
 use App\Shared\TransactionLifecycle\TransactionDependents;
 use App\Shared\TransactionLifecycle\TransactionModule;
@@ -39,6 +40,7 @@ class VendorBillService
 {
     use AppliesListQuery;
     use HandlesPurchaseDocuments;
+    use TracksDocumentHistory;
 
     /** `notes` ikut dicari (AP), simetris dengan SalesInvoiceService; `internal_notes` tidak. */
     protected array $listSearchable = ['bill_number', 'vendor_invoice_number', 'notes'];
@@ -148,6 +150,11 @@ class VendorBillService
      * dan diposting ulang dengan nomor yang sama.
      */
     public function update(VendorBill $bill, array $data): VendorBill
+    {
+        return $this->withDocumentHistory($bill, fn (): VendorBill => $this->applyUpdate($bill, $data));
+    }
+
+    private function applyUpdate(VendorBill $bill, array $data): VendorBill
     {
         $this->changePolicy()->assertDocumentChange(
             TransactionPolicyService::CHANGE_EDIT,

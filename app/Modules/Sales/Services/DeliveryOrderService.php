@@ -16,6 +16,7 @@ use App\Shared\DocumentNumbering\DocumentType;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
 use App\Shared\TransactionLifecycle\ChangesTransactionDocuments;
+use App\Shared\TransactionLifecycle\TracksDocumentHistory;
 use App\Shared\TransactionLifecycle\TransactionDateGuardService;
 use App\Shared\TransactionLifecycle\TransactionDependents;
 use App\Shared\TransactionLifecycle\TransactionModule;
@@ -31,6 +32,7 @@ class DeliveryOrderService
     use AppliesListQuery;
     use ChangesTransactionDocuments;
     use HandlesSalesDocuments;
+    use TracksDocumentHistory;
 
     protected array $listSearchable = ['delivery_number'];
 
@@ -146,6 +148,11 @@ class DeliveryOrderService
      * dulu efek stoknya, diedit, lalu di-deliver ulang.
      */
     public function update(DeliveryOrder $deliveryOrder, array $data): DeliveryOrder
+    {
+        return $this->withDocumentHistory($deliveryOrder, fn (): DeliveryOrder => $this->applyUpdate($deliveryOrder, $data));
+    }
+
+    private function applyUpdate(DeliveryOrder $deliveryOrder, array $data): DeliveryOrder
     {
         $this->changePolicy()->assertDocumentChange(
             TransactionPolicyService::CHANGE_EDIT,

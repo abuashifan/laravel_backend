@@ -17,6 +17,7 @@ use App\Shared\DocumentNumbering\DocumentType;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
 use App\Shared\TransactionLifecycle\ChangesTransactionDocuments;
+use App\Shared\TransactionLifecycle\TracksDocumentHistory;
 use App\Shared\TransactionLifecycle\TransactionDateGuardService;
 use App\Shared\TransactionLifecycle\TransactionDependents;
 use App\Shared\TransactionLifecycle\TransactionModule;
@@ -32,6 +33,7 @@ class GoodsReceiptService
     use AppliesListQuery;
     use ChangesTransactionDocuments;
     use HandlesPurchaseDocuments;
+    use TracksDocumentHistory;
 
     protected array $listSearchable = ['receipt_number'];
 
@@ -168,6 +170,11 @@ class GoodsReceiptService
      * jumlah diterima di PO dikembalikan -- lalu diedit dan diterima ulang.
      */
     public function update(GoodsReceipt $goodsReceipt, array $data): GoodsReceipt
+    {
+        return $this->withDocumentHistory($goodsReceipt, fn (): GoodsReceipt => $this->applyUpdate($goodsReceipt, $data));
+    }
+
+    private function applyUpdate(GoodsReceipt $goodsReceipt, array $data): GoodsReceipt
     {
         $this->changePolicy()->assertDocumentChange(
             TransactionPolicyService::CHANGE_EDIT,

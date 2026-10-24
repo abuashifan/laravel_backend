@@ -12,6 +12,7 @@ use App\Shared\DocumentNumbering\DocumentType;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
 use App\Shared\TransactionLifecycle\ChangesTransactionDocuments;
+use App\Shared\TransactionLifecycle\TracksDocumentHistory;
 use App\Shared\TransactionLifecycle\TransactionDateGuardService;
 use App\Shared\TransactionLifecycle\TransactionDependents;
 use App\Shared\TransactionLifecycle\TransactionModule;
@@ -26,6 +27,7 @@ class CashReceiptService
     use AppliesListQuery;
     use AttachesCreatorNames;
     use ChangesTransactionDocuments;
+    use TracksDocumentHistory;
 
     /**
      * Rencana Fase 4 menyebut `description`; kolom itu tidak ada di
@@ -188,6 +190,11 @@ class CashReceiptService
      * diposting ulang dengan nomor yang sama.
      */
     public function update(CashReceipt $receipt, array $data): CashReceipt
+    {
+        return $this->withDocumentHistory($receipt, fn (): CashReceipt => $this->applyUpdate($receipt, $data));
+    }
+
+    private function applyUpdate(CashReceipt $receipt, array $data): CashReceipt
     {
         $this->changePolicy()->assertDocumentChange(
             TransactionPolicyService::CHANGE_EDIT,

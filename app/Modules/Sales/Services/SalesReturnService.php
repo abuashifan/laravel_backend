@@ -18,6 +18,7 @@ use App\Shared\DocumentNumbering\DocumentType;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
 use App\Shared\TransactionLifecycle\ChangesTransactionDocuments;
+use App\Shared\TransactionLifecycle\TracksDocumentHistory;
 use App\Shared\TransactionLifecycle\TransactionDateGuardService;
 use App\Shared\TransactionLifecycle\TransactionModule;
 use App\Shared\TransactionLifecycle\TransactionPolicyService;
@@ -31,6 +32,7 @@ class SalesReturnService
     use AppliesListQuery;
     use ChangesTransactionDocuments;
     use HandlesSalesDocuments;
+    use TracksDocumentHistory;
 
     protected array $listSearchable = ['return_number'];
 
@@ -131,6 +133,11 @@ class SalesReturnService
      * Draft diedit langsung; yang approved kembali ke draft; yang sudah posted dibalik efeknya (jurnal di-void, stok & saldo faktur dikembalikan) lalu diposting ulang dengan nomor yang sama.
      */
     public function update(SalesReturn $return, array $data): SalesReturn
+    {
+        return $this->withDocumentHistory($return, fn (): SalesReturn => $this->applyUpdate($return, $data));
+    }
+
+    private function applyUpdate(SalesReturn $return, array $data): SalesReturn
     {
         $this->changePolicy()->assertDocumentChange(
             TransactionPolicyService::CHANGE_EDIT,

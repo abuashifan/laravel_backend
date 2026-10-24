@@ -17,6 +17,7 @@ use App\Shared\DocumentNumbering\DocumentType;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
 use App\Shared\TransactionLifecycle\ChangesTransactionDocuments;
+use App\Shared\TransactionLifecycle\TracksDocumentHistory;
 use App\Shared\TransactionLifecycle\TransactionDateGuardService;
 use App\Shared\TransactionLifecycle\TransactionDependents;
 use App\Shared\TransactionLifecycle\TransactionModule;
@@ -32,6 +33,7 @@ class VendorDepositService
     use AppliesListQuery;
     use ChangesTransactionDocuments;
     use HandlesPurchaseDocuments;
+    use TracksDocumentHistory;
 
     protected array $listSearchable = ['deposit_number'];
 
@@ -172,6 +174,11 @@ class VendorDepositService
      * Draft diedit langsung; yang sudah posted (mode open) jurnal lamanya di-void lalu diposting ulang dengan nomor yang sama. Deposit yang sudah dialokasikan atau di-refund tertaut transaksi lain.
      */
     public function update(VendorDeposit $deposit, array $data): VendorDeposit
+    {
+        return $this->withDocumentHistory($deposit, fn (): VendorDeposit => $this->applyUpdate($deposit, $data));
+    }
+
+    private function applyUpdate(VendorDeposit $deposit, array $data): VendorDeposit
     {
         $this->changePolicy()->assertDocumentChange(
             TransactionPolicyService::CHANGE_EDIT,

@@ -15,6 +15,7 @@ use App\Shared\Enums\SourceType;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
 use App\Shared\TransactionLifecycle\ChangesTransactionDocuments;
+use App\Shared\TransactionLifecycle\TracksDocumentHistory;
 use App\Shared\TransactionLifecycle\TransactionModule;
 use App\Shared\TransactionLifecycle\TransactionPolicyService;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -25,6 +26,7 @@ class StockAdjustmentService
 {
     use AppliesListQuery;
     use ChangesTransactionDocuments;
+    use TracksDocumentHistory;
 
     /** `reason` disertakan karena placeholder-nya "Nomor, alasan...". */
     protected array $listSearchable = ['adjustment_number', 'reason'];
@@ -159,6 +161,11 @@ class StockAdjustmentService
      * di-void lalu diposting ulang dengan nomor yang sama.
      */
     public function update(StockAdjustment $adjustment, array $data): StockAdjustment
+    {
+        return $this->withDocumentHistory($adjustment, fn (): StockAdjustment => $this->applyUpdate($adjustment, $data));
+    }
+
+    private function applyUpdate(StockAdjustment $adjustment, array $data): StockAdjustment
     {
         $this->changePolicy()->assertDocumentChange(
             TransactionPolicyService::CHANGE_EDIT,

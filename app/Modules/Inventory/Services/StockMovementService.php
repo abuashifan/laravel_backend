@@ -12,6 +12,7 @@ use App\Shared\DocumentNumbering\DocumentType;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
 use App\Shared\TransactionLifecycle\ChangesTransactionDocuments;
+use App\Shared\TransactionLifecycle\TracksDocumentHistory;
 use App\Shared\TransactionLifecycle\TransactionModule;
 use App\Shared\TransactionLifecycle\TransactionPolicyService;
 use Carbon\Carbon;
@@ -23,6 +24,7 @@ class StockMovementService
 {
     use AppliesListQuery;
     use ChangesTransactionDocuments;
+    use TracksDocumentHistory;
 
     /**
      * `source_number` disertakan karena placeholder halamannya berbunyi
@@ -296,6 +298,11 @@ class StockMovementService
      * pada jejak void-nya.
      */
     public function update(StockMovement $movement, array $data): StockMovement
+    {
+        return $this->withDocumentHistory($movement, fn (): StockMovement => $this->applyUpdate($movement, $data));
+    }
+
+    private function applyUpdate(StockMovement $movement, array $data): StockMovement
     {
         $this->changePolicy()->assertDocumentChange(
             TransactionPolicyService::CHANGE_EDIT,

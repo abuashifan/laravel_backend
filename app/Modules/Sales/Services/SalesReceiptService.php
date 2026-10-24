@@ -13,6 +13,7 @@ use App\Shared\DocumentNumbering\DocumentType;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
 use App\Shared\TransactionLifecycle\ChangesTransactionDocuments;
+use App\Shared\TransactionLifecycle\TracksDocumentHistory;
 use App\Shared\TransactionLifecycle\TransactionDateGuardService;
 use App\Shared\TransactionLifecycle\TransactionDependents;
 use App\Shared\TransactionLifecycle\TransactionModule;
@@ -28,6 +29,7 @@ class SalesReceiptService
     use AppliesListQuery;
     use ChangesTransactionDocuments;
     use HandlesSalesDocuments;
+    use TracksDocumentHistory;
 
     protected array $listSearchable = ['receipt_number'];
 
@@ -130,6 +132,11 @@ class SalesReceiptService
      * faktur dikembalikan -- lalu diedit dan diposting ulang dengan nomor sama.
      */
     public function update(SalesReceipt $receipt, array $data): SalesReceipt
+    {
+        return $this->withDocumentHistory($receipt, fn (): SalesReceipt => $this->applyUpdate($receipt, $data));
+    }
+
+    private function applyUpdate(SalesReceipt $receipt, array $data): SalesReceipt
     {
         $this->changePolicy()->assertDocumentChange(
             TransactionPolicyService::CHANGE_EDIT,

@@ -12,6 +12,7 @@ use App\Shared\DocumentNumbering\DocumentType;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
 use App\Shared\TransactionLifecycle\ChangesTransactionDocuments;
+use App\Shared\TransactionLifecycle\TracksDocumentHistory;
 use App\Shared\TransactionLifecycle\TransactionDateGuardService;
 use App\Shared\TransactionLifecycle\TransactionDependents;
 use App\Shared\TransactionLifecycle\TransactionModule;
@@ -26,6 +27,7 @@ class BankTransferService
     use AppliesListQuery;
     use AttachesCreatorNames;
     use ChangesTransactionDocuments;
+    use TracksDocumentHistory;
 
     protected array $listSearchable = ['transfer_number', 'notes'];
 
@@ -105,6 +107,11 @@ class BankTransferService
      * Draft diedit langsung; yang sudah posted (mode open) jurnal lamanya di-void lalu diposting ulang dengan nomor yang sama.
      */
     public function update(BankTransfer $transfer, array $data): BankTransfer
+    {
+        return $this->withDocumentHistory($transfer, fn (): BankTransfer => $this->applyUpdate($transfer, $data));
+    }
+
+    private function applyUpdate(BankTransfer $transfer, array $data): BankTransfer
     {
         $this->changePolicy()->assertDocumentChange(
             TransactionPolicyService::CHANGE_EDIT,

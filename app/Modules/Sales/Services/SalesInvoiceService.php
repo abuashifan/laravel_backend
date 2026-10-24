@@ -25,6 +25,7 @@ use App\Shared\DocumentNumbering\DocumentType;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
 use App\Shared\TransactionLifecycle\PaymentTermDueDateService;
+use App\Shared\TransactionLifecycle\TracksDocumentHistory;
 use App\Shared\TransactionLifecycle\TransactionDateGuardService;
 use App\Shared\TransactionLifecycle\TransactionDependents;
 use App\Shared\TransactionLifecycle\TransactionModule;
@@ -39,6 +40,7 @@ class SalesInvoiceService
 {
     use AppliesListQuery;
     use HandlesSalesDocuments;
+    use TracksDocumentHistory;
 
     /** `notes` ikut dicari (AR); `internal_notes` sengaja tidak -- lihat phase-2-sales.md. */
     protected array $listSearchable = ['invoice_number', 'notes'];
@@ -148,6 +150,11 @@ class SalesInvoiceService
      * diposting ulang dengan nomor yang sama.
      */
     public function update(SalesInvoice $invoice, array $data): SalesInvoice
+    {
+        return $this->withDocumentHistory($invoice, fn (): SalesInvoice => $this->applyUpdate($invoice, $data));
+    }
+
+    private function applyUpdate(SalesInvoice $invoice, array $data): SalesInvoice
     {
         $this->changePolicy()->assertDocumentChange(
             TransactionPolicyService::CHANGE_EDIT,

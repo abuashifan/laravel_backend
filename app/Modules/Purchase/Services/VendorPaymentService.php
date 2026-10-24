@@ -14,6 +14,7 @@ use App\Shared\DocumentNumbering\DocumentType;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
 use App\Shared\TransactionLifecycle\ChangesTransactionDocuments;
+use App\Shared\TransactionLifecycle\TracksDocumentHistory;
 use App\Shared\TransactionLifecycle\TransactionDateGuardService;
 use App\Shared\TransactionLifecycle\TransactionDependents;
 use App\Shared\TransactionLifecycle\TransactionModule;
@@ -29,6 +30,7 @@ class VendorPaymentService
     use AppliesListQuery;
     use ChangesTransactionDocuments;
     use HandlesPurchaseDocuments;
+    use TracksDocumentHistory;
 
     protected array $listSearchable = ['payment_number'];
 
@@ -148,6 +150,11 @@ class VendorPaymentService
      * tagihan dikembalikan -- lalu diedit dan diposting ulang dengan nomor sama.
      */
     public function update(VendorPayment $payment, array $data): VendorPayment
+    {
+        return $this->withDocumentHistory($payment, fn (): VendorPayment => $this->applyUpdate($payment, $data));
+    }
+
+    private function applyUpdate(VendorPayment $payment, array $data): VendorPayment
     {
         $this->changePolicy()->assertDocumentChange(
             TransactionPolicyService::CHANGE_EDIT,

@@ -75,6 +75,10 @@ class TransactionEditModeInventoryTest extends JournalTestCase
             ->assertOk()
             ->assertJsonPath('data.status', 'posted');
         $this->assertSame(4.0, $this->onHand($product, $warehouse));
+        $history = $this->getJson('/api/accounting/document-history/stock_adjustment/'.$adjustment['id'], $ctx['headers'])->assertOk()->json('data.entries');
+        $this->assertCount(1, $history);
+        $this->assertEquals(10, (float) $history[0]['before']['lines'][0]['quantity']);
+        $this->assertEquals(4, (float) $history[0]['after']['lines'][0]['quantity']);
 
         $this->deleteJson('/api/inventory/stock-adjustments/'.$adjustment['id'], ['reason' => 'Batal'], $ctx['headers'])->assertOk();
         $this->assertSame(0.0, $this->onHand($product, $warehouse));
@@ -105,6 +109,32 @@ class TransactionEditModeInventoryTest extends JournalTestCase
         $this->deleteJson('/api/inventory/stock-movements/'.$reversal->id, ['reason' => 'Coba'], $ctx['headers'])
             ->assertStatus(422)
             ->assertJsonPath('code', 'TRANSACTION_HAS_DEPENDENCY');
+    }
+
+    public function test_edited_manual_stock_movement_keeps_history_on_replacement(): void
+    {
+        $ctx = $this->setUpTenant(accountingSettingOverrides: self::SETTINGS);
+        $this->seedInventoryMappings();
+        [$product, $warehouse, $unit] = $this->stockItem();
+        $this->setMode($ctx['company'], 'open');
+
+        $payload = fn (float $qty): array => [
+            'movement_date' => '2026-01-10',
+            'movement_type' => 'opening_stock',
+            'lines' => [['product_id' => $product, 'warehouse_id' => $warehouse, 'unit_id' => $unit, 'quantity' => $qty, 'unit_cost' => 500]],
+        ];
+        $movement = $this->postJson('/api/inventory/stock-movements', $payload(6), $ctx['headers'])->assertCreated()->json('data');
+        $this->patchJson('/api/inventory/stock-movements/'.$movement['id'].'/post', [], $ctx['headers'])->assertOk();
+
+        $first = $this->patchJson('/api/inventory/stock-movements/'.$movement['id'], $payload(8), $ctx['headers'])->assertOk()->json('data');
+        $second = $this->patchJson('/api/inventory/stock-movements/'.$first['id'], $payload(9), $ctx['headers'])->assertOk()->json('data');
+        $this->assertSame(9.0, $this->onHand($product, $warehouse));
+
+        $history = $this->getJson('/api/accounting/document-history/stock_movement/'.$second['id'], $ctx['headers'])->assertOk()->json('data.entries');
+        $this->assertCount(2, $history);
+        $this->assertEquals(8, (float) $history[0]['before']['lines'][0]['quantity']);
+        $this->assertEquals(9, (float) $history[0]['after']['lines'][0]['quantity']);
+        $this->assertEquals(6, (float) $history[1]['before']['lines'][0]['quantity']);
     }
 
     public function test_draft_stock_opname_is_deleted_permanently(): void

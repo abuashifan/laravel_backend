@@ -1,6 +1,7 @@
 <?php
 
 use App\Modules\Accounting\Controllers\AccountMappingHealthController;
+use App\Modules\Accounting\Controllers\DocumentHistoryController;
 use App\Modules\Accounting\Controllers\FiscalYearClosingController;
 use App\Modules\Accounting\Controllers\FiscalYearStatusController;
 use App\Modules\Accounting\Controllers\PeriodEndController;
@@ -12,6 +13,10 @@ Route::middleware(['auth:sanctum', 'company.access', 'permission:dashboard.view'
 });
 
 Route::middleware(['auth:sanctum', 'company.access'])->prefix('accounting')->group(function () {
+    Route::get('/document-history/{type}/{id}', [DocumentHistoryController::class, 'show'])
+        ->where(['type' => '[a-z_]+', 'id' => '[0-9]+'])
+        ->middleware('permission:audit.document_history.view');
+
     Route::get('/fiscal-years/{id}/closing-preview', [FiscalYearClosingController::class, 'preview'])
         ->middleware('permission:fiscal_year.view');
     Route::get('/fiscal-years/{id}/closing-checklist', [FiscalYearClosingController::class, 'checklist'])

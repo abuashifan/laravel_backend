@@ -273,11 +273,6 @@ class JournalEntryService
             $journal->journal_date?->toDateString(),
         );
 
-        $editReason = $data['edit_reason'] ?? null;
-        if ($journal->isPosted() && (! is_string($editReason) || trim($editReason) === '')) {
-            throw ApiException::make(ApiErrorCode::EDIT_REASON_REQUIRED, 'Edit reason is required for editing posted journal.', 422);
-        }
-
         $lines = $this->normalizer->normalize((array) ($data['lines'] ?? []));
         $validation = $this->validator->validateLines($lines, requireActiveAccounts: true);
         if (! $validation['valid']) {
@@ -293,7 +288,7 @@ class JournalEntryService
         $userId = auth()->id();
         $oldSnapshot = $this->snapshotForRevision($journal);
 
-        return DB::transaction(function () use ($journal, $data, $lines, $userId, $editReason, $oldSnapshot) {
+        return DB::transaction(function () use ($journal, $data, $lines, $userId, $oldSnapshot) {
             $revisionFrom = $journal->currentRevision();
             $journal->incrementRevision();
 
@@ -305,7 +300,6 @@ class JournalEntryService
                 $journal->description = $data['description'];
             }
 
-            $journal->edit_reason = $editReason;
             $journal->updated_by = $userId;
             $journal->source_revision = $journal->currentRevision();
             $journal->save();
@@ -325,7 +319,7 @@ class JournalEntryService
                 $journal->currentRevision(),
                 $oldSnapshot,
                 $newSnapshot,
-                $editReason,
+                null,
                 $userId
             );
 
@@ -524,8 +518,10 @@ class JournalEntryService
     {
         $journal->loadMissing('lines');
 
+        // Bentuk sama dengan `DocumentHistoryService::snapshot()` supaya tab
+        // Riwayat Edit membaca jurnal dan dokumen lain dengan cara yang sama.
         return [
-            'journal' => $journal->only([
+            'header' => $journal->only([
                 'id',
                 'journal_number',
                 'journal_date',

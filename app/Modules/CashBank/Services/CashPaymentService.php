@@ -12,6 +12,7 @@ use App\Shared\DocumentNumbering\DocumentType;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
 use App\Shared\TransactionLifecycle\ChangesTransactionDocuments;
+use App\Shared\TransactionLifecycle\TracksDocumentHistory;
 use App\Shared\TransactionLifecycle\TransactionDateGuardService;
 use App\Shared\TransactionLifecycle\TransactionDependents;
 use App\Shared\TransactionLifecycle\TransactionModule;
@@ -26,6 +27,7 @@ class CashPaymentService
     use AppliesListQuery;
     use AttachesCreatorNames;
     use ChangesTransactionDocuments;
+    use TracksDocumentHistory;
 
     /** `notes`, bukan `description` -- lihat catatan di CashReceiptService. */
     protected array $listSearchable = ['payment_number', 'notes'];
@@ -175,6 +177,11 @@ class CashPaymentService
      * diposting ulang dengan nomor yang sama.
      */
     public function update(CashPayment $payment, array $data): CashPayment
+    {
+        return $this->withDocumentHistory($payment, fn (): CashPayment => $this->applyUpdate($payment, $data));
+    }
+
+    private function applyUpdate(CashPayment $payment, array $data): CashPayment
     {
         $this->changePolicy()->assertDocumentChange(
             TransactionPolicyService::CHANGE_EDIT,

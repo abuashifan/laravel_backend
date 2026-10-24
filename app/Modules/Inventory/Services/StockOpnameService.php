@@ -15,6 +15,7 @@ use App\Shared\Enums\SourceType;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
 use App\Shared\TransactionLifecycle\ChangesTransactionDocuments;
+use App\Shared\TransactionLifecycle\DocumentHistoryService;
 use App\Shared\TransactionLifecycle\TransactionModule;
 use App\Shared\TransactionLifecycle\TransactionPolicyService;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -229,9 +230,15 @@ class StockOpnameService
 
         return DB::connection('tenant')->transaction(function () use ($opname) {
             $this->movementValidation->validatePeriodNotLocked((string) $opname->opname_date);
+            // Isi versi final disimpan dulu; riwayat edit dicatat saat opname
+            // difinalisasi ulang, membandingkan versi lama dengan hitungan baru.
+            $historyBefore = app(DocumentHistoryService::class)->snapshot($opname);
             $this->reverseMovements($opname, 'Dibuka kembali untuk diedit');
             $opname->stock_movement_id = null;
-            $opname->metadata = array_diff_key((array) ($opname->metadata ?? []), ['stock_movement_ids' => true]);
+            $opname->metadata = array_merge(
+                array_diff_key((array) ($opname->metadata ?? []), ['stock_movement_ids' => true]),
+                ['history_before' => $historyBefore],
+            );
             $opname->status = 'counted';
             $opname->finalized_by = null;
             $opname->finalized_at = null;
@@ -325,12 +332,19 @@ class StockOpnameService
             }
 
             $movementIds = $this->createStockMovementsFromDifferences($opname);
+            $metadata = (array) ($opname->metadata ?? []);
+            $historyBefore = $metadata['history_before'] ?? null;
+            unset($metadata['history_before']);
             $opname->stock_movement_id = $movementIds[0] ?? null;
-            $opname->metadata = array_merge((array) ($opname->metadata ?? []), ['stock_movement_ids' => $movementIds]);
+            $opname->metadata = array_merge($metadata, ['stock_movement_ids' => $movementIds]);
             $opname->status = 'finalized';
             $opname->finalized_by = auth()->id();
             $opname->finalized_at = now();
             $opname->save();
+
+            if (is_array($historyBefore)) {
+                app(DocumentHistoryService::class)->recordEdit($historyBefore, $opname);
+            }
 
             $this->auditLogService->logSuccess([
                 'event' => 'inventory.stock_opname_finalized',
