@@ -5,6 +5,7 @@ namespace App\Modules\Imports\Services\Committers;
 use App\Modules\Imports\Models\ImportBatch;
 use App\Modules\Imports\Models\ImportRow;
 use App\Modules\Imports\Services\Committers\Concerns\DetectsDuplicateCodesInBatch;
+use App\Modules\MasterData\Models\ChartOfAccount;
 use App\Modules\MasterData\Models\Product;
 use App\Modules\MasterData\Models\ProductCategory;
 use App\Modules\MasterData\Models\Unit;
@@ -23,6 +24,16 @@ class ProductImportCommitter implements ImportProfileCommitter
     use DetectsDuplicateCodesInBatch;
 
     private const TYPES = ['goods', 'service'];
+
+    /**
+     * Kolom akun opsional => [kolom produk, tipe akun yang boleh, label].
+     * Tipe sama dengan aturan `StoreProductRequest`.
+     */
+    private const ACCOUNT_FIELDS = [
+        'sales_account' => ['sales_account_id', 'revenue', 'Sales Account'],
+        'inventory_account' => ['inventory_account_id', 'asset', 'Inventory Account'],
+        'cogs_account' => ['cogs_account_id', 'expense', 'COGS Account'],
+    ];
 
     public function __construct(
         private readonly ProductService $products,
@@ -49,6 +60,24 @@ class ProductImportCommitter implements ImportProfileCommitter
             $errors['unit'][] = 'Unit wajib diisi untuk produk berstok.';
         } elseif ($unitCode !== '' && ! Unit::query()->whereRaw('LOWER(code) = ?', [mb_strtolower($unitCode)])->exists()) {
             $errors['unit'][] = "Satuan \"{$unitCode}\" tidak dikenal. Buat satuannya dulu di Master Data.";
+        }
+
+        foreach (self::ACCOUNT_FIELDS as $field => [, $accountType, $label]) {
+            $accountCode = trim((string) ($normalized[$field] ?? ''));
+            if ($accountCode === '') {
+                continue;
+            }
+
+            $account = ChartOfAccount::query()->where('account_code', $accountCode)->first();
+            if (! $account) {
+                $errors[$field][] = "{$label} \"{$accountCode}\" tidak ada di COA.";
+            } elseif (! $account->is_active) {
+                $errors[$field][] = "{$label} \"{$accountCode}\" tidak aktif.";
+            } elseif ($account->account_type !== $accountType) {
+                $errors[$field][] = "{$label} \"{$accountCode}\" harus akun bertipe {$accountType}.";
+            } elseif ($account->children()->exists()) {
+                $errors[$field][] = "{$label} \"{$accountCode}\" adalah akun induk -- pilih akun anak (leaf).";
+            }
         }
 
         $code = trim((string) ($normalized['code'] ?? ''));
@@ -103,7 +132,7 @@ class ProductImportCommitter implements ImportProfileCommitter
                 'is_stock_item' => $isStockItem,
                 'min_stock' => $this->nullableFloat($normalized['min_stock'] ?? null),
                 'is_active' => true,
-            ]);
+            ] + $this->accountIds($normalized));
 
             return ['status' => 'committed', 'document_id' => $product->id, 'document_type' => Product::class, 'error' => null];
         } catch (ApiException $exception) {
@@ -111,6 +140,22 @@ class ProductImportCommitter implements ImportProfileCommitter
         } catch (Throwable $exception) {
             return ['status' => 'failed', 'document_id' => null, 'document_type' => null, 'error' => 'Gagal membuat produk: '.$exception->getMessage()];
         }
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private function accountIds(array $normalized): array
+    {
+        $ids = [];
+        foreach (self::ACCOUNT_FIELDS as $field => [$column]) {
+            $accountCode = trim((string) ($normalized[$field] ?? ''));
+            if ($accountCode !== '') {
+                $ids[$column] = (int) ChartOfAccount::query()->where('account_code', $accountCode)->value('id');
+            }
+        }
+
+        return $ids;
     }
 
     private function toBool(?string $value): bool

@@ -121,9 +121,11 @@ return [
         'product' => [
             'label' => 'Product',
             'required_fields' => ['name'],
-            'fields' => ['code', 'name', 'type', 'category', 'unit', 'stock_item', 'min_stock'],
-            'headers' => ['Code', 'Name', 'Type', 'Category', 'Unit', 'Stock Item', 'Min Stock'],
-            'sample' => ['', 'Kertas A4', 'goods', 'Alat Tulis Kantor', 'PCS', 'yes', '0'],
+            // Tiga kolom akun opsional (kode akun). Kosong = pakai Pemetaan Akun
+            // (Akun Penjualan / Persediaan / HPP) seperti produk yang dibuat manual.
+            'fields' => ['code', 'name', 'type', 'category', 'unit', 'stock_item', 'min_stock', 'sales_account', 'inventory_account', 'cogs_account'],
+            'headers' => ['Code', 'Name', 'Type', 'Category', 'Unit', 'Stock Item', 'Min Stock', 'Sales Account', 'Inventory Account', 'COGS Account'],
+            'sample' => ['', 'Kertas A4', 'goods', 'Alat Tulis Kantor', 'PCS', 'yes', '0', '', '', ''],
         ],
         // Dua profil di bawah mengisi data SETUP AWAL, bukan transaksi harian.
         //

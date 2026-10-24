@@ -131,6 +131,7 @@ class AccountMappingKeywordDefaultsTest extends MasterDataTestCase
 
     private const EXPECTED = [
         'sales.accounts_receivable' => '1103.01',
+        'sales.revenue' => '4101.03',
         'sales.discount' => '4102.02',
         'sales.return' => '4102.01',
         'sales.tax_output' => '2103.01',
@@ -138,6 +139,7 @@ class AccountMappingKeywordDefaultsTest extends MasterDataTestCase
         'sales.default_cash_bank' => '1101.06.01',
         'purchase.accounts_payable' => '2101.01',
         'purchase.expense' => '7100.99',
+        'purchase.default_purchase' => '7100.99',
         'purchase.inventory_interim' => '2101.02',
         'purchase.tax_input' => '1109.01',
         'purchase.discount' => '5102.02',
@@ -151,6 +153,8 @@ class AccountMappingKeywordDefaultsTest extends MasterDataTestCase
         'inventory.write_off' => '7100.12',
         'fixed_assets.clearing' => '1110.04',
         'fixed_assets.cost' => '1201.04',
+        'fixed_assets.accumulated_amortization' => '1203.04',
+        'fixed_assets.amortization_expense' => '6500.04',
         'fixed_assets.disposal_gain' => '8100.04',
         'fixed_assets.disposal_loss' => '7100.13',
         'fixed_assets.vehicle_cost' => '1201.03',
@@ -173,6 +177,11 @@ class AccountMappingKeywordDefaultsTest extends MasterDataTestCase
         'opening_balance.clearing' => '3105',
         'closing.retained_earnings' => '3101',
         'closing.current_year_earnings' => '3106',
+        // Opsional, memang tidak ada akunnya di COA Rizkitama.
+        'fixed_assets.land_cost' => null,
+        'fixed_assets.construction_in_progress_cost' => null,
+        'fixed_assets.goodwill_cost' => null,
+        'journal.suspense' => null,
     ];
 
     public function test_mappings_are_filled_by_account_name_for_custom_coa(): void
@@ -182,7 +191,12 @@ class AccountMappingKeywordDefaultsTest extends MasterDataTestCase
 
         $this->getJson('/api/master-data/account-mappings', $ctx['headers'])->assertOk();
 
-        $this->assertSame(self::EXPECTED, array_intersect_key($this->mappedCodes(), self::EXPECTED));
+        $expected = self::EXPECTED;
+        $actual = $this->mappedCodes();
+        ksort($expected);
+        ksort($actual);
+        // Semua key konfigurasi tercakup, tidak ada yang terlewat diperiksa.
+        $this->assertSame($expected, $actual);
         // Akun Beban dulu salah terisi "Biaya THR Karyawan" lewat kode 6100.02.
         $this->assertNotSame('6100.02', $this->mappedCodes()['purchase.expense']);
     }

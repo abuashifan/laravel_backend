@@ -136,6 +136,38 @@ class MasterDataImportCommitTest extends TestCase
         $this->assertStringContainsString('UNIT-FIKTIF', $errors['unit'][0]);
     }
 
+    public function test_product_account_columns_set_product_accounts_and_reject_wrong_type(): void
+    {
+        Storage::fake('local');
+        $ctx = $this->setUpTenant();
+        Unit::query()->create(['code' => 'PCS', 'name' => 'Pieces', 'precision' => 0, 'is_active' => true]);
+        $account = fn (string $code, string $type) => ChartOfAccount::query()->create(['account_code' => $code, 'account_name' => 'Akun '.$code, 'account_type' => $type, 'normal_balance' => in_array($type, ['asset', 'expense'], true) ? 'debit' : 'credit', 'is_active' => true]);
+        $sales = $account('4101.01', 'revenue');
+        $inventory = $account('1106.01', 'asset');
+        $cogs = $account('5101.01', 'expense');
+
+        $headers = ['Code', 'Name', 'Type', 'Category', 'Unit', 'Stock Item', 'Min Stock', 'Sales Account', 'Inventory Account', 'COGS Account'];
+        $batch = $this->upload($ctx, 'product', [
+            $headers,
+            ['LPG3', 'LPG 3 Kg', 'goods', '', 'PCS', 'yes', '', '4101.01', '1106.01', '5101.01'],
+            ['LPG12', 'LPG 12 Kg', 'goods', '', 'PCS', 'yes', '', '1106.01', '', '9999'],
+        ]);
+
+        $this->patchJson('/api/imports/'.$batch['uuid'].'/mapping', [
+            'column_map' => array_combine(['code', 'name', 'type', 'category', 'unit', 'stock_item', 'min_stock', 'sales_account', 'inventory_account', 'cogs_account'], $headers),
+        ], $ctx['headers'])->assertOk()->assertJsonPath('data.failed_rows', 1);
+
+        $errors = ImportRow::query()->where('status', 'invalid')->firstOrFail()->errors;
+        $this->assertStringContainsString('revenue', $errors['sales_account'][0]);
+        $this->assertStringContainsString('9999', $errors['cogs_account'][0]);
+
+        $this->postJson('/api/imports/'.$batch['uuid'].'/commit', [], $ctx['headers'])->assertOk();
+        $product = Product::query()->where('product_code', 'LPG3')->firstOrFail();
+        $this->assertSame($sales->id, $product->sales_account_id);
+        $this->assertSame($inventory->id, $product->inventory_account_id);
+        $this->assertSame($cogs->id, $product->cogs_account_id);
+    }
+
     // ── Chart of Account ─────────────────────────────────────────────────
 
     public function test_coa_child_listed_before_parent_in_file_still_commits_with_correct_hierarchy(): void
