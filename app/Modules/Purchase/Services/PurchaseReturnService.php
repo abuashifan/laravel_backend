@@ -6,6 +6,8 @@ use App\Modules\Inventory\Services\InventoryPurchaseIntegrationService;
 use App\Modules\Journal\Models\JournalEntry;
 use App\Modules\MasterData\Models\AccountMapping;
 use App\Modules\MasterData\Models\Contact;
+use App\Modules\MasterData\Models\Product;
+use App\Modules\MasterData\Models\Warehouse;
 use App\Modules\Purchase\Models\GoodsReceipt;
 use App\Modules\Purchase\Models\GoodsReceiptLine;
 use App\Modules\Purchase\Models\PurchaseReturn;
@@ -312,7 +314,7 @@ class PurchaseReturnService
 
     private function normalizeReturnLines(array $lines): array
     {
-        return array_values(array_map(fn (array $line, int $i): array => ['vendor_bill_line_id' => $line['vendor_bill_line_id'] ?? null, 'goods_receipt_line_id' => $line['goods_receipt_line_id'] ?? null, 'product_id' => $line['product_id'] ?? null, 'product_code' => $line['product_code'] ?? null, 'description' => $line['description'], 'quantity' => (float) $line['quantity'], 'unit_id' => $line['unit_id'] ?? null, 'unit_price' => (float) ($line['unit_price'] ?? 0), 'discount_amount' => (float) ($line['discount_amount'] ?? 0), 'tax_amount' => (float) ($line['tax_amount'] ?? 0), 'line_total' => (float) ($line['line_total'] ?? ((float) ($line['quantity'] ?? 0) * (float) ($line['unit_price'] ?? 0) - (float) ($line['discount_amount'] ?? 0) + (float) ($line['tax_amount'] ?? 0))), 'warehouse_id' => $line['warehouse_id'] ?? null, 'department_id' => $line['department_id'] ?? null, 'project_id' => $line['project_id'] ?? null, 'expense_account_id' => $line['expense_account_id'] ?? null, 'source_line_type' => $line['source_line_type'] ?? null, 'source_line_id' => $line['source_line_id'] ?? null, 'sort_order' => $line['sort_order'] ?? $i, 'metadata' => $line['metadata'] ?? null], $lines, array_keys($lines)));
+        return array_values(array_map(fn (array $line, int $i): array => ['vendor_bill_line_id' => $line['vendor_bill_line_id'] ?? null, 'goods_receipt_line_id' => $line['goods_receipt_line_id'] ?? null, 'product_id' => $line['product_id'] ?? null, 'product_code' => $line['product_code'] ?? null, 'description' => $line['description'], 'quantity' => (float) $line['quantity'], 'unit_id' => $line['unit_id'] ?? (! empty($line['product_id']) ? Product::query()->whereKey((int) $line['product_id'])->value('unit_id') : null), 'unit_price' => (float) ($line['unit_price'] ?? 0), 'discount_amount' => (float) ($line['discount_amount'] ?? 0), 'tax_amount' => (float) ($line['tax_amount'] ?? 0), 'line_total' => (float) ($line['line_total'] ?? ((float) ($line['quantity'] ?? 0) * (float) ($line['unit_price'] ?? 0) - (float) ($line['discount_amount'] ?? 0) + (float) ($line['tax_amount'] ?? 0))), 'warehouse_id' => ($line['warehouse_id'] ?? null) ?: ((! empty($line['product_id']) && Product::query()->whereKey((int) $line['product_id'])->value('is_stock_item')) ? Warehouse::query()->where('is_default', true)->where('is_active', true)->value('id') : null), 'department_id' => $line['department_id'] ?? null, 'project_id' => $line['project_id'] ?? null, 'expense_account_id' => $line['expense_account_id'] ?? null, 'source_line_type' => $line['source_line_type'] ?? null, 'source_line_id' => $line['source_line_id'] ?? null, 'sort_order' => $line['sort_order'] ?? $i, 'metadata' => $line['metadata'] ?? null], $lines, array_keys($lines)));
     }
 
     private function validateReturnedQuantities(array $lines, ?PurchaseReturn $current = null): void

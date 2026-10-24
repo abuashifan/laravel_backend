@@ -3,6 +3,8 @@
 namespace App\Modules\Sales\Services;
 
 use App\Modules\Inventory\Services\InventorySalesIntegrationService;
+use App\Modules\MasterData\Models\Product;
+use App\Modules\MasterData\Models\Warehouse;
 use App\Modules\Sales\Models\DeliveryOrder;
 use App\Modules\Sales\Models\SalesInvoice;
 use App\Modules\Sales\Models\SalesOrder;
@@ -90,7 +92,7 @@ class DeliveryOrderService
                 'delivery_number' => $this->documentNumberService->generate($company, DocumentType::DELIVERY_ORDER, (string) $data['delivery_date']),
                 'status' => 'draft', 'created_by' => auth()->id(), 'updated_by' => auth()->id(),
             ]));
-            $deliveryOrder->lines()->createMany($this->normalizeDeliveryLines((array) $data['lines']));
+            $deliveryOrder->lines()->createMany($this->normalizeDeliveryLines((array) $data['lines'], $data['warehouse_id'] ?? null));
 
             return $deliveryOrder->refresh()->load('lines', 'customer', 'salesOrder');
         });
@@ -104,7 +106,7 @@ class DeliveryOrderService
             $deliveryOrder->fill(array_merge($this->guardedForHeader($data), ['updated_by' => auth()->id(), 'revision_no' => (int) $deliveryOrder->revision_no + 1]))->save();
             if (isset($data['lines'])) {
                 $deliveryOrder->lines()->delete();
-                $deliveryOrder->lines()->createMany($this->normalizeDeliveryLines((array) $data['lines']));
+                $deliveryOrder->lines()->createMany($this->normalizeDeliveryLines((array) $data['lines'], $data['warehouse_id'] ?? $deliveryOrder->warehouse_id));
             }
 
             return $deliveryOrder->refresh()->load('lines', 'customer', 'salesOrder');
@@ -342,10 +344,19 @@ class DeliveryOrderService
         });
     }
 
-    private function normalizeDeliveryLines(array $lines): array
+    /**
+     * Gudang baris jatuh ke gudang header, lalu gudang default; satuan dari
+     * produk. Form DO hanya mengisi gudang di header -- tanpa ini "Konfirmasi
+     * Terima" ditolak WAREHOUSE_REQUIRED/UNIT_REQUIRED.
+     */
+    private function normalizeDeliveryLines(array $lines, ?int $headerWarehouseId = null): array
     {
-        return array_values(array_map(function (array $line, int $i): array {
-            $normalized = ['sales_order_line_id' => $line['sales_order_line_id'] ?? null, 'product_id' => $line['product_id'] ?? null, 'product_code' => $line['product_code'] ?? null, 'description' => $line['description'], 'quantity' => (float) $line['quantity'], 'unit_id' => $line['unit_id'] ?? null, 'warehouse_id' => $line['warehouse_id'] ?? null, 'department_id' => $line['department_id'] ?? null, 'project_id' => $line['project_id'] ?? null, 'source_line_type' => $line['source_line_type'] ?? null, 'source_line_id' => $line['source_line_id'] ?? null, 'sort_order' => $line['sort_order'] ?? $i, 'metadata' => $line['metadata'] ?? null];
+        $fallbackWarehouseId = $headerWarehouseId
+            ?? Warehouse::query()->where('is_default', true)->where('is_active', true)->value('id');
+
+        return array_values(array_map(function (array $line, int $i) use ($fallbackWarehouseId): array {
+            $product = ! empty($line['product_id']) ? Product::query()->find((int) $line['product_id']) : null;
+            $normalized = ['sales_order_line_id' => $line['sales_order_line_id'] ?? null, 'product_id' => $line['product_id'] ?? null, 'product_code' => $line['product_code'] ?? null, 'description' => $line['description'], 'quantity' => (float) $line['quantity'], 'unit_id' => $line['unit_id'] ?? $product?->unit_id, 'warehouse_id' => $line['warehouse_id'] ?? $fallbackWarehouseId, 'department_id' => $line['department_id'] ?? null, 'project_id' => $line['project_id'] ?? null, 'source_line_type' => $line['source_line_type'] ?? null, 'source_line_id' => $line['source_line_id'] ?? null, 'sort_order' => $line['sort_order'] ?? $i, 'metadata' => $line['metadata'] ?? null];
             app(BusinessReferenceValidator::class)->transactionalLine($normalized);
 
             return $normalized;

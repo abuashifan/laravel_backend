@@ -5,6 +5,8 @@ namespace App\Modules\Sales\Services;
 use App\Modules\Inventory\Services\InventorySalesIntegrationService;
 use App\Modules\Journal\Models\JournalEntry;
 use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\Product;
+use App\Modules\MasterData\Models\Warehouse;
 use App\Modules\Sales\Models\DeliveryOrder;
 use App\Modules\Sales\Models\DeliveryOrderLine;
 use App\Modules\Sales\Models\SalesInvoice;
@@ -299,7 +301,7 @@ class SalesReturnService
 
     private function normalizeReturnLines(array $lines): array
     {
-        return array_values(array_map(fn (array $line, int $i): array => ['sales_invoice_line_id' => $line['sales_invoice_line_id'] ?? null, 'delivery_order_line_id' => $line['delivery_order_line_id'] ?? null, 'product_id' => $line['product_id'] ?? null, 'product_code' => $line['product_code'] ?? null, 'description' => $line['description'], 'quantity' => (float) $line['quantity'], 'unit_id' => $line['unit_id'] ?? null, 'unit_price' => (float) ($line['unit_price'] ?? 0), 'discount_amount' => (float) ($line['discount_amount'] ?? 0), 'tax_amount' => (float) ($line['tax_amount'] ?? 0), 'line_total' => (float) ($line['line_total'] ?? ((float) ($line['quantity'] ?? 0) * (float) ($line['unit_price'] ?? 0) - (float) ($line['discount_amount'] ?? 0) + (float) ($line['tax_amount'] ?? 0))), 'warehouse_id' => $line['warehouse_id'] ?? null, 'department_id' => $line['department_id'] ?? null, 'project_id' => $line['project_id'] ?? null, 'source_line_type' => $line['source_line_type'] ?? null, 'source_line_id' => $line['source_line_id'] ?? null, 'sort_order' => $line['sort_order'] ?? $i, 'metadata' => $line['metadata'] ?? null], $lines, array_keys($lines)));
+        return array_values(array_map(fn (array $line, int $i): array => ['sales_invoice_line_id' => $line['sales_invoice_line_id'] ?? null, 'delivery_order_line_id' => $line['delivery_order_line_id'] ?? null, 'product_id' => $line['product_id'] ?? null, 'product_code' => $line['product_code'] ?? null, 'description' => $line['description'], 'quantity' => (float) $line['quantity'], 'unit_id' => $line['unit_id'] ?? (! empty($line['product_id']) ? Product::query()->whereKey((int) $line['product_id'])->value('unit_id') : null), 'unit_price' => (float) ($line['unit_price'] ?? 0), 'discount_amount' => (float) ($line['discount_amount'] ?? 0), 'tax_amount' => (float) ($line['tax_amount'] ?? 0), 'line_total' => (float) ($line['line_total'] ?? ((float) ($line['quantity'] ?? 0) * (float) ($line['unit_price'] ?? 0) - (float) ($line['discount_amount'] ?? 0) + (float) ($line['tax_amount'] ?? 0))), 'warehouse_id' => ($line['warehouse_id'] ?? null) ?: ((! empty($line['product_id']) && Product::query()->whereKey((int) $line['product_id'])->value('is_stock_item')) ? Warehouse::query()->where('is_default', true)->where('is_active', true)->value('id') : null), 'department_id' => $line['department_id'] ?? null, 'project_id' => $line['project_id'] ?? null, 'source_line_type' => $line['source_line_type'] ?? null, 'source_line_id' => $line['source_line_id'] ?? null, 'sort_order' => $line['sort_order'] ?? $i, 'metadata' => $line['metadata'] ?? null], $lines, array_keys($lines)));
     }
 
     private function validateReturnedQuantities(array $lines, ?SalesReturn $current = null): void
@@ -394,10 +396,14 @@ class SalesReturnService
         }, $this->returnAccountGroups($return));
         if ((float) $return->tax_total > 0) {
             $lines[] = ['account_id' => $this->mapping('sales.tax_output'), 'description' => 'Output Tax', 'debit' => $return->tax_total, 'credit' => 0, 'line_order' => $order++];
-        } if ($return->sales_invoice_id) {
-            $ar = $this->accountResolver->resolveInvoiceReceivableAccountId(SalesInvoice::query()->findOrFail((int) $return->sales_invoice_id));
-            $lines[] = ['account_id' => $ar, 'description' => 'Accounts Receivable', 'debit' => 0, 'credit' => $return->grand_total, 'line_order' => $order++];
-        } $journal->lines()->createMany($lines);
+        }
+        // Retur tanpa invoice tetap mengkredit piutang (nota kredit pelanggan).
+        // Sebelumnya baris kredit dilewati sehingga jurnal posted tidak seimbang.
+        $ar = $return->sales_invoice_id
+            ? $this->accountResolver->resolveInvoiceReceivableAccountId(SalesInvoice::query()->findOrFail((int) $return->sales_invoice_id))
+            : $this->mapping('sales.accounts_receivable');
+        $lines[] = ['account_id' => $ar, 'description' => 'Accounts Receivable', 'debit' => 0, 'credit' => $return->grand_total, 'line_order' => $order++];
+        $journal->lines()->createMany($lines);
 
         return $journal->refresh();
     }

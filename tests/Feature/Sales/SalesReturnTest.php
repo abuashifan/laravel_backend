@@ -159,6 +159,26 @@ class SalesReturnTest extends SalesTestCase
         return SalesInvoice::query()->with('lines')->find($invoice['id'])->toArray();
     }
 
+    public function test_return_without_invoice_posts_balanced_journal_crediting_receivable(): void
+    {
+        $ctx = $this->setUpTenant();
+        $this->seedMappings();
+
+        $return = $this->postJson('/api/sales/returns', [
+            'return_date' => '2026-05-20',
+            'customer_id' => $this->createCustomer(),
+            'lines' => [['description' => 'Retur manual', 'quantity' => 1, 'unit_price' => 20000]],
+        ], $ctx['headers'])->assertStatus(201)->json('data');
+
+        $this->patchJson('/api/sales/returns/'.$return['id'].'/post', [], $ctx['headers'])->assertOk();
+
+        // Dulu baris kredit dilewati bila tidak ada invoice -> jurnal posted tidak seimbang.
+        $journal = JournalEntry::query()->where('source_type', 'sales_return')->where('source_id', $return['id'])->firstOrFail();
+        $this->assertEquals(20000, (float) $journal->lines()->sum('debit'));
+        $this->assertEquals(20000, (float) $journal->lines()->sum('credit'));
+        $this->assertTrue($journal->lines()->where('credit', '>', 0)->where('account_id', AccountMapping::query()->where('mapping_key', 'sales.accounts_receivable')->value('account_id'))->exists());
+    }
+
     private function seedMappings(): void
     {
         $ar = $this->account('1100', 'AR', 'asset', 'debit');
