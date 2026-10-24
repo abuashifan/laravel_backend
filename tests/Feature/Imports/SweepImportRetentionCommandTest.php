@@ -91,7 +91,7 @@ class SweepImportRetentionCommandTest extends TestCase
     {
         app(TenantConnectionManager::class)->connect($company->tenantDatabase->database_path);
 
-        $storedPath = 'imports/'.$company->id.'/'.uniqid().'.csv';
+        $storedPath = 'imports/'.$company->id.'/'.uniqid(getmypid().'_', true).'.csv';
         Storage::disk('local')->put($storedPath, 'ref,customer,amount');
 
         $batch = ImportBatch::query()->create([
@@ -134,7 +134,7 @@ class SweepImportRetentionCommandTest extends TestCase
             'joined_at' => now(),
         ]);
 
-        $tenantPath = database_path('tenants/test_retention_'.$company->id.'_'.uniqid().'.sqlite');
+        $tenantPath = database_path('tenants/test_retention_'.$company->id.'_'.uniqid(getmypid().'_', true).'.sqlite');
         File::ensureDirectoryExists(dirname($tenantPath));
         File::put($tenantPath, '');
         $this->registerTenantFile($tenantPath);

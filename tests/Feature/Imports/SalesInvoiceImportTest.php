@@ -312,7 +312,7 @@ class SalesInvoiceImportTest extends TestCase
             'role' => $role, 'status' => 'active', 'joined_at' => now(),
         ]);
 
-        $tenantPath = database_path('tenants/test_si_'.$company->id.'_'.uniqid().'.sqlite');
+        $tenantPath = database_path('tenants/test_si_'.$company->id.'_'.uniqid(getmypid().'_', true).'.sqlite');
         File::ensureDirectoryExists(dirname($tenantPath));
         File::put($tenantPath, '');
         $this->registerTenantFile($tenantPath);

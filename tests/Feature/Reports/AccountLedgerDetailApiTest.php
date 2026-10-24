@@ -110,7 +110,7 @@ class AccountLedgerDetailApiTest extends JournalTestCase
             'joined_at' => now(),
         ]);
 
-        $tenantPath2 = database_path('tenants/test_company_'.$company2->id.'_'.uniqid().'.sqlite');
+        $tenantPath2 = database_path('tenants/test_company_'.$company2->id.'_'.uniqid(getmypid().'_', true).'.sqlite');
         File::ensureDirectoryExists(dirname($tenantPath2));
         File::put($tenantPath2, '');
         $this->registerTenantFile($tenantPath2);

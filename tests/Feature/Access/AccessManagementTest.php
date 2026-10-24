@@ -191,7 +191,7 @@ class AccessManagementTest extends TestCase
 
     private function tenant(Company $company): void
     {
-        $path = database_path('tenants/test_access_'.$company->id.'_'.uniqid().'.sqlite');
+        $path = database_path('tenants/test_access_'.$company->id.'_'.uniqid(getmypid().'_', true).'.sqlite');
         File::ensureDirectoryExists(dirname($path));
         File::put($path, '');
         $this->registerTenantFile($path);

@@ -420,7 +420,7 @@ class OpeningBalanceImportTest extends TestCase
             'company_id' => $company->id,
             'opening_date' => '2026-01-01',
         ]);
-        $tenantPath = database_path('tenants/test_obi_'.$company->id.'_'.uniqid().'.sqlite');
+        $tenantPath = database_path('tenants/test_obi_'.$company->id.'_'.uniqid(getmypid().'_', true).'.sqlite');
         File::ensureDirectoryExists(dirname($tenantPath));
         File::put($tenantPath, '');
         $this->registerTenantFile($tenantPath);

@@ -26,7 +26,7 @@ class RestoreCompanyTest extends TestCase
     {
         parent::setUp();
 
-        $this->tenantDirectory = storage_path('framework/testing/tenants-'.uniqid());
+        $this->tenantDirectory = storage_path('framework/testing/tenants-'.uniqid(getmypid().'_', true));
         File::ensureDirectoryExists($this->tenantDirectory);
         config(['tenant.database_path' => $this->tenantDirectory]);
     }

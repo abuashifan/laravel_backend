@@ -59,7 +59,7 @@ abstract class PurchaseTestCase extends TestCase
             'approval_enabled' => false,
         ]);
 
-        $tenantPath = database_path('tenants/test_purchase_'.$company->id.'_'.uniqid().'.sqlite');
+        $tenantPath = database_path('tenants/test_purchase_'.$company->id.'_'.uniqid(getmypid().'_', true).'.sqlite');
         File::ensureDirectoryExists(dirname($tenantPath));
         File::put($tenantPath, '');
         $this->registerTenantFile($tenantPath);

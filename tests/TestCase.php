@@ -102,7 +102,7 @@ abstract class TestCase extends BaseTestCase
             'joined_at' => now(),
         ]);
 
-        $tenantPath = database_path('tenants/test_'.class_basename(static::class).'_'.$company->id.'_'.uniqid().'.sqlite');
+        $tenantPath = database_path('tenants/test_'.class_basename(static::class).'_'.$company->id.'_'.uniqid(getmypid().'_', true).'.sqlite');
         File::ensureDirectoryExists(dirname($tenantPath));
         File::put($tenantPath, '');
         $this->registerTenantFile($tenantPath);
