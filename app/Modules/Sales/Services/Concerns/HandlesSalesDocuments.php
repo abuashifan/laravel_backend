@@ -3,6 +3,7 @@
 namespace App\Modules\Sales\Services\Concerns;
 
 use App\Modules\MasterData\Models\Product;
+use App\Modules\MasterData\Models\Warehouse;
 use App\Modules\Settings\Services\CompanySettingService;
 use App\Shared\Audit\AuditLogService;
 use App\Shared\Validation\BusinessReferenceValidator;
@@ -38,7 +39,7 @@ trait HandlesSalesDocuments
                 'discount_value' => $line['discount_value'] ?? null,
                 'tax_id' => $line['tax_id'] ?? null,
                 'tax_rate' => $line['tax_rate'] ?? null,
-                'warehouse_id' => $line['warehouse_id'] ?? null,
+                'warehouse_id' => $line['warehouse_id'] ?? ($product?->is_stock_item ? Warehouse::query()->where('is_default', true)->where('is_active', true)->value('id') : null),
                 'department_id' => $line['department_id'] ?? null,
                 'project_id' => $line['project_id'] ?? null,
                 'source_line_type' => $line['source_line_type'] ?? null,

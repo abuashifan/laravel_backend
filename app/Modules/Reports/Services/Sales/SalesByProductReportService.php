@@ -14,7 +14,7 @@ class SalesByProductReportService
     {
         $rows = SalesInvoiceLine::query()
             ->join('sales_invoices as si', 'si.id', '=', 'sales_invoice_lines.sales_invoice_id')
-            ->where('si.status', 'posted')
+            ->whereIn('si.status', ['posted', 'partially_paid', 'paid'])
             ->when(
                 $filters['start_date'] ?? null,
                 fn ($q, $v) => $q->where('si.invoice_date', '>=', $v),

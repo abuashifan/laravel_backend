@@ -22,7 +22,7 @@ class PurchaseSummaryReportService
         );
 
         $query = VendorBill::query()
-            ->where('status', 'posted')
+            ->whereIn('status', ['posted', 'partially_paid', 'paid'])
             ->when(
                 $filters['start_date'] ?? null,
                 fn ($q, $v) => $q->where('bill_date', '>=', $v),

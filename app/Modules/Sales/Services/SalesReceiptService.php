@@ -22,6 +22,7 @@ use App\Shared\TransactionLifecycle\TransactionVoidEffectService;
 use App\Shared\Validation\BusinessReferenceValidator;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 
 class SalesReceiptService
@@ -74,7 +75,7 @@ class SalesReceiptService
         $this->ensureCustomerExists((int) $data['customer_id']);
 
         return DB::connection('tenant')->transaction(function () use ($company, $data) {
-            $receipt = SalesReceipt::query()->create(array_merge($data, ['receipt_number' => $this->documentNumberService->generate($company, DocumentType::SALES_RECEIPT, (string) $data['receipt_date']), 'status' => 'draft', 'created_by' => auth()->id()]));
+            $receipt = SalesReceipt::query()->create(array_merge(Arr::except($data, ['lines']), ['receipt_number' => $this->documentNumberService->generate($company, DocumentType::SALES_RECEIPT, (string) $data['receipt_date']), 'status' => 'draft', 'created_by' => auth()->id()]));
             $receipt->lines()->createMany($data['lines'] ?? [['sales_invoice_id' => $data['sales_invoice_id'] ?? null, 'amount' => $data['amount'], 'description' => $data['notes'] ?? null]]);
             $receipt = $receipt->refresh()->load('lines', 'customer', 'salesInvoice');
 

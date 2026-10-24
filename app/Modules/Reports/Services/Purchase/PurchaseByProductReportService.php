@@ -14,7 +14,7 @@ class PurchaseByProductReportService
     {
         $rows = VendorBillLine::query()
             ->join('vendor_bills as vb', 'vb.id', '=', 'vendor_bill_lines.vendor_bill_id')
-            ->where('vb.status', 'posted')
+            ->whereIn('vb.status', ['posted', 'partially_paid', 'paid'])
             ->when(
                 $filters['start_date'] ?? null,
                 fn ($q, $v) => $q->where('vb.bill_date', '>=', $v),

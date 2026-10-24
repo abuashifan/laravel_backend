@@ -4,6 +4,8 @@ namespace App\Modules\Purchase\Services;
 
 use App\Modules\Inventory\Services\InventoryPurchaseIntegrationService;
 use App\Modules\MasterData\Models\AccountMapping;
+use App\Modules\MasterData\Models\Product;
+use App\Modules\MasterData\Models\Warehouse;
 use App\Modules\Purchase\Models\GoodsReceipt;
 use App\Modules\Purchase\Models\PurchaseOrder;
 use App\Modules\Purchase\Models\PurchaseOrderLine;
@@ -89,7 +91,7 @@ class GoodsReceiptService
         $this->ensureVendorExists((int) $data['vendor_id']);
 
         return DB::connection('tenant')->transaction(function () use ($company, $data) {
-            $lines = $this->normalizeReceiptLines((array) $data['lines']);
+            $lines = $this->normalizeReceiptLines((array) $data['lines'], $data['warehouse_id'] ?? null);
             $receipt = GoodsReceipt::query()->create(array_merge($this->guardedPurchaseHeader($data), [
                 'receipt_number' => $this->documentNumberService->generate($company, DocumentType::GOODS_RECEIPT, (string) $data['receipt_date']),
                 'status' => 'draft',
@@ -108,7 +110,7 @@ class GoodsReceiptService
     {
 
         return DB::connection('tenant')->transaction(function () use ($goodsReceipt, $data) {
-            $lines = $this->normalizeReceiptLines((array) ($data['lines'] ?? $goodsReceipt->lines()->get()->toArray()));
+            $lines = $this->normalizeReceiptLines((array) ($data['lines'] ?? $goodsReceipt->lines()->get()->toArray()), $data['warehouse_id'] ?? $goodsReceipt->warehouse_id);
             $goodsReceipt->fill(array_merge($this->guardedPurchaseHeader($data), [
                 'updated_by' => auth()->id(),
                 'revision_no' => (int) $goodsReceipt->revision_no + 1,
@@ -397,17 +399,28 @@ class GoodsReceiptService
         });
     }
 
-    private function normalizeReceiptLines(array $lines): array
+    /**
+     * Gudang baris jatuh ke gudang header, lalu ke gudang bawaan. Form hanya
+     * mengisi gudang di header; tanpa fallback ini "Terima Barang" selalu
+     * ditolak WAREHOUSE_REQUIRED karena baris tak punya gudang.
+     */
+    private function normalizeReceiptLines(array $lines, ?int $headerWarehouseId = null): array
     {
-        return array_values(array_map(function (array $line, int $index): array {
+        $fallbackWarehouseId = $headerWarehouseId
+            ?? Warehouse::query()->where('is_default', true)->where('is_active', true)->value('id');
+
+        return array_values(array_map(function (array $line, int $index) use ($fallbackWarehouseId): array {
+            $product = ! empty($line['product_id'])
+                ? Product::query()->find((int) $line['product_id'])
+                : null;
             $normalized = [
                 'purchase_order_line_id' => $line['purchase_order_line_id'] ?? null,
                 'product_id' => $line['product_id'] ?? null,
-                'product_code' => $line['product_code'] ?? null,
+                'product_code' => $line['product_code'] ?? $product?->product_code,
                 'description' => $line['description'] ?? '',
                 'quantity' => (float) ($line['quantity'] ?? 0),
-                'unit_id' => $line['unit_id'] ?? null,
-                'warehouse_id' => $line['warehouse_id'] ?? null,
+                'unit_id' => $line['unit_id'] ?? $product?->unit_id,
+                'warehouse_id' => $line['warehouse_id'] ?? $fallbackWarehouseId,
                 'department_id' => $line['department_id'] ?? null,
                 'project_id' => $line['project_id'] ?? null,
                 'expense_account_id' => $line['expense_account_id'] ?? null,

@@ -23,6 +23,7 @@ use App\Shared\TransactionLifecycle\TransactionVoidEffectService;
 use App\Shared\Validation\BusinessReferenceValidator;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 
 class VendorPaymentService
@@ -84,7 +85,7 @@ class VendorPaymentService
         $this->ensureVendorExists((int) $data['vendor_id']);
 
         return DB::connection('tenant')->transaction(function () use ($company, $data) {
-            $payment = VendorPayment::query()->create(array_merge($data, [
+            $payment = VendorPayment::query()->create(array_merge(Arr::except($data, ['lines']), [
                 'payment_number' => $this->documentNumberService->generate($company, DocumentType::VENDOR_PAYMENT, (string) $data['payment_date']),
                 'status' => 'draft',
                 'created_by' => auth()->id(),
