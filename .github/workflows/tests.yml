@@ -1,0 +1,40 @@
+# Tes lengkap backend dijalankan di server GitHub, bukan di laptop. Render
+# diatur "Auto-Deploy: After CI Checks Pass", jadi kode baru hanya di-deploy
+# kalau job ini lulus.
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  phpunit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # Sama dengan image produksi (serversideup/php:8.3).
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_sqlite, sqlite3, pdo_pgsql, gd, mbstring, intl, bcmath, zip
+          coverage: none
+
+      - name: Cache Composer
+        uses: actions/cache@v4
+        with:
+          path: ~/.composer/cache/files
+          key: composer-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-
+
+      - run: composer install --no-interaction --prefer-dist --no-progress
+
+      # Paralel: runner GitHub punya beberapa core, ~4-6 menit untuk seluruh tes.
+      - name: Run tests (parallel)
+        run: php artisan test --parallel --processes=4
