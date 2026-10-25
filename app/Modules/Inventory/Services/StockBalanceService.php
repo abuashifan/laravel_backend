@@ -10,6 +10,8 @@ use Illuminate\Database\Eloquent\Builder;
 
 class StockBalanceService
 {
+    public function __construct(private readonly AverageCostService $avgCostService) {}
+
     public function getOrCreateBalance(int $productId, int $warehouseId): StockBalance
     {
         return StockBalance::query()->firstOrCreate([
