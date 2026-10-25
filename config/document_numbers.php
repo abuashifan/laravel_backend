@@ -107,7 +107,8 @@ return [
             'name' => 'Stock Movement',
         ],
         'stock_opname' => [
-            'prefix' => 'SO',
+            // Bukan "SO" -- itu milik Sales Order.
+            'prefix' => 'OP',
             'name' => 'Stock Opname',
         ],
         'stock_transfer' => [

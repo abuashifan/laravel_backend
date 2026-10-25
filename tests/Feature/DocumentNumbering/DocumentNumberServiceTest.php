@@ -10,6 +10,8 @@ use App\Shared\Models\DocumentNumberingSetting;
 use App\Shared\Models\DocumentNumberSequence;
 use App\Shared\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use RuntimeException;
 use Tests\TestCase;
 
 class DocumentNumberServiceTest extends TestCase
@@ -70,6 +72,37 @@ class DocumentNumberServiceTest extends TestCase
 
         $this->assertNotNull($seq);
         $this->assertSame(2, (int) $seq->last_number);
+    }
+
+    public function test_number_taken_inside_rolled_back_tenant_transaction_is_released(): void
+    {
+        $company = $this->makeCompany();
+        $this->app->make(FiscalYearService::class)->createFiscalYear($company, 2026, '2026-01-01', '2026-12-31');
+        $service = $this->app->make(DocumentNumberService::class);
+
+        // Dokumen disimpan di koneksi tenant, sekuens di central (lihat releaseOnRollback).
+        config(['database.connections.tenant' => ['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '']]);
+        DB::purge('tenant');
+
+        try {
+            DB::connection('tenant')->transaction(function () use ($service, $company): void {
+                $service->generate($company, DocumentType::SALES_INVOICE, '2026-05-17');
+                throw new RuntimeException('simpan gagal');
+            });
+        } catch (RuntimeException) {
+            // diharapkan
+        }
+
+        $this->assertSame('SI-2026-000001', $service->generate($company, DocumentType::SALES_INVOICE, '2026-05-17'));
+    }
+
+    public function test_stock_opname_prefix_differs_from_sales_order(): void
+    {
+        $company = $this->makeCompany();
+        $service = $this->app->make(DocumentNumberService::class);
+
+        $this->assertSame('OP', $service->getOrCreateSetting($company, DocumentType::STOCK_OPNAME)->prefix);
+        $this->assertSame('SO', $service->getOrCreateSetting($company, DocumentType::SALES_ORDER)->prefix);
     }
 
     public function test_purchase_invoice_uses_different_prefix(): void
@@ -206,7 +239,7 @@ class DocumentNumberServiceTest extends TestCase
         $setting->is_active = false;
         $setting->save();
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
         $service->generate($company, DocumentType::SALES_INVOICE, '2026-05-17');
     }
 }

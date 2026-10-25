@@ -79,8 +79,32 @@ class DocumentNumberService
         }
 
         $sequence = $this->nextSequence($company, $documentType, $documentDate, increment: true);
+        $this->releaseOnRollback($company, $documentType, $this->periodKeyFor($setting, $documentDate, $this->fiscalYearForDate($company, $documentDate)), $sequence);
 
         return $this->formatNumber($setting, $documentType, $documentDate, $sequence);
+    }
+
+    /**
+     * Sekuens tinggal di database central, sedangkan dokumennya disimpan di
+     * transaksi tenant -- simpan yang gagal tidak ikut membatalkan sekuens,
+     * sehingga nomor terbuang dan urutannya berlubang. Bila nomor diambil di
+     * dalam transaksi yang kemudian di-rollback, kembalikan sekuensnya --
+     * hanya kalau belum ada nomor sesudahnya yang terpakai.
+     */
+    private function releaseOnRollback(Company $company, string $documentType, string $periodKey, int $sequence): void
+    {
+        if (! app()->bound('db.transactions')) {
+            return;
+        }
+
+        app('db.transactions')->addCallbackForRollback(function () use ($company, $documentType, $periodKey, $sequence): void {
+            DocumentNumberSequence::query()
+                ->where('company_id', $company->id)
+                ->where('document_type', $documentType)
+                ->where('period_key', $periodKey)
+                ->where('last_number', $sequence)
+                ->update(['last_number' => $sequence - 1]);
+        });
     }
 
     public function validateManualNumber(Company $company, string $documentType, string $documentNumber): bool
