@@ -397,12 +397,16 @@ class SalesReturnService
         if ((float) $return->tax_total > 0) {
             $lines[] = ['account_id' => $this->mapping('sales.tax_output'), 'description' => 'Output Tax', 'debit' => $return->tax_total, 'credit' => 0, 'line_order' => $order++];
         }
-        // Retur tanpa invoice tetap mengkredit piutang (nota kredit pelanggan).
-        // Sebelumnya baris kredit dilewati sehingga jurnal posted tidak seimbang.
-        $ar = $return->sales_invoice_id
-            ? $this->accountResolver->resolveInvoiceReceivableAccountId(SalesInvoice::query()->findOrFail((int) $return->sales_invoice_id))
-            : $this->mapping('sales.accounts_receivable');
-        $lines[] = ['account_id' => $ar, 'description' => 'Accounts Receivable', 'debit' => 0, 'credit' => $return->grand_total, 'line_order' => $order++];
+        if ($return->sales_invoice_id) {
+            $ar = $this->accountResolver->resolveInvoiceReceivableAccountId(SalesInvoice::query()->findOrFail((int) $return->sales_invoice_id));
+            $lines[] = ['account_id' => $ar, 'description' => 'Accounts Receivable', 'debit' => 0, 'credit' => $return->grand_total, 'line_order' => $order++];
+        } elseif (! $return->delivery_order_id && (float) $return->grand_total > 0) {
+            // Retur manual (tanpa invoice maupun DO) yang bernilai = nota kredit
+            // pelanggan. Sebelumnya baris kredit dilewati sehingga jurnal posted
+            // tidak seimbang. Retur dari DO yang belum ditagih bernilai nol dan
+            // memang tidak menyentuh piutang.
+            $lines[] = ['account_id' => $this->mapping('sales.accounts_receivable'), 'description' => 'Accounts Receivable', 'debit' => 0, 'credit' => $return->grand_total, 'line_order' => $order++];
+        }
         $journal->lines()->createMany($lines);
 
         return $journal->refresh();
