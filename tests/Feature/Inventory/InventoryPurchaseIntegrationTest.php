@@ -134,6 +134,48 @@ class InventoryPurchaseIntegrationTest extends JournalTestCase
         $this->assertSame(5000.0, (float) $billJournalLines[1]->credit);
     }
 
+    public function test_goods_receipt_without_purchase_order_is_valued_at_current_average_cost(): void
+    {
+        $ctx = $this->setUpTenant(role: 'owner');
+        $companyUser = CompanyUser::query()->where('company_id', $ctx['company']->id)->where('user_id', $ctx['user']->id)->firstOrFail();
+        $tenantDb = TenantDatabase::query()->where('company_id', $ctx['company']->id)->firstOrFail();
+        app(TenantContext::class)->set($ctx['company'], $companyUser, $tenantDb);
+        $this->seedInventoryMappings();
+        $this->seedPurchaseMappings();
+
+        $unit = Unit::query()->create(['code' => 'PCS', 'name' => 'Pieces', 'precision' => 0, 'is_active' => true]);
+        $wh = Warehouse::query()->create(['code' => 'WH1', 'name' => 'Main', 'is_default' => true, 'is_active' => true]);
+        $vendor = Contact::query()->create(['contact_code' => 'V1', 'name' => 'Vendor', 'contact_type' => 'company', 'is_customer' => false, 'is_supplier' => true, 'is_employee' => false, 'is_active' => true]);
+        $p = Product::query()->create(['product_code' => 'SKU1', 'product_name' => 'Item', 'product_type' => 'goods', 'unit_id' => $unit->id, 'is_stock_item' => true, 'is_active' => true]);
+        StockBalance::query()->create(['product_id' => $p->id, 'warehouse_id' => $wh->id, 'quantity_on_hand' => 3, 'quantity_available' => 3, 'quantity_reserved' => 0, 'average_cost' => 1200, 'total_value' => 3600]);
+
+        $gr = GoodsReceipt::query()->create([
+            'receipt_number' => 'GR-002',
+            'receipt_date' => '2026-01-02',
+            'vendor_id' => $vendor->id,
+            'status' => 'draft',
+            'revision_no' => 1,
+            'created_by' => auth()->id(),
+            'updated_by' => auth()->id(),
+        ]);
+        GoodsReceiptLine::query()->create([
+            'goods_receipt_id' => $gr->id,
+            'product_id' => $p->id,
+            'product_code' => $p->product_code,
+            'description' => 'Item',
+            'quantity' => 2,
+            'unit_id' => $unit->id,
+            'warehouse_id' => $wh->id,
+            'sort_order' => 0,
+        ]);
+
+        app(GoodsReceiptService::class)->receive($gr->refresh()->load('lines'));
+
+        $movement = StockMovement::query()->where('source_type', 'goods_receipt')->where('source_id', $gr->id)->firstOrFail();
+        $this->assertSame(1200.0, (float) $movement->lines()->firstOrFail()->unit_cost);
+        $this->assertSame(5.0, (float) StockBalance::query()->where('product_id', $p->id)->where('warehouse_id', $wh->id)->value('quantity_on_hand'));
+    }
+
     public function test_goods_receipt_stock_item_requires_inventory_interim_mapping(): void
     {
         $ctx = $this->setUpTenant(role: 'owner');

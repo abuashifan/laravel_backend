@@ -2,6 +2,7 @@
 
 namespace App\Modules\Inventory\Services;
 
+use App\Modules\Inventory\Models\StockBalance;
 use App\Modules\Inventory\Models\StockMovement;
 use App\Modules\MasterData\Models\Product;
 use App\Modules\Purchase\Models\GoodsReceipt;
@@ -45,6 +46,14 @@ class InventoryPurchaseIntegrationService
                 if ($poLine) {
                     $unitCost = (float) $poLine->unit_price;
                 }
+            }
+            // GR tanpa PO tidak membawa harga: nilai dengan rata-rata persediaan
+            // saat ini, supaya jurnal persediaan tidak bernilai nol (ditolak).
+            if ($unitCost <= 0) {
+                $unitCost = (float) (StockBalance::query()
+                    ->where('product_id', (int) $ln->product_id)
+                    ->where('warehouse_id', (int) $ln->warehouse_id)
+                    ->value('average_cost') ?? 0);
             }
 
             $lines[] = [
