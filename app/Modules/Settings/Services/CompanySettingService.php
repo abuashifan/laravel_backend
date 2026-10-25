@@ -63,12 +63,32 @@ class CompanySettingService
         $modules = $this->getOrCreateModuleSetting($company);
 
         return [
+            'profile' => $this->profile($company),
             'accounting' => $accounting->toArray(),
             'transaction_defaults' => [
                 'default_payment_term_id' => $accounting->default_payment_term_id,
             ],
             'modules' => $modules->toArray(),
         ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function profile(Company $company): array
+    {
+        return $company->only(['name', 'legal_name', 'code', 'tax_number', 'address', 'city', 'province', 'postal_code', 'phone', 'email']);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data  hanya kolom dari UpdateCompanyProfileRequest
+     * @return array<string, mixed>
+     */
+    public function updateProfile(Company $company, array $data): array
+    {
+        $company->fill($data)->save();
+
+        return $this->profile($company->refresh());
     }
 
     public function updateAccountingSetting(Company $company, array $data): CompanyAccountingSetting

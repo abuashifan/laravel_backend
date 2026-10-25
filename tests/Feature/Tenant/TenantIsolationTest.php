@@ -198,7 +198,7 @@ class TenantIsolationTest extends TestCase
             'joined_at' => now(),
         ]);
 
-        $databaseName = 'test_tenant_'.$companyIdSeed.'.sqlite';
+        $databaseName = 'test_tenant_'.$companyIdSeed.'_'.uniqid(getmypid().'_', true).'.sqlite';
         $databasePath = database_path('tenants/'.$databaseName);
         $this->ensureTenantFile($databasePath);
 

@@ -545,6 +545,15 @@ class OpeningBalanceService
 
     // ── Internal ────────────────────────────────────────────────────────
 
+    /**
+     * Sudah ada jurnal pembuka (bukan void)? Selama ada, tanggal saldo awal
+     * terkunci -- jurnalnya sudah bertanggal itu.
+     */
+    public function hasOpeningJournals(): bool
+    {
+        return $this->openingJournalQuery()->exists();
+    }
+
     private function openingJournalQuery()
     {
         return JournalEntry::query()

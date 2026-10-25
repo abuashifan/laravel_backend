@@ -107,9 +107,7 @@ class SetupWizardService
             throw ApiException::make('SETUP_FINALIZED_STEP_READ_ONLY', 'Finalized step can only be reached through setup finalization.', 422);
         }
 
-        if (isset($data['opening_date'])) {
-            $state->opening_date = Carbon::parse((string) $data['opening_date'])->toDateString();
-        }
+        $this->applyOpeningDate($state, $data['opening_date'] ?? null);
 
         $state->current_step = $step;
         if (in_array($state->status, [self::STATUS_NOT_STARTED, self::STATUS_REOPENED], true)) {
@@ -125,6 +123,24 @@ class SetupWizardService
         return $this->status();
     }
 
+    /**
+     * Tanggal saldo awal dari langkah wizard. Diabaikan begitu jurnal pembuka
+     * ada -- jurnalnya sudah bertanggal itu, dan menimpanya diam-diam membuat
+     * tanggal di status tidak lagi cocok dengan jurnal (sama dengan kunci di
+     * OpeningBalanceService::setOpeningDate).
+     */
+    private function applyOpeningDate(CompanySetupState $state, mixed $date): void
+    {
+        if ($date === null || $date === '') {
+            return;
+        }
+        if ($state->opening_date && $this->openingBalanceService->hasOpeningJournals()) {
+            return;
+        }
+
+        $state->opening_date = Carbon::parse((string) $date)->toDateString();
+    }
+
     public function validateStep(array $data): array
     {
         $state = $this->state();
@@ -132,9 +148,7 @@ class SetupWizardService
         $this->assertKnownStep($step);
         $this->assertNotFinalized($state);
 
-        if (isset($data['opening_date'])) {
-            $state->opening_date = Carbon::parse((string) $data['opening_date'])->toDateString();
-        }
+        $this->applyOpeningDate($state, $data['opening_date'] ?? null);
 
         $result = $this->validateStepKey($state, $step);
         $this->applyValidationResult($state, $step, $result);

@@ -5,6 +5,7 @@ namespace App\Modules\Settings\Controllers;
 use App\Http\Controllers\Controller;
 use App\Modules\Settings\Requests\UpdateCompanyAccountingSettingRequest;
 use App\Modules\Settings\Requests\UpdateCompanyModuleSettingRequest;
+use App\Modules\Settings\Requests\UpdateCompanyProfileRequest;
 use App\Modules\Settings\Requests\UpdateCompanyTransactionDefaultRequest;
 use App\Modules\Settings\Services\CompanySettingService;
 use App\Shared\Api\ApiResponse;
@@ -54,6 +55,33 @@ class CompanySettingController extends Controller
             'allow_void_transactions' => (bool) $accounting->allow_void_transactions,
             'transaction_edit_mode' => (string) ($accounting->transaction_edit_mode ?? 'lock'),
         ], 'Company workflow settings retrieved successfully');
+    }
+
+    public function updateProfile(UpdateCompanyProfileRequest $request): JsonResponse
+    {
+        $company = $this->tenantContext->company();
+        if (! $company) {
+            return $this->errorResponse('Active company context not found.', 422);
+        }
+        $old = $this->service->profile($company);
+        $profile = $this->service->updateProfile($company, $request->validated());
+
+        try {
+            $this->auditLogService->logCentral([
+                'event' => AuditEvent::SETTINGS_COMPANY_UPDATED,
+                'action' => AuditAction::UPDATE,
+                'module' => 'settings',
+                'record_type' => 'company',
+                'record_id' => (string) $company->id,
+                'message' => 'Company profile updated.',
+                'old_values' => $old,
+                'new_values' => $profile,
+            ]);
+        } catch (Throwable $e) {
+            // fail-safe
+        }
+
+        return $this->successResponse(['profile' => $profile], 'Company profile updated successfully');
     }
 
     public function updateAccounting(UpdateCompanyAccountingSettingRequest $request): JsonResponse

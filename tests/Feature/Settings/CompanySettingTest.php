@@ -43,6 +43,30 @@ class CompanySettingTest extends TestCase
             ->assertJsonPath('success', false);
     }
 
+    public function test_owner_can_update_company_profile_but_not_name(): void
+    {
+        [$user, $company] = $this->seedAccessForUser();
+        Sanctum::actingAs($user, ['*']);
+        $headers = ['X-Company-ID' => (string) $company->id];
+
+        $this->patchJson('/api/settings/company/profile', [
+            'tax_number' => '01.234.567.8-901.000',
+            'address' => 'Jl. Uji No. 7',
+            'city' => 'Sukabumi',
+            'name' => 'Nama Baru',
+        ], $headers)
+            ->assertOk()
+            ->assertJsonPath('data.profile.tax_number', '01.234.567.8-901.000')
+            ->assertJsonPath('data.profile.address', 'Jl. Uji No. 7');
+
+        $this->getJson('/api/settings/company', $headers)
+            ->assertOk()
+            ->assertJsonPath('data.profile.city', 'Sukabumi')
+            ->assertJsonPath('data.profile.name', $company->name);
+
+        $this->patchJson('/api/settings/company/profile', ['email' => 'bukan-email'], $headers)->assertStatus(422);
+    }
+
     public function test_authenticated_user_can_get_default_company_settings(): void
     {
         [$user, $company] = $this->seedAccessForUser();
@@ -147,7 +171,7 @@ class CompanySettingTest extends TestCase
             'joined_at' => now(),
         ]);
 
-        $databaseName = 'test_settings_'.$companySeed.'.sqlite';
+        $databaseName = 'test_settings_'.$companySeed.'_'.uniqid(getmypid().'_', true).'.sqlite';
         $databasePath = database_path('tenants/'.$databaseName);
         $this->ensureTenantFile($databasePath);
 

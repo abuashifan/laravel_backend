@@ -112,6 +112,33 @@ class SetupWizardTest extends JournalTestCase
     }
 
     /**
+     * Langkah wizard lain (mis. profil) tidak boleh menimpa tanggal saldo awal
+     * setelah jurnal pembuka ada -- jurnalnya sudah bertanggal itu.
+     */
+    public function test_wizard_step_does_not_overwrite_opening_date_once_opening_journal_exists(): void
+    {
+        $ctx = $this->setUpTenant(role: 'owner');
+        app(CompanySettingService::class)->getOrCreateModuleSetting($ctx['company']);
+        $this->seedSetupCoaAndMappings();
+
+        $this->postJson('/api/setup/validate-step', ['step' => 'opening_balance', 'opening_date' => '2026-01-01'], $ctx['headers'])->assertOk();
+        JournalEntry::query()->create([
+            'journal_number' => 'JV-OPEN-001',
+            'journal_date' => '2026-01-01',
+            'description' => 'Saldo awal',
+            'status' => 'posted',
+            'source_type' => 'opening_balance',
+            'source_module' => 'opening_balance',
+            'total_debit' => 1000,
+            'total_credit' => 1000,
+        ]);
+
+        $this->postJson('/api/setup/validate-step', ['step' => 'company_profile', 'opening_date' => '2026-10-24'], $ctx['headers'])->assertOk();
+
+        $this->assertSame('2026-01-01', CompanySetupState::query()->where('company_id', $ctx['company']->id)->first()->opening_date->toDateString());
+    }
+
+    /**
      * Belum ada satu pun jurnal pembuka bukan penghalang — ia peringatan.
      * Tidak ada lagi flag "lewati" yang harus dikirim frontend.
      */
