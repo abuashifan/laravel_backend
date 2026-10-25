@@ -5,12 +5,11 @@ namespace App\Modules\Inventory\Services;
 use App\Modules\Inventory\Models\StockBalance;
 use App\Modules\Inventory\Models\StockMovementLine;
 use App\Shared\Exceptions\ApiException;
+use App\Shared\TransactionLifecycle\DeferredChecks;
 use Illuminate\Database\Eloquent\Builder;
 
 class StockBalanceService
 {
-    public function __construct(private readonly AverageCostService $avgCostService) {}
-
     public function getOrCreateBalance(int $productId, int $warehouseId): StockBalance
     {
         return StockBalance::query()->firstOrCreate([
@@ -86,6 +85,18 @@ class StockBalanceService
     public function assertSufficientStock(int $productId, int $warehouseId, float $qty): void
     {
         if ((bool) config('inventory.allow_negative_stock', false)) {
+            return;
+        }
+
+        // Di tengah edit dokumen posted: nilai dari stok akhir, bukan langkah pembaliknya.
+        if (DeferredChecks::active()) {
+            DeferredChecks::defer("stock:{$productId}:{$warehouseId}", function () use ($productId, $warehouseId): void {
+                $available = (float) ($this->getBalance($productId, $warehouseId)?->quantity_available ?? 0);
+                if ($available < -1e-9) {
+                    throw ApiException::make('INSUFFICIENT_STOCK', 'Insufficient stock available.', 422);
+                }
+            });
+
             return;
         }
 

@@ -85,6 +85,36 @@ class TransactionEditModeInventoryTest extends JournalTestCase
         $this->assertNull(StockAdjustment::query()->find($adjustment['id']));
     }
 
+    public function test_editing_posted_stock_in_checks_final_stock_not_the_reversal_step(): void
+    {
+        $ctx = $this->setUpTenant(accountingSettingOverrides: self::SETTINGS);
+        $this->seedInventoryMappings();
+        [$product, $warehouse, $unit] = $this->stockItem();
+        $this->setMode($ctx['company'], 'open');
+
+        $payload = fn (string $type, float $qty): array => [
+            'adjustment_date' => '2026-01-10',
+            'reason' => 'Uji',
+            'lines' => [['product_id' => $product, 'warehouse_id' => $warehouse, 'unit_id' => $unit, 'adjustment_type' => $type, 'quantity' => $qty, 'unit_cost' => 1000]],
+        ];
+
+        $in = $this->postJson('/api/inventory/stock-adjustments', $payload('increase', 10), $ctx['headers'])->assertCreated()->json('data');
+        $this->patchJson('/api/inventory/stock-adjustments/'.$in['id'].'/post', [], $ctx['headers'])->assertOk();
+        $out = $this->postJson('/api/inventory/stock-adjustments', $payload('decrease', 3), $ctx['headers'])->assertCreated()->json('data');
+        $this->patchJson('/api/inventory/stock-adjustments/'.$out['id'].'/post', [], $ctx['headers'])->assertOk();
+        $this->assertSame(7.0, $this->onHand($product, $warehouse));
+
+        // Membalik +10 sempat membuat stok -3, tapi hasil akhirnya +12 -> sah.
+        $this->patchJson('/api/inventory/stock-adjustments/'.$in['id'], $payload('increase', 12), $ctx['headers'])->assertOk();
+        $this->assertSame(9.0, $this->onHand($product, $warehouse));
+
+        // Hasil akhir minus (2 - 3) tetap ditolak, dan tidak ada yang berubah.
+        $this->patchJson('/api/inventory/stock-adjustments/'.$in['id'], $payload('increase', 2), $ctx['headers'])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'INSUFFICIENT_STOCK');
+        $this->assertSame(9.0, $this->onHand($product, $warehouse));
+    }
+
     public function test_manual_stock_movement_delete_and_generated_movement_is_protected(): void
     {
         $ctx = $this->setUpTenant(accountingSettingOverrides: self::SETTINGS);

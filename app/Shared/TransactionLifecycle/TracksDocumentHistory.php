@@ -31,7 +31,8 @@ trait TracksDocumentHistory
             $history = app(DocumentHistoryService::class);
             $before = $history->snapshot($document);
 
-            $result = $edit();
+            // Edit posted = balik efek lama lalu posting ulang; stok dinilai dari hasil akhirnya.
+            $result = DeferredChecks::run($edit);
 
             // Dokumen pengganti (nomor baru) membawa riwayat dokumen lamanya.
             if ($result->getKey() !== $document->getKey()) {
