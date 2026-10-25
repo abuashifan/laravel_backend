@@ -38,6 +38,7 @@ class ImportController extends Controller
     public function profiles(): JsonResponse
     {
         $profiles = collect((array) config('imports.profiles', []))
+            ->filter(fn (array $profile, string $key): bool => $this->batches->isCommittable($key))
             ->map(fn (array $profile, string $key) => [
                 'key' => $key,
                 'label' => $profile['label'],

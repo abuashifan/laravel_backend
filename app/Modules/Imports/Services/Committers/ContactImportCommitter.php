@@ -16,6 +16,24 @@ class ContactImportCommitter implements ImportProfileCommitter
 
     private const TYPES = ['customer', 'supplier', 'employee', 'other'];
 
+    /** Ekspor menulis "Customer"; berkas berbahasa Indonesia memakai "Pelanggan". */
+    private const TYPE_ALIASES = [
+        'pelanggan' => 'customer',
+        'vendor' => 'supplier',
+        'pemasok' => 'supplier',
+        'karyawan' => 'employee',
+        'pegawai' => 'employee',
+        'lainnya' => 'other',
+        'lain-lain' => 'other',
+    ];
+
+    private function normalizeType(mixed $value): string
+    {
+        $type = strtolower(trim((string) $value));
+
+        return self::TYPE_ALIASES[$type] ?? $type;
+    }
+
     public function __construct(
         private readonly ContactService $contacts,
     ) {}
@@ -24,9 +42,9 @@ class ContactImportCommitter implements ImportProfileCommitter
     {
         $errors = [];
 
-        $type = trim((string) ($normalized['type'] ?? ''));
+        $type = $this->normalizeType($normalized['type'] ?? '');
         if ($type !== '' && ! in_array($type, self::TYPES, true)) {
-            $errors['type'][] = sprintf('Type "%s" tidak dikenal. Pakai salah satu: %s.', $type, implode(', ', self::TYPES));
+            $errors['type'][] = sprintf('Type "%s" tidak dikenal. Pakai salah satu: %s.', trim((string) $normalized['type']), implode(', ', self::TYPES));
         }
 
         $code = trim((string) ($normalized['code'] ?? ''));
@@ -58,7 +76,7 @@ class ContactImportCommitter implements ImportProfileCommitter
     private function commitRow(ImportRow $row): array
     {
         $normalized = (array) $row->normalized;
-        $type = trim((string) ($normalized['type'] ?? ''));
+        $type = $this->normalizeType($normalized['type'] ?? '');
 
         try {
             $contact = $this->contacts->create([

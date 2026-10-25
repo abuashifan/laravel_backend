@@ -8,6 +8,7 @@ use App\Modules\Imports\Models\ImportRow;
 use App\Modules\Imports\Services\Committers\ImportCommitterFactory;
 use App\Modules\Imports\Services\Committers\ProvidesImportWarnings;
 use App\Modules\Imports\Services\Committers\RevertsImport;
+use App\Modules\Imports\Services\Committers\ValidatesImportBatch;
 use App\Shared\Api\ApiErrorCode;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Subscription\StorageQuotaService;
@@ -319,6 +320,29 @@ class ImportBatchService
                         'warnings' => $warnings,
                         'external_ref' => $externalRef,
                     ]);
+                }
+
+                // Aturan lintas baris (mis. keseimbangan jurnal per Ref).
+                if ($this->committers->has($batch->profile)) {
+                    $committer = $this->committers->make($batch->profile);
+                    if ($committer instanceof ValidatesImportBatch) {
+                        foreach ($committer->validateBatch($batch) as $rowId => $rowErrors) {
+                            $row = ImportRow::query()->find($rowId);
+                            if (! $row instanceof ImportRow || $row->status !== 'valid') {
+                                continue;
+                            }
+                            $merged = (array) $row->errors;
+                            foreach ($rowErrors as $field => $messages) {
+                                $merged[$field] = array_merge($merged[$field] ?? [], $messages);
+                            }
+                            if ($row->warnings) {
+                                $warningRows--;
+                            }
+                            $row->update(['status' => 'invalid', 'errors' => $merged, 'warnings' => []]);
+                            $validRows--;
+                            $failedRows++;
+                        }
+                    }
                 }
 
                 $batch->update([
@@ -851,6 +875,15 @@ class ImportBatchService
             return;
         }
 
+        // Batch profil yang tidak bisa di-commit (diunggah sebelum profil itu
+        // ditolak sejak unggah) tidak boleh menyandera impor lain.
+        if (! $this->committers->has($active->profile) && $active->status !== 'committing') {
+            Storage::disk('local')->delete($active->stored_path);
+            $active->delete();
+
+            return;
+        }
+
         // Batch stuck di committing melewati timeout → anggap gagal.
         if ($active->status === 'committing' && $this->isStuckCommitting($active)) {
             $active->update([
@@ -890,6 +923,23 @@ class ImportBatchService
                 ['profile' => ['Profil impor tidak dikenal.']]
             );
         }
+
+        // Profil tanpa committer hanya bisa dipratinjau lalu buntu -- dan batch-nya
+        // memblokir semua impor lain. Tolak sejak unggah.
+        if (! $this->committers->has($profile)) {
+            throw ApiException::make(
+                ApiErrorCode::VALIDATION_ERROR,
+                'Profil ini belum bisa diimpor. Atur datanya langsung di menu terkait (mis. Pengaturan → Pemetaan Akun).',
+                422,
+                ['profile' => ['Profil ini belum bisa diimpor.']]
+            );
+        }
+    }
+
+    /** Profil yang benar-benar bisa di-commit -- hanya ini yang ditawarkan di halaman impor. */
+    public function isCommittable(string $profile): bool
+    {
+        return $this->committers->has($profile);
     }
 
     /**

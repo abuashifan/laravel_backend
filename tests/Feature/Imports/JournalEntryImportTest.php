@@ -61,13 +61,18 @@ class JournalEntryImportTest extends TestCase
             ['JV-001', '11/08/2026', '4100', 'Pendapatan', '0', '400000'],
         ]);
 
+        // Debit ≠ kredit sudah ditolak di pratinjau, bukan baru saat commit.
         $this->patchJson('/api/imports/'.$batch['uuid'].'/mapping', [
             'column_map' => $this->journalMapping(),
-        ], $ctx['headers'])->assertOk();
+        ], $ctx['headers'])
+            ->assertOk()
+            ->assertJsonPath('data.valid_rows', 0)
+            ->assertJsonPath('data.failed_rows', 2);
 
-        // Komit gagal karena debit ≠ kredit — group-level validation di commitGroup.
-        $batchModel = $this->dispatchSyncExpectingFailure($batch['uuid'], $ctx['company']->id);
-        $this->assertSame('failed', $batchModel->status);
+        $errors = ImportRow::query()
+            ->where('import_batch_id', ImportBatch::query()->where('uuid', $batch['uuid'])->firstOrFail()->id)
+            ->firstOrFail()->errors;
+        $this->assertStringContainsString('tidak seimbang', $errors['ref'][0]);
     }
 
     public function test_parent_account_is_rejected_in_preview(): void
@@ -172,16 +177,6 @@ class JournalEntryImportTest extends TestCase
 
         (new ImportBatchJob(['uuid' => $uuid, 'company_id' => $companyId]))
             ->handle(app(TenantConnectionManager::class), app(ImportCommitterFactory::class), app(TenantContext::class));
-    }
-
-    private function dispatchSyncExpectingFailure(string $uuid, int $companyId): ImportBatch
-    {
-        try {
-            $this->dispatchSync($uuid, $companyId);
-        } catch (\Throwable) {
-        }
-
-        return ImportBatch::query()->where('uuid', $uuid)->firstOrFail();
     }
 
     private function setUpTenant(string $role = 'owner'): array

@@ -55,6 +55,46 @@ class ImportEngineTest extends TestCase
      * menentukan sel mana yang diformat sebagai nilai uang di pratinjau —
      * menebaknya dari isi sel tidak bisa: kode akun '1100' juga angka.
      */
+    /** Profil tanpa committer dulu bisa diunggah, buntu di commit, dan memblokir impor lain. */
+    public function test_uncommittable_profile_is_hidden_and_rejected_at_upload(): void
+    {
+        Storage::fake('local');
+        $ctx = $this->setUpTenant();
+
+        $keys = collect($this->getJson('/api/imports/profiles', $ctx['headers'])->assertOk()->json('data'))->pluck('key');
+        $this->assertNotContains('account_mapping', $keys->all());
+        $this->assertContains('contact', $keys->all());
+
+        $this->postJson('/api/imports', [
+            'profile' => 'account_mapping',
+            'file' => $this->csvFile('mapping.csv', [['Key', 'Account Code'], ['sales.revenue', '4100']]),
+        ], $ctx['headers'])->assertStatus(422);
+    }
+
+    /** Ekspor kontak menulis "Customer"; impor ulang berkas itu harus lolos. */
+    public function test_contact_type_accepts_export_casing_and_indonesian_alias(): void
+    {
+        Storage::fake('local');
+        $ctx = $this->setUpTenant();
+
+        $batch = $this->postJson('/api/imports', [
+            'profile' => 'contact',
+            'file' => $this->csvFile('contacts.csv', [
+                ['Code', 'Name', 'Type'],
+                ['C-001', 'PT Satu', 'Customer'],
+                ['C-002', 'PT Dua', 'Pelanggan'],
+                ['S-001', 'CV Tiga', 'SUPPLIER'],
+            ]),
+        ], $ctx['headers'])->assertCreated()->json('data.batch');
+
+        $this->patchJson('/api/imports/'.$batch['uuid'].'/mapping', [
+            'column_map' => ['code' => 'Code', 'name' => 'Name', 'type' => 'Type'],
+        ], $ctx['headers'])
+            ->assertOk()
+            ->assertJsonPath('data.valid_rows', 3)
+            ->assertJsonPath('data.failed_rows', 0);
+    }
+
     public function test_profiles_endpoint_exposes_money_fields(): void
     {
         $ctx = $this->setUpTenant();

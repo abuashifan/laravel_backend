@@ -22,7 +22,7 @@ use Throwable;
  * Syarat lain: akun harus ada & aktif, bukan akun induk (leaf account only).
  * Dimensi departemen/proyek bersifat opsional.
  */
-class JournalEntryImportCommitter implements ImportProfileCommitter
+class JournalEntryImportCommitter implements ImportProfileCommitter, ValidatesImportBatch
 {
     use Concerns\NormalizesImportDates;
 
@@ -142,6 +142,52 @@ class JournalEntryImportCommitter implements ImportProfileCommitter
     /**
      * @return array<int, array{status: string, document_id: ?int, document_type: ?string, error: ?string}>
      */
+    /**
+     * Keseimbangan debit = kredit per Ref dinilai di pratinjau, bukan baru saat
+     * commit -- sebelumnya kelompok tak seimbang tertulis "valid" lalu gagal.
+     */
+    public function validateBatch(ImportBatch $batch): array
+    {
+        $groups = [];
+        foreach ($batch->rows()->where('status', 'valid')->orderBy('row_number')->get() as $row) {
+            $ref = trim((string) ($row->external_ref ?? ''));
+            if ($ref !== '') {
+                $groups[$ref][] = $row;
+            }
+        }
+
+        $errors = [];
+        foreach ($groups as $ref => $rows) {
+            $debit = 0.0;
+            $credit = 0.0;
+            foreach ($rows as $row) {
+                $n = (array) $row->normalized;
+                $debit += (float) ($n['debit'] ?? 0);
+                $credit += (float) ($n['credit'] ?? 0);
+            }
+
+            $message = null;
+            if (count($rows) < 2) {
+                $message = "Ref '{$ref}' hanya punya 1 baris. Jurnal butuh minimal 2 baris (debit dan kredit).";
+            } elseif (abs(round($debit - $credit, 2)) >= 0.01) {
+                $message = sprintf(
+                    "Jurnal Ref '%s' tidak seimbang: debit %s, kredit %s.",
+                    $ref,
+                    number_format($debit, 2, ',', '.'),
+                    number_format($credit, 2, ',', '.'),
+                );
+            }
+
+            if ($message !== null) {
+                foreach ($rows as $row) {
+                    $errors[(int) $row->id]['ref'][] = $message;
+                }
+            }
+        }
+
+        return $errors;
+    }
+
     public function commit(ImportBatch $batch): array
     {
         $results = [];
