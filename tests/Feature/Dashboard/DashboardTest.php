@@ -31,4 +31,15 @@ class DashboardTest extends JournalTestCase
             ->assertOk()
             ->assertJsonStructure(['data' => []]);
     }
+
+    public function test_sales_role_does_not_receive_profit_or_cash(): void
+    {
+        $ctx = $this->setUpTenant(role: 'sales');
+
+        $this->getJson('/api/dashboard/summary', $ctx['headers'])
+            ->assertOk()
+            ->assertJsonPath('data.current_month_profit', null)
+            ->assertJsonPath('data.cash_balance', null)
+            ->assertJsonPath('data.total_payable', null);
+    }
 }

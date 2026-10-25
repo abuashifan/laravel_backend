@@ -11,6 +11,7 @@ use App\Modules\Sales\Models\SalesInvoice;
 use App\Modules\Sales\Models\SalesReceipt;
 use App\Shared\Models\ActivityLog;
 use App\Shared\Models\FiscalYear;
+use App\Shared\Permission\PermissionService;
 use App\Shared\Reports\Data\CashFlowFilter;
 use App\Shared\Reports\Data\FinancialSummaryFilter;
 use App\Shared\Tenant\TenantContext;
@@ -22,6 +23,7 @@ class DashboardService
         private readonly TenantContext $tenantContext,
         private readonly FinancialSummaryService $financialSummaryService,
         private readonly CashFlowService $cashFlowService,
+        private readonly PermissionService $permissionService,
     ) {}
 
     public function summary(): array
@@ -46,13 +48,17 @@ class DashboardService
             ? (float) ($cashFlow['summary']['ending_cash_balance'] ?? 0)
             : 0.0;
 
+        // Angka keuangan hanya dikirim ke yang berhak melihatnya -- izin yang
+        // sama dengan kartu KPI di frontend. `dashboard.view` saja tidak cukup.
+        $can = fn (string $permission): bool => $this->permissionService->can($permission);
+
         return [
-            'total_receivable' => round((float) SalesInvoice::query()->whereIn('status', ['posted', 'partially_paid', 'paid'])->sum('balance_due'), 2),
+            'total_receivable' => $can('sales.ar.view') ? round((float) SalesInvoice::query()->whereIn('status', ['posted', 'partially_paid', 'paid'])->sum('balance_due'), 2) : null,
             'receivable_trend' => null,
-            'total_payable' => round((float) VendorBill::query()->whereIn('status', ['posted', 'partially_paid', 'paid'])->sum('balance_due'), 2),
+            'total_payable' => $can('purchase.ap.view') ? round((float) VendorBill::query()->whereIn('status', ['posted', 'partially_paid', 'paid'])->sum('balance_due'), 2) : null,
             'payable_trend' => null,
-            'cash_balance' => round($endingCash, 2),
-            'current_month_profit' => round($profitLoss, 2),
+            'cash_balance' => $can('cash_bank.view') ? round($endingCash, 2) : null,
+            'current_month_profit' => $can('dashboard.financial.view') ? round($profitLoss, 2) : null,
             'profit_trend' => null,
         ];
     }

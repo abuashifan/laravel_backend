@@ -4,6 +4,8 @@ return [
     'permissions' => [
         // Dashboard
         'dashboard.view',
+        // Laba bulan ini di Dashboard (bukan untuk peran operasional seperti Sales).
+        'dashboard.financial.view',
 
         // Settings
         'settings.company.view',
@@ -301,6 +303,7 @@ return [
         'admin' => ['*'],
         'finance' => [
             'dashboard.view',
+            'dashboard.financial.view',
             'settings.company.view',
             'master_data.view',
             'coa.view',
@@ -354,6 +357,7 @@ return [
         ],
         'accountant' => [
             'dashboard.view',
+            'dashboard.financial.view',
             'master_data.view',
             'coa.view',
             'coa.create',
