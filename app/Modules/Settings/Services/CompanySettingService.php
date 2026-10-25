@@ -5,6 +5,8 @@ namespace App\Modules\Settings\Services;
 use App\Shared\Models\Company;
 use App\Shared\Models\CompanyAccountingSetting;
 use App\Shared\Models\CompanyModuleSetting;
+use Illuminate\Support\Facades\DB;
+use Throwable;
 
 class CompanySettingService
 {
@@ -69,6 +71,33 @@ class CompanySettingService
                 'default_payment_term_id' => $accounting->default_payment_term_id,
             ],
             'modules' => $modules->toArray(),
+            'modules_in_use' => $this->modulesInUse(),
+        ];
+    }
+
+    /**
+     * Modul yang sudah punya data. Frontend menyembunyikan menu modul yang
+     * dimatikan HANYA bila belum pernah dipakai -- mematikan flag tidak boleh
+     * membuat stok atau aset yang sudah tercatat hilang dari layar.
+     * Dibaca lewat tabel tenant langsung supaya Settings tidak bergantung ke
+     * modul Inventory/FixedAssets.
+     *
+     * @return array{inventory: bool, fixed_asset: bool}
+     */
+    private function modulesInUse(): array
+    {
+        $exists = function (string $table): bool {
+            try {
+                return DB::connection('tenant')->table($table)->exists();
+            } catch (Throwable) {
+                // Tanpa konteks tenant: anggap dipakai supaya menu tidak hilang.
+                return true;
+            }
+        };
+
+        return [
+            'inventory' => $exists('stock_movements'),
+            'fixed_asset' => $exists('fixed_assets'),
         ];
     }
 

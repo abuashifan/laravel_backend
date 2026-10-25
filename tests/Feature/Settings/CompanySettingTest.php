@@ -81,7 +81,8 @@ class CompanySettingTest extends TestCase
             ->assertJsonPath('data.accounting.auto_post_transactions', true)
             ->assertJsonPath('data.accounting.hide_voided_transactions', true)
             ->assertJsonPath('data.modules.sales_enabled', true)
-            ->assertJsonPath('data.modules.inventory_enabled', false);
+            ->assertJsonPath('data.modules.inventory_enabled', false)
+            ->assertJsonStructure(['data' => ['modules_in_use' => ['inventory', 'fixed_asset']]]);
     }
 
     public function test_authenticated_company_user_can_get_workflow_settings_without_settings_permission(): void
