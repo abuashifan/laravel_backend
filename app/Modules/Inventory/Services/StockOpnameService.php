@@ -312,14 +312,6 @@ class StockOpnameService
             throw ApiException::make('INVALID_STOCK_OPNAME_STATUS', 'Stock opname cannot be finalized.', 422);
         }
 
-        $opname->loadMissing('lines');
-        if ($opname->lines->contains(fn ($l) => (float) $l->difference_quantity > 1e-9)) {
-            $this->assertMapping('inventory.adjustment_gain');
-        }
-        if ($opname->lines->contains(fn ($l) => (float) $l->difference_quantity < -1e-9)) {
-            $this->assertMapping('inventory.adjustment_loss');
-        }
-
         return DB::connection('tenant')->transaction(function () use ($opname) {
             $opname->loadMissing('lines');
             $this->movementValidation->validatePeriodNotLocked((string) $opname->opname_date);
@@ -329,6 +321,15 @@ class StockOpnameService
                 if ($missing) {
                     throw ApiException::make('STOCK_OPNAME_INCOMPLETE', 'All stock opname lines must be counted before finalize.', 422);
                 }
+            }
+
+            $this->refreshDifferencesFromCurrentStock($opname);
+
+            if ($opname->lines->contains(fn ($l) => (float) $l->difference_quantity > 1e-9)) {
+                $this->assertMapping('inventory.adjustment_gain');
+            }
+            if ($opname->lines->contains(fn ($l) => (float) $l->difference_quantity < -1e-9)) {
+                $this->assertMapping('inventory.adjustment_loss');
             }
 
             $movementIds = $this->createStockMovementsFromDifferences($opname);
@@ -396,6 +397,44 @@ class StockOpnameService
 
             return $opname->refresh();
         });
+    }
+
+    /**
+     * Hasil hitung fisik adalah stok SEKARANG, jadi selisih dihitung ulang dari
+     * saldo saat finalisasi -- bukan dari qty sistem saat Generate Lines. Tanpa
+     * ini, DO/retur yang terjadi di antara generate dan finalisasi ikut
+     * dikurangkan dua kali (stok 85 -> DO 2 -> fisik 80 -> hasil 78).
+     */
+    private function refreshDifferencesFromCurrentStock(StockOpname $opname): void
+    {
+        $stockPrecision = (int) config('inventory.stock_precision', 4);
+        $amountPrecision = (int) config('inventory.amount_precision', 2);
+
+        foreach ($opname->lines as $ln) {
+            if ($ln->physical_quantity === null) {
+                continue;
+            }
+
+            $balance = StockBalance::query()
+                ->where('product_id', (int) $ln->product_id)
+                ->where('warehouse_id', (int) $ln->warehouse_id)
+                ->lockForUpdate()
+                ->first();
+
+            $system = (float) ($balance?->quantity_on_hand ?? 0);
+            $cost = $balance ? (float) $balance->average_cost : (float) $ln->average_cost;
+            $diff = round((float) $ln->physical_quantity - $system, $stockPrecision);
+
+            if (abs($system - (float) $ln->system_quantity) < 1e-9 && abs($cost - (float) $ln->average_cost) < 1e-9) {
+                continue;
+            }
+
+            $ln->system_quantity = $system;
+            $ln->average_cost = $cost;
+            $ln->difference_quantity = $diff;
+            $ln->difference_value = round($diff * $cost, $amountPrecision);
+            $ln->save();
+        }
     }
 
     /**

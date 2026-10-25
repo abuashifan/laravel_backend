@@ -74,6 +74,27 @@ class StockOpnameTest extends JournalTestCase
         $this->assertJournalBalances($movement->journalEntry);
     }
 
+    public function test_finalize_uses_stock_at_finalize_time_not_at_generate(): void
+    {
+        $ctx = $this->setUpTenant(role: 'warehouse');
+        $this->seedInventoryMappings();
+        [, $warehouse, $product, $opname, $line] = $this->stockOpnameFixture($ctx['headers'], systemQty: 10, physicalQty: 8, averageCost: 1000);
+
+        // Ada pengiriman 1 unit antara Generate Lines dan finalisasi.
+        StockBalance::query()->where('product_id', $product->id)->where('warehouse_id', $warehouse->id)
+            ->update(['quantity_on_hand' => 9, 'quantity_available' => 9, 'total_value' => 9000]);
+
+        $this->patchJson('/api/inventory/stock-opnames/'.$opname->id.'/counted', [], $ctx['headers'])->assertStatus(200);
+        $this->patchJson('/api/inventory/stock-opnames/'.$opname->id.'/finalize', [], $ctx['headers'])->assertStatus(200);
+
+        $balance = StockBalance::query()->where('product_id', $product->id)->where('warehouse_id', $warehouse->id)->firstOrFail();
+        $this->assertSame(8.0, (float) $balance->quantity_on_hand, 'Stok akhir harus sama dengan hitungan fisik.');
+
+        $line->refresh();
+        $this->assertSame(9.0, (float) $line->system_quantity);
+        $this->assertSame(-1.0, (float) $line->difference_quantity);
+    }
+
     public function test_opname_in_fails_when_inventory_asset_mapping_missing_and_no_line_or_product_account(): void
     {
         $ctx = $this->setUpTenant(role: 'warehouse');
