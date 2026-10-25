@@ -16,6 +16,7 @@ class ApplyCoaTemplateRequest extends FormRequest
         return [
             'template_id' => ['required', 'string', 'max:80'],
             'accounts' => ['present', 'array'],
+            'replace_existing' => ['sometimes', 'boolean'],
             'accounts.*.code' => ['required', 'string', 'max:50'],
             'accounts.*.name' => ['required', 'string', 'max:255'],
             'accounts.*.type' => ['required', 'in:asset,liability,equity,revenue,expense'],

@@ -67,12 +67,25 @@ class CoaTemplateService
      * @param  array<int, array{code:string, name:string, type:string, parent_code:?string, is_cash_bank?:bool, description?:?string}>  $accounts
      * @return array<int, ChartOfAccount>
      */
-    public function applyTemplate(string $templateId, array $accounts): array
+    public function applyTemplate(string $templateId, array $accounts, bool $replaceExisting = false): array
     {
         if (! array_key_exists($templateId, (array) config('coa_templates.templates', []))) {
             throw ApiException::make('UNKNOWN_COA_TEMPLATE', 'Unknown COA template.', 422, [
                 'template_id' => ['Unknown COA template.'],
             ]);
+        }
+
+        // Penerapan ulang menghapus seluruh akun hasil template sebelumnya, jadi
+        // wajib diminta secara eksplisit. Tanpa ini wizard yang kehilangan
+        // posisinya (mis. setelah refresh) bisa mengosongkan COA tanpa sadar.
+        $applied = $this->appliedSummary();
+        if (! $replaceExisting && $applied['account_count'] > 0) {
+            throw ApiException::make(
+                'COA_TEMPLATE_ALREADY_APPLIED',
+                "Chart of Accounts sudah diterapkan ({$applied['account_count']} akun). Konfirmasi dulu untuk menggantinya.",
+                409,
+                ['replace_existing' => ['Konfirmasi penggantian COA yang sudah diterapkan.']],
+            );
         }
 
         $previousTemplateId = $this->appliedTemplateId();
@@ -159,6 +172,20 @@ class CoaTemplateService
         }
 
         $this->companySettingService->updateModuleSetting($company, $preset);
+    }
+
+    /**
+     * Ringkasan COA hasil template yang sedang terpasang -- dipakai wizard untuk
+     * memulihkan langkah COA dan untuk menjaga penerapan ulang.
+     *
+     * @return array{template_id: ?string, account_count: int}
+     */
+    public function appliedSummary(): array
+    {
+        return [
+            'template_id' => $this->appliedTemplateId(),
+            'account_count' => ChartOfAccount::query()->where('is_system_default', true)->count(),
+        ];
     }
 
     /** Template yang terakhir diterapkan, dibaca dari penanda akun hasil template. */

@@ -51,6 +51,7 @@ class SetupWizardService
         private readonly TenantContext $tenantContext,
         private readonly AuditLogService $auditLogService,
         private readonly OpeningBalanceService $openingBalanceService,
+        private readonly CoaTemplateService $coaTemplateService,
     ) {}
 
     public function status(): array
@@ -62,6 +63,7 @@ class SetupWizardService
             'steps' => $this->buildSteps($state),
             'gate' => $this->gate($state),
             'opening_balance' => $this->openingBalanceService->status(),
+            'coa' => $this->coaTemplateService->appliedSummary(),
         ];
     }
 
@@ -74,6 +76,7 @@ class SetupWizardService
             'state' => $this->serializeState($state),
             'gate' => $this->gate($state),
             'opening_balance' => $this->openingBalanceService->status(),
+            'coa' => $this->coaTemplateService->appliedSummary(),
         ];
     }
 

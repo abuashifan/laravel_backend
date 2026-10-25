@@ -30,6 +30,7 @@ class CoaTemplateController extends Controller
         $accounts = $this->service->applyTemplate(
             (string) $request->validated('template_id'),
             (array) $request->validated('accounts'),
+            $request->boolean('replace_existing'),
         );
 
         return $this->successResponse($accounts, 'COA template applied successfully');

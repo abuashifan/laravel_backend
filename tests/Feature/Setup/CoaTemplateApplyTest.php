@@ -94,6 +94,7 @@ class CoaTemplateApplyTest extends JournalTestCase
         $this->postJson('/api/setup/coa-templates/apply', [
             'template_id' => 'service',
             'accounts' => (array) config('coa_templates.templates.service.accounts'),
+            'replace_existing' => true,
         ], $ctx['headers'])->assertOk();
 
         $this->assertFalse(ChartOfAccount::query()->where('account_code', '1131')->exists());
@@ -131,6 +132,7 @@ class CoaTemplateApplyTest extends JournalTestCase
         $this->postJson('/api/setup/coa-templates/apply', [
             'template_id' => 'trading',
             'accounts' => (array) config('coa_templates.templates.trading.accounts'),
+            'replace_existing' => true,
         ], $ctx['headers'])
             ->assertStatus(422)
             ->assertJsonPath('code', 'COA_TEMPLATE_ACCOUNTS_IN_USE');
@@ -269,7 +271,7 @@ class CoaTemplateApplyTest extends JournalTestCase
         $this->patchJson('/api/settings/company/modules', ['inventory_enabled' => true], $ctx['headers'])
             ->assertOk();
 
-        $this->applyTemplate('service', $ctx['headers']);
+        $this->applyTemplate('service', $ctx['headers'], replace: true);
 
         $this->assertTrue((bool) CompanyModuleSetting::query()
             ->where('company_id', $ctx['company']->id)
@@ -281,7 +283,7 @@ class CoaTemplateApplyTest extends JournalTestCase
         $ctx = $this->setUpTenant(role: 'owner');
 
         $this->applyTemplate('service', $ctx['headers']);
-        $this->applyTemplate('trading', $ctx['headers']);
+        $this->applyTemplate('trading', $ctx['headers'], replace: true);
 
         $this->assertTrue((bool) CompanyModuleSetting::query()
             ->where('company_id', $ctx['company']->id)
@@ -302,12 +304,37 @@ class CoaTemplateApplyTest extends JournalTestCase
             ->value('inventory_enabled'));
     }
 
+    public function test_reapply_without_confirmation_is_rejected_and_keeps_accounts(): void
+    {
+        $ctx = $this->setUpTenant(role: 'owner');
+
+        $this->applyTemplate('trading', $ctx['headers']);
+        $count = ChartOfAccount::query()->count();
+
+        // Wizard yang kehilangan posisinya lalu memilih "Kosong" tidak boleh
+        // mengosongkan COA tanpa konfirmasi.
+        $this->postJson('/api/setup/coa-templates/apply', [
+            'template_id' => 'blank',
+            'accounts' => [],
+        ], $ctx['headers'])
+            ->assertStatus(409)
+            ->assertJsonPath('code', 'COA_TEMPLATE_ALREADY_APPLIED');
+
+        $this->assertSame($count, ChartOfAccount::query()->count());
+
+        $this->getJson('/api/setup/status', $ctx['headers'])
+            ->assertOk()
+            ->assertJsonPath('data.coa.template_id', 'trading')
+            ->assertJsonPath('data.coa.account_count', ChartOfAccount::query()->where('is_system_default', true)->count());
+    }
+
     /** @param array<string, string> $headers */
-    private function applyTemplate(string $templateId, array $headers): void
+    private function applyTemplate(string $templateId, array $headers, bool $replace = false): void
     {
         $this->postJson('/api/setup/coa-templates/apply', [
             'template_id' => $templateId,
             'accounts' => (array) config("coa_templates.templates.{$templateId}.accounts"),
+            'replace_existing' => $replace,
         ], $headers)->assertOk();
     }
 
