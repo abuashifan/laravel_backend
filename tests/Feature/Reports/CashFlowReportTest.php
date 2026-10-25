@@ -275,6 +275,37 @@ class CashFlowReportTest extends JournalTestCase
         $this->assertSame(50000.0, round((float) $sections['financing']['net'], 2));
     }
 
+    /** COA template/impor tidak membawa kategori arus kas -- bawaan diambil dari tipe akun. */
+    public function test_accounts_without_section_get_default_from_account_type(): void
+    {
+        $ctx = $this->setUpTenant(role: 'finance');
+        $cashId = (int) $ctx['accounts']['debit'];
+
+        $revenue = ChartOfAccount::query()->create([
+            'account_code' => '4020', 'account_name' => 'Penjualan Impor', 'account_type' => 'revenue',
+            'normal_balance' => 'credit', 'is_cash_bank' => false, 'is_active' => true, 'is_system_default' => false,
+            'cash_flow_section' => null,
+        ]);
+
+        $journal = JournalEntry::query()->create([
+            'journal_number' => 'JV-CF-DEF',
+            'journal_date' => '2026-01-10',
+            'status' => 'posted',
+            'is_obsolete' => false,
+        ]);
+        $journal->lines()->createMany([
+            ['account_id' => $cashId, 'debit' => 7000, 'credit' => 0, 'line_order' => 1],
+            ['account_id' => $revenue->id, 'debit' => 0, 'credit' => 7000, 'line_order' => 2],
+        ]);
+
+        $sections = $this->getJson('/api/reports/cash-flow?start_date=2026-01-01&end_date=2026-01-31', $ctx['headers'])
+            ->assertStatus(200)
+            ->json('data.sections');
+
+        $this->assertSame(7000.0, round((float) $sections['operating']['cash_in'], 2));
+        $this->assertSame(0.0, round((float) ($sections['unclassified']['cash_in'] ?? 0), 2));
+    }
+
     public function test_user_cannot_access_another_company_tenant_cash_flow(): void
     {
         $ctx1 = $this->setUpTenant(role: 'finance');

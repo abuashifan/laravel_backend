@@ -123,6 +123,25 @@ class CashFlowService
      * @param  int[]  $cashAccountIds
      * @return array<string,array{cash_in:float,cash_out:float,net:float}>
      */
+    /**
+     * Seksi arus kas akun lawan. `cash_flow_section` yang diisi user selalu
+     * menang; akun yang belum diklasifikasi (COA template/impor tidak
+     * membawanya) diberi bawaan dari tipenya, supaya laporan tidak jatuh
+     * seluruhnya ke "Tidak Terklasifikasi":
+     *   pendapatan/beban, aset & kewajiban lancar -> operasi
+     *   akun aset tetap (dipakai kategori aset tetap) -> investasi
+     *   ekuitas -> pendanaan
+     */
+    public static function sectionSql(string $alias = 'coa'): string
+    {
+        return "COALESCE({$alias}.cash_flow_section, CASE"
+            ." WHEN {$alias}.account_type IN ('revenue', 'expense') THEN 'operating'"
+            ." WHEN {$alias}.account_type = 'equity' THEN 'financing'"
+            ." WHEN {$alias}.id IN (SELECT asset_account_id FROM fixed_asset_categories WHERE asset_account_id IS NOT NULL) THEN 'investing'"
+            ." WHEN {$alias}.account_type IN ('asset', 'liability') THEN 'operating'"
+            ." ELSE 'unclassified' END)";
+    }
+
     public function getSectionedCashFlow(CashFlowFilter $filter, array $cashAccountIds, string $start, string $end): array
     {
         $empty = static fn () => ['cash_in' => 0.0, 'cash_out' => 0.0, 'net' => 0.0];
@@ -159,7 +178,7 @@ class CashFlowService
             ->join('chart_of_accounts as coa', 'coa.id', '=', 'jel.account_id')
             ->whereIn('jel.journal_entry_id', $jeIds)
             ->whereNotIn('jel.account_id', $cashAccountIds)
-            ->selectRaw("jel.journal_entry_id as je_id, COALESCE(coa.cash_flow_section, 'unclassified') as section, SUM(jel.debit + jel.credit) as weight")
+            ->selectRaw('jel.journal_entry_id as je_id, '.self::sectionSql().' as section, SUM(jel.debit + jel.credit) as weight')
             ->groupBy('jel.journal_entry_id', 'section')
             ->get();
 

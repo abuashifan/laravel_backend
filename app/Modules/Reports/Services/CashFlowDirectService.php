@@ -99,7 +99,7 @@ class CashFlowDirectService
             ->join('chart_of_accounts as coa', 'coa.id', '=', 'jel.account_id')
             ->whereIn('jel.journal_entry_id', $jeIds)
             ->whereNotIn('jel.account_id', $cashAccountIds)
-            ->selectRaw("jel.journal_entry_id as je_id, jel.account_id, coa.account_code, coa.account_name, COALESCE(coa.cash_flow_section, 'unclassified') as section, SUM(jel.debit + jel.credit) as weight")
+            ->selectRaw('jel.journal_entry_id as je_id, jel.account_id, coa.account_code, coa.account_name, '.CashFlowService::sectionSql().' as section, SUM(jel.debit + jel.credit) as weight')
             ->groupBy('jel.journal_entry_id', 'jel.account_id', 'coa.account_code', 'coa.account_name', 'section')
             ->get();
 
