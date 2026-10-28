@@ -38,3 +38,44 @@ jobs:
       # Paralel: runner GitHub punya beberapa core, ~4-6 menit untuk seluruh tes.
       - name: Run tests (parallel)
         run: php artisan test --parallel --processes=4
+
+  access-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: finlite_access_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d finlite_access_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DB_CONNECTION: pgsql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_DATABASE: finlite_access_test
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      DB_URL: ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_sqlite, sqlite3, pdo_pgsql, gd, mbstring, intl, bcmath, zip
+          coverage: none
+      - uses: actions/cache@v4
+        with:
+          path: ~/.composer/cache/files
+          key: composer-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-
+      - run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Verify access migration on PostgreSQL
+        run: php artisan test tests/Feature/Permissions/LegacyAccessMigrationTest.php tests/Feature/Permissions/DirectCompanyUserPermissionTest.php
