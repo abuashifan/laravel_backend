@@ -32,10 +32,7 @@ class PlanLayerBoundaryTest extends TestCase
     }
 
     /**
-     * Test terpenting di seluruh fase ini. Owner (`*`) ada di SETIAP
-     * perusahaan; kalau jalan pintas `*` di `hasPermission()` menembus lapis
-     * paket, gerbangnya tampak bekerja saat diuji dengan role staff lalu
-     * bocor total pada orang yang paling sering memakai aplikasinya.
+     * Akses penuh owner tetap harus tunduk pada fitur paket perusahaan.
      */
     public function test_owner_is_still_refused_for_capability_outside_the_plan(): void
     {
@@ -56,7 +53,7 @@ class PlanLayerBoundaryTest extends TestCase
         $result = app(EffectivePermissionService::class)->explainPermission($companyUser, 'warehouses.create');
 
         $this->assertTrue($result['allowed']);
-        $this->assertSame('role_default', $result['source']);
+        $this->assertSame('full_access', $result['source']);
     }
 
     /**
@@ -87,7 +84,7 @@ class PlanLayerBoundaryTest extends TestCase
         $this->assertNotNull($owner);
     }
 
-    public function test_deny_override_still_beats_the_wildcard(): void
+    public function test_full_access_ignores_legacy_deny_override(): void
     {
         $company = $this->companyOwnedBy($this->clientOn('pro'));
         $owner = User::query()->findOrFail($company->created_by);
@@ -105,8 +102,8 @@ class PlanLayerBoundaryTest extends TestCase
 
         $result = app(EffectivePermissionService::class)->explainPermission($companyUser, 'warehouses.create');
 
-        $this->assertFalse($result['allowed']);
-        $this->assertSame('user_override_deny', $result['source']);
+        $this->assertTrue($result['allowed']);
+        $this->assertSame('full_access', $result['source']);
     }
 
     public function test_client_without_a_plan_falls_back_to_free(): void

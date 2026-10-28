@@ -4,17 +4,63 @@ namespace Tests;
 
 use App\Shared\Models\Company;
 use App\Shared\Models\CompanyUser;
+use App\Shared\Models\Permission;
 use App\Shared\Models\Plan;
 use App\Shared\Models\Subscription;
 use App\Shared\Models\TenantDatabase;
 use App\Shared\Models\User;
+use App\Shared\Permission\PermissionCatalogService;
 use App\Shared\Subscription\PlanPermissionResolver;
 use Database\Seeders\PlanSeeder;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Schema;
 
 abstract class TestCase extends BaseTestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Existing fixtures name role templates; translate them into direct
+        // permissions only in tests. Explicit direct-access fixtures opt out.
+        CompanyUser::created(function (CompanyUser $membership): void {
+            if (array_key_exists('full_access', $membership->getAttributes()) || ! Schema::hasTable('company_user_permissions')) {
+                return;
+            }
+
+            if (in_array($membership->role, ['owner', 'admin'], true)) {
+                $membership->forceFill([
+                    'full_access' => true,
+                    'is_owner' => $membership->role === 'owner',
+                ])->saveQuietly();
+
+                return;
+            }
+
+            $keys = $membership->role_id && $membership->rolePreset
+                ? $membership->rolePreset->permissions()->pluck('permissions.key')->all()
+                : (array) config('permissions.roles.'.$membership->role, []);
+            $this->assignTestPermissions($membership, $keys);
+        });
+    }
+
+    /** @param list<string> $keys */
+    protected function assignTestPermissions(CompanyUser $membership, array $keys): void
+    {
+        $catalog = app(PermissionCatalogService::class);
+        $ids = [];
+        foreach (array_unique($keys) as $key) {
+            if ($key === '*') {
+                $membership->forceFill(['full_access' => true])->saveQuietly();
+
+                continue;
+            }
+            $ids[] = Permission::query()->firstOrCreate(['key' => $key], $catalog->fromKey($key))->id;
+        }
+        $membership->assignedPermissions()->sync($ids);
+    }
+
     /**
      * Berkas tenant sqlite dibuat lewat `companyOwnedBy()` atau
      * `registerTenantFile()`, dibersihkan di `tearDown()`. Sebelum Fase 5

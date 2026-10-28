@@ -40,15 +40,9 @@ class EffectivePermissionService
 
     public function getEffectivePermissionKeys(CompanyUser $companyUser): array
     {
-        $rolePermissions = $this->rolePermissionsForCompanyUser($companyUser);
-        $allow = $this->getUserAllowOverrideKeys($companyUser);
-        $deny = $this->getUserDenyOverrideKeys($companyUser);
-
-        if (in_array('*', $rolePermissions, true)) {
-            $rolePermissions = array_values(array_unique(array_merge(['*'], $this->allPermissionKeys())));
-        }
-
-        $keys = array_values(array_diff(array_unique(array_merge($rolePermissions, $allow)), $deny));
+        $keys = $this->hasFullAccess($companyUser)
+            ? $this->allPermissionKeys()
+            : $companyUser->assignedPermissions()->pluck('permissions.key')->unique()->values()->all();
 
         // Disaring di sini juga supaya daftar yang dikirim ke frontend sudah
         // bersih — guard UI tidak boleh menampilkan tombol yang pasti ditolak.
@@ -57,47 +51,26 @@ class EffectivePermissionService
 
     public function hasPermission(CompanyUser $companyUser, string $permissionKey): bool
     {
-        // Lapis 1 — paket. Dievaluasi SEBELUM jalan pintas `*` di bawah, karena
-        // paket mengikat semua orang termasuk owner dan admin. Kalau lapis ini
-        // hanya dipasang di dalam getEffectivePermissionKeys(), jalan pintas itu
-        // membuat owner tembus ke semua fitur — dan owner ada di setiap
-        // perusahaan, jadi kebocorannya justru pada orang yang paling sering
-        // memakai aplikasinya.
         if (! $this->planAllows($companyUser, $permissionKey)) {
             return false;
         }
 
-        $deny = $this->getUserDenyOverrideKeys($companyUser);
-        if (in_array($permissionKey, $deny, true)) {
-            return false;
-        }
-
-        return in_array($permissionKey, $this->getEffectivePermissionKeys($companyUser), true)
-            || in_array('*', $this->rolePermissionsForCompanyUser($companyUser), true);
+        return $this->hasFullAccess($companyUser)
+            || $companyUser->assignedPermissions()->where('permissions.key', $permissionKey)->exists();
     }
 
     public function explainPermission(CompanyUser $companyUser, string $permissionKey): array
     {
-        // Sama seperti hasPermission(): lapis paket menang atas segalanya,
-        // termasuk allow override dan `*`.
         if (! $this->planAllows($companyUser, $permissionKey)) {
             return ['permission' => $permissionKey, 'allowed' => false, 'source' => 'not_in_plan'];
         }
 
-        $rolePermissions = $this->rolePermissionsForCompanyUser($companyUser);
-        $allow = $this->getUserAllowOverrideKeys($companyUser);
-        $deny = $this->getUserDenyOverrideKeys($companyUser);
-
-        if (in_array($permissionKey, $deny, true)) {
-            return ['permission' => $permissionKey, 'allowed' => false, 'source' => 'user_override_deny'];
+        if ($this->hasFullAccess($companyUser)) {
+            return ['permission' => $permissionKey, 'allowed' => true, 'source' => 'full_access'];
         }
 
-        if (in_array($permissionKey, $allow, true)) {
-            return ['permission' => $permissionKey, 'allowed' => true, 'source' => 'user_override_allow'];
-        }
-
-        if (in_array('*', $rolePermissions, true) || in_array($permissionKey, $rolePermissions, true)) {
-            return ['permission' => $permissionKey, 'allowed' => true, 'source' => 'role_default'];
+        if ($companyUser->assignedPermissions()->where('permissions.key', $permissionKey)->exists()) {
+            return ['permission' => $permissionKey, 'allowed' => true, 'source' => 'direct'];
         }
 
         return ['permission' => $permissionKey, 'allowed' => false, 'source' => 'not_assigned'];
@@ -119,14 +92,19 @@ class EffectivePermissionService
 
     public function allPermissionKeys(): array
     {
+        $configured = (array) config('permissions.permissions', []);
         if (Schema::hasTable('permissions')) {
             $keys = Permission::query()->orderBy('sort_order')->pluck('key')->all();
-            if ($keys !== []) {
-                return $keys;
-            }
+
+            return array_values(array_unique(array_merge($configured, $keys)));
         }
 
-        return (array) config('permissions.permissions', []);
+        return $configured;
+    }
+
+    private function hasFullAccess(CompanyUser $companyUser): bool
+    {
+        return $companyUser->full_access || $companyUser->is_owner;
     }
 
     /**

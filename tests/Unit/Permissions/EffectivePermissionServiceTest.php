@@ -16,7 +16,7 @@ class EffectivePermissionServiceTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_user_gets_permission_from_role_preset(): void
+    public function test_user_gets_permission_from_direct_assignment(): void
     {
         [$companyUser] = $this->seedAccessFixture();
 
@@ -25,7 +25,7 @@ class EffectivePermissionServiceTest extends TestCase
         $this->assertContains('sales.invoices.view', $permissions);
     }
 
-    public function test_allow_override_adds_permission_not_in_role(): void
+    public function test_old_allow_override_does_not_grant_permission(): void
     {
         [$companyUser, , $postPermission] = $this->seedAccessFixture();
 
@@ -37,11 +37,13 @@ class EffectivePermissionServiceTest extends TestCase
 
         $service = app(EffectivePermissionService::class);
 
+        $this->assertFalse($service->hasPermission($companyUser->refresh(), 'sales.invoices.post'));
+        $companyUser->assignedPermissions()->attach($postPermission->id);
         $this->assertTrue($service->hasPermission($companyUser->refresh(), 'sales.invoices.post'));
-        $this->assertSame('user_override_allow', $service->explainPermission($companyUser, 'sales.invoices.post')['source']);
+        $this->assertSame('direct', $service->explainPermission($companyUser, 'sales.invoices.post')['source']);
     }
 
-    public function test_deny_override_removes_role_permission_and_reset_restores_it(): void
+    public function test_full_access_is_not_restricted_by_legacy_deny_override(): void
     {
         [$companyUser, $viewPermission] = $this->seedAccessFixture();
 
@@ -51,12 +53,23 @@ class EffectivePermissionServiceTest extends TestCase
             'effect' => 'deny',
         ]);
 
+        $companyUser->forceFill(['full_access' => true])->save();
+        $service = app(EffectivePermissionService::class);
+        $this->assertTrue($service->hasPermission($companyUser->refresh(), 'sales.invoices.view'));
+        $this->assertSame('full_access', $service->explainPermission($companyUser, 'sales.invoices.view')['source']);
+        $companyUser->forceFill(['full_access' => false])->save();
+        $companyUser->assignedPermissions()->detach($viewPermission->id);
+        $this->assertFalse($service->hasPermission($companyUser->refresh(), 'sales.invoices.view'));
+    }
+
+    public function test_role_alone_does_not_grant_access_and_owner_flag_grants_full_access(): void
+    {
+        [$companyUser, $viewPermission] = $this->seedAccessFixture();
+        $companyUser->assignedPermissions()->detach($viewPermission->id);
         $service = app(EffectivePermissionService::class);
 
-        $this->assertFalse($service->hasPermission($companyUser->refresh(), 'sales.invoices.view'));
-
-        $companyUser->permissionOverrides()->delete();
-
+        $this->assertFalse($service->hasPermission($companyUser, 'sales.invoices.view'));
+        $companyUser->forceFill(['is_owner' => true])->save();
         $this->assertTrue($service->hasPermission($companyUser->refresh(), 'sales.invoices.view'));
     }
 
@@ -99,9 +112,13 @@ class EffectivePermissionServiceTest extends TestCase
             'user_id' => $user->id,
             'role' => $role->slug,
             'role_id' => $role->id,
+            'full_access' => false,
+            'is_owner' => false,
             'status' => 'active',
             'joined_at' => now(),
         ]);
+
+        $companyUser->assignedPermissions()->attach($viewPermission->id);
 
         return [$companyUser, $viewPermission, $postPermission];
     }

@@ -71,7 +71,7 @@ class PlanPermissionTest extends TestCase
         [$user, $company] = $this->seedCompany(['budgeting'], role: 'finance');
 
         $this->assertTrue($this->can($company, $user, 'budgets.manage'));
-        $this->assertSame('role_default', $this->explain($company, $user, 'budgets.manage')['source']);
+        $this->assertSame('direct', $this->explain($company, $user, 'budgets.manage')['source']);
     }
 
     public function test_permission_is_refused_when_the_plan_omits_the_feature(): void
@@ -83,18 +83,14 @@ class PlanPermissionTest extends TestCase
     }
 
     /**
-     * Test terpenting di fase ini. `hasPermission()` punya jalan pintas `*`
-     * yang melewati corong permission sepenuhnya; kalau lapis paket dipasang di
-     * bawahnya, owner tembus ke semua fitur — dan owner ada di SETIAP
-     * perusahaan, jadi gerbangnya akan tampak bekerja saat diuji dengan role
-     * staff lalu bocor total pada orang yang paling sering memakainya.
+     * Akses penuh tetap dibatasi paket; pemeriksaan paket harus berjalan
+     * sebelum jalan pintas akses penuh.
      */
-    public function test_owner_with_wildcard_is_still_bound_by_the_plan(): void
+    public function test_owner_with_full_access_is_still_bound_by_the_plan(): void
     {
         [$owner, $company] = $this->seedCompany([], role: 'owner');
 
-        $this->assertContains('*', app(EffectivePermissionService::class)
-            ->rolePermissionsForCompanyUser($this->companyUser($company, $owner)));
+        $this->assertTrue($this->companyUser($company, $owner)->full_access);
 
         $this->assertFalse($this->can($company, $owner, 'warehouses.create'));
         $this->assertSame('not_in_plan', $this->explain($company, $owner, 'warehouses.create')['source']);
@@ -105,10 +101,10 @@ class PlanPermissionTest extends TestCase
         [$owner, $company] = $this->seedCompany(['multi_warehouse'], role: 'owner');
 
         $this->assertTrue($this->can($company, $owner, 'warehouses.create'));
-        $this->assertSame('role_default', $this->explain($company, $owner, 'warehouses.create')['source']);
+        $this->assertSame('full_access', $this->explain($company, $owner, 'warehouses.create')['source']);
     }
 
-    public function test_deny_override_still_beats_the_wildcard(): void
+    public function test_full_access_ignores_legacy_deny_override(): void
     {
         [$owner, $company] = $this->seedCompany(['multi_warehouse'], role: 'owner');
         $companyUser = $this->companyUser($company, $owner);
@@ -123,10 +119,8 @@ class PlanPermissionTest extends TestCase
             'effect' => 'deny',
         ]);
 
-        // Paket membuka, tapi lapis 2 menutup — dan alasannya harus tetap
-        // "izin", bukan "paket".
-        $this->assertFalse($this->can($company, $owner, 'warehouses.create'));
-        $this->assertSame('user_override_deny', $this->explain($company, $owner, 'warehouses.create')['source']);
+        $this->assertTrue($this->can($company, $owner, 'warehouses.create'));
+        $this->assertSame('full_access', $this->explain($company, $owner, 'warehouses.create')['source']);
     }
 
     public function test_prefixes_outside_the_map_are_always_open(): void
@@ -136,7 +130,7 @@ class PlanPermissionTest extends TestCase
         // `sales.*` tidak disebut di peta mana pun — daftar putih, bukan daftar
         // hitam, supaya modul baru tidak diam-diam mati di semua tier.
         $this->assertTrue($this->can($company, $owner, 'sales.create'));
-        $this->assertSame('role_default', $this->explain($company, $owner, 'sales.create')['source']);
+        $this->assertSame('full_access', $this->explain($company, $owner, 'sales.create')['source']);
     }
 
     public function test_read_permissions_survive_a_tier_downgrade(): void
@@ -190,6 +184,7 @@ class PlanPermissionTest extends TestCase
             ->json('data.permissions');
 
         $this->assertNotContains('warehouses.create', $permissions);
+        $this->assertNotContains('*', $permissions);
         $this->assertContains('warehouses.view', $permissions);
     }
 
@@ -238,7 +233,7 @@ class PlanPermissionTest extends TestCase
 
         $this->assertSame([], $this->resolver()->blockedKeysFor($company));
         $this->assertTrue($this->can($company, $owner, 'warehouses.create'));
-        $this->assertSame('role_default', $this->explain($company, $owner, 'warehouses.create')['source']);
+        $this->assertSame('full_access', $this->explain($company, $owner, 'warehouses.create')['source']);
     }
 
     private function resolver(): PlanPermissionResolver

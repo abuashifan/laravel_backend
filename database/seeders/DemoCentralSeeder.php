@@ -88,6 +88,8 @@ class DemoCentralSeeder extends Seeder
         $company1->users()->syncWithoutDetaching([
             $user->id => [
                 'role' => 'owner',
+                'full_access' => true,
+                'is_owner' => true,
                 'status' => 'active',
                 'joined_at' => $now,
             ],
@@ -96,6 +98,8 @@ class DemoCentralSeeder extends Seeder
         $company2->users()->syncWithoutDetaching([
             $user->id => [
                 'role' => 'admin',
+                'full_access' => true,
+                'is_owner' => true,
                 'status' => 'active',
                 'joined_at' => $now,
             ],

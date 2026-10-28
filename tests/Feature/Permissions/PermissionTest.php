@@ -29,16 +29,17 @@ class PermissionTest extends TestCase
         $this->getJson('/api/auth/permissions')->assertStatus(422);
     }
 
-    public function test_owner_role_receives_wildcard_permission(): void
+    public function test_owner_receives_explicit_permission_list(): void
     {
         [$user, $company] = $this->seedUserCompany(role: 'owner');
         Sanctum::actingAs($user, ['*']);
 
-        $this->getJson('/api/auth/permissions', ['X-Company-ID' => (string) $company->id])
+        $response = $this->getJson('/api/auth/permissions', ['X-Company-ID' => (string) $company->id])
             ->assertStatus(200)
             ->assertJsonPath('data.role', 'owner')
-            ->assertJsonPath('data.permission_mode', 'role_template')
-            ->assertJson(fn ($json) => $json->where('data.permissions.0', '*')->etc());
+            ->assertJsonPath('data.permission_mode', 'manual_per_user');
+        $this->assertContains('sales.invoices.view', $response->json('data.permissions'));
+        $this->assertNotContains('*', $response->json('data.permissions'));
     }
 
     public function test_admin_role_receives_settings_company_edit_permission(): void
@@ -139,14 +140,14 @@ class PermissionTest extends TestCase
         $this->assertSame([], $response->json('data.permissions'));
     }
 
-    public function test_permission_endpoint_includes_permission_mode(): void
+    public function test_permission_endpoint_reports_direct_mode_even_if_legacy_setting_is_role_template(): void
     {
         [$user, $company] = $this->seedUserCompany(role: 'admin');
         Sanctum::actingAs($user, ['*']);
 
         CompanyAccountingSetting::query()->updateOrCreate(
             ['company_id' => $company->id],
-            ['user_permission_mode' => 'manual_per_user']
+            ['user_permission_mode' => 'role_template']
         );
 
         $this->getJson('/api/auth/permissions', ['X-Company-ID' => (string) $company->id])

@@ -42,11 +42,7 @@ class PermissionService
         return in_array($permission, $rolePermissions, true);
     }
 
-    /**
-     * Phase 4B uses config-based role templates.
-     * Phase 14 will add company-level custom roles and user permission overrides.
-     * Do not put permission logic directly in controllers.
-     */
+    /** Resolve the current company membership's direct permissions. */
     public function userPermissions(): array
     {
         $companyUser = $this->tenantContext->companyUser();
@@ -105,15 +101,5 @@ class PermissionService
     protected function resolveRolePermissions(?string $role): array
     {
         return $this->permissionsForRole($role);
-    }
-
-    /**
-     * Placeholder for Phase 14:
-     * - user-specific allow permissions
-     * - user-specific deny permissions
-     */
-    protected function resolveUserOverrides(): array
-    {
-        return [];
     }
 }

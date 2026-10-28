@@ -106,6 +106,8 @@ class TenantProvisioningService
                     'company_id' => $company->id,
                     'user_id' => $owner->id,
                     'role' => 'owner',
+                    'full_access' => true,
+                    'is_owner' => true,
                     'status' => 'active',
                     'joined_at' => now(),
                 ]);

@@ -5,6 +5,7 @@ namespace App\Shared\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class CompanyUser extends Model
@@ -18,12 +19,16 @@ class CompanyUser extends Model
         'user_id',
         'role',
         'role_id',
+        'full_access',
+        'is_owner',
         'status',
         'joined_at',
         'last_accessed_at',
     ];
 
     protected $casts = [
+        'full_access' => 'boolean',
+        'is_owner' => 'boolean',
         'joined_at' => 'datetime',
         'last_accessed_at' => 'datetime',
     ];
@@ -46,5 +51,10 @@ class CompanyUser extends Model
     public function permissionOverrides(): HasMany
     {
         return $this->hasMany(CompanyUserPermissionOverride::class);
+    }
+
+    public function assignedPermissions(): BelongsToMany
+    {
+        return $this->belongsToMany(Permission::class, 'company_user_permissions')->withTimestamps();
     }
 }
