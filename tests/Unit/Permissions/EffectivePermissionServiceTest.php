@@ -62,16 +62,14 @@ class EffectivePermissionServiceTest extends TestCase
 
     private function seedAccessFixture(): array
     {
-        $viewPermission = Permission::query()->create([
-            'key' => 'sales.invoices.view',
+        $viewPermission = Permission::query()->firstOrCreate(['key' => 'sales.invoices.view'], [
             'module' => 'sales',
             'feature' => 'invoices',
             'action' => 'view',
             'label' => 'Sales invoices view',
             'matrix_column' => 'daftar',
         ]);
-        $postPermission = Permission::query()->create([
-            'key' => 'sales.invoices.post',
+        $postPermission = Permission::query()->firstOrCreate(['key' => 'sales.invoices.post'], [
             'module' => 'sales',
             'feature' => 'invoices',
             'action' => 'post',
