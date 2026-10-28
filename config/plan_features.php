@@ -56,12 +56,18 @@ return [
 
         'transaction_import' => [
             'transactions.import',
+            'accounting.journals.import',
+            'sales.invoices.import',
+            'purchase.bills.import',
         ],
 
         'multi_warehouse' => [
             'warehouses.create',
             'warehouses.edit',
             'warehouses.deactivate',
+            'master_data.warehouses.create',
+            'master_data.warehouses.edit',
+            'master_data.warehouses.delete',
         ],
 
         // BUKAN `audit.*`. Kunci itu ada di katalog izin dan di preset role
@@ -80,6 +86,8 @@ return [
         'advanced_reports' => [
             'reports.save',
             'reports.multi_period',
+            'reports.saved.manage',
+            'reports.multi_period.use',
         ],
 
         // --- Enterprise ----------------------------------------------------
@@ -91,6 +99,13 @@ return [
             'budgets.manage',
             'budgets.revise',
             'budgets.export',
+            'budget.submissions.create',
+            'budget.submissions.edit',
+            'budget.submissions.approve',
+            'budget.submissions.export',
+            'budget.submissions.approve_head',
+            'budget.submissions.approve_finance',
+            'budget.periods.manage',
             // `budgets.view` sengaja TIDAK di-gate: akses baca harus bertahan
             // saat paket diturunkan.
         ],
@@ -102,19 +117,12 @@ return [
             'projects.create',
             'projects.edit',
             'projects.deactivate',
-        ],
-
-        // Role kustom per perusahaan. Melihat role preset yang berlaku
-        // (`access.roles.view`) tetap terbuka di semua tier.
-        'user_permission' => [
-            'access.roles.create',
-            'access.roles.edit',
-            'access.roles.clone',
-            'access.roles.deactivate',
-            'access.roles.manage',
-            'access.permissions.assign',
-            'access.permissions.revoke',
-            'access.permissions.manage',
+            'master_data.departments.create',
+            'master_data.departments.edit',
+            'master_data.departments.delete',
+            'master_data.projects.create',
+            'master_data.projects.edit',
+            'master_data.projects.delete',
         ],
 
     ],

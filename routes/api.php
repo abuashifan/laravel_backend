@@ -8,7 +8,6 @@ Route::get('/health', [HealthController::class, 'index']);
 require base_path('app/Modules/Auth/Routes/api.php');
 require base_path('app/Modules/Admin/Routes/api.php');
 require base_path('app/Modules/Companies/Routes/api.php');
-require base_path('app/Modules/Tenant/Routes/api.php');
 require base_path('app/Modules/Setup/Routes/api.php');
 require base_path('app/Modules/Settings/Routes/api.php');
 require base_path('app/Modules/Access/Routes/api.php');

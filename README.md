@@ -57,7 +57,6 @@ Expected core API routes include:
 - `GET /api/auth/me`
 - `GET /api/companies`
 - `POST /api/companies/select`
-- `GET /api/tenant-context-test`
 - `GET /api/master-data/chart-of-accounts`
 - `GET /api/master-data/contacts`
 - `GET /api/master-data/payment-terms`

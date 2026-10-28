@@ -6,6 +6,7 @@ use App\Shared\Models\Company;
 use App\Shared\Models\CompanyUser;
 use App\Shared\Models\TenantDatabase;
 use App\Shared\Models\User;
+use App\Shared\Tenant\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Route;
@@ -17,6 +18,20 @@ class TenantIsolationTest extends TestCase
     use RefreshDatabase;
 
     private array $tenantFiles = [];
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Exercise the real middleware without exposing a diagnostic endpoint in the app.
+        Route::middleware(['auth:sanctum', 'company.access'])
+            ->get('/api/tenant-context-test', function (TenantContext $context) {
+                return response()->json([
+                    'success' => true,
+                    'data' => ['company_id' => $context->companyId()],
+                ]);
+            });
+    }
 
     protected function tearDown(): void
     {

@@ -42,7 +42,7 @@ Phase M1 only introduces this structure and moves route ownership into module ro
 | Access | `/access/*` users, roles, invitations, permission catalog, access audit routes |
 | Auth | `/auth/*` authentication routes and authenticated permission lookup |
 | Companies | `/companies` and `/companies/select` company selection routes |
-| Tenant | `/tenant-context-test` tenant context diagnostics |
+| Tenant | Tenant context is shared infrastructure; the former diagnostic route was removed in October 2026. |
 | Settings | `/settings/company*` company setting and workflow routes |
 | MasterData | `/master-data/*` chart of accounts, contacts, payment terms, units, products, warehouses, dimensions, account mappings |
 | Accounting | `/accounting/*` fiscal year status, closing, and period lock routes |
@@ -89,7 +89,7 @@ Phase M6: Add architecture tests for module import rules, cross-module contracts
 - `php artisan route:clear` succeeds.
 - `php artisan route:list --path=api` succeeds.
 - Route count before and after route split is unchanged.
-- Critical endpoints remain registered: `/api/health`, `/api/auth/login`, `/api/companies`, `/api/tenant-context-test`, `/api/master-data/products`, `/api/journals`, `/api/reports/profit-loss`, `/api/sales/invoices`, `/api/purchase/bills`, `/api/cash-bank/accounts`, `/api/inventory/stock-balances`, `/api/access/users`.
+- Critical endpoints remain registered: `/api/health`, `/api/auth/login`, `/api/companies`, `/api/master-data/products`, `/api/journals`, `/api/reports/profit-loss`, `/api/sales/invoices`, `/api/purchase/bills`, `/api/cash-bank/accounts`, `/api/inventory/stock-balances`, `/api/access/users`.
 - Middleware remains unchanged for protected routes: `auth:sanctum`, `company.access`, and route-level `permission:*`.
 - No frontend files changed.
 - No migrations or database schema changed.

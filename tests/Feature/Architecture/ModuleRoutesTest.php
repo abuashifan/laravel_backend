@@ -13,7 +13,10 @@ class ModuleRoutesTest extends TestCase
         $this->assertRouteExists('GET', 'health');
         $this->assertRouteExists('POST', 'auth/login');
         $this->assertRouteExists('GET', 'companies', ['auth:sanctum']);
-        $this->assertRouteExists('GET', 'tenant-context-test', ['auth:sanctum', 'company.access']);
+        $this->assertFalse(
+            collect(Route::getRoutes())->contains(fn (LaravelRoute $route): bool => $route->uri() === 'api/tenant-context-test'),
+            'Debug tenant context route must not be registered.'
+        );
         $this->assertRouteExists('GET', 'master-data/products', ['auth:sanctum', 'company.access', 'permission:products.view']);
         $this->assertRouteExists('GET', 'journals', ['auth:sanctum', 'company.access', 'permission:journal.view']);
         $this->assertRouteExists('GET', 'reports/profit-loss', ['auth:sanctum', 'company.access', 'permission:reports.view']);

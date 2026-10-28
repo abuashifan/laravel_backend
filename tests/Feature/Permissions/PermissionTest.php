@@ -86,8 +86,8 @@ class PermissionTest extends TestCase
             ->assertStatus(200);
 
         $permissions = $response->json('data.permissions');
-        $this->assertContains('sales.create', $permissions);
-        $this->assertNotContains('purchase.create', $permissions);
+        $this->assertContains('sales.invoices.create', $permissions);
+        $this->assertNotContains('purchase.bills.create', $permissions);
     }
 
     public function test_purchasing_has_purchase_create_but_not_sales_create(): void
@@ -99,8 +99,8 @@ class PermissionTest extends TestCase
             ->assertStatus(200);
 
         $permissions = $response->json('data.permissions');
-        $this->assertContains('purchase.create', $permissions);
-        $this->assertNotContains('sales.create', $permissions);
+        $this->assertContains('purchase.bills.create', $permissions);
+        $this->assertNotContains('sales.invoices.create', $permissions);
     }
 
     public function test_warehouse_has_inventory_manage_but_not_sales_create(): void
@@ -113,7 +113,7 @@ class PermissionTest extends TestCase
 
         $permissions = $response->json('data.permissions');
         $this->assertContains('inventory.manage', $permissions);
-        $this->assertNotContains('sales.create', $permissions);
+        $this->assertNotContains('sales.invoices.create', $permissions);
     }
 
     public function test_user_cannot_get_permissions_for_another_users_company(): void

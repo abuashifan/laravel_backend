@@ -157,9 +157,6 @@ Excluded intentionally: `.git`, `vendor`, `node_modules`, `storage`, `bootstrap/
 │   │   │   ├── Routes
 │   │   │   └── Services
 │   │   └── Tenant
-│   │       ├── Controllers
-│   │       ├── Providers
-│   │       └── Routes
 │   ├── Providers
 │   └── Shared
 │       ├── AccountMapping

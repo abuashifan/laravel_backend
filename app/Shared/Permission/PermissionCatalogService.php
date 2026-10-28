@@ -8,7 +8,7 @@ use Illuminate\Support\Str;
 
 class PermissionCatalogService
 {
-    private const MATRIX_COLUMNS = ['daftar', 'tambah', 'ubah', 'hapus', 'cetak', 'laporan', 'persetujuan'];
+    private const MATRIX_COLUMNS = ['daftar', 'tambah', 'ubah', 'hapus', 'persetujuan', 'cetak', 'ekspor'];
 
     public function grouped(): array
     {
@@ -35,7 +35,7 @@ class PermissionCatalogService
 
             $modules[$module]['features'][$feature] ??= [
                 'key' => $feature,
-                'label' => Str::headline($feature),
+                'label' => $this->featureLabel($module, $feature),
                 'permissions' => [],
             ];
 
@@ -45,14 +45,23 @@ class PermissionCatalogService
             }
         }
 
-        return [
-            'matrix_columns' => self::MATRIX_COLUMNS,
-            'modules' => array_values(array_map(function (array $module) {
-                $module['features'] = array_values($module['features']);
+        $ordered = [];
+        foreach ((array) config('permissions.matrix', []) as $moduleKey => $definition) {
+            if (! isset($modules[$moduleKey])) {
+                continue;
+            }
+            $module = $modules[$moduleKey];
+            $features = [];
+            foreach (array_keys($definition['features']) as $featureKey) {
+                if (isset($module['features'][$featureKey])) {
+                    $features[] = $module['features'][$featureKey];
+                }
+            }
+            $module['features'] = $features;
+            $ordered[] = $module;
+        }
 
-                return $module;
-            }, $modules)),
-        ];
+        return ['matrix_columns' => self::MATRIX_COLUMNS, 'modules' => $ordered];
     }
 
     public function matrixColumnForAction(string $action): ?string
@@ -63,6 +72,7 @@ class PermissionCatalogService
             'edit', 'update' => 'ubah',
             'delete', 'deactivate', 'void', 'cancel' => 'hapus',
             'print', 'export_pdf' => 'cetak',
+            'export' => 'ekspor',
             'report', 'view_report' => 'laporan',
             'approve', 'post', 'confirm', 'close', 'reopen', 'receive', 'ship', 'deliver', 'finalize' => 'persetujuan',
             default => null,
@@ -78,6 +88,7 @@ class PermissionCatalogService
     {
         if (Schema::hasTable('permissions')) {
             return Permission::query()
+                ->whereIn('key', (array) config('permissions.matrix_keys', []))
                 ->orderBy('sort_order')
                 ->orderBy('key')
                 ->get()
@@ -95,13 +106,18 @@ class PermissionCatalogService
                 ->all();
         }
 
-        return collect((array) config('permissions.permissions', []))
+        return collect((array) config('permissions.matrix_keys', []))
             ->map(fn (string $key, int $index) => $this->fromKey($key, $index))
             ->all();
     }
 
     public function fromKey(string $key, int $sortOrder = 0): array
     {
+        $definition = $this->matrixDefinition($key);
+        if ($definition !== null) {
+            return [...$definition, 'sort_order' => $sortOrder];
+        }
+
         $parts = explode('.', $key);
         $action = (string) array_pop($parts);
         $module = (string) ($parts[0] ?? 'system');
@@ -125,6 +141,11 @@ class PermissionCatalogService
 
     private function moduleLabel(string $module): string
     {
+        $label = config("permissions.matrix.{$module}.label");
+        if (is_string($label)) {
+            return $label;
+        }
+
         return match ($module) {
             'settings' => 'Info Perusahaan',
             'access' => 'Access Management',
@@ -138,5 +159,61 @@ class PermissionCatalogService
             'audit' => 'Audit',
             default => Str::headline($module),
         };
+    }
+
+    private function featureLabel(string $module, string $feature): string
+    {
+        $matrix = (array) config('permissions.matrix', []);
+
+        return $matrix[$module]['features'][$feature][0] ?? Str::headline($feature);
+    }
+
+    private function matrixDefinition(string $key): ?array
+    {
+        foreach ((array) config('permissions.matrix', []) as $module => $definition) {
+            foreach ($definition['features'] as $prefix => [$label, $actions]) {
+                foreach ($actions as $action) {
+                    if ($key !== $prefix.'.'.$action) {
+                        continue;
+                    }
+
+                    $column = $this->matrixColumnForAction($action);
+
+                    return [
+                        'key' => $key,
+                        'module' => $module,
+                        'group' => $prefix,
+                        'feature' => $prefix,
+                        'action' => $action,
+                        'label' => $label.' - '.match ($action) {
+                            'view' => 'Lihat', 'create' => 'Tambah', 'edit' => 'Ubah',
+                            'delete' => 'Hapus / Void', 'approve' => 'Setujui / Posting',
+                            'print' => 'Cetak', 'export' => 'Ekspor',
+                        },
+                        'description' => null,
+                        'matrix_column' => $column,
+                        'is_special' => false,
+                        'is_system' => true,
+                    ];
+                }
+            }
+
+            if (isset($definition['special'][$key])) {
+                return [
+                    'key' => $key,
+                    'module' => $module,
+                    'group' => null,
+                    'feature' => $key,
+                    'action' => substr($key, strrpos($key, '.') + 1),
+                    'label' => $definition['special'][$key],
+                    'description' => null,
+                    'matrix_column' => null,
+                    'is_special' => true,
+                    'is_system' => true,
+                ];
+            }
+        }
+
+        return null;
     }
 }

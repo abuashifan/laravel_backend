@@ -78,7 +78,6 @@ class GeneralLedgerApiTest extends JournalTestCase
         ], $ctx1['headers'])->assertStatus(201);
 
         // Warm up tenant connection lifecycle in this test environment.
-        $this->getJson('/api/tenant-context-test', $ctx1['headers'])->assertStatus(200);
         $this->getJson('/api/master-data/chart-of-accounts', $ctx1['headers'])->assertStatus(200);
         $this->getJson('/api/master-data/chart-of-accounts/'.$accountId, $ctx1['headers'])->assertStatus(200);
 

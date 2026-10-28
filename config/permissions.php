@@ -1,7 +1,20 @@
 <?php
 
-return [
-    'permissions' => [
+$matrix = require __DIR__.'/permission_matrix.php';
+$matrixKeys = [];
+foreach ($matrix as $module) {
+    foreach ($module['features'] as $prefix => [, $actions]) {
+        foreach ($actions as $action) {
+            $matrixKeys[] = $prefix.'.'.$action;
+        }
+    }
+    array_push($matrixKeys, ...array_keys($module['special']));
+}
+
+$config = [
+    'matrix' => $matrix,
+    'matrix_keys' => $matrixKeys,
+    'permissions' => array_values(array_unique([
         // Dashboard
         'dashboard.view',
         // Laba bulan ini di Dashboard (bukan untuk peran operasional seperti Sales).
@@ -296,7 +309,8 @@ return [
         'access.invitations.revoke',
         'access.invitations.manage',
         'access.audit.view',
-    ],
+        ...$matrixKeys,
+    ])),
 
     'roles' => [
         'owner' => ['*'],
@@ -539,3 +553,23 @@ return [
         ],
     ],
 ];
+
+$retired = require __DIR__.'/permission_retired.php';
+$renames = require __DIR__.'/permission_renames.php';
+$config['legacy_keys'] = array_values(array_diff($config['permissions'], $matrixKeys));
+$config['retired_keys'] = $retired;
+$config['permissions'] = array_values(array_diff($config['permissions'], $retired));
+foreach ($config['roles'] as &$keys) {
+    $mapped = [];
+    foreach ($keys as $key) {
+        if (in_array($key, $retired, true)) {
+            array_push($mapped, ...($renames[$key] ?? []));
+        } else {
+            $mapped[] = $key;
+        }
+    }
+    $keys = array_values(array_unique($mapped));
+}
+unset($keys);
+
+return $config;

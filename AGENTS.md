@@ -2,6 +2,22 @@
 
 This is the Laravel backend project for the multi-tenant accounting ERP.
 
+## Status Project dan Data (keputusan pemilik produk, 2026-10-28)
+
+Finlite masih dalam tahap development. Aplikasi di `app.finlite.my.id` dipakai
+untuk testing; belum ada pengguna produksi, dan seluruh transaksi saat ini
+adalah data uji. Backend di Render, frontend di Vercel, dan Render menjalankan
+migrasi baru secara otomatis saat deploy.
+
+Untuk implementasi rencana hak akses per pengguna di root workspace
+(`RANCANGAN_HAK_AKSES.md` dan `RENCANA_IMPLEMENTASI_HAK_AKSES.md`), jangan
+mengasumsikan ada pengguna atau transaksi produksi yang memerlukan kompatibilitas
+izin lama. Kunci izin, role, dan struktur lama boleh diganti atau dihapus sesuai
+rencana tanpa membuat masa transisi khusus demi data uji. Perbarui rute,
+migrasi, frontend, dan tes yang terkait secara konsisten. Tetap pertahankan
+isolasi tenant, penegakan izin, serta aturan akuntansi dan verifikasi yang
+memang dibutuhkan aplikasi.
+
 ## RTK Token Saving Rules
 
 Use RTK for file inspection, git status, diffs, search results, logs, migrations, seeders, routes, controllers, models, services, tests, and artisan output.
@@ -20,7 +36,7 @@ Summarize first, then inspect only relevant files.
 
 ## Backend Guardrails
 
-Preserve existing API contracts, tenant middleware, permissions, posting rules, journal immutability, and rollback/void behavior.
+Preserve existing API contracts, tenant middleware, permissions, posting rules, journal immutability, and rollback/void behavior, except for intentional contract and permission changes in the approved task.
 Do not refactor unrelated modules unless the task explicitly requires it.
 After backend changes, run the narrowest relevant verification command available.
 

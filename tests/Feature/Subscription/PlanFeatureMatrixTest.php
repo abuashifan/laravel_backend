@@ -4,6 +4,7 @@ namespace Tests\Feature\Subscription;
 
 use App\Shared\Models\Company;
 use App\Shared\Models\CompanyUser;
+use App\Shared\Models\Plan;
 use App\Shared\Permission\EffectivePermissionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -37,8 +38,8 @@ class PlanFeatureMatrixTest extends TestCase
     }
 
     /**
-     * Sebelas kemampuan yang digerbangi peta, tulis: Basic tidak dapat
-     * satu pun, Pro dapat empat pertama, Enterprise dapat semuanya.
+     * Hak pengelolaan pengguna kini terbuka di semua tier; kemampuan lain
+     * tetap mengikuti peta tier masing-masing.
      */
     public function test_gated_permissions_follow_the_approved_tier_map(): void
     {
@@ -53,9 +54,14 @@ class PlanFeatureMatrixTest extends TestCase
             'budgets.manage' => [false, false, true],
             'departments.create' => [false, false, true],
             'projects.create' => [false, false, true],
-            'access.roles.create' => [false, false, true],
-            'access.permissions.manage' => [false, false, true],
+            'access.roles.create' => [true, true, true],
+            'access.permissions.manage' => [true, true, true],
             'transactions.import' => [false, true, true],
+            'sales.invoices.import' => [false, true, true],
+            'master_data.warehouses.create' => [false, true, true],
+            'reports.saved.manage' => [false, true, true],
+            'budget.submissions.create' => [false, false, true],
+            'master_data.departments.create' => [false, false, true],
         ];
 
         foreach ($expectations as $permission => [$basic, $pro, $enterprise]) {
@@ -93,6 +99,21 @@ class PlanFeatureMatrixTest extends TestCase
                 $this->assertGate($tier, $permission, true);
             }
         }
+    }
+
+    public function test_tier_migration_removes_only_the_obsolete_user_permission_feature(): void
+    {
+        $plan = Plan::query()->where('code', 'enterprise')->firstOrFail();
+        $plan->features = [...$plan->features, 'user_permission'];
+        $plan->save();
+
+        $migration = require database_path('migrations/2026_10_28_000001_remove_user_permission_tier_gate.php');
+        $migration->up();
+
+        $updated = $plan->fresh()->features;
+        $this->assertNotContains('user_permission', $updated);
+        $this->assertContains('budgeting', $updated);
+        $this->assertContains('dimensions', $updated);
     }
 
     private function assertGate(string $tier, string $permission, bool $expectedAllowed): void

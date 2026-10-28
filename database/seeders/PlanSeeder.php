@@ -19,7 +19,7 @@ class PlanSeeder extends Seeder
 
     private const ENTERPRISE_FEATURES = [
         'multi_warehouse', 'audit_trail', 'advanced_reports', 'transaction_approval',
-        'budgeting', 'dimensions', 'user_permission', 'transaction_import',
+        'budgeting', 'dimensions', 'transaction_import',
     ];
 
     /**
