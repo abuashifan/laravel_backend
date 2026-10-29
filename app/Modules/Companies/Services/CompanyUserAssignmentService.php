@@ -2,12 +2,12 @@
 
 namespace App\Modules\Companies\Services;
 
-use App\Modules\Access\Services\CompanyAccessService;
 use App\Shared\Models\Company;
 use App\Shared\Models\CompanyUser;
 use App\Shared\Models\Permission;
 use App\Shared\Models\TenantDatabase;
 use App\Shared\Models\User;
+use App\Shared\Permission\CompanyAccessService;
 use App\Shared\Permission\PermissionCatalogService;
 use App\Shared\Subscription\UserQuotaService;
 use App\Shared\Tenant\Storage\TenantStorageManager;

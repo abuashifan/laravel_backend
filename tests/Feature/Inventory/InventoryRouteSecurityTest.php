@@ -39,7 +39,7 @@ class InventoryRouteSecurityTest extends JournalTestCase
 
     public function test_user_without_permission_is_rejected(): void
     {
-        $ctx = $this->setUpTenant(role: 'viewer');
+        $ctx = $this->setUpTenant(role: 'noaccess');
         $this->getJson('/api/inventory/reports/stock-balances', $ctx['headers'])->assertStatus(403);
     }
 }

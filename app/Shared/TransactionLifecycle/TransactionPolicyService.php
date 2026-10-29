@@ -150,44 +150,45 @@ class TransactionPolicyService
         return $mode === self::EDIT_MODE_OPEN ? self::EDIT_MODE_OPEN : self::EDIT_MODE_LOCK;
     }
 
-    public function canView(string $module, mixed $transaction = null): TransactionPolicyResult
+    public function canView(string $module, mixed $transaction = null, ?string $feature = null): TransactionPolicyResult
     {
-        return $this->check($module, TransactionAction::VIEW, $transaction);
+        return $this->check($module, TransactionAction::VIEW, $transaction, null, $feature);
     }
 
-    public function canCreate(string $module, ?string $transactionDate = null): TransactionPolicyResult
+    public function canCreate(string $module, ?string $transactionDate = null, ?string $feature = null): TransactionPolicyResult
     {
-        return $this->check($module, TransactionAction::CREATE, null, $transactionDate);
+        return $this->check($module, TransactionAction::CREATE, null, $transactionDate, $feature);
     }
 
-    public function canEdit(string $module, mixed $transaction): TransactionPolicyResult
+    public function canEdit(string $module, mixed $transaction, ?string $feature = null): TransactionPolicyResult
     {
-        return $this->check($module, TransactionAction::EDIT, $transaction);
+        return $this->check($module, TransactionAction::EDIT, $transaction, null, $feature);
     }
 
-    public function canVoid(string $module, mixed $transaction): TransactionPolicyResult
+    public function canVoid(string $module, mixed $transaction, ?string $feature = null): TransactionPolicyResult
     {
-        return $this->check($module, TransactionAction::VOID, $transaction);
+        return $this->check($module, TransactionAction::VOID, $transaction, null, $feature);
     }
 
-    public function canApprove(string $module, mixed $transaction): TransactionPolicyResult
+    public function canApprove(string $module, mixed $transaction, ?string $feature = null): TransactionPolicyResult
     {
-        return $this->check($module, TransactionAction::APPROVE, $transaction);
+        return $this->check($module, TransactionAction::APPROVE, $transaction, null, $feature);
     }
 
-    public function canPost(string $module, mixed $transaction): TransactionPolicyResult
+    public function canPost(string $module, mixed $transaction, ?string $feature = null): TransactionPolicyResult
     {
-        return $this->check($module, TransactionAction::POST, $transaction);
+        return $this->check($module, TransactionAction::POST, $transaction, null, $feature);
     }
 
     public function check(
         string $module,
         string $action,
         mixed $transaction = null,
-        ?string $transactionDate = null
+        ?string $transactionDate = null,
+        ?string $feature = null
     ): TransactionPolicyResult {
         // 1) Validate module/action
-        $permissionResult = $this->resolvePermission($module, $action);
+        $permissionResult = $this->resolvePermission($module, $action, $feature);
         if ($permissionResult instanceof TransactionPolicyResult) {
             return $permissionResult;
         }
@@ -282,7 +283,7 @@ class TransactionPolicyService
         return TransactionPolicyResult::allow();
     }
 
-    private function resolvePermission(string $module, string $action): string|TransactionPolicyResult
+    private function resolvePermission(string $module, string $action, ?string $feature): string|TransactionPolicyResult
     {
         $module = trim($module);
         $action = trim($action);
@@ -295,11 +296,11 @@ class TransactionPolicyService
             return TransactionPolicyResult::deny('UNKNOWN_TRANSACTION_ACTION', 'Unknown action.');
         }
 
-        if ($module !== TransactionModule::JOURNAL) {
+        try {
+            return TransactionModule::permissionFor($module, $action, $feature);
+        } catch (\InvalidArgumentException) {
             return TransactionPolicyResult::deny('TRANSACTION_FEATURE_REQUIRED', 'A specific transaction feature is required.');
         }
-
-        return TransactionModule::permissionFor($module, $action);
     }
 
     private function getTransactionStatus(mixed $transaction): ?string

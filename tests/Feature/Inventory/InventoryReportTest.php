@@ -118,7 +118,7 @@ class InventoryReportTest extends JournalTestCase
 
     public function test_permission_denied(): void
     {
-        $ctx = $this->setUpTenant(role: 'viewer');
+        $ctx = $this->setUpTenant(role: 'noaccess');
         $this->getJson('/api/inventory/reports/stock-balances', $ctx['headers'])->assertStatus(403);
     }
 

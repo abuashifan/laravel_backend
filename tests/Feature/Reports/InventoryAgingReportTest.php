@@ -19,7 +19,7 @@ class InventoryAgingReportTest extends JournalTestCase
 
     public function test_permission_denied_for_viewer(): void
     {
-        $ctx = $this->setUpTenant(role: 'viewer');
+        $ctx = $this->setUpTenant(role: 'noaccess');
         $this->getJson('/api/inventory/reports/aging', $ctx['headers'])->assertStatus(403);
     }
 

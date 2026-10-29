@@ -3,6 +3,7 @@
 namespace Tests\Feature\CashBank;
 
 use App\Modules\Journal\Models\JournalEntry;
+use App\Shared\Models\CompanyUser;
 use Tests\Feature\Journal\JournalTestCase;
 
 class CashBankAccountStatementTest extends JournalTestCase
@@ -10,6 +11,9 @@ class CashBankAccountStatementTest extends JournalTestCase
     public function test_account_statement_returns_opening_period_and_ending_balance(): void
     {
         $ctx = $this->setUpTenant(role: 'finance');
+        $member = CompanyUser::query()->where('company_id', $ctx['company']->id)->firstOrFail();
+        $keys = $member->assignedPermissions()->pluck('permissions.key')->all();
+        $this->assignTestPermissions($member, [...$keys, 'cash_bank.statements.view']);
         $cashId = (int) $ctx['accounts']['debit'];
         $revenueId = (int) $ctx['accounts']['credit'];
 

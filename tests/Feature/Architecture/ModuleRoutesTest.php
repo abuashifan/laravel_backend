@@ -17,12 +17,12 @@ class ModuleRoutesTest extends TestCase
             collect(Route::getRoutes())->contains(fn (LaravelRoute $route): bool => $route->uri() === 'api/tenant-context-test'),
             'Debug tenant context route must not be registered.'
         );
-        $this->assertRouteExists('GET', 'master-data/products', ['auth:sanctum', 'company.access', 'permission:products.view']);
-        $this->assertRouteExists('GET', 'journals', ['auth:sanctum', 'company.access', 'permission:journal.view']);
-        $this->assertRouteExists('GET', 'reports/profit-loss', ['auth:sanctum', 'company.access', 'permission:reports.view']);
+        $this->assertRouteExists('GET', 'master-data/products', ['auth:sanctum', 'company.access', 'permission:master_data.products.view']);
+        $this->assertRouteExists('GET', 'journals', ['auth:sanctum', 'company.access', 'permission:accounting.journals.view']);
+        $this->assertRouteExists('GET', 'reports/profit-loss', ['auth:sanctum', 'company.access', 'permission:reports.financial.view']);
         $this->assertRouteExists('GET', 'sales/invoices', ['auth:sanctum', 'company.access', 'permission:sales.invoices.view']);
         $this->assertRouteExists('GET', 'purchase/bills', ['auth:sanctum', 'company.access', 'permission:purchase.bills.view']);
-        $this->assertRouteExists('GET', 'cash-bank/accounts', ['auth:sanctum', 'company.access', 'permission:cash_bank.view']);
+        $this->assertRouteExists('GET', 'cash-bank/accounts', ['auth:sanctum', 'company.access', 'permission:cash_bank.receipts.view|cash_bank.payments.view|cash_bank.transfers.view|cash_bank.reconciliations.view']);
         $this->assertRouteExists('GET', 'inventory/stock-balances', ['auth:sanctum', 'company.access', 'permission:inventory.stock.view']);
         $this->assertRouteExists('GET', 'access/users', ['auth:sanctum', 'company.access', 'permission:access.users.view']);
     }

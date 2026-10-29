@@ -105,41 +105,49 @@ class TransactionPolicyServiceTest extends TestCase
 
     public function test_can_create_sales_when_user_has_sales_create_permission(): void
     {
-        $service = $this->makeService(['sales.create']);
-        $result = $service->canCreate('sales', '2026-05-17');
+        $service = $this->makeService(['sales.invoices.create']);
+        $result = $service->canCreate('sales', '2026-05-17', 'invoices');
 
         $this->assertTrue($result->allowed());
         $this->assertFalse($result->isWarning());
     }
 
+    public function test_generic_transaction_check_requires_the_correct_feature(): void
+    {
+        $service = $this->makeService(['sales.invoices.create']);
+        $this->assertSame('TRANSACTION_FEATURE_REQUIRED', $service->canCreate('sales', '2026-05-17')->toArray()['code']);
+        $this->assertTrue($service->canCreate('sales', '2026-05-17', 'orders')->denied());
+        $this->assertTrue($service->canCreate('sales', '2026-05-17', 'invoices')->allowed());
+    }
+
     public function test_cannot_create_sales_without_sales_create_permission(): void
     {
         $service = $this->makeService([]);
-        $result = $service->canCreate('sales', '2026-05-17');
+        $result = $service->canCreate('sales', '2026-05-17', 'invoices');
 
         $this->assertTrue($result->denied());
     }
 
     public function test_can_edit_draft_transaction_when_settings_allow_and_permission_exists(): void
     {
-        $service = $this->makeService(['sales.edit']);
-        $result = $service->canEdit('sales', ['status' => 'draft', 'transaction_date' => '2026-05-17']);
+        $service = $this->makeService(['sales.invoices.edit']);
+        $result = $service->canEdit('sales', ['status' => 'draft', 'transaction_date' => '2026-05-17'], 'invoices');
 
         $this->assertTrue($result->allowed());
     }
 
     public function test_can_edit_posted_transaction_in_open_mode(): void
     {
-        $service = $this->makeService(['sales.edit'], ['transaction_edit_mode' => 'open']);
-        $result = $service->canEdit('sales', ['status' => 'posted', 'transaction_date' => '2026-05-17']);
+        $service = $this->makeService(['sales.invoices.edit'], ['transaction_edit_mode' => 'open']);
+        $result = $service->canEdit('sales', ['status' => 'posted', 'transaction_date' => '2026-05-17'], 'invoices');
 
         $this->assertTrue($result->allowed());
     }
 
     public function test_cannot_edit_posted_transaction_in_lock_mode(): void
     {
-        $service = $this->makeService(['sales.edit'], ['transaction_edit_mode' => 'lock']);
-        $result = $service->canEdit('sales', ['status' => 'posted', 'transaction_date' => '2026-05-17']);
+        $service = $this->makeService(['sales.invoices.edit'], ['transaction_edit_mode' => 'lock']);
+        $result = $service->canEdit('sales', ['status' => 'posted', 'transaction_date' => '2026-05-17'], 'invoices');
 
         $this->assertTrue($result->denied());
         $this->assertSame('TRANSACTION_LOCKED', $result->toArray()['code']);
@@ -147,8 +155,8 @@ class TransactionPolicyServiceTest extends TestCase
 
     public function test_cannot_edit_void_transaction(): void
     {
-        $service = $this->makeService(['sales.edit']);
-        $result = $service->canEdit('sales', ['status' => 'void', 'transaction_date' => '2026-05-17']);
+        $service = $this->makeService(['sales.invoices.edit']);
+        $result = $service->canEdit('sales', ['status' => 'void', 'transaction_date' => '2026-05-17'], 'invoices');
 
         $this->assertTrue($result->denied());
         $this->assertSame('TRANSACTION_ALREADY_VOID', $result->toArray()['code']);
@@ -156,16 +164,16 @@ class TransactionPolicyServiceTest extends TestCase
 
     public function test_can_void_posted_transaction_when_settings_allow_and_permission_exists(): void
     {
-        $service = $this->makeService(['sales.void'], ['allow_void_transactions' => true]);
-        $result = $service->canVoid('sales', ['status' => 'posted', 'transaction_date' => '2026-05-17']);
+        $service = $this->makeService(['sales.invoices.delete'], ['allow_void_transactions' => true]);
+        $result = $service->canVoid('sales', ['status' => 'posted', 'transaction_date' => '2026-05-17'], 'invoices');
 
         $this->assertTrue($result->allowed());
     }
 
     public function test_cannot_void_when_allow_void_transactions_false(): void
     {
-        $service = $this->makeService(['sales.void'], ['allow_void_transactions' => false]);
-        $result = $service->canVoid('sales', ['status' => 'posted', 'transaction_date' => '2026-05-17']);
+        $service = $this->makeService(['sales.invoices.delete'], ['allow_void_transactions' => false]);
+        $result = $service->canVoid('sales', ['status' => 'posted', 'transaction_date' => '2026-05-17'], 'invoices');
 
         $this->assertTrue($result->denied());
         $this->assertSame('COMPANY_SETTING_VOID_DISABLED', $result->toArray()['code']);
@@ -173,8 +181,8 @@ class TransactionPolicyServiceTest extends TestCase
 
     public function test_cannot_void_transaction_with_dependencies(): void
     {
-        $service = $this->makeService(['sales.void'], [], true);
-        $result = $service->canVoid('sales', ['status' => 'posted', 'transaction_date' => '2026-05-17']);
+        $service = $this->makeService(['sales.invoices.delete'], [], true);
+        $result = $service->canVoid('sales', ['status' => 'posted', 'transaction_date' => '2026-05-17'], 'invoices');
 
         $this->assertTrue($result->denied());
         $this->assertSame('TRANSACTION_HAS_DEPENDENCY', $result->toArray()['code']);
@@ -182,12 +190,12 @@ class TransactionPolicyServiceTest extends TestCase
 
     public function test_inventory_edit_is_blocked_when_generated_stock_movements_exist(): void
     {
-        $service = $this->makeService(['inventory.manage'], [], true);
+        $service = $this->makeService(['inventory.movements.edit'], [], true);
         $result = $service->canEdit('inventory', [
             'status' => 'draft',
             'transaction_date' => '2026-05-17',
             'stock_movement_id' => 15,
-        ]);
+        ], 'movements');
 
         $this->assertTrue($result->denied());
         $this->assertSame('TRANSACTION_HAS_DEPENDENCY', $result->toArray()['code']);
@@ -195,28 +203,28 @@ class TransactionPolicyServiceTest extends TestCase
 
     public function test_can_view_void_transaction_if_user_has_view_permission(): void
     {
-        $service = $this->makeService(['sales.view']);
-        $result = $service->canView('sales', ['status' => 'void', 'transaction_date' => '2026-05-17']);
+        $service = $this->makeService(['sales.invoices.view']);
+        $result = $service->canView('sales', ['status' => 'void', 'transaction_date' => '2026-05-17'], 'invoices');
 
         $this->assertTrue($result->allowed());
     }
 
     public function test_posted_transaction_is_editable_by_lifecycle_but_can_be_blocked_by_company_setting(): void
     {
-        $service = $this->makeService(['sales.edit'], ['transaction_edit_mode' => 'lock']);
-        $result = $service->canEdit('sales', ['status' => 'posted', 'transaction_date' => '2026-05-17']);
+        $service = $this->makeService(['sales.invoices.edit'], ['transaction_edit_mode' => 'lock']);
+        $result = $service->canEdit('sales', ['status' => 'posted', 'transaction_date' => '2026-05-17'], 'invoices');
 
         $this->assertTrue($result->denied());
     }
 
     public function test_date_guard_warning_is_returned_as_warning_result(): void
     {
-        $service = $this->makeService(['sales.create'], [], false, TransactionPolicyResult::warning(
+        $service = $this->makeService(['sales.invoices.create'], [], false, TransactionPolicyResult::warning(
             'TRANSACTION_DATE_WARNING',
             'Date warning',
         ));
 
-        $result = $service->check('sales', TransactionAction::CREATE, null, '2026-05-17');
+        $result = $service->check('sales', TransactionAction::CREATE, null, '2026-05-17', 'invoices');
         $this->assertTrue($result->allowed());
         $this->assertTrue($result->isWarning());
         $this->assertSame('TRANSACTION_DATE_WARNING', $result->toArray()['code']);
@@ -224,19 +232,19 @@ class TransactionPolicyServiceTest extends TestCase
 
     public function test_date_guard_blocked_returns_deny_result(): void
     {
-        $service = $this->makeService(['sales.create'], [], false, TransactionPolicyResult::deny(
+        $service = $this->makeService(['sales.invoices.create'], [], false, TransactionPolicyResult::deny(
             'TRANSACTION_DATE_BLOCKED',
             'Date blocked',
         ));
 
-        $result = $service->check('sales', TransactionAction::CREATE, null, '2026-05-17');
+        $result = $service->check('sales', TransactionAction::CREATE, null, '2026-05-17', 'invoices');
         $this->assertTrue($result->denied());
         $this->assertSame('TRANSACTION_DATE_BLOCKED', $result->toArray()['code']);
     }
 
     public function test_unknown_module_action_is_denied_consistently(): void
     {
-        $service = $this->makeService(['sales.create']);
+        $service = $this->makeService(['sales.invoices.create']);
         $result = $service->check('unknown', 'create', null, '2026-05-17');
 
         $this->assertTrue($result->denied());

@@ -3,6 +3,7 @@
 namespace Tests\Feature\CashBank;
 
 use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Shared\Models\CompanyUser;
 use Tests\Feature\Journal\JournalTestCase;
 
 class CashBankIntegrationTest extends JournalTestCase
@@ -10,6 +11,9 @@ class CashBankIntegrationTest extends JournalTestCase
     public function test_cash_bank_flow_receipt_payment_transfer_statement_and_reconciliation_lines_consistent(): void
     {
         $ctx = $this->setUpTenant(role: 'finance');
+        $member = CompanyUser::query()->where('company_id', $ctx['company']->id)->firstOrFail();
+        $keys = $member->assignedPermissions()->pluck('permissions.key')->all();
+        $this->assignTestPermissions($member, [...$keys, 'cash_bank.statements.view']);
 
         $cashId = (int) $ctx['accounts']['debit'];   // is_cash_bank=true
         $revenueId = (int) $ctx['accounts']['credit']; // revenue

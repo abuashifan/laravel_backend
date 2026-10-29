@@ -30,7 +30,7 @@ class TransactionModule
         ];
     }
 
-    public static function permissionFor(string $module, string $action): string
+    public static function permissionFor(string $module, string $action, ?string $feature = null): string
     {
         $module = trim($module);
         $action = trim($action);
@@ -43,13 +43,17 @@ class TransactionModule
             throw new InvalidArgumentException('UNKNOWN_TRANSACTION_ACTION');
         }
 
-        if ($module !== self::JOURNAL) {
+        $prefix = $module === self::JOURNAL ? 'accounting.journals' : $module.'.'.$feature;
+        $mappedAction = match ($action) {
+            TransactionAction::VOID => 'delete',
+            TransactionAction::POST => 'approve',
+            default => $action,
+        };
+        $key = $prefix.'.'.$mappedAction;
+        if (! in_array($key, (array) config('permissions.matrix_keys', []), true)) {
             throw new InvalidArgumentException('TRANSACTION_FEATURE_REQUIRED');
         }
 
-        $legacy = 'journal.'.$action;
-
-        // Dotted keys must be read from the map as an array, not config dot paths.
-        return ((array) config('permission_renames'))[$legacy][0] ?? 'accounting.journals.'.$action;
+        return $key;
     }
 }

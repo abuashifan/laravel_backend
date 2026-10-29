@@ -65,7 +65,7 @@ class FiscalYearDateGuardTest extends TestCase
         app(TenantContext::class)->set($company, CompanyUser::first(), TenantDatabase::first());
 
         $policy = $this->app->make(TransactionPolicyService::class);
-        $result = $policy->canCreate('sales', '2026-06-10');
+        $result = $policy->canCreate('sales', '2026-06-10', 'invoices');
 
         $this->assertTrue($result->allowed());
     }
@@ -78,7 +78,7 @@ class FiscalYearDateGuardTest extends TestCase
         app(TenantContext::class)->set($company, CompanyUser::first(), TenantDatabase::first());
         $policy = $this->app->make(TransactionPolicyService::class);
 
-        $result = $policy->canCreate('sales', '2025-12-31');
+        $result = $policy->canCreate('sales', '2025-12-31', 'invoices');
         $this->assertTrue($result->denied());
         $this->assertSame('TRANSACTION_DATE_OUTSIDE_ACTIVE_FISCAL_YEAR', $result->toArray()['code']);
     }
@@ -91,7 +91,7 @@ class FiscalYearDateGuardTest extends TestCase
         app(TenantContext::class)->set($company, CompanyUser::first(), TenantDatabase::first());
         $policy = $this->app->make(TransactionPolicyService::class);
 
-        $result = $policy->canCreate('sales', '2027-01-01');
+        $result = $policy->canCreate('sales', '2027-01-01', 'invoices');
         $this->assertTrue($result->denied());
     }
 
@@ -108,7 +108,7 @@ class FiscalYearDateGuardTest extends TestCase
         app(TenantContext::class)->set($company, CompanyUser::first(), TenantDatabase::first());
 
         $policy = $this->app->make(TransactionPolicyService::class);
-        $result = $policy->canCreate('sales', '2026-01-05');
+        $result = $policy->canCreate('sales', '2026-01-05', 'invoices');
 
         $this->assertTrue($result->allowed());
     }
@@ -127,7 +127,7 @@ class FiscalYearDateGuardTest extends TestCase
         Carbon::setTestNow('2026-05-01');
 
         $policy = $this->app->make(TransactionPolicyService::class);
-        $result = $policy->canCreate('sales', '2026-05-10');
+        $result = $policy->canCreate('sales', '2026-05-10', 'invoices');
 
         $this->assertTrue($result->allowed());
     }
@@ -146,7 +146,7 @@ class FiscalYearDateGuardTest extends TestCase
         Carbon::setTestNow('2026-05-01');
 
         $policy = $this->app->make(TransactionPolicyService::class);
-        $result = $policy->canCreate('sales', '2026-05-10');
+        $result = $policy->canCreate('sales', '2026-05-10', 'invoices');
 
         $this->assertTrue($result->allowed());
         $this->assertTrue($result->isWarning());
@@ -166,7 +166,7 @@ class FiscalYearDateGuardTest extends TestCase
         Carbon::setTestNow('2026-05-01');
 
         $policy = $this->app->make(TransactionPolicyService::class);
-        $result = $policy->canCreate('sales', '2026-06-01');
+        $result = $policy->canCreate('sales', '2026-06-01', 'invoices');
 
         $this->assertTrue($result->allowed());
         $this->assertTrue($result->isWarning());
@@ -188,7 +188,7 @@ class FiscalYearDateGuardTest extends TestCase
 
         app(TenantContext::class)->set($company, CompanyUser::first(), TenantDatabase::first());
         $policy = $this->app->make(TransactionPolicyService::class);
-        $result = $policy->canEdit('sales', ['status' => 'posted', 'transaction_date' => '2026-05-17']);
+        $result = $policy->canEdit('sales', ['status' => 'posted', 'transaction_date' => '2026-05-17'], 'invoices');
 
         $this->assertTrue($result->denied());
         $this->assertSame('FISCAL_YEAR_CLOSED', $result->toArray()['code']);
@@ -201,7 +201,7 @@ class FiscalYearDateGuardTest extends TestCase
 
         app(TenantContext::class)->set($company, CompanyUser::first(), TenantDatabase::first());
         $policy = $this->app->make(TransactionPolicyService::class);
-        $result = $policy->canCreate('sales', '2027-01-01');
+        $result = $policy->canCreate('sales', '2027-01-01', 'invoices');
 
         $this->assertTrue($result->denied());
         $this->assertSame('PREVIOUS_FISCAL_YEAR_NOT_CLOSED', $result->toArray()['code']);
@@ -275,7 +275,7 @@ class FiscalYearDateGuardTest extends TestCase
         Carbon::setTestNow('2026-05-01');
 
         $policy = $this->app->make(TransactionPolicyService::class);
-        $result = $policy->canCreate('sales', '2026-05-10');
+        $result = $policy->canCreate('sales', '2026-05-10', 'invoices');
 
         $this->assertTrue($result->allowed());
         $this->assertTrue($result->isWarning());
@@ -296,7 +296,7 @@ class FiscalYearDateGuardTest extends TestCase
 
         app(TenantContext::class)->set($company, CompanyUser::first(), TenantDatabase::first());
         $policy = $this->app->make(TransactionPolicyService::class);
-        $result = $policy->canEdit('sales', ['status' => 'posted', 'transaction_date' => '2026-05-17']);
+        $result = $policy->canEdit('sales', ['status' => 'posted', 'transaction_date' => '2026-05-17'], 'invoices');
 
         $this->assertTrue($result->denied());
         $this->assertSame('FISCAL_YEAR_CLOSED', $result->toArray()['code']);

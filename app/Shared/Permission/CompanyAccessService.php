@@ -1,13 +1,12 @@
 <?php
 
-namespace App\Modules\Access\Services;
+namespace App\Shared\Permission;
 
 use App\Shared\Audit\AuditLogService;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Models\Company;
 use App\Shared\Models\CompanyUser;
 use App\Shared\Models\Permission;
-use App\Shared\Permission\EffectivePermissionService;
 use App\Shared\Subscription\UserQuotaService;
 use Illuminate\Support\Facades\DB;
 

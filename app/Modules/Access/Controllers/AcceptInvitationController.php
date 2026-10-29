@@ -3,13 +3,13 @@
 namespace App\Modules\Access\Controllers;
 
 use App\Http\Controllers\Controller;
-use App\Modules\Access\Services\CompanyAccessService;
 use App\Shared\Api\ApiResponse;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Models\Company;
 use App\Shared\Models\CompanyInvitation;
 use App\Shared\Models\CompanyUser;
 use App\Shared\Models\Permission;
+use App\Shared\Permission\CompanyAccessService;
 use App\Shared\Subscription\UserQuotaService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
