@@ -34,13 +34,24 @@ class AccessManagementTest extends TestCase
         $target = $this->companyUser($ctx['company'], 'staff@example.test', 'viewer');
         $source = $this->companyUser($ctx['company'], 'source@example.test', 'viewer');
         $this->getJson('/api/access/users/'.$target->id.'/permissions', $ctx['headers'])->assertOk()->assertJsonStructure(['data' => ['full_access', 'is_owner', 'permissions', 'catalog' => ['modules', 'blocked_by_plan_keys']]]);
-        $this->putJson('/api/access/users/'.$target->id.'/permissions', ['full_access' => false, 'permissions' => ['sales.invoices.view']], $ctx['headers'])->assertOk()->assertJsonPath('data.permissions.0', 'sales.invoices.view');
-        $this->postJson('/api/access/users/'.$source->id.'/copy-access', ['source_company_user_id' => $target->id], $ctx['headers'])->assertOk()->assertJsonPath('data.permissions.0', 'sales.invoices.view');
+        $this->putJson('/api/access/users/'.$target->id.'/permissions', ['full_access' => false, 'permissions' => ['sales.invoices.view', 'sales.invoices.edit']], $ctx['headers'])->assertOk()->assertJsonPath('data.permissions.0', 'sales.invoices.edit');
+        $this->getJson('/api/access/company-users/'.$target->id, $ctx['headers'])->assertOk()->assertJsonPath('data.feature_count', 1);
+        $this->postJson('/api/access/users/'.$source->id.'/copy-access', ['source_company_user_id' => $target->id], $ctx['headers'])->assertOk()->assertJsonPath('data.permissions.0', 'sales.invoices.edit');
         $log = ActivityLog::query()->where('action', 'access.permissions.update')->firstOrFail();
-        $this->assertSame(['sales.invoices.view'], $log->properties['new_values']['permissions']);
+        $this->assertSame(['sales.invoices.edit', 'sales.invoices.view'], $log->properties['new_values']['permissions']);
         $this->assertArrayHasKey('old_values', $log->properties);
         $this->getJson('/api/access/roles', $ctx['headers'])->assertNotFound();
         $this->putJson('/api/access/users/'.$target->id.'/permissions', ['full_access' => false, 'permissions' => ['not.a.permission']], $ctx['headers'])->assertStatus(422);
+    }
+
+    public function test_invitation_creator_can_read_catalog_without_user_management_access(): void
+    {
+        $ctx = $this->companyContext();
+        $inviter = $this->companyUser($ctx['company'], 'inviter@example.test', 'viewer');
+        $this->assignTestPermissions($inviter, ['access.invitations.create']);
+        Sanctum::actingAs($inviter->user, ['*']);
+        $this->getJson('/api/access/permission-catalog', $ctx['headers'])->assertOk()->assertJsonStructure(['data' => ['modules', 'blocked_by_plan_keys']]);
+        $this->getJson('/api/access/company-users', $ctx['headers'])->assertForbidden();
     }
 
     public function test_owner_and_last_manager_are_protected_and_self_escalation_is_denied(): void

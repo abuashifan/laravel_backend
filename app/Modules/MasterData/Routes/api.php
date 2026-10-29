@@ -92,10 +92,10 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('master-data')->gr
     Route::patch('/projects/{id}/activate', [ProjectController::class, 'activate'])->middleware('permission:master_data.projects.edit');
 
     // Account Mappings
-    Route::get('/account-mappings', [AccountMappingController::class, 'index'])->middleware('permission:settings.company.view');
-    Route::post('/account-mappings/import', [AccountMappingController::class, 'import'])->middleware('permission:settings.company.edit');
-    Route::post('/account-mappings/import/sheets', [AccountMappingController::class, 'importSheets'])->middleware('permission:settings.company.edit');
-    Route::post('/account-mappings/reset-defaults', [AccountMappingController::class, 'resetDefaults'])->middleware('permission:settings.company.edit');
-    Route::get('/account-mappings/import-template', [AccountMappingController::class, 'importTemplate'])->middleware('permission:settings.company.view');
-    Route::patch('/account-mappings/{mappingKey}', [AccountMappingController::class, 'update'])->middleware('permission:settings.company.edit');
+    Route::get('/account-mappings', [AccountMappingController::class, 'index'])->middleware('permission:settings.account_mapping.view');
+    Route::post('/account-mappings/import', [AccountMappingController::class, 'import'])->middleware('permission:settings.account_mapping.edit');
+    Route::post('/account-mappings/import/sheets', [AccountMappingController::class, 'importSheets'])->middleware('permission:settings.account_mapping.edit');
+    Route::post('/account-mappings/reset-defaults', [AccountMappingController::class, 'resetDefaults'])->middleware('permission:settings.account_mapping.edit');
+    Route::get('/account-mappings/import-template', [AccountMappingController::class, 'importTemplate'])->middleware('permission:settings.account_mapping.view');
+    Route::patch('/account-mappings/{mappingKey}', [AccountMappingController::class, 'update'])->middleware('permission:settings.account_mapping.edit');
 });

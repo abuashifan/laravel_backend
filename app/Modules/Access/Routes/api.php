@@ -16,8 +16,8 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('access')->group(f
     Route::patch('/company-users/{companyUserId}/deactivate', [CompanyUserAccessController::class, 'deactivate'])->middleware('permission:access.users.delete');
     Route::patch('/company-users/{companyUserId}/reactivate', [CompanyUserAccessController::class, 'activate'])->middleware('permission:access.users.edit');
     Route::patch('/company-users/{companyUserId}/remove', [CompanyUserAccessController::class, 'remove'])->middleware('permission:access.users.delete');
-    Route::get('/permission-catalog', PermissionCatalogController::class)->middleware('permission:access.users.view');
-    Route::get('/permissions/catalog', PermissionCatalogController::class)->middleware('permission:access.users.view');
+    Route::get('/permission-catalog', PermissionCatalogController::class)->middleware('permission:access.users.view|access.invitations.create');
+    Route::get('/permissions/catalog', PermissionCatalogController::class)->middleware('permission:access.users.view|access.invitations.create');
     Route::get('/users/{companyUserId}/permissions', [CompanyUserAccessController::class, 'permissions'])->middleware('permission:access.users.view');
     Route::put('/users/{companyUserId}/permissions', [CompanyUserAccessController::class, 'updatePermissions'])->middleware('permission:access.users.edit');
     Route::post('/users/{companyUserId}/copy-access', [CompanyUserAccessController::class, 'copyAccess'])->middleware('permission:access.users.edit');

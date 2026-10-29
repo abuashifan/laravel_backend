@@ -92,7 +92,7 @@ class CompanyUserAccessController extends Controller
 
     private function payload(CompanyUser $member): array
     {
-        return ['id' => $member->id, 'company_id' => $member->company_id, 'user_id' => $member->user_id, 'name' => $member->user?->name, 'email' => $member->user?->email, 'status' => $member->status, 'joined_at' => $member->joined_at, 'full_access' => $member->full_access, 'is_owner' => $member->is_owner];
+        return ['id' => $member->id, 'company_id' => $member->company_id, 'user_id' => $member->user_id, 'name' => $member->user?->name, 'email' => $member->user?->email, 'status' => $member->status, 'joined_at' => $member->joined_at, 'full_access' => $member->full_access, 'is_owner' => $member->is_owner, 'feature_count' => $member->assignedPermissions()->whereIn('permissions.key', config('permissions.matrix_keys', []))->distinct()->count('permissions.feature')];
     }
 
     private function permissionPayload(CompanyUser $member): array

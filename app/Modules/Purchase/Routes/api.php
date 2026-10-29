@@ -75,7 +75,7 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('purchase')->group
     Route::get('/vendor-deposits/{id}', [VendorDepositController::class, 'show'])->middleware('permission:purchase.deposits.view');
     Route::patch('/vendor-deposits/{id}/post', [VendorDepositController::class, 'post'])->middleware('permission:purchase.deposits.approve');
     Route::patch('/vendor-deposits/{id}/void', [VendorDepositController::class, 'void'])->middleware('permission:purchase.deposits.delete');
-    Route::patch('/vendor-deposits/{id}', [VendorDepositController::class, 'update'])->middleware('permission:purchase.deposits.create');
+    Route::patch('/vendor-deposits/{id}', [VendorDepositController::class, 'update'])->middleware('permission:purchase.deposits.edit');
     Route::delete('/vendor-deposits/{id}', [VendorDepositController::class, 'destroy'])->middleware('permission:purchase.deposits.delete');
     Route::patch('/vendor-deposits/{id}/refund', [VendorDepositController::class, 'refund'])->middleware('permission:purchase.deposits.refund');
     Route::post('/vendor-deposits/{id}/allocate-to-bill/{billId}', [VendorDepositController::class, 'allocateToBill'])->middleware('permission:purchase.deposits.approve');
@@ -87,14 +87,14 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('purchase')->group
     Route::get('/payments/{id}', [VendorPaymentController::class, 'show'])->middleware('permission:purchase.payments.view');
     Route::patch('/payments/{id}/post', [VendorPaymentController::class, 'post'])->middleware('permission:purchase.payments.approve');
     Route::patch('/payments/{id}/void', [VendorPaymentController::class, 'void'])->middleware('permission:purchase.payments.delete');
-    Route::patch('/payments/{id}', [VendorPaymentController::class, 'update'])->middleware('permission:purchase.payments.create');
+    Route::patch('/payments/{id}', [VendorPaymentController::class, 'update'])->middleware('permission:purchase.payments.edit');
     Route::delete('/payments/{id}', [VendorPaymentController::class, 'destroy'])->middleware('permission:purchase.payments.delete');
 
     Route::get('/returns', [PurchaseReturnController::class, 'index'])->middleware('permission:purchase.returns.view');
     Route::get('/returns/adjacent', [PurchaseReturnController::class, 'adjacent'])->middleware('permission:purchase.returns.view');
     Route::post('/returns', [PurchaseReturnController::class, 'store'])->middleware('permission:purchase.returns.create');
     Route::get('/returns/{id}', [PurchaseReturnController::class, 'show'])->middleware('permission:purchase.returns.view');
-    Route::patch('/returns/{id}', [PurchaseReturnController::class, 'update'])->middleware('permission:purchase.returns.create');
+    Route::patch('/returns/{id}', [PurchaseReturnController::class, 'update'])->middleware('permission:purchase.returns.edit');
     Route::post('/returns/from-bill/{billId}', [PurchaseReturnController::class, 'createFromVendorBill'])->middleware('permission:purchase.returns.create');
     Route::post('/returns/from-goods-receipt/{goodsReceiptId}', [PurchaseReturnController::class, 'createFromGoodsReceipt'])->middleware('permission:purchase.returns.create');
     Route::patch('/returns/{id}/approve', [PurchaseReturnController::class, 'approve'])->middleware('permission:purchase.returns.approve');

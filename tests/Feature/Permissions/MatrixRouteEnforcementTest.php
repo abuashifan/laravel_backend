@@ -10,6 +10,29 @@ use Tests\Feature\Journal\JournalTestCase;
 
 class MatrixRouteEnforcementTest extends JournalTestCase
 {
+    public function test_transaction_settings_access_does_not_authorize_company_settings(): void
+    {
+        $ctx = $this->setUpTenant('noaccess');
+        $member = CompanyUser::query()->where('company_id', $ctx['company']->id)->firstOrFail();
+        $this->assignTestPermissions($member, ['settings.transactions.view', 'settings.transactions.edit']);
+
+        $this->getJson('/api/settings/company', $ctx['headers'])->assertOk()->assertJsonMissingPath('data.profile')->assertJsonMissingPath('data.accounting.base_currency');
+        $this->patchJson('/api/settings/company/accounting', ['transaction_edit_mode' => 'open'], $ctx['headers'])->assertOk()->assertJsonMissingPath('data.accounting.base_currency');
+        $this->patchJson('/api/settings/company/accounting', ['base_currency' => 'USD'], $ctx['headers'])->assertForbidden();
+        $this->patchJson('/api/settings/company/profile', ['name' => 'Changed'], $ctx['headers'])->assertForbidden();
+    }
+
+    public function test_create_permission_does_not_grant_editing_a_receipt(): void
+    {
+        $ctx = $this->setUpTenant('noaccess');
+        $member = CompanyUser::query()->where('company_id', $ctx['company']->id)->firstOrFail();
+        $this->assignTestPermissions($member, ['sales.receipts.create']);
+
+        $this->patchJson('/api/sales/receipts/1', [], $ctx['headers'])->assertForbidden();
+        $this->assignTestPermissions($member, ['sales.receipts.edit']);
+        $this->patchJson('/api/sales/receipts/1', [], $ctx['headers'])->assertStatus(422)->assertJsonPath('code', 'VALIDATION_ERROR');
+    }
+
     public function test_all_route_permission_keys_belong_to_the_matrix(): void
     {
         $keys = config('permissions.matrix_keys', []);

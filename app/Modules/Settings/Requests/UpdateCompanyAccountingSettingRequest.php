@@ -2,6 +2,7 @@
 
 namespace App\Modules\Settings\Requests;
 
+use App\Shared\Permission\PermissionService;
 use App\Shared\Subscription\PlanPermissionResolver;
 use App\Shared\Tenant\TenantContext;
 use Illuminate\Foundation\Http\FormRequest;
@@ -9,9 +10,15 @@ use Illuminate\Validation\Validator;
 
 class UpdateCompanyAccountingSettingRequest extends FormRequest
 {
+    public const TRANSACTION_FIELDS = ['transaction_workflow_mode', 'auto_post_transactions', 'allow_edit_transactions', 'allow_edit_posted_transactions', 'transaction_edit_mode', 'allow_void_transactions', 'hide_voided_transactions', 'require_void_reason', 'approval_enabled', 'block_outside_current_fiscal_year', 'date_warning_enabled', 'allow_backdated_transactions', 'max_backdate_days', 'allow_future_transactions', 'max_future_days'];
+
     public function authorize(): bool
     {
-        return true;
+        $fields = array_intersect(array_keys($this->all()), array_keys($this->rules()));
+        $permissions = app(PermissionService::class);
+
+        return (! array_intersect($fields, self::TRANSACTION_FIELDS) || $permissions->can('settings.transactions.edit'))
+            && (! array_diff($fields, self::TRANSACTION_FIELDS) || $permissions->can('settings.company.edit'));
     }
 
     public function rules(): array

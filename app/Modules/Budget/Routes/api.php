@@ -36,8 +36,8 @@ Route::middleware(['auth:sanctum', 'company.access'])->group(function () {
         // Terdaftar sebelum `/{id}` supaya tidak tertelan sebagai id bernilai kosong.
         Route::get('/', [BudgetSubmissionController::class, 'indexAll'])->middleware('permission:budget.submissions.view');
         Route::get('/{id}', [BudgetSubmissionController::class, 'show'])->middleware('permission:budget.submissions.view');
-        Route::put('/{id}', [BudgetSubmissionController::class, 'update'])->middleware('permission:budget.submissions.create');
-        Route::put('/{id}/lines', [BudgetSubmissionController::class, 'updateLines'])->middleware('permission:budget.submissions.create');
+        Route::put('/{id}', [BudgetSubmissionController::class, 'update'])->middleware('permission:budget.submissions.edit');
+        Route::put('/{id}/lines', [BudgetSubmissionController::class, 'updateLines'])->middleware('permission:budget.submissions.edit');
         Route::post('/{id}/submit', [BudgetSubmissionController::class, 'submit'])->middleware('permission:budget.submissions.create');
         Route::post('/{id}/approve-head', [BudgetSubmissionController::class, 'approveHead'])->middleware('permission:budget.submissions.approve_head');
         Route::post('/{id}/approve-finance', [BudgetSubmissionController::class, 'approveFinance'])->middleware('permission:budget.submissions.approve_finance');

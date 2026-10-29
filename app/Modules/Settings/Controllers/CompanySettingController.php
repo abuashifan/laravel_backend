@@ -12,6 +12,7 @@ use App\Shared\Api\ApiResponse;
 use App\Shared\Audit\AuditAction;
 use App\Shared\Audit\AuditEvent;
 use App\Shared\Audit\AuditLogService;
+use App\Shared\Permission\PermissionService;
 use App\Shared\Tenant\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Throwable;
@@ -24,6 +25,7 @@ class CompanySettingController extends Controller
         private readonly CompanySettingService $service,
         private readonly TenantContext $tenantContext,
         private readonly AuditLogService $auditLogService,
+        private readonly PermissionService $permissions,
     ) {}
 
     public function show(): JsonResponse
@@ -33,10 +35,18 @@ class CompanySettingController extends Controller
             return $this->errorResponse('Active company context not found.', 422);
         }
 
-        return $this->successResponse(
-            $this->service->getSettings($company),
-            'Company settings retrieved successfully'
-        );
+        $settings = $this->service->getSettings($company);
+        if (! $this->permissions->can('settings.company.view')) {
+            $settings = [
+                'accounting' => array_intersect_key($settings['accounting'], array_flip(UpdateCompanyAccountingSettingRequest::TRANSACTION_FIELDS)),
+                'transaction_defaults' => $settings['transaction_defaults'],
+            ];
+        } elseif (! $this->permissions->can('settings.transactions.view')) {
+            $settings['accounting'] = array_diff_key($settings['accounting'], array_flip(UpdateCompanyAccountingSettingRequest::TRANSACTION_FIELDS));
+            unset($settings['transaction_defaults']);
+        }
+
+        return $this->successResponse($settings, 'Company settings retrieved successfully');
     }
 
     public function workflow(): JsonResponse
@@ -108,9 +118,12 @@ class CompanySettingController extends Controller
             // fail-safe
         }
 
-        return $this->successResponse([
-            'accounting' => $setting->toArray(),
-        ], 'Accounting settings updated successfully');
+        $accounting = $setting->toArray();
+        if (! $this->permissions->can('settings.company.view')) {
+            $accounting = array_intersect_key($accounting, array_flip(UpdateCompanyAccountingSettingRequest::TRANSACTION_FIELDS));
+        }
+
+        return $this->successResponse(['accounting' => $accounting], 'Accounting settings updated successfully');
     }
 
     public function updateModules(UpdateCompanyModuleSettingRequest $request): JsonResponse

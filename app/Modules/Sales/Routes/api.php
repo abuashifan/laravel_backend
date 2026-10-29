@@ -92,7 +92,7 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('sales')->group(fu
     Route::get('/customer-deposits/{id}', [CustomerDepositController::class, 'show'])->middleware('permission:sales.deposits.view');
     Route::patch('/customer-deposits/{id}/post', [CustomerDepositController::class, 'post'])->middleware('permission:sales.deposits.approve');
     Route::patch('/customer-deposits/{id}/void', [CustomerDepositController::class, 'void'])->middleware('permission:sales.deposits.delete');
-    Route::patch('/customer-deposits/{id}', [CustomerDepositController::class, 'update'])->middleware('permission:sales.deposits.create');
+    Route::patch('/customer-deposits/{id}', [CustomerDepositController::class, 'update'])->middleware('permission:sales.deposits.edit');
     Route::delete('/customer-deposits/{id}', [CustomerDepositController::class, 'destroy'])->middleware('permission:sales.deposits.delete');
     Route::patch('/customer-deposits/{id}/refund', [CustomerDepositController::class, 'refund'])->middleware('permission:sales.deposits.refund');
     Route::post('/customer-deposits/{id}/allocate-to-invoice/{invoiceId}', [CustomerDepositController::class, 'allocateToInvoice'])->middleware('permission:sales.deposits.approve');
@@ -104,14 +104,14 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('sales')->group(fu
     Route::get('/receipts/{id}', [SalesReceiptController::class, 'show'])->middleware('permission:sales.receipts.view');
     Route::patch('/receipts/{id}/post', [SalesReceiptController::class, 'post'])->middleware('permission:sales.receipts.approve');
     Route::patch('/receipts/{id}/void', [SalesReceiptController::class, 'void'])->middleware('permission:sales.receipts.delete');
-    Route::patch('/receipts/{id}', [SalesReceiptController::class, 'update'])->middleware('permission:sales.receipts.create');
+    Route::patch('/receipts/{id}', [SalesReceiptController::class, 'update'])->middleware('permission:sales.receipts.edit');
     Route::delete('/receipts/{id}', [SalesReceiptController::class, 'destroy'])->middleware('permission:sales.receipts.delete');
 
     Route::get('/returns', [SalesReturnController::class, 'index'])->middleware('permission:sales.returns.view');
     Route::get('/returns/adjacent', [SalesReturnController::class, 'adjacent'])->middleware('permission:sales.returns.view');
     Route::post('/returns', [SalesReturnController::class, 'store'])->middleware('permission:sales.returns.create');
     Route::get('/returns/{id}', [SalesReturnController::class, 'show'])->middleware('permission:sales.returns.view');
-    Route::patch('/returns/{id}', [SalesReturnController::class, 'update'])->middleware('permission:sales.returns.create');
+    Route::patch('/returns/{id}', [SalesReturnController::class, 'update'])->middleware('permission:sales.returns.edit');
     Route::post('/returns/from-invoice/{invoiceId}', [SalesReturnController::class, 'createFromSalesInvoice'])->middleware('permission:sales.returns.create');
     Route::post('/returns/from-delivery-order/{deliveryOrderId}', [SalesReturnController::class, 'createFromDeliveryOrder'])->middleware('permission:sales.returns.create');
     Route::patch('/returns/{id}/approve', [SalesReturnController::class, 'approve'])->middleware('permission:sales.returns.approve');
