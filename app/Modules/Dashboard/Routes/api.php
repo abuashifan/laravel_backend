@@ -3,7 +3,7 @@
 use App\Modules\Dashboard\Controllers\DashboardController;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware(['auth:sanctum', 'company.access', 'permission:dashboard.view'])
+Route::middleware(['auth:sanctum', 'company.access', 'permission:dashboard.overview.view'])
     ->prefix('dashboard')
     ->group(function () {
         Route::get('/summary', [DashboardController::class, 'summary']);

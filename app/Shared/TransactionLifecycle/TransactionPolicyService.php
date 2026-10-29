@@ -295,6 +295,10 @@ class TransactionPolicyService
             return TransactionPolicyResult::deny('UNKNOWN_TRANSACTION_ACTION', 'Unknown action.');
         }
 
+        if ($module !== TransactionModule::JOURNAL) {
+            return TransactionPolicyResult::deny('TRANSACTION_FEATURE_REQUIRED', 'A specific transaction feature is required.');
+        }
+
         return TransactionModule::permissionFor($module, $action);
     }
 

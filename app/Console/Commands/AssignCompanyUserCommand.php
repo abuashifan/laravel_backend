@@ -10,7 +10,8 @@ class AssignCompanyUserCommand extends Command
     protected $signature = 'company:assign-user
         {--company-id= : Company ID}
         {--email= : User email}
-        {--role= : Role (owner|admin|staff|viewer)}';
+        {--full-access : Berikan akses penuh}
+        {--permissions= : Kunci izin matriks dipisahkan koma}';
 
     protected $description = 'Assign a user to a company (internal only)';
 
@@ -18,7 +19,8 @@ class AssignCompanyUserCommand extends Command
     {
         $companyId = (string) ($this->option('company-id') ?? '');
         $email = (string) ($this->option('email') ?? '');
-        $role = (string) ($this->option('role') ?? '');
+        $permissions = array_values(array_filter(array_map('trim', explode(',', (string) $this->option('permissions')))));
+        $fullAccess = (bool) $this->option('full-access');
 
         if (trim($companyId) === '') {
             $companyId = (string) $this->ask('Company ID');
@@ -28,15 +30,12 @@ class AssignCompanyUserCommand extends Command
             $email = (string) $this->ask('User email');
         }
 
-        if (trim($role) === '') {
-            $role = (string) $this->choice('Role', ['owner', 'admin', 'staff', 'viewer'], 0);
-        }
-
         try {
             $assignment = $service->assign([
                 'company_id' => (int) $companyId,
                 'email' => $email,
-                'role' => $role,
+                'full_access' => $fullAccess,
+                'permissions' => $permissions,
             ]);
         } catch (\Throwable $e) {
             $this->error($e->getMessage());
@@ -50,7 +49,8 @@ class AssignCompanyUserCommand extends Command
         $this->line('Company Name: '.($assignment->company?->name ?? '-'));
         $this->line('User ID: '.$assignment->user_id);
         $this->line('User Email: '.$email);
-        $this->line('Role: '.$assignment->role);
+        $this->line('Full access: '.($assignment->full_access ? 'yes' : 'no'));
+        $this->line('Permissions: '.implode(', ', $permissions));
         $this->line('Status: '.$assignment->status);
 
         return self::SUCCESS;

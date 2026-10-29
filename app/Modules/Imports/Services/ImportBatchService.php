@@ -473,6 +473,10 @@ class ImportBatchService
 
         $query = ImportBatch::query()->orderByDesc('id');
 
+        if (array_key_exists('allowed_profiles', $filters)) {
+            $query->whereIn('profile', $filters['allowed_profiles']);
+        }
+
         if (! empty($filters['profile'])) {
             $query->where('profile', (string) $filters['profile']);
         }

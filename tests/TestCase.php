@@ -41,6 +41,10 @@ abstract class TestCase extends BaseTestCase
             $keys = $membership->role_id && $membership->rolePreset
                 ? $membership->rolePreset->permissions()->pluck('permissions.key')->all()
                 : (array) config('permissions.roles.'.$membership->role, []);
+            $renames = (array) config('permission_renames', []);
+            foreach ($keys as $key) {
+                $keys = array_merge($keys, $renames[$key] ?? []);
+            }
             $this->assignTestPermissions($membership, $keys);
         });
     }

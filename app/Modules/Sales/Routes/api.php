@@ -32,19 +32,19 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('sales')->group(fu
     Route::patch('/quotations/{id}/send', [SalesQuotationController::class, 'send'])->middleware('permission:sales.quotations.edit');
     Route::patch('/quotations/{id}/approve', [SalesQuotationController::class, 'approve'])->middleware('permission:sales.quotations.approve');
     Route::patch('/quotations/{id}/accept', [SalesQuotationController::class, 'accept'])->middleware('permission:sales.quotations.approve');
-    Route::patch('/quotations/{id}/reject', [SalesQuotationController::class, 'reject'])->middleware('permission:sales.quotations.cancel');
-    Route::patch('/quotations/{id}/cancel', [SalesQuotationController::class, 'cancel'])->middleware('permission:sales.quotations.cancel');
+    Route::patch('/quotations/{id}/reject', [SalesQuotationController::class, 'reject'])->middleware('permission:sales.quotations.delete');
+    Route::patch('/quotations/{id}/cancel', [SalesQuotationController::class, 'cancel'])->middleware('permission:sales.quotations.delete');
 
     Route::get('/orders', [SalesOrderController::class, 'index'])->middleware('permission:sales.orders.view');
     Route::get('/orders/adjacent', [SalesOrderController::class, 'adjacent'])->middleware('permission:sales.orders.view');
     Route::post('/orders', [SalesOrderController::class, 'store'])->middleware('permission:sales.orders.create');
     Route::get('/orders/{id}', [SalesOrderController::class, 'show'])->middleware('permission:sales.orders.view');
     Route::patch('/orders/{id}', [SalesOrderController::class, 'update'])->middleware('permission:sales.orders.edit');
-    Route::post('/orders/from-quotation/{quotationId}', [SalesOrderController::class, 'createFromQuotation'])->middleware('permission:sales.orders.convert');
+    Route::post('/orders/from-quotation/{quotationId}', [SalesOrderController::class, 'createFromQuotation'])->middleware('permission:sales.documents.convert');
     Route::patch('/orders/{id}/approve', [SalesOrderController::class, 'approve'])->middleware('permission:sales.orders.approve');
-    Route::patch('/orders/{id}/confirm', [SalesOrderController::class, 'confirm'])->middleware('permission:sales.orders.confirm');
-    Route::patch('/orders/{id}/cancel', [SalesOrderController::class, 'cancel'])->middleware('permission:sales.orders.cancel');
-    Route::patch('/orders/{id}/close', [SalesOrderController::class, 'close'])->middleware('permission:sales.orders.confirm');
+    Route::patch('/orders/{id}/confirm', [SalesOrderController::class, 'confirm'])->middleware('permission:sales.orders.approve');
+    Route::patch('/orders/{id}/cancel', [SalesOrderController::class, 'cancel'])->middleware('permission:sales.orders.delete');
+    Route::patch('/orders/{id}/close', [SalesOrderController::class, 'close'])->middleware('permission:sales.orders.approve');
 
     Route::get('/delivery-orders', [DeliveryOrderController::class, 'index'])->middleware('permission:sales.delivery_orders.view');
     Route::get('/delivery-orders/adjacent', [DeliveryOrderController::class, 'adjacent'])->middleware('permission:sales.delivery_orders.view');
@@ -52,22 +52,22 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('sales')->group(fu
     Route::get('/delivery-orders/{id}', [DeliveryOrderController::class, 'show'])->middleware('permission:sales.delivery_orders.view');
     Route::patch('/delivery-orders/{id}', [DeliveryOrderController::class, 'update'])->middleware('permission:sales.delivery_orders.edit');
     Route::post('/delivery-orders/from-sales-order/{salesOrderId}', [DeliveryOrderController::class, 'createFromSalesOrder'])->middleware('permission:sales.delivery_orders.create');
-    Route::patch('/delivery-orders/{id}/ready', [DeliveryOrderController::class, 'ready'])->middleware('permission:sales.delivery_orders.ship');
-    Route::patch('/delivery-orders/{id}/ship', [DeliveryOrderController::class, 'ship'])->middleware('permission:sales.delivery_orders.ship');
-    Route::patch('/delivery-orders/{id}/deliver', [DeliveryOrderController::class, 'deliver'])->middleware('permission:sales.delivery_orders.deliver');
-    Route::patch('/delivery-orders/{id}/cancel', [DeliveryOrderController::class, 'cancel'])->middleware('permission:sales.delivery_orders.cancel');
-    Route::patch('/delivery-orders/{id}/void', [DeliveryOrderController::class, 'void'])->middleware('permission:sales.delivery_orders.void');
-    Route::delete('/delivery-orders/{id}', [DeliveryOrderController::class, 'destroy'])->middleware('permission:sales.delivery_orders.edit|sales.delivery_orders.void');
+    Route::patch('/delivery-orders/{id}/ready', [DeliveryOrderController::class, 'ready'])->middleware('permission:sales.delivery_orders.approve');
+    Route::patch('/delivery-orders/{id}/ship', [DeliveryOrderController::class, 'ship'])->middleware('permission:sales.delivery_orders.approve');
+    Route::patch('/delivery-orders/{id}/deliver', [DeliveryOrderController::class, 'deliver'])->middleware('permission:sales.delivery_orders.approve');
+    Route::patch('/delivery-orders/{id}/cancel', [DeliveryOrderController::class, 'cancel'])->middleware('permission:sales.delivery_orders.delete');
+    Route::patch('/delivery-orders/{id}/void', [DeliveryOrderController::class, 'void'])->middleware('permission:sales.delivery_orders.delete');
+    Route::delete('/delivery-orders/{id}', [DeliveryOrderController::class, 'destroy'])->middleware('permission:sales.delivery_orders.delete');
 
     Route::get('/proformas', [ProformaInvoiceController::class, 'index'])->middleware('permission:sales.proformas.view');
     Route::get('/proformas/adjacent', [ProformaInvoiceController::class, 'adjacent'])->middleware('permission:sales.proformas.view');
     Route::post('/proformas', [ProformaInvoiceController::class, 'store'])->middleware('permission:sales.proformas.create');
     Route::get('/proformas/{id}', [ProformaInvoiceController::class, 'show'])->middleware('permission:sales.proformas.view');
     Route::patch('/proformas/{id}', [ProformaInvoiceController::class, 'update'])->middleware('permission:sales.proformas.edit');
-    Route::post('/proformas/from-sales-order/{salesOrderId}', [ProformaInvoiceController::class, 'createFromSalesOrder'])->middleware('permission:sales.proformas.convert');
-    Route::patch('/proformas/{id}/issue', [ProformaInvoiceController::class, 'issue'])->middleware('permission:sales.proformas.issue');
-    Route::patch('/proformas/{id}/accept', [ProformaInvoiceController::class, 'accept'])->middleware('permission:sales.proformas.issue');
-    Route::patch('/proformas/{id}/cancel', [ProformaInvoiceController::class, 'cancel'])->middleware('permission:sales.proformas.cancel');
+    Route::post('/proformas/from-sales-order/{salesOrderId}', [ProformaInvoiceController::class, 'createFromSalesOrder'])->middleware('permission:sales.documents.convert');
+    Route::patch('/proformas/{id}/issue', [ProformaInvoiceController::class, 'issue'])->middleware('permission:sales.proformas.approve');
+    Route::patch('/proformas/{id}/accept', [ProformaInvoiceController::class, 'accept'])->middleware('permission:sales.proformas.approve');
+    Route::patch('/proformas/{id}/cancel', [ProformaInvoiceController::class, 'cancel'])->middleware('permission:sales.proformas.delete');
 
     Route::get('/invoices', [SalesInvoiceController::class, 'index'])->middleware('permission:sales.invoices.view');
     Route::get('/invoices/export', [SalesInvoiceController::class, 'exportExcel'])->middleware('permission:sales.invoices.view');
@@ -79,33 +79,33 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('sales')->group(fu
     Route::post('/invoices/from-delivery-order/{deliveryOrderId}', [SalesInvoiceController::class, 'createFromDeliveryOrder'])->middleware('permission:sales.invoices.create');
     Route::post('/invoices/from-proforma/{proformaId}', [SalesInvoiceController::class, 'createFromProforma'])->middleware('permission:sales.invoices.create');
     Route::patch('/invoices/{id}/approve', [SalesInvoiceController::class, 'approve'])->middleware('permission:sales.invoices.approve');
-    Route::patch('/invoices/{id}/post', [SalesInvoiceController::class, 'post'])->middleware('permission:sales.invoices.post');
-    Route::post('/invoices/bulk-post', [SalesInvoiceController::class, 'bulkPost'])->middleware('permission:sales.invoices.post');
-    Route::patch('/invoices/{id}/void', [SalesInvoiceController::class, 'void'])->middleware('permission:sales.invoices.void');
+    Route::patch('/invoices/{id}/post', [SalesInvoiceController::class, 'post'])->middleware('permission:sales.invoices.approve');
+    Route::post('/invoices/bulk-post', [SalesInvoiceController::class, 'bulkPost'])->middleware('permission:sales.invoices.approve');
+    Route::patch('/invoices/{id}/void', [SalesInvoiceController::class, 'void'])->middleware('permission:sales.invoices.delete');
     // Hapus mengikuti mode lock/open; draft = izin edit, sudah berefek = dibatalkan seperti void.
-    Route::delete('/invoices/{id}', [SalesInvoiceController::class, 'destroy'])->middleware('permission:sales.invoices.edit|sales.invoices.void');
+    Route::delete('/invoices/{id}', [SalesInvoiceController::class, 'destroy'])->middleware('permission:sales.invoices.delete');
 
     Route::get('/customer-deposits', [CustomerDepositController::class, 'index'])->middleware('permission:sales.deposits.view');
     Route::get('/customer-deposits/adjacent', [CustomerDepositController::class, 'adjacent'])->middleware('permission:sales.deposits.view');
     Route::post('/customer-deposits', [CustomerDepositController::class, 'store'])->middleware('permission:sales.deposits.create');
     Route::get('/customer-deposits/available', [CustomerDepositController::class, 'available'])->middleware('permission:sales.deposits.view|sales.receipts.view');
     Route::get('/customer-deposits/{id}', [CustomerDepositController::class, 'show'])->middleware('permission:sales.deposits.view');
-    Route::patch('/customer-deposits/{id}/post', [CustomerDepositController::class, 'post'])->middleware('permission:sales.deposits.post');
-    Route::patch('/customer-deposits/{id}/void', [CustomerDepositController::class, 'void'])->middleware('permission:sales.deposits.void');
+    Route::patch('/customer-deposits/{id}/post', [CustomerDepositController::class, 'post'])->middleware('permission:sales.deposits.approve');
+    Route::patch('/customer-deposits/{id}/void', [CustomerDepositController::class, 'void'])->middleware('permission:sales.deposits.delete');
     Route::patch('/customer-deposits/{id}', [CustomerDepositController::class, 'update'])->middleware('permission:sales.deposits.create');
-    Route::delete('/customer-deposits/{id}', [CustomerDepositController::class, 'destroy'])->middleware('permission:sales.deposits.create|sales.deposits.void');
+    Route::delete('/customer-deposits/{id}', [CustomerDepositController::class, 'destroy'])->middleware('permission:sales.deposits.delete');
     Route::patch('/customer-deposits/{id}/refund', [CustomerDepositController::class, 'refund'])->middleware('permission:sales.deposits.refund');
-    Route::post('/customer-deposits/{id}/allocate-to-invoice/{invoiceId}', [CustomerDepositController::class, 'allocateToInvoice'])->middleware('permission:sales.deposits.post');
+    Route::post('/customer-deposits/{id}/allocate-to-invoice/{invoiceId}', [CustomerDepositController::class, 'allocateToInvoice'])->middleware('permission:sales.deposits.approve');
 
     Route::get('/receipts', [SalesReceiptController::class, 'index'])->middleware('permission:sales.receipts.view');
     Route::get('/receipts/adjacent', [SalesReceiptController::class, 'adjacent'])->middleware('permission:sales.receipts.view');
     Route::post('/receipts', [SalesReceiptController::class, 'store'])->middleware('permission:sales.receipts.create');
     Route::get('/receipts/customer-context', [SalesReceiptController::class, 'customerContext'])->middleware('permission:sales.receipts.view');
     Route::get('/receipts/{id}', [SalesReceiptController::class, 'show'])->middleware('permission:sales.receipts.view');
-    Route::patch('/receipts/{id}/post', [SalesReceiptController::class, 'post'])->middleware('permission:sales.receipts.post');
-    Route::patch('/receipts/{id}/void', [SalesReceiptController::class, 'void'])->middleware('permission:sales.receipts.void');
+    Route::patch('/receipts/{id}/post', [SalesReceiptController::class, 'post'])->middleware('permission:sales.receipts.approve');
+    Route::patch('/receipts/{id}/void', [SalesReceiptController::class, 'void'])->middleware('permission:sales.receipts.delete');
     Route::patch('/receipts/{id}', [SalesReceiptController::class, 'update'])->middleware('permission:sales.receipts.create');
-    Route::delete('/receipts/{id}', [SalesReceiptController::class, 'destroy'])->middleware('permission:sales.receipts.create|sales.receipts.void');
+    Route::delete('/receipts/{id}', [SalesReceiptController::class, 'destroy'])->middleware('permission:sales.receipts.delete');
 
     Route::get('/returns', [SalesReturnController::class, 'index'])->middleware('permission:sales.returns.view');
     Route::get('/returns/adjacent', [SalesReturnController::class, 'adjacent'])->middleware('permission:sales.returns.view');
@@ -115,7 +115,7 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('sales')->group(fu
     Route::post('/returns/from-invoice/{invoiceId}', [SalesReturnController::class, 'createFromSalesInvoice'])->middleware('permission:sales.returns.create');
     Route::post('/returns/from-delivery-order/{deliveryOrderId}', [SalesReturnController::class, 'createFromDeliveryOrder'])->middleware('permission:sales.returns.create');
     Route::patch('/returns/{id}/approve', [SalesReturnController::class, 'approve'])->middleware('permission:sales.returns.approve');
-    Route::patch('/returns/{id}/post', [SalesReturnController::class, 'post'])->middleware('permission:sales.returns.post');
-    Route::patch('/returns/{id}/void', [SalesReturnController::class, 'void'])->middleware('permission:sales.returns.void');
-    Route::delete('/returns/{id}', [SalesReturnController::class, 'destroy'])->middleware('permission:sales.returns.create|sales.returns.void');
+    Route::patch('/returns/{id}/post', [SalesReturnController::class, 'post'])->middleware('permission:sales.returns.approve');
+    Route::patch('/returns/{id}/void', [SalesReturnController::class, 'void'])->middleware('permission:sales.returns.delete');
+    Route::delete('/returns/{id}', [SalesReturnController::class, 'destroy'])->middleware('permission:sales.returns.delete');
 });

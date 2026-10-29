@@ -52,6 +52,25 @@ class UserQuotaTest extends TestCase
         $this->assertNotNull($owner->id);
     }
 
+    public function test_assignment_command_persists_direct_permissions(): void
+    {
+        $plan = $this->plan('basic', 'Basic', maxUsers: 3);
+        [, $company] = $this->seedCompany($plan);
+        $staff = User::factory()->create(['status' => 'active']);
+
+        $this->artisan('company:assign-user', ['--company-id' => $company->id, '--email' => $staff->email, '--permissions' => 'sales.invoices.view'])
+            ->assertExitCode(0);
+        $member = CompanyUser::query()->where('company_id', $company->id)->where('user_id', $staff->id)->firstOrFail();
+        $this->assertFalse($member->full_access);
+        $this->assertTrue($member->assignedPermissions()->where('key', 'sales.invoices.view')->exists());
+
+        $this->artisan('company:assign-user', ['--company-id' => $company->id, '--email' => $staff->email, '--full-access' => true])
+            ->assertExitCode(0);
+        $this->assertTrue($member->refresh()->full_access);
+        $this->artisan('company:assign-user', ['--company-id' => $company->id, '--email' => $staff->email, '--permissions' => 'unknown.permission'])
+            ->assertExitCode(1);
+    }
+
     public function test_users_can_be_added_up_to_the_plan_limit(): void
     {
         $plan = $this->plan('basic', 'Basic', maxUsers: 3);
@@ -99,7 +118,7 @@ class UserQuotaTest extends TestCase
         // Perusahaan sudah penuh, tapi mengubah role tidak menambah siapa pun.
         $assignment = $this->assign($company, $staff, 'admin');
 
-        $this->assertSame('admin', $assignment->role);
+        $this->assertTrue($assignment->full_access);
     }
 
     public function test_reactivating_an_inactive_user_is_blocked_when_full(): void
@@ -189,7 +208,8 @@ class UserQuotaTest extends TestCase
         return app(CompanyUserAssignmentService::class)->assign([
             'company_id' => $company->id,
             'email' => $user->email,
-            'role' => $role,
+            'full_access' => $role === 'admin',
+            'permissions' => [],
         ]);
     }
 

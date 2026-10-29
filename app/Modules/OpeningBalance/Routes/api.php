@@ -13,11 +13,11 @@ use Illuminate\Support\Facades\Route;
  */
 Route::middleware(['auth:sanctum', 'company.access'])->prefix('opening-balance')->group(function () {
     Route::get('/status', [OpeningBalanceController::class, 'status'])
-        ->middleware('permission:opening_balance.view');
+        ->middleware('permission:accounting.opening_balance.view');
     Route::put('/opening-date', [OpeningBalanceController::class, 'setOpeningDate'])
-        ->middleware('permission:opening_balance.manage');
+        ->middleware('permission:accounting.opening_balance.edit');
     Route::post('/close-clearing', [OpeningBalanceController::class, 'closeClearing'])
-        ->middleware('permission:opening_balance.post');
+        ->middleware('permission:accounting.opening_balance.approve');
     Route::delete('/journals/{id}', [OpeningBalanceController::class, 'voidJournal'])
-        ->middleware('permission:opening_balance.reopen');
+        ->middleware('permission:accounting.opening_balance.reopen');
 });

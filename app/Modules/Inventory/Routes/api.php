@@ -26,11 +26,11 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('inventory')->grou
     Route::get('/stock-movements/{id}', [StockMovementController::class, 'show'])
         ->middleware('permission:inventory.movements.view');
     Route::patch('/stock-movements/{id}/post', [StockMovementController::class, 'post'])
-        ->middleware('permission:inventory.movements.post');
+        ->middleware('permission:inventory.movements.approve');
     Route::patch('/stock-movements/{id}/void', [StockMovementController::class, 'void'])
-        ->middleware('permission:inventory.movements.void');
-    Route::patch('/stock-movements/{id}', [StockMovementController::class, 'update'])->middleware('permission:inventory.movements.create');
-    Route::delete('/stock-movements/{id}', [StockMovementController::class, 'destroy'])->middleware('permission:inventory.movements.create|inventory.movements.void');
+        ->middleware('permission:inventory.movements.delete');
+    Route::patch('/stock-movements/{id}', [StockMovementController::class, 'update'])->middleware('permission:inventory.movements.edit');
+    Route::delete('/stock-movements/{id}', [StockMovementController::class, 'destroy'])->middleware('permission:inventory.movements.delete');
 
     Route::get('/stock-adjustments', [StockAdjustmentController::class, 'index'])
         ->middleware('permission:inventory.adjustments.view');
@@ -45,10 +45,10 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('inventory')->grou
     Route::patch('/stock-adjustments/{id}/approve', [StockAdjustmentController::class, 'approve'])
         ->middleware('permission:inventory.adjustments.approve');
     Route::patch('/stock-adjustments/{id}/post', [StockAdjustmentController::class, 'post'])
-        ->middleware('permission:inventory.adjustments.post');
+        ->middleware('permission:inventory.adjustments.approve');
     Route::patch('/stock-adjustments/{id}/void', [StockAdjustmentController::class, 'void'])
-        ->middleware('permission:inventory.adjustments.void');
-    Route::delete('/stock-adjustments/{id}', [StockAdjustmentController::class, 'destroy'])->middleware('permission:inventory.adjustments.edit|inventory.adjustments.void');
+        ->middleware('permission:inventory.adjustments.delete');
+    Route::delete('/stock-adjustments/{id}', [StockAdjustmentController::class, 'destroy'])->middleware('permission:inventory.adjustments.delete');
 
     Route::get('/stock-opnames', [StockOpnameController::class, 'index'])
         ->middleware('permission:inventory.opname.view');
@@ -65,21 +65,21 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('inventory')->grou
     Route::patch('/stock-opnames/{id}/counted', [StockOpnameController::class, 'markCounted'])
         ->middleware('permission:inventory.opname.edit');
     Route::patch('/stock-opnames/{id}/finalize', [StockOpnameController::class, 'finalize'])
-        ->middleware('permission:inventory.opname.finalize');
+        ->middleware('permission:inventory.opname.approve');
     Route::patch('/stock-opnames/{id}/void', [StockOpnameController::class, 'void'])
-        ->middleware('permission:inventory.opname.finalize');
-    Route::patch('/stock-opnames/{id}/reopen', [StockOpnameController::class, 'reopen'])->middleware('permission:inventory.opname.finalize');
-    Route::delete('/stock-opnames/{id}', [StockOpnameController::class, 'destroy'])->middleware('permission:inventory.opname.edit|inventory.opname.finalize');
+        ->middleware('permission:inventory.opname.approve');
+    Route::patch('/stock-opnames/{id}/reopen', [StockOpnameController::class, 'reopen'])->middleware('permission:inventory.opname.approve');
+    Route::delete('/stock-opnames/{id}', [StockOpnameController::class, 'destroy'])->middleware('permission:inventory.opname.delete');
 
     Route::prefix('reports')->group(function () {
-        Route::get('/stock-balances', [InventoryReportController::class, 'stockBalances'])->middleware('permission:inventory.reports.view');
-        Route::get('/stock-movements', [InventoryReportController::class, 'stockMovements'])->middleware('permission:inventory.reports.view');
-        Route::get('/stock-card', [InventoryReportController::class, 'stockCard'])->middleware('permission:inventory.reports.view');
-        Route::get('/valuation', [InventoryReportController::class, 'valuation'])->middleware('permission:inventory.reports.view');
-        Route::get('/low-stock', [InventoryReportController::class, 'lowStock'])->middleware('permission:inventory.reports.view');
-        Route::get('/negative-stock', [InventoryReportController::class, 'negativeStock'])->middleware('permission:inventory.reports.view');
-        Route::get('/aging', [InventoryReportController::class, 'aging'])->middleware('permission:inventory.reports.view');
-        Route::get('/opname-worksheet', [InventoryReportController::class, 'opnameWorksheet'])->middleware('permission:inventory.reports.view');
+        Route::get('/stock-balances', [InventoryReportController::class, 'stockBalances'])->middleware('permission:reports.inventory.view');
+        Route::get('/stock-movements', [InventoryReportController::class, 'stockMovements'])->middleware('permission:reports.inventory.view');
+        Route::get('/stock-card', [InventoryReportController::class, 'stockCard'])->middleware('permission:reports.inventory.view');
+        Route::get('/valuation', [InventoryReportController::class, 'valuation'])->middleware('permission:reports.inventory.view');
+        Route::get('/low-stock', [InventoryReportController::class, 'lowStock'])->middleware('permission:reports.inventory.view');
+        Route::get('/negative-stock', [InventoryReportController::class, 'negativeStock'])->middleware('permission:reports.inventory.view');
+        Route::get('/aging', [InventoryReportController::class, 'aging'])->middleware('permission:reports.inventory.view');
+        Route::get('/opname-worksheet', [InventoryReportController::class, 'opnameWorksheet'])->middleware('permission:reports.inventory.view');
     });
 
     Route::get('/valuation', [InventoryValuationController::class, 'current'])

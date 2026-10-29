@@ -15,6 +15,7 @@ use App\Shared\Api\ApiErrorCode;
 use App\Shared\Api\ApiResponse;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Export\ExcelExportService;
+use App\Shared\Permission\PermissionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -27,6 +28,7 @@ class ImportController extends Controller
         private readonly ImportBatchService $batches,
         private readonly ImportTemplateService $templates,
         private readonly ExcelExportService $excel,
+        private readonly PermissionService $permissions,
     ) {}
 
     /**
@@ -38,7 +40,7 @@ class ImportController extends Controller
     public function profiles(): JsonResponse
     {
         $profiles = collect((array) config('imports.profiles', []))
-            ->filter(fn (array $profile, string $key): bool => $this->batches->isCommittable($key))
+            ->filter(fn (array $profile, string $key): bool => $this->batches->isCommittable($key) && $this->canImport($key))
             ->map(fn (array $profile, string $key) => [
                 'key' => $key,
                 'label' => $profile['label'],
@@ -77,6 +79,10 @@ class ImportController extends Controller
 
     public function store(StoreImportRequest $request): JsonResponse
     {
+        if (! $this->batches->isCommittable((string) $request->validated('profile'))) {
+            throw ApiException::make(ApiErrorCode::VALIDATION_ERROR, 'Profil impor belum didukung.', 422);
+        }
+        $this->assertImport((string) $request->validated('profile'));
         try {
             $result = $this->batches->upload(
                 (string) $request->validated('profile'),
@@ -102,6 +108,8 @@ class ImportController extends Controller
      */
     public function sheet(SelectImportSheetRequest $request, string $uuid): JsonResponse
     {
+        $this->assertBatchImport($uuid);
+
         return $this->successResponse(
             $this->batches->selectSheet($uuid, (string) $request->validated('sheet')),
             'Import sheet selected.'
@@ -110,6 +118,8 @@ class ImportController extends Controller
 
     public function mapping(UpdateImportMappingRequest $request, string $uuid): JsonResponse
     {
+        $this->assertBatchImport($uuid);
+
         return $this->successResponse(
             $this->batches->applyMapping($uuid, $request->validated('column_map')),
             'Import mapping saved and validated.'
@@ -118,16 +128,22 @@ class ImportController extends Controller
 
     public function show(string $uuid): JsonResponse
     {
+        $this->assertBatchImport($uuid);
+
         return $this->successResponse($this->batches->show($uuid), 'Import batch retrieved.');
     }
 
     public function rows(Request $request, string $uuid): JsonResponse
     {
+        $this->assertBatchImport($uuid);
+
         return $this->listResponse($this->batches->rows($uuid, $request->query()), $request, 'Import rows retrieved.');
     }
 
     public function commit(string $uuid): JsonResponse
     {
+        $this->assertBatchImport($uuid);
+
         return $this->successResponse($this->batches->commit($uuid), 'Import batch committed.');
     }
 
@@ -137,7 +153,7 @@ class ImportController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        return $this->listResponse($this->batches->list($request->query()), $request, 'Import batches retrieved.');
+        return $this->listResponse($this->batches->list([...$request->query(), 'allowed_profiles' => $this->allowedProfiles()]), $request, 'Import batches retrieved.');
     }
 
     /**
@@ -145,6 +161,8 @@ class ImportController extends Controller
      */
     public function revert(RevertImportRequest $request, string $uuid): JsonResponse
     {
+        $this->assertBatchImport($uuid);
+
         return $this->successResponse(
             $this->batches->revert($uuid, (string) $request->validated('reason')),
             'Import batch reverted.'
@@ -153,9 +171,41 @@ class ImportController extends Controller
 
     public function destroy(string $uuid): JsonResponse
     {
+        $this->assertBatchImport($uuid);
         $this->batches->cancel($uuid);
 
         return $this->successResponse(null, 'Import batch cancelled.');
+    }
+
+    private function allowedProfiles(): array
+    {
+        return array_values(array_filter(array_keys((array) config('imports.profiles', [])), fn (string $profile) => $this->canImport($profile)));
+    }
+
+    private function canImport(string $profile): bool
+    {
+        $permission = match ($profile) {
+            'contact', 'product', 'chart_of_account', 'opening_balance', 'fixed_asset_opening' => 'master_data.import.execute',
+            'sales_invoice' => 'sales.invoices.import',
+            'vendor_bill' => 'purchase.bills.import',
+            'journal_entry' => 'accounting.journals.import',
+            default => null,
+        };
+
+        return $permission !== null && $this->permissions->can($permission);
+    }
+
+    private function assertImport(string $profile): void
+    {
+        if (! $this->canImport($profile)) {
+            throw ApiException::make(ApiErrorCode::PERMISSION_DENIED, 'User does not have permission for this import profile.', 403);
+        }
+    }
+
+    private function assertBatchImport(string $uuid): void
+    {
+        $batch = ImportBatch::query()->where('uuid', $uuid)->firstOrFail();
+        $this->assertImport($batch->profile);
     }
 
     private function assertProfileIn(string $profile, array $allowed, string $group): void
@@ -176,6 +226,7 @@ class ImportController extends Controller
      */
     public function exportErrors(string $uuid, ExcelExportService $excel): StreamedResponse
     {
+        $this->assertBatchImport($uuid);
         $batch = ImportBatch::query()->where('uuid', $uuid)->firstOrFail();
 
         $rows = $batch->rows()
@@ -222,6 +273,8 @@ class ImportController extends Controller
      */
     public function template(string $profile): StreamedResponse
     {
+        $this->assertImport($profile);
+
         return $this->excel->downloadTemplate($this->templates->template($profile));
     }
 }

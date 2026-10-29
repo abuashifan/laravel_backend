@@ -20,7 +20,7 @@ class CompanyAccessService
         return ['full_access' => (bool) $member->full_access, 'is_owner' => (bool) $member->is_owner, 'permissions' => $member->assignedPermissions()->pluck('permissions.key')->sort()->values()->all(), 'status' => $member->status];
     }
 
-    public function update(CompanyUser $member, bool $fullAccess, array $keys, int $actor, string $action, array $metadata = []): void
+    public function update(CompanyUser $member, bool $fullAccess, array $keys, ?int $actor, string $action, array $metadata = []): void
     {
         DB::transaction(function () use ($member, $fullAccess, $keys, $actor, $action, $metadata): void {
             Company::query()->whereKey($member->company_id)->lockForUpdate()->firstOrFail();
@@ -73,7 +73,7 @@ class CompanyAccessService
         throw ApiException::make('LAST_ACCESS_MANAGER_REQUIRED', 'At least one active user must be able to edit access.', 422);
     }
 
-    public function record(string $action, CompanyUser $member, int $actor, array $before, array $after, array $metadata = []): void
+    public function record(string $action, CompanyUser $member, ?int $actor, array $before, array $after, array $metadata = []): void
     {
         $logged = $this->audit->logSuccess(['company_id' => $member->company_id, 'user_id' => $actor, 'event' => $action, 'action' => $action, 'module' => 'access', 'message' => 'Access management change.', 'record_type' => CompanyUser::class, 'record_id' => $member->id, 'old_values' => $before, 'new_values' => $after, 'metadata' => $metadata], tenant: false);
         if (! $logged) {

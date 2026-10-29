@@ -79,13 +79,15 @@ class SeedDemoCompaniesCommand extends Command
         $assignmentService->assign([
             'company_id' => $company1->id,
             'email' => $user->email,
-            'role' => 'owner',
+            'full_access' => true,
+            'permissions' => [],
         ]);
 
         $assignmentService->assign([
             'company_id' => $company2->id,
             'email' => $user->email,
-            'role' => 'admin',
+            'full_access' => true,
+            'permissions' => [],
         ]);
 
         $this->info('Demo seed completed successfully.');

@@ -22,9 +22,9 @@ $masterProfiles = ['contact', 'product', 'chart_of_account', 'opening_balance', 
 $transactionProfiles = ['sales_invoice', 'vendor_bill', 'journal_entry'];
 
 // ── Master data imports (Basic+) ─────────────────────────────────────
-Route::middleware(['auth:sanctum', 'company.access', 'permission:masterdata.import'])
+Route::middleware(['auth:sanctum', 'company.access', 'permission:master_data.import.execute'])
     ->prefix('imports/master')
-    ->group(function () use ($masterProfiles) {
+    ->group(function () {
         Route::get('/profiles', [ImportController::class, 'profiles']);
         Route::get('/templates/{profile}', [ImportController::class, 'template']);
         Route::get('/batches', [ImportController::class, 'index']);
@@ -34,15 +34,15 @@ Route::middleware(['auth:sanctum', 'company.access', 'permission:masterdata.impo
         Route::get('/{uuid}', [ImportController::class, 'show']);
         Route::get('/{uuid}/rows', [ImportController::class, 'rows']);
         Route::post('/{uuid}/commit', [ImportController::class, 'commit']);
-        Route::post('/{uuid}/revert', [ImportController::class, 'revert']);
+        Route::post('/{uuid}/revert', [ImportController::class, 'revert'])->middleware('permission:master_data.import.revert');
         Route::delete('/{uuid}', [ImportController::class, 'destroy']);
         Route::get('/{uuid}/export-errors', [ImportController::class, 'exportErrors']);
     });
 
 // ── Transaction imports (Pro+) ───────────────────────────────────────
-Route::middleware(['auth:sanctum', 'company.access', 'permission:transactions.import'])
+Route::middleware(['auth:sanctum', 'company.access', 'permission:accounting.journals.import|sales.invoices.import|purchase.bills.import'])
     ->prefix('imports/transactions')
-    ->group(function () use ($transactionProfiles) {
+    ->group(function () {
         Route::get('/profiles', [ImportController::class, 'profiles']);
         Route::get('/templates/{profile}', [ImportController::class, 'template']);
         Route::get('/batches', [ImportController::class, 'index']);
@@ -52,7 +52,7 @@ Route::middleware(['auth:sanctum', 'company.access', 'permission:transactions.im
         Route::get('/{uuid}', [ImportController::class, 'show']);
         Route::get('/{uuid}/rows', [ImportController::class, 'rows']);
         Route::post('/{uuid}/commit', [ImportController::class, 'commit']);
-        Route::post('/{uuid}/revert', [ImportController::class, 'revert']);
+        Route::post('/{uuid}/revert', [ImportController::class, 'revert'])->middleware('permission:master_data.import.revert');
         Route::delete('/{uuid}', [ImportController::class, 'destroy']);
         Route::get('/{uuid}/export-errors', [ImportController::class, 'exportErrors']);
     });
@@ -62,27 +62,27 @@ Route::middleware(['auth:sanctum', 'company.access', 'permission:transactions.im
 // Middleware tier hanya berlaku di rute master/transactions di atas.
 Route::middleware(['auth:sanctum', 'company.access'])->group(function () {
     Route::get('/imports', [ImportController::class, 'index'])
-        ->middleware('permission:imports.view');
+        ->middleware('permission:master_data.import.execute|accounting.journals.import|sales.invoices.import|purchase.bills.import');
     Route::get('/imports/profiles', [ImportController::class, 'profiles'])
-        ->middleware('permission:imports.view');
+        ->middleware('permission:master_data.import.execute|accounting.journals.import|sales.invoices.import|purchase.bills.import');
     Route::get('/imports/templates/{profile}', [ImportController::class, 'template'])
-        ->middleware('permission:imports.templates.view');
+        ->middleware('permission:master_data.import.execute|accounting.journals.import|sales.invoices.import|purchase.bills.import');
     Route::post('/imports', [ImportController::class, 'store'])
-        ->middleware('permission:imports.upload');
+        ->middleware('permission:master_data.import.execute|accounting.journals.import|sales.invoices.import|purchase.bills.import');
     Route::patch('/imports/{uuid}/sheet', [ImportController::class, 'sheet'])
-        ->middleware('permission:imports.map');
+        ->middleware('permission:master_data.import.execute|accounting.journals.import|sales.invoices.import|purchase.bills.import');
     Route::patch('/imports/{uuid}/mapping', [ImportController::class, 'mapping'])
-        ->middleware('permission:imports.map');
+        ->middleware('permission:master_data.import.execute|accounting.journals.import|sales.invoices.import|purchase.bills.import');
     Route::get('/imports/{uuid}', [ImportController::class, 'show'])
-        ->middleware('permission:imports.view');
+        ->middleware('permission:master_data.import.execute|accounting.journals.import|sales.invoices.import|purchase.bills.import');
     Route::get('/imports/{uuid}/rows', [ImportController::class, 'rows'])
-        ->middleware('permission:imports.view');
+        ->middleware('permission:master_data.import.execute|accounting.journals.import|sales.invoices.import|purchase.bills.import');
     Route::post('/imports/{uuid}/commit', [ImportController::class, 'commit'])
-        ->middleware('permission:imports.commit');
+        ->middleware('permission:master_data.import.execute|accounting.journals.import|sales.invoices.import|purchase.bills.import');
     Route::post('/imports/{uuid}/revert', [ImportController::class, 'revert'])
-        ->middleware('permission:imports.revert');
+        ->middleware('permission:master_data.import.revert');
     Route::delete('/imports/{uuid}', [ImportController::class, 'destroy'])
-        ->middleware('permission:imports.cancel');
+        ->middleware('permission:master_data.import.execute|accounting.journals.import|sales.invoices.import|purchase.bills.import');
     Route::get('/imports/{uuid}/export-errors', [ImportController::class, 'exportErrors'])
-        ->middleware('permission:imports.view');
+        ->middleware('permission:master_data.import.execute|accounting.journals.import|sales.invoices.import|purchase.bills.import');
 });

@@ -14,7 +14,8 @@ class CreateUserCommand extends Command
         {--email= : Email user}
         {--password= : Password user (min 8 karakter)}
         {--assign-company= : Opsional, company_id yang langsung diberikan ke user}
-        {--role=owner : Role di company saat --assign-company dipakai}';
+        {--full-access : Akses penuh di perusahaan}
+        {--permissions= : Kunci izin matriks dipisahkan koma}';
 
     protected $description = 'Buat akun user baru (registrasi mandiri ditutup, hanya owner aplikasi yang membuat akun)';
 
@@ -80,7 +81,8 @@ class CreateUserCommand extends Command
             $assignment = $assignmentService->assign([
                 'company_id' => (int) $companyIdOption,
                 'email' => $user->email,
-                'role' => (string) $this->option('role'),
+                'full_access' => (bool) $this->option('full-access'),
+                'permissions' => array_values(array_filter(array_map('trim', explode(',', (string) $this->option('permissions'))))),
             ]);
         } catch (\Throwable $e) {
             // User sudah terbuat; assignment yang gagal tidak membatalkannya.
@@ -91,7 +93,7 @@ class CreateUserCommand extends Command
         }
 
         $this->newLine();
-        $this->line('Assigned to company ID: '.$assignment->company_id.' sebagai '.$assignment->role);
+        $this->line('Assigned to company ID: '.$assignment->company_id.($assignment->full_access ? ' dengan akses penuh' : ' dengan izin terpilih'));
 
         return self::SUCCESS;
     }

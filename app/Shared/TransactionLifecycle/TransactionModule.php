@@ -43,11 +43,13 @@ class TransactionModule
             throw new InvalidArgumentException('UNKNOWN_TRANSACTION_ACTION');
         }
 
-        // inventory uses manage for create/edit/void for now (granular adjustments later)
-        if ($module === self::INVENTORY && in_array($action, [TransactionAction::CREATE, TransactionAction::EDIT, TransactionAction::VOID], true)) {
-            return 'inventory.manage';
+        if ($module !== self::JOURNAL) {
+            throw new InvalidArgumentException('TRANSACTION_FEATURE_REQUIRED');
         }
 
-        return $module.'.'.$action;
+        $legacy = 'journal.'.$action;
+
+        // Dotted keys must be read from the map as an array, not config dot paths.
+        return ((array) config('permission_renames'))[$legacy][0] ?? 'accounting.journals.'.$action;
     }
 }

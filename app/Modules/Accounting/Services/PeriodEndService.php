@@ -71,7 +71,7 @@ class PeriodEndService
 
     public function run(string $period): PeriodEndRun
     {
-        if ($this->permissionService->cannot('fixed_assets.depreciate')) {
+        if ($this->permissionService->cannot('fixed_assets.depreciation.approve')) {
             throw ApiException::make('FORBIDDEN', 'Missing permission: fixed_assets.depreciate.', 403);
         }
 

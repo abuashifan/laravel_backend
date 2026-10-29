@@ -9,36 +9,36 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('fixed-assets')->g
     Route::get('/categories', [FixedAssetCategoryController::class, 'index'])
         ->middleware('permission:fixed_assets.settings.view');
     Route::post('/categories', [FixedAssetCategoryController::class, 'store'])
-        ->middleware('permission:fixed_assets.settings.manage');
+        ->middleware('permission:fixed_assets.settings.create');
     Route::patch('/categories/{id}', [FixedAssetCategoryController::class, 'update'])
-        ->middleware('permission:fixed_assets.settings.manage');
+        ->middleware('permission:fixed_assets.settings.edit');
 
     Route::get('/', [FixedAssetController::class, 'index'])
-        ->middleware('permission:fixed_assets.view');
+        ->middleware('permission:fixed_assets.assets.view');
     // Harus sebelum `/{id}` supaya "adjacent" tidak tertangkap sebagai id.
     Route::get('/adjacent', [FixedAssetController::class, 'adjacent'])
-        ->middleware('permission:fixed_assets.view');
+        ->middleware('permission:fixed_assets.assets.view');
     Route::post('/', [FixedAssetController::class, 'store'])
-        ->middleware('permission:fixed_assets.create');
+        ->middleware('permission:fixed_assets.assets.create');
 
     Route::prefix('reports')->group(function () {
         Route::get('/register', [FixedAssetReportController::class, 'register'])
-            ->middleware('permission:fixed_assets.reports.view');
+            ->middleware('permission:reports.fixed_assets.view');
         Route::get('/depreciation', [FixedAssetReportController::class, 'depreciation'])
-            ->middleware('permission:fixed_assets.reports.view');
+            ->middleware('permission:reports.fixed_assets.view');
         Route::get('/disposals', [FixedAssetReportController::class, 'disposals'])
-            ->middleware('permission:fixed_assets.reports.view');
+            ->middleware('permission:reports.fixed_assets.view');
         Route::get('/reconciliation', [FixedAssetReportController::class, 'reconciliation'])
-            ->middleware('permission:fixed_assets.reports.view');
+            ->middleware('permission:reports.fixed_assets.view');
     });
 
     Route::get('/{id}', [FixedAssetController::class, 'show'])
-        ->middleware('permission:fixed_assets.view');
+        ->middleware('permission:fixed_assets.assets.view');
     Route::patch('/{id}', [FixedAssetController::class, 'update'])
-        ->middleware('permission:fixed_assets.edit');
+        ->middleware('permission:fixed_assets.assets.edit');
     Route::post('/{id}/capitalize', [FixedAssetController::class, 'capitalize'])
-        ->middleware('permission:fixed_assets.capitalize');
+        ->middleware('permission:fixed_assets.assets.approve');
     Route::post('/{id}/dispose', [FixedAssetController::class, 'dispose'])
-        ->middleware('permission:fixed_assets.dispose');
+        ->middleware('permission:fixed_assets.disposal.approve');
 
 });

@@ -78,4 +78,4 @@ jobs:
           restore-keys: composer-
       - run: composer install --no-interaction --prefer-dist --no-progress
       - name: Verify access migration on PostgreSQL
-        run: php artisan test tests/Feature/Permissions/LegacyAccessMigrationTest.php tests/Feature/Permissions/DirectCompanyUserPermissionTest.php tests/Feature/Access/AccessManagementTest.php
+        run: php artisan test tests/Feature/Permissions/LegacyAccessMigrationTest.php tests/Feature/Permissions/DirectCompanyUserPermissionTest.php tests/Feature/Permissions/MatrixRouteEnforcementTest.php tests/Feature/Access/AccessManagementTest.php tests/Feature/Companies/UserQuotaTest.php

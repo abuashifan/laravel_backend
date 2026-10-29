@@ -57,7 +57,7 @@ class DashboardService
             'receivable_trend' => null,
             'total_payable' => $can('purchase.ap.view') ? round((float) VendorBill::query()->whereIn('status', ['posted', 'partially_paid', 'paid'])->sum('balance_due'), 2) : null,
             'payable_trend' => null,
-            'cash_balance' => $can('cash_bank.view') ? round($endingCash, 2) : null,
+            'cash_balance' => $can('dashboard.financial.view') ? round($endingCash, 2) : null,
             'current_month_profit' => $can('dashboard.financial.view') ? round($profitLoss, 2) : null,
             'profit_trend' => null,
         ];
@@ -160,7 +160,7 @@ class DashboardService
         $subjectType = class_basename((string) $log->subject_type);
         $subjectId = (int) ($log->subject_id ?? 0);
         $title = $this->activityTitle($log);
-        $subtitle = trim(implode(' · ', array_filter([
+        $subtitle = trim(implode(' Â· ', array_filter([
             $log->user?->name,
             $this->recordNumber($log),
         ])));
