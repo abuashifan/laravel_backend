@@ -14,12 +14,6 @@ class UpdateCompanyUserPermissionRequest extends FormRequest
 
     public function rules(): array
     {
-        return [
-            'role_id' => ['nullable', 'integer', 'exists:roles,id'],
-            'overrides' => ['array'],
-            'overrides.*.permission_key' => ['required', 'string', 'exists:permissions,key', 'distinct'],
-            'overrides.*.effect' => ['required', Rule::in(['allow', 'deny'])],
-            'overrides.*.reason' => ['nullable', 'string', 'max:500'],
-        ];
+        return ['full_access' => ['required', 'boolean'], 'permissions' => ['present', 'array'], 'permissions.*' => ['required', 'string', 'distinct', Rule::in(config('permissions.matrix_keys', [])), 'exists:permissions,key']];
     }
 }

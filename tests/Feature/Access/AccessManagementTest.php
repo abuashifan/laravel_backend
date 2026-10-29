@@ -4,6 +4,7 @@ namespace Tests\Feature\Access;
 
 use App\Shared\Models\ActivityLog;
 use App\Shared\Models\Company;
+use App\Shared\Models\CompanyInvitation;
 use App\Shared\Models\CompanyUser;
 use App\Shared\Models\Role;
 use App\Shared\Models\TenantDatabase;
@@ -27,87 +28,79 @@ class AccessManagementTest extends TestCase
         $this->getJson('/api/access/company-users')->assertStatus(422);
     }
 
-    public function test_owner_can_list_users_create_role_sync_permissions_and_audit_changes(): void
+    public function test_direct_permissions_can_be_read_updated_copied_and_audited(): void
     {
         $ctx = $this->companyContext();
-
-        $this->getJson('/api/access/company-users', $ctx['headers'])
-            ->assertOk()
-            ->assertJsonCount(1, 'data');
-
-        $role = $this->postJson('/api/access/roles', [
-            'name' => 'Billing Operator',
-            'slug' => 'billing-operator',
-            'permission_keys' => ['sales.invoices.view'],
-        ], $ctx['headers'])
-            ->assertCreated()
-            ->assertJsonPath('data.company_id', $ctx['company']->id)
-            ->json('data');
-
-        $permissionResponse = $this->putJson('/api/access/roles/'.$role['id'].'/permissions', [
-            'permission_keys' => ['sales.invoices.view', 'sales.invoices.post'],
-        ], $ctx['headers'])
-            ->assertOk();
-        $this->assertContains('sales.invoices.post', $permissionResponse->json('data.permission_keys'));
-
-        $clone = $this->postJson('/api/access/roles/'.$role['id'].'/clone', [
-            'name' => 'Billing Backup',
-            'slug' => 'billing-backup',
-        ], $ctx['headers'])
-            ->assertCreated()
-            ->assertJsonPath('data.company_id', $ctx['company']->id)
-            ->json('data');
-        $this->patchJson('/api/access/roles/'.$clone['id'].'/deactivate', [], $ctx['headers'])
-            ->assertOk()
-            ->assertJsonPath('data.is_active', false);
-        $this->patchJson('/api/access/roles/'.$clone['id'].'/reactivate', [], $ctx['headers'])
-            ->assertOk()
-            ->assertJsonPath('data.is_active', true);
-
         $target = $this->companyUser($ctx['company'], 'staff@example.test', 'viewer');
-        $this->putJson('/api/access/users/'.$target->id.'/permissions', [
-            'role_id' => $role['id'],
-            'overrides' => [['permission_key' => 'sales.invoices.void', 'effect' => 'allow']],
-        ], $ctx['headers'])
-            ->assertOk()
-            ->assertJsonPath('data.company_user.role_id', $role['id']);
-
-        $this->getJson('/api/access/audit', $ctx['headers'])
-            ->assertOk()
-            ->assertJsonFragment(['action' => 'access.role.created'])
-            ->assertJsonFragment(['action' => 'access.permissions.update']);
-
-        $this->getJson('/api/access/audit?role_id='.$role['id'], $ctx['headers'])
-            ->assertOk()
-            ->assertJsonFragment(['action' => 'access.role.permissions.synced']);
-
-        $this->assertGreaterThanOrEqual(6, ActivityLog::query()->where('module', 'access')->count());
+        $source = $this->companyUser($ctx['company'], 'source@example.test', 'viewer');
+        $this->getJson('/api/access/users/'.$target->id.'/permissions', $ctx['headers'])->assertOk()->assertJsonStructure(['data' => ['full_access', 'is_owner', 'permissions', 'catalog' => ['modules', 'blocked_by_plan_keys']]]);
+        $this->putJson('/api/access/users/'.$target->id.'/permissions', ['full_access' => false, 'permissions' => ['sales.invoices.view']], $ctx['headers'])->assertOk()->assertJsonPath('data.permissions.0', 'sales.invoices.view');
+        $this->postJson('/api/access/users/'.$source->id.'/copy-access', ['source_company_user_id' => $target->id], $ctx['headers'])->assertOk()->assertJsonPath('data.permissions.0', 'sales.invoices.view');
+        $log = ActivityLog::query()->where('action', 'access.permissions.update')->firstOrFail();
+        $this->assertSame(['sales.invoices.view'], $log->properties['new_values']['permissions']);
+        $this->assertArrayHasKey('old_values', $log->properties);
+        $this->getJson('/api/access/roles', $ctx['headers'])->assertNotFound();
+        $this->putJson('/api/access/users/'.$target->id.'/permissions', ['full_access' => false, 'permissions' => ['not.a.permission']], $ctx['headers'])->assertStatus(422);
     }
 
-    public function test_system_role_is_locked_and_custom_role_is_company_scoped(): void
+    public function test_owner_and_last_manager_are_protected_and_self_escalation_is_denied(): void
     {
-        $ctxA = $this->companyContext();
-        $systemRole = Role::query()->where('slug', 'viewer')->firstOrFail();
-        $this->patchJson('/api/access/roles/'.$systemRole->id, ['name' => 'Changed'], $ctxA['headers'])
-            ->assertStatus(422)
-            ->assertJsonPath('code', 'SYSTEM_ROLE_READ_ONLY');
+        $ctx = $this->companyContext();
+        $owner = $ctx['company_user'];
+        $manager = $this->companyUser($ctx['company'], 'manager@example.test', 'viewer');
+        $this->assignTestPermissions($manager, ['access.users.view', 'access.users.edit', 'access.users.delete']);
+        Sanctum::actingAs($manager->user, ['*']);
+        $this->patchJson('/api/access/company-users/'.$owner->id.'/deactivate', [], $ctx['headers'])->assertStatus(422)->assertJsonPath('code', 'OWNER_PROTECTED');
+        $this->putJson('/api/access/users/'.$owner->id.'/permissions', ['full_access' => false, 'permissions' => []], $ctx['headers'])->assertStatus(422)->assertJsonPath('code', 'OWNER_ACCESS_REQUIRED');
+        $this->putJson('/api/access/users/'.$manager->id.'/permissions', ['full_access' => true, 'permissions' => []], $ctx['headers'])->assertStatus(422)->assertJsonPath('code', 'SELF_ACCESS_INCREASE_NOT_ALLOWED');
+        $owner->forceFill(['status' => 'inactive'])->save();
+        $this->putJson('/api/access/users/'.$manager->id.'/permissions', ['full_access' => false, 'permissions' => []], $ctx['headers'])->assertStatus(422)->assertJsonPath('code', 'LAST_ACCESS_MANAGER_REQUIRED');
+        $this->assertTrue($manager->assignedPermissions()->where('permissions.key', 'access.users.edit')->exists());
+    }
 
-        $custom = $this->postJson('/api/access/roles', [
-            'name' => 'Private Role',
-            'slug' => 'private-role',
-        ], $ctxA['headers'])->assertCreated()->json('data');
-        $this->patchJson('/api/access/roles/'.$custom['id'], ['is_active' => false], $ctxA['headers'])
-            ->assertOk()
-            ->assertJsonPath('data.is_active', true);
+    public function test_invitations_apply_permissions_to_the_matching_account(): void
+    {
+        $ctx = $this->companyContext();
+        $invitee = User::factory()->create(['email' => 'invitee@example.test', 'status' => 'active']);
+        $invite = $this->postJson('/api/access/invitations', ['email' => $invitee->email, 'full_access' => false, 'permissions' => ['sales.invoices.view']], $ctx['headers'])->assertCreated()->json('data');
+        $other = User::factory()->create(['status' => 'active']);
+        Sanctum::actingAs($other, ['*']);
+        $this->postJson('/api/invitations/'.$invite['token'].'/accept')->assertForbidden();
+        Sanctum::actingAs($invitee, ['*']);
+        $this->postJson('/api/invitations/'.$invite['token'].'/accept')->assertOk();
+        $member = CompanyUser::query()->where('company_id', $ctx['company']->id)->where('user_id', $invitee->id)->firstOrFail();
+        $this->assertFalse($member->full_access);
+        $this->assertTrue($member->assignedPermissions()->where('permissions.key', 'sales.invoices.view')->exists());
+        $this->postJson('/api/invitations/'.$invite['token'].'/accept')->assertStatus(422);
+    }
 
-        $ctxB = $this->companyContext();
-        $this->getJson('/api/access/roles/'.$custom['id'], $ctxB['headers'])->assertNotFound();
-        $this->postJson('/api/access/roles', [
-            'name' => 'Private Role',
-            'slug' => 'private-role',
-        ], $ctxB['headers'])
-            ->assertCreated()
-            ->assertJsonPath('data.company_id', $ctxB['company']->id);
+    public function test_company_scope_and_copy_to_self_do_not_bypass_protection(): void
+    {
+        $first = $this->companyContext();
+        $source = $this->companyUser($first['company'], 'scope-source@example.test', 'admin');
+        $second = $this->companyContext();
+        $target = $this->companyUser($second['company'], 'scope-target@example.test', 'viewer');
+        $this->getJson('/api/access/users/'.$source->id.'/permissions', $second['headers'])->assertNotFound();
+        $this->postJson('/api/access/users/'.$target->id.'/copy-access', ['source_company_user_id' => $source->id], $second['headers'])->assertNotFound();
+        $manager = $this->companyUser($second['company'], 'self-copy@example.test', 'viewer');
+        $this->assignTestPermissions($manager, ['access.users.edit']);
+        Sanctum::actingAs($manager->user, ['*']);
+        $this->postJson('/api/access/users/'.$manager->id.'/copy-access', ['source_company_user_id' => $second['company_user']->id], $second['headers'])->assertStatus(422)->assertJsonPath('code', 'SELF_ACCESS_INCREASE_NOT_ALLOWED');
+    }
+
+    public function test_invitation_rejects_expired_revoked_and_full_quota(): void
+    {
+        $ctx = $this->companyContext();
+        $invitee = User::factory()->create(['email' => 'quota@example.test', 'status' => 'active']);
+        $invite = $this->postJson('/api/access/invitations', ['email' => $invitee->email, 'full_access' => true, 'permissions' => []], $ctx['headers'])->assertCreated()->json('data');
+        $ctx['company_user']->user->forceFill(['extra_users' => 0])->save();
+        Sanctum::actingAs($invitee, ['*']);
+        $this->postJson('/api/invitations/'.$invite['token'].'/accept')->assertStatus(422)->assertJsonPath('code', 'USER_QUOTA_EXCEEDED');
+        CompanyInvitation::query()->whereKey($invite['id'])->update(['expires_at' => now()->subDay()]);
+        $this->postJson('/api/invitations/'.$invite['token'].'/accept')->assertStatus(422)->assertJsonPath('code', 'INVITATION_INVALID');
+        CompanyInvitation::query()->whereKey($invite['id'])->update(['status' => 'revoked', 'expires_at' => now()->addDay()]);
+        $this->postJson('/api/invitations/'.$invite['token'].'/accept')->assertStatus(422)->assertJsonPath('code', 'INVITATION_INVALID');
+        $this->assertDatabaseMissing('company_users', ['company_id' => $ctx['company']->id, 'user_id' => $invitee->id]);
     }
 
     public function test_invitation_lifecycle_prevents_duplicate_active_invitation_and_is_audited(): void
@@ -116,7 +109,8 @@ class AccessManagementTest extends TestCase
 
         $invitation = $this->postJson('/api/access/invitations', [
             'email' => 'invitee@example.test',
-            'role' => 'viewer',
+            'full_access' => false,
+            'permissions' => [],
         ], $ctx['headers'])
             ->assertCreated()
             ->assertJsonPath('data.status', 'pending')
@@ -124,7 +118,8 @@ class AccessManagementTest extends TestCase
 
         $this->postJson('/api/access/invitations', [
             'email' => 'invitee@example.test',
-            'role' => 'viewer',
+            'full_access' => false,
+            'permissions' => [],
         ], $ctx['headers'])->assertStatus(422)->assertJsonPath('code', 'ACTIVE_INVITATION_EXISTS');
 
         $this->postJson('/api/access/invitations/'.$invitation['id'].'/resend', [], $ctx['headers'])->assertOk();
@@ -140,7 +135,7 @@ class AccessManagementTest extends TestCase
         $ctx = $this->companyContext();
         $this->patchJson('/api/access/company-users/'.$ctx['company_user']->id.'/deactivate', [], $ctx['headers'])
             ->assertStatus(422)
-            ->assertJsonPath('code', 'SELF_ACCESS_CHANGE_NOT_ALLOWED');
+            ->assertJsonPath('code', 'OWNER_PROTECTED');
 
         $viewer = $this->companyUser($ctx['company'], 'readonly@example.test', 'viewer');
         Sanctum::actingAs($viewer->user, ['*']);
@@ -150,7 +145,7 @@ class AccessManagementTest extends TestCase
     private function companyContext(): array
     {
         $this->seed(PermissionSeeder::class);
-        $user = User::factory()->create(['status' => 'active']);
+        $user = User::factory()->create(['status' => 'active', 'extra_users' => 10]);
         $company = Company::query()->create([
             'name' => 'Access Company '.uniqid(),
             'slug' => 'access-company-'.uniqid(),

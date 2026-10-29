@@ -14,6 +14,8 @@ class CompanyInvitation extends Model
         'company_id',
         'email',
         'role',
+        'full_access',
+        'permissions',
         'token',
         'status',
         'invited_by',
@@ -24,6 +26,8 @@ class CompanyInvitation extends Model
     protected $casts = [
         'accepted_at' => 'datetime',
         'expires_at' => 'datetime',
+        'full_access' => 'boolean',
+        'permissions' => 'array',
     ];
 
     public function company(): BelongsTo
