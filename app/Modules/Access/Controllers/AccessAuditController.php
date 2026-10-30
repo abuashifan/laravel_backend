@@ -5,7 +5,6 @@ namespace App\Modules\Access\Controllers;
 use App\Http\Controllers\Controller;
 use App\Shared\Api\ApiResponse;
 use App\Shared\Models\ActivityLog;
-use App\Shared\Models\Role;
 use App\Shared\Tenant\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -24,10 +23,6 @@ class AccessAuditController extends Controller
 
         if ($request->filled('user_id')) {
             $query->where('user_id', (int) $request->input('user_id'));
-        }
-        if ($request->filled('role_id')) {
-            $query->where('subject_type', Role::class)
-                ->where('subject_id', (string) $request->input('role_id'));
         }
         if ($request->filled('action')) {
             $query->where('action', 'like', '%'.$request->input('action').'%');

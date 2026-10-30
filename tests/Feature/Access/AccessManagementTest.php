@@ -6,7 +6,6 @@ use App\Shared\Models\ActivityLog;
 use App\Shared\Models\Company;
 use App\Shared\Models\CompanyInvitation;
 use App\Shared\Models\CompanyUser;
-use App\Shared\Models\Role;
 use App\Shared\Models\TenantDatabase;
 use App\Shared\Models\User;
 use Database\Seeders\PermissionSeeder;
@@ -168,7 +167,6 @@ class AccessManagementTest extends TestCase
             'company_id' => $company->id,
             'user_id' => $user->id,
             'role' => 'owner',
-            'role_id' => Role::query()->where('slug', 'owner')->value('id'),
             'status' => 'active',
             'joined_at' => now(),
         ]);
@@ -189,7 +187,6 @@ class AccessManagementTest extends TestCase
             'company_id' => $company->id,
             'user_id' => $user->id,
             'role' => $role,
-            'role_id' => Role::query()->where('slug', $role)->value('id'),
             'status' => 'active',
             'joined_at' => now(),
         ])->setRelation('user', $user);

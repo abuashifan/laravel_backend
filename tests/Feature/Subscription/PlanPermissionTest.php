@@ -4,13 +4,11 @@ namespace Tests\Feature\Subscription;
 
 use App\Shared\Models\Company;
 use App\Shared\Models\CompanyUser;
-use App\Shared\Models\CompanyUserPermissionOverride;
 use App\Shared\Models\Permission;
 use App\Shared\Models\Plan;
 use App\Shared\Models\TenantDatabase;
 use App\Shared\Models\User;
 use App\Shared\Permission\EffectivePermissionService;
-use App\Shared\Permission\PermissionCatalogService;
 use App\Shared\Subscription\PlanPermissionResolver;
 use Database\Seeders\PermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -102,25 +100,6 @@ class PlanPermissionTest extends TestCase
     public function test_owner_still_passes_layer_two_for_permissions_the_plan_opens(): void
     {
         [$owner, $company] = $this->seedCompany(['multi_warehouse'], role: 'owner');
-
-        $this->assertTrue($this->can($company, $owner, 'warehouses.create'));
-        $this->assertSame('full_access', $this->explain($company, $owner, 'warehouses.create')['source']);
-    }
-
-    public function test_full_access_ignores_legacy_deny_override(): void
-    {
-        [$owner, $company] = $this->seedCompany(['multi_warehouse'], role: 'owner');
-        $companyUser = $this->companyUser($company, $owner);
-
-        $permission = Permission::query()->create(
-            app(PermissionCatalogService::class)->fromKey('warehouses.create', 1)
-        );
-
-        CompanyUserPermissionOverride::query()->create([
-            'company_user_id' => $companyUser->id,
-            'permission_id' => $permission->id,
-            'effect' => 'deny',
-        ]);
 
         $this->assertTrue($this->can($company, $owner, 'warehouses.create'));
         $this->assertSame('full_access', $this->explain($company, $owner, 'warehouses.create')['source']);

@@ -38,15 +38,26 @@ abstract class TestCase extends BaseTestCase
                 return;
             }
 
-            $keys = $membership->role_id && $membership->rolePreset
-                ? $membership->rolePreset->permissions()->pluck('permissions.key')->all()
-                : (array) config('permissions.roles.'.$membership->role, []);
+            // Tes boleh mendefinisikan peran kustom lewat config('permissions.roles.x').
+            $keys = (array) (config('permissions.roles.'.$membership->role) ?? self::legacyRoleTemplates()[$membership->role] ?? []);
             $renames = (array) config('permission_renames', []);
             foreach ($keys as $key) {
                 $keys = array_merge($keys, $renames[$key] ?? []);
             }
             $this->assignTestPermissions($membership, $keys);
         });
+    }
+
+    /**
+     * Template peran lama untuk fixture tes (lihat tests/Fixtures/legacy_role_templates.php).
+     *
+     * @return array<string, list<string>>
+     */
+    protected static function legacyRoleTemplates(): array
+    {
+        static $templates = null;
+
+        return $templates ??= require __DIR__.'/Fixtures/legacy_role_templates.php';
     }
 
     /** @param list<string> $keys */

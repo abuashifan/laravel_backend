@@ -2,12 +2,10 @@
 
 namespace Tests\Feature\Permissions;
 
-use App\Shared\Models\Company;
-use App\Shared\Models\CompanyUser;
-use App\Shared\Models\User;
 use App\Shared\Permission\PermissionCatalogService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class PermissionMatrixTest extends TestCase
@@ -51,10 +49,6 @@ class PermissionMatrixTest extends TestCase
     {
         DB::table('permissions')->where('key', 'cash_bank.receipts.view')->delete();
         DB::table('permissions')->where('key', 'dashboard.financial.view')->update(['module' => 'dashboard']);
-        $ownerRole = DB::table('roles')->insertGetId([
-            'name' => 'Owner', 'slug' => 'owner', 'is_system' => true, 'is_active' => true,
-            'created_at' => now(), 'updated_at' => now(),
-        ]);
 
         $migration = require database_path('migrations/2026_10_28_000002_sync_permission_matrix.php');
         $migration->up();
@@ -68,45 +62,23 @@ class PermissionMatrixTest extends TestCase
             'key' => 'dashboard.financial.view', 'module' => 'general', 'is_special' => true,
         ]);
         $this->assertSame(1, DB::table('permissions')->where('key', 'cash_bank.receipts.view')->count());
-        $permissionId = DB::table('permissions')->where('key', 'cash_bank.receipts.view')->value('id');
-        $this->assertDatabaseHas('role_permissions', ['role_id' => $ownerRole, 'permission_id' => $permissionId]);
     }
 
-    public function test_sync_migration_replaces_retired_role_and_override_permissions(): void
+    /**
+     * Tabel peran & override sudah dihapus (Fase 8); migrasi sinkron tetap aman
+     * dijalankan ulang dan tetap membuang kunci pensiun dari katalog.
+     */
+    public function test_sync_migration_removes_retired_keys_without_legacy_role_tables(): void
     {
-        $catalog = app(PermissionCatalogService::class);
-        $old = $catalog->fromKey('inventory.adjustment.create');
-        $oldId = DB::table('permissions')->insertGetId([...$old, 'created_at' => now(), 'updated_at' => now()]);
-        $newId = DB::table('permissions')->where('key', 'inventory.adjustments.create')->value('id');
-        $roleId = DB::table('roles')->insertGetId([
-            'name' => 'Test', 'slug' => 'matrix-test', 'is_system' => false, 'is_active' => true,
-            'created_at' => now(), 'updated_at' => now(),
-        ]);
-        DB::table('role_permissions')->insert([
-            'role_id' => $roleId, 'permission_id' => $oldId, 'created_at' => now(), 'updated_at' => now(),
-        ]);
-
-        $user = User::factory()->create();
-        $company = Company::query()->create([
-            'name' => 'Matrix', 'slug' => 'matrix', 'code' => 'MATRIX', 'status' => 'active', 'created_by' => $user->id,
-        ]);
-        $membership = CompanyUser::query()->create([
-            'company_id' => $company->id, 'user_id' => $user->id, 'role' => 'viewer', 'status' => 'active',
-        ]);
-        foreach ([[$oldId, 'deny'], [$newId, 'allow']] as [$id, $effect]) {
-            DB::table('company_user_permission_overrides')->insert([
-                'company_user_id' => $membership->id, 'permission_id' => $id, 'effect' => $effect,
-                'created_at' => now(), 'updated_at' => now(),
-            ]);
-        }
+        $this->assertFalse(Schema::hasTable('roles'));
+        $this->assertFalse(Schema::hasTable('company_user_permission_overrides'));
+        $old = app(PermissionCatalogService::class)->fromKey('inventory.adjustment.create');
+        DB::table('permissions')->insert([...$old, 'created_at' => now(), 'updated_at' => now()]);
 
         $migration = require database_path('migrations/2026_10_28_000002_sync_permission_matrix.php');
         $migration->up();
 
         $this->assertDatabaseMissing('permissions', ['key' => 'inventory.adjustment.create']);
-        $this->assertDatabaseHas('role_permissions', ['role_id' => $roleId, 'permission_id' => $newId]);
-        $this->assertDatabaseHas('company_user_permission_overrides', [
-            'company_user_id' => $membership->id, 'permission_id' => $newId, 'effect' => 'deny',
-        ]);
+        $this->assertDatabaseHas('permissions', ['key' => 'inventory.adjustments.create']);
     }
 }

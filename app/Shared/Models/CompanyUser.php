@@ -6,7 +6,6 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class CompanyUser extends Model
 {
@@ -18,7 +17,6 @@ class CompanyUser extends Model
         'company_id',
         'user_id',
         'role',
-        'role_id',
         'full_access',
         'is_owner',
         'status',
@@ -41,16 +39,6 @@ class CompanyUser extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
-    }
-
-    public function rolePreset(): BelongsTo
-    {
-        return $this->belongsTo(Role::class, 'role_id');
-    }
-
-    public function permissionOverrides(): HasMany
-    {
-        return $this->hasMany(CompanyUserPermissionOverride::class);
     }
 
     public function assignedPermissions(): BelongsToMany
