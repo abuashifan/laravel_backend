@@ -5,6 +5,7 @@ namespace Tests\Feature\Permissions;
 use App\Shared\Models\CompanyUser;
 use Illuminate\Routing\Route as LaravelRoute;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Testing\TestResponse;
 use Tests\Feature\Journal\JournalTestCase;
 
 /**
@@ -52,6 +53,19 @@ class RoutePermissionEnforcementTest extends JournalTestCase
         return '/'.preg_replace('/\{[^}]+\}/', '999999', $route->uri());
     }
 
+    /**
+     * Status + `meta.permission` dari respons. Rute unduhan (ekspor/templat)
+     * mengembalikan StreamedResponse yang tidak punya `status()`/`json()`.
+     *
+     * @return array{0: int, 1: ?string}
+     */
+    private function outcome(TestResponse $response): array
+    {
+        $status = $response->baseResponse->getStatusCode();
+
+        return [$status, $status === 403 ? $response->json('meta.permission') : null];
+    }
+
     public function test_every_guarded_route_uses_keys_grantable_from_the_matrix(): void
     {
         $matrix = (array) config('permissions.matrix_keys');
@@ -92,15 +106,15 @@ class RoutePermissionEnforcementTest extends JournalTestCase
 
             // Tanpa izin apa pun: middleware wajib menolak dengan kunci rute ini.
             $this->assignTestPermissions($membership, []);
-            $denied = $this->json($method, $uri, [], $ctx['headers']);
-            if ($denied->status() !== 403 || $denied->json('meta.permission') !== $item['permission']) {
-                $notDenied[] = $label.' -> '.$denied->status();
+            [$status, $deniedBy] = $this->outcome($this->json($method, $uri, [], $ctx['headers']));
+            if ($status !== 403 || $deniedBy !== $item['permission']) {
+                $notDenied[] = $label.' -> '.$status;
             }
 
             // Hanya kunci pertama rute ini: middleware izin tidak boleh menolak lagi.
             $this->assignTestPermissions($membership, [$item['keys'][0]]);
-            $allowed = $this->json($method, $uri, [], $ctx['headers']);
-            if ($allowed->status() === 403 && $allowed->json('meta.permission') === $item['permission']) {
+            [, $deniedBy] = $this->outcome($this->json($method, $uri, [], $ctx['headers']));
+            if ($deniedBy === $item['permission']) {
                 $stillDenied[] = $label;
             }
         }
@@ -116,8 +130,8 @@ class RoutePermissionEnforcementTest extends JournalTestCase
         $denied = [];
 
         foreach ($this->guardedRoutes() as $item) {
-            $response = $this->json($this->method($item['route']), $this->uri($item['route']), [], $ctx['headers']);
-            if ($response->status() === 403 && $response->json('meta.permission') === $item['permission']) {
+            [, $deniedBy] = $this->outcome($this->json($this->method($item['route']), $this->uri($item['route']), [], $ctx['headers']));
+            if ($deniedBy === $item['permission']) {
                 $denied[] = $item['route']->uri().' ['.$item['permission'].']';
             }
         }
