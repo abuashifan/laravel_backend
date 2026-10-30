@@ -80,13 +80,11 @@ use App\Shared\Models\CompanyInvitation;
 use App\Shared\Models\CompanyModuleSetting;
 use App\Shared\Models\CompanySetupState;
 use App\Shared\Models\CompanyUser;
-use App\Shared\Models\CompanyUserPermissionOverride;
 use App\Shared\Models\DocumentNumberingSetting;
 use App\Shared\Models\DocumentNumberSequence;
 use App\Shared\Models\FiscalYear;
 use App\Shared\Models\Permission;
 use App\Shared\Models\Plan;
-use App\Shared\Models\Role;
 use App\Shared\Models\Subscription;
 use App\Shared\Models\TenantAuditLog;
 use App\Shared\Models\TenantDatabase;
@@ -143,13 +141,11 @@ class SharedServiceProvider extends ServiceProvider
             'App\\Models\\CompanyModuleSetting' => CompanyModuleSetting::class,
             'App\\Models\\CompanySetupState' => CompanySetupState::class,
             'App\\Models\\CompanyUser' => CompanyUser::class,
-            'App\\Models\\CompanyUserPermissionOverride' => CompanyUserPermissionOverride::class,
             'App\\Models\\DocumentNumberingSetting' => DocumentNumberingSetting::class,
             'App\\Models\\DocumentNumberSequence' => DocumentNumberSequence::class,
             'App\\Models\\FiscalYear' => FiscalYear::class,
             'App\\Models\\Permission' => Permission::class,
             'App\\Models\\Plan' => Plan::class,
-            'App\\Models\\Role' => Role::class,
             'App\\Models\\Subscription' => Subscription::class,
             'App\\Models\\TenantDatabase' => TenantDatabase::class,
             'App\\Models\\User' => User::class,

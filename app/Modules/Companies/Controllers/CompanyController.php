@@ -32,7 +32,7 @@ class CompanyController extends Controller
             ->wherePivot('status', 'active')
             ->with('tenantDatabase')
             ->get()
-            ->map(fn (Company $company) => $this->companyPayload($company, $company->pivot?->role))
+            ->map(fn (Company $company) => $this->companyPayload($company, $company->pivot?->role, (bool) $company->pivot?->is_owner))
             ->values();
 
         // Kuota dikirim di meta, bukan di data, supaya bentuk `data` tetap
@@ -147,7 +147,7 @@ class CompanyController extends Controller
         }
 
         return $this->successResponse(
-            $this->companyPayload($company->load('tenantDatabase'), 'owner'),
+            $this->companyPayload($company->load('tenantDatabase'), 'owner', true),
             'Company created successfully',
             201
         );
@@ -159,7 +159,7 @@ class CompanyController extends Controller
      *
      * @return array<string, mixed>
      */
-    private function companyPayload(Company $company, ?string $userRole): array
+    private function companyPayload(Company $company, ?string $userRole, bool $isOwner = false): array
     {
         return [
             'id' => $company->id,
@@ -169,6 +169,8 @@ class CompanyController extends Controller
             'code' => $company->code,
             'status' => $company->status,
             'user_role' => $userRole,
+            // Pemilik ditentukan `is_owner`, bukan label peran lama.
+            'is_owner' => $isOwner,
             'tenant_database' => $company->tenantDatabase ? [
                 'database_name' => $company->tenantDatabase->database_name,
                 'status' => $company->tenantDatabase->status,
@@ -219,6 +221,7 @@ class CompanyController extends Controller
             'slug' => $company->slug,
             'code' => $company->code,
             'user_role' => $companyUser->role,
+            'is_owner' => (bool) $companyUser->is_owner,
             'tenant_database' => [
                 'database_name' => $tenantDatabase->database_name,
                 'database_path' => $tenantDatabase->database_path,
@@ -249,7 +252,7 @@ class CompanyController extends Controller
             ->where('status', 'active')
             ->first();
 
-        if (! $companyUser || $companyUser->role !== 'owner') {
+        if (! $companyUser || ! $companyUser->is_owner) {
             return $this->errorCodeResponse(
                 'COMPANY_DELETE_NOT_OWNER',
                 'Hanya owner yang dapat menghapus perusahaan.',

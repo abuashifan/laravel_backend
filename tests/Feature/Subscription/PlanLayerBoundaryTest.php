@@ -4,12 +4,10 @@ namespace Tests\Feature\Subscription;
 
 use App\Shared\Models\Company;
 use App\Shared\Models\CompanyUser;
-use App\Shared\Models\CompanyUserPermissionOverride;
 use App\Shared\Models\Permission;
 use App\Shared\Models\Plan;
 use App\Shared\Models\User;
 use App\Shared\Permission\EffectivePermissionService;
-use App\Shared\Permission\PermissionCatalogService;
 use App\Shared\Subscription\PlanPermissionResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -82,28 +80,6 @@ class PlanLayerBoundaryTest extends TestCase
         $this->assertNotSame('not_in_plan', $result['source']);
 
         $this->assertNotNull($owner);
-    }
-
-    public function test_full_access_ignores_legacy_deny_override(): void
-    {
-        $company = $this->companyOwnedBy($this->clientOn('pro'));
-        $owner = User::query()->findOrFail($company->created_by);
-        $companyUser = CompanyUser::query()->where('company_id', $company->id)->where('user_id', $owner->id)->firstOrFail();
-
-        $permission = Permission::query()->create(
-            app(PermissionCatalogService::class)->fromKey('warehouses.create', 1)
-        );
-
-        CompanyUserPermissionOverride::query()->create([
-            'company_user_id' => $companyUser->id,
-            'permission_id' => $permission->id,
-            'effect' => 'deny',
-        ]);
-
-        $result = app(EffectivePermissionService::class)->explainPermission($companyUser, 'warehouses.create');
-
-        $this->assertTrue($result['allowed']);
-        $this->assertSame('full_access', $result['source']);
     }
 
     public function test_client_without_a_plan_falls_back_to_free(): void

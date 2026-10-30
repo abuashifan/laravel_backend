@@ -1,28 +1,23 @@
 <?php
 
-use App\Shared\Models\CompanyUser;
-use App\Shared\Permission\LegacyAccessMigrationService;
 use Illuminate\Database\Migrations\Migration;
-use Illuminate\Support\Facades\Schema;
 
+/*
+ * Fase 3 hak akses per pengguna memindahkan akses peran lama (+ override
+ * allow/deny) ke `company_user_permissions`. Migrasi ini sudah berjalan di
+ * semua lingkungan (Render, lokal) pada 2026-10-28. Pada Fase 8 peran lama,
+ * override, dan layanan penerjemahnya dihapus; database baru tidak punya
+ * anggota berperan lama saat migrasi berjalan, jadi isinya dikosongkan.
+ */
 return new class extends Migration
 {
     public function up(): void
     {
-        if (! Schema::hasTable('company_user_permissions')) {
-            return;
-        }
-
-        $service = app(LegacyAccessMigrationService::class);
-        CompanyUser::query()->orderBy('id')->chunkById(100, function ($members) use ($service): void {
-            foreach ($members as $member) {
-                $service->migrate($member);
-            }
-        });
+        // Sengaja kosong -- lihat catatan di atas.
     }
 
     public function down(): void
     {
-        // Data direct dapat berubah setelah migrasi; rollback tidak menghapusnya.
+        //
     }
 };

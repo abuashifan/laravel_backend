@@ -5,7 +5,6 @@ namespace App\Shared\Permission;
 use App\Shared\Models\Company;
 use App\Shared\Models\CompanyUser;
 use App\Shared\Models\Permission;
-use App\Shared\Models\Role;
 use App\Shared\Subscription\PlanPermissionResolver;
 use Illuminate\Support\Facades\Schema;
 
@@ -14,29 +13,6 @@ class EffectivePermissionService
     public function __construct(
         private readonly PlanPermissionResolver $planPermissionResolver,
     ) {}
-
-    public function getRolePermissionKeys(?Role $role): array
-    {
-        if (! $role) {
-            return [];
-        }
-
-        return $role->permissions()
-            ->pluck('permissions.key')
-            ->unique()
-            ->values()
-            ->all();
-    }
-
-    public function getUserAllowOverrideKeys(CompanyUser $companyUser): array
-    {
-        return $this->overrideKeys($companyUser, 'allow');
-    }
-
-    public function getUserDenyOverrideKeys(CompanyUser $companyUser): array
-    {
-        return $this->overrideKeys($companyUser, 'deny');
-    }
 
     public function getEffectivePermissionKeys(CompanyUser $companyUser): array
     {
@@ -74,20 +50,6 @@ class EffectivePermissionService
         }
 
         return ['permission' => $permissionKey, 'allowed' => false, 'source' => 'not_assigned'];
-    }
-
-    public function rolePermissionsForCompanyUser(CompanyUser $companyUser): array
-    {
-        if ($this->tablesReady() && $companyUser->role_id) {
-            $role = $companyUser->rolePreset;
-            if ($role instanceof Role) {
-                return $this->getRolePermissionKeys($role);
-            }
-        }
-
-        $roles = (array) config('permissions.roles', []);
-
-        return array_values(array_unique((array) ($roles[$companyUser->role] ?? [])));
     }
 
     public function allPermissionKeys(): array
@@ -147,25 +109,5 @@ class EffectivePermissionService
         $company = $companyUser->company;
 
         return $company instanceof Company ? $company : null;
-    }
-
-    private function overrideKeys(CompanyUser $companyUser, string $effect): array
-    {
-        if (! $this->tablesReady()) {
-            return [];
-        }
-
-        return $companyUser->permissionOverrides()
-            ->where('effect', $effect)
-            ->join('permissions', 'permissions.id', '=', 'company_user_permission_overrides.permission_id')
-            ->pluck('permissions.key')
-            ->unique()
-            ->values()
-            ->all();
-    }
-
-    private function tablesReady(): bool
-    {
-        return Schema::hasTable('company_user_permission_overrides') && Schema::hasTable('permissions');
     }
 }

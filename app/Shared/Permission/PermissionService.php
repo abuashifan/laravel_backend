@@ -16,32 +16,6 @@ class PermissionService
         return (array) config('permissions.permissions', []);
     }
 
-    public function permissionsForRole(?string $role): array
-    {
-        if (! $role) {
-            return [];
-        }
-
-        $roles = (array) config('permissions.roles', []);
-
-        return array_values(array_unique((array) ($roles[$role] ?? [])));
-    }
-
-    public function roleHasPermission(?string $role, string $permission): bool
-    {
-        $rolePermissions = $this->permissionsForRole($role);
-
-        if ($rolePermissions === []) {
-            return false;
-        }
-
-        if (in_array('*', $rolePermissions, true)) {
-            return true;
-        }
-
-        return in_array($permission, $rolePermissions, true);
-    }
-
     /** Resolve the current company membership's direct permissions. */
     public function userPermissions(): array
     {
@@ -96,10 +70,5 @@ class PermissionService
         return $companyUser
             ? $this->effectivePermissionService->planFeaturesFor($companyUser)
             : [];
-    }
-
-    protected function resolveRolePermissions(?string $role): array
-    {
-        return $this->permissionsForRole($role);
     }
 }
