@@ -49,6 +49,20 @@ class CompanySettingController extends Controller
         return $this->successResponse($settings, 'Company settings retrieved successfully');
     }
 
+    /**
+     * Identitas perusahaan untuk kop dokumen cetak (nama, alamat, NPWP,
+     * kontak). Hanya data yang memang tercetak di dokumen ke pihak luar.
+     */
+    public function letterhead(): JsonResponse
+    {
+        $company = $this->tenantContext->company();
+        if (! $company) {
+            return $this->errorResponse('Active company context not found.', 422);
+        }
+
+        return $this->successResponse($this->service->profile($company), 'Company letterhead retrieved successfully');
+    }
+
     public function workflow(): JsonResponse
     {
         $company = $this->tenantContext->company();

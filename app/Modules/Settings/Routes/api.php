@@ -5,6 +5,9 @@ use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth:sanctum', 'company.access'])->group(function () {
     Route::get('/settings/company/workflow', [CompanySettingController::class, 'workflow']);
+    // Kop surat untuk cetak dokumen: siapa pun yang boleh mencetak dokumen
+    // perlu identitas perusahaan, tanpa harus boleh melihat pengaturannya.
+    Route::get('/settings/company/letterhead', [CompanySettingController::class, 'letterhead']);
     Route::get('/settings/company', [CompanySettingController::class, 'show'])
         ->middleware('permission:settings.company.view|settings.transactions.view');
     Route::patch('/settings/company/profile', [CompanySettingController::class, 'updateProfile'])

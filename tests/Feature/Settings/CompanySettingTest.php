@@ -67,6 +67,21 @@ class CompanySettingTest extends TestCase
         $this->patchJson('/api/settings/company/profile', ['email' => 'bukan-email'], $headers)->assertStatus(422);
     }
 
+    public function test_member_without_settings_permission_can_read_letterhead(): void
+    {
+        [$user, $company] = $this->seedAccessForUser('warehouse');
+        $company->update(['address' => 'Jl. Kop No. 1', 'tax_number' => '01.111.222.3-444.000']);
+        Sanctum::actingAs($user, ['*']);
+        $headers = ['X-Company-ID' => (string) $company->id];
+
+        $this->getJson('/api/settings/company', $headers)->assertStatus(403);
+        $this->getJson('/api/settings/company/letterhead', $headers)
+            ->assertOk()
+            ->assertJsonPath('data.name', $company->name)
+            ->assertJsonPath('data.address', 'Jl. Kop No. 1')
+            ->assertJsonPath('data.tax_number', '01.111.222.3-444.000');
+    }
+
     public function test_authenticated_user_can_get_default_company_settings(): void
     {
         [$user, $company] = $this->seedAccessForUser();
