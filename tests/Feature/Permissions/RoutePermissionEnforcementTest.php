@@ -13,13 +13,15 @@ use Tests\Feature\Journal\JournalTestCase;
  * benar-benar memakai kunci matriks yang bisa dicentang di layar Akses, dan
  * middleware-nya menolak tanpa kunci itu serta meloloskan dengan kunci itu.
  *
+ * Satu rute bisa dijaga beberapa lapis (mis. grup `reports.tax.view` + rute
+ * `reports.tax.export`); semua lapis diperlakukan sebagai satu kesatuan.
  * Penolakan middleware dikenali dari `meta.permission` pada respons 403,
  * sehingga 403 lain dari controller (mis. pengaman pemilik) tidak dihitung.
  */
 class RoutePermissionEnforcementTest extends JournalTestCase
 {
     /**
-     * @return list<array{route: LaravelRoute, permission: string, keys: list<string>}>
+     * @return list<array{route: LaravelRoute, guards: list<string>}>
      */
     private function guardedRoutes(): array
     {
@@ -28,19 +30,24 @@ class RoutePermissionEnforcementTest extends JournalTestCase
             if (! str_starts_with($route->uri(), 'api/')) {
                 continue;
             }
+            $guards = [];
             foreach ($route->gatherMiddleware() as $middleware) {
                 if (is_string($middleware) && str_starts_with($middleware, 'permission:')) {
-                    $permission = substr($middleware, strlen('permission:'));
-                    $guarded[] = [
-                        'route' => $route,
-                        'permission' => $permission,
-                        'keys' => array_values(array_filter(explode('|', $permission))),
-                    ];
+                    $guards[] = substr($middleware, strlen('permission:'));
                 }
+            }
+            if ($guards !== []) {
+                $guarded[] = ['route' => $route, 'guards' => array_values(array_unique($guards))];
             }
         }
 
         return $guarded;
+    }
+
+    /** @return list<string> */
+    private function keys(string $guard): array
+    {
+        return array_values(array_filter(explode('|', $guard)));
     }
 
     private function method(LaravelRoute $route): string
@@ -48,9 +55,31 @@ class RoutePermissionEnforcementTest extends JournalTestCase
         return collect($route->methods())->first(fn (string $m): bool => $m !== 'HEAD');
     }
 
+    /**
+     * Parameter diisi nilai yang cocok dengan batasan `where` rute (mis.
+     * jenis dokumen pada riwayat edit); tanpa batasan dipakai id fiktif.
+     */
     private function uri(LaravelRoute $route): string
     {
-        return '/'.preg_replace('/\{[^}]+\}/', '999999', $route->uri());
+        return '/'.preg_replace_callback('/\{([^}?]+)\??\}/', function (array $m) use ($route): string {
+            $pattern = $route->wheres[$m[1]] ?? null;
+            if (! is_string($pattern)) {
+                return '999999';
+            }
+            foreach (['999999', 'sales_invoice', 'x', '00000000-0000-4000-8000-000000000000'] as $candidate) {
+                if (preg_match('#^(?:'.$pattern.')$#', $candidate) === 1) {
+                    return $candidate;
+                }
+            }
+
+            // Pola berupa daftar nilai (a|b|c): pakai nilai pertama.
+            return trim(explode('|', $pattern)[0], '()^$');
+        }, $route->uri());
+    }
+
+    private function label(array $item): string
+    {
+        return $this->method($item['route']).' '.$item['route']->uri().' ['.implode(' + ', $item['guards']).']';
     }
 
     /**
@@ -72,21 +101,23 @@ class RoutePermissionEnforcementTest extends JournalTestCase
         $retired = (array) config('permissions.retired_keys');
         $problems = [];
 
-        foreach ($this->guardedRoutes() as $item) {
-            $label = $this->method($item['route']).' '.$item['route']->uri().' ['.$item['permission'].']';
-            if (array_intersect($item['keys'], $matrix) === []) {
-                $problems[] = 'tidak ada kunci matriks: '.$label;
-            }
-            foreach (array_intersect($item['keys'], $retired) as $key) {
-                $problems[] = "kunci pensiun {$key}: ".$label;
+        $routes = $this->guardedRoutes();
+        foreach ($routes as $item) {
+            foreach ($item['guards'] as $guard) {
+                if (array_intersect($this->keys($guard), $matrix) === []) {
+                    $problems[] = "tidak ada kunci matriks di [{$guard}]: ".$this->label($item);
+                }
+                foreach (array_intersect($this->keys($guard), $retired) as $key) {
+                    $problems[] = "kunci pensiun {$key}: ".$this->label($item);
+                }
             }
         }
 
-        $this->assertNotEmpty($this->guardedRoutes(), 'Tidak ada rute berizin yang terbaca.');
+        $this->assertNotEmpty($routes, 'Tidak ada rute berizin yang terbaca.');
         $this->assertSame([], $problems, "Rute dengan izin yang tidak bisa diberikan lewat layar Akses:\n".implode("\n", $problems));
     }
 
-    public function test_every_guarded_route_denies_without_its_key_and_passes_with_it(): void
+    public function test_every_guarded_route_denies_without_its_keys_and_passes_with_them(): void
     {
         $ctx = $this->setUpTenant(role: 'noaccess');
         $this->enforcePlanFeatures(false);
@@ -94,7 +125,6 @@ class RoutePermissionEnforcementTest extends JournalTestCase
             ->where('company_id', $ctx['company']->id)
             ->where('user_id', $ctx['user']->id)
             ->firstOrFail();
-        $this->assignTestPermissions($membership, []);
 
         $notDenied = [];
         $stillDenied = [];
@@ -102,20 +132,19 @@ class RoutePermissionEnforcementTest extends JournalTestCase
         foreach ($this->guardedRoutes() as $item) {
             $method = $this->method($item['route']);
             $uri = $this->uri($item['route']);
-            $label = "{$method} {$item['route']->uri()} [{$item['permission']}]";
 
-            // Tanpa izin apa pun: middleware wajib menolak dengan kunci rute ini.
+            // Tanpa izin apa pun: salah satu lapis izin rute ini wajib menolak.
             $this->assignTestPermissions($membership, []);
             [$status, $deniedBy] = $this->outcome($this->json($method, $uri, [], $ctx['headers']));
-            if ($status !== 403 || $deniedBy !== $item['permission']) {
-                $notDenied[] = $label.' -> '.$status;
+            if ($status !== 403 || ! in_array($deniedBy, $item['guards'], true)) {
+                $notDenied[] = $this->label($item).' -> '.$status;
             }
 
-            // Hanya kunci pertama rute ini: middleware izin tidak boleh menolak lagi.
-            $this->assignTestPermissions($membership, [$item['keys'][0]]);
+            // Kunci pertama dari setiap lapis: tidak ada lapis izin yang boleh menolak lagi.
+            $this->assignTestPermissions($membership, array_map(fn (string $guard): string => $this->keys($guard)[0], $item['guards']));
             [, $deniedBy] = $this->outcome($this->json($method, $uri, [], $ctx['headers']));
-            if ($deniedBy === $item['permission']) {
-                $stillDenied[] = $label;
+            if (in_array($deniedBy, $item['guards'], true)) {
+                $stillDenied[] = $this->label($item).' ditolak oleh ['.$deniedBy.']';
             }
         }
 
@@ -131,8 +160,8 @@ class RoutePermissionEnforcementTest extends JournalTestCase
 
         foreach ($this->guardedRoutes() as $item) {
             [, $deniedBy] = $this->outcome($this->json($this->method($item['route']), $this->uri($item['route']), [], $ctx['headers']));
-            if ($deniedBy === $item['permission']) {
-                $denied[] = $item['route']->uri().' ['.$item['permission'].']';
+            if (in_array($deniedBy, $item['guards'], true)) {
+                $denied[] = $this->label($item);
             }
         }
 
