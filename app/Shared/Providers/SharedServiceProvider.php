@@ -96,6 +96,7 @@ use App\Shared\TransactionLifecycle\Contracts\TransactionDateGuard;
 use App\Shared\TransactionLifecycle\Contracts\TransactionDependencyChecker;
 use App\Shared\TransactionLifecycle\TransactionDateGuardService;
 use App\Shared\TransactionLifecycle\TransactionDependencyService;
+use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\ServiceProvider;
 
@@ -127,6 +128,10 @@ class SharedServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->loadMigrationsFrom(database_path('migrations/central'));
+
+        // Tautan reset kata sandi mengarah ke halaman frontend, bukan ke backend.
+        ResetPassword::createUrlUsing(fn ($user, string $token): string => config('app.frontend_url')
+            .'/reset-password?token='.$token.'&email='.urlencode($user->getEmailForPasswordReset()));
 
         // Fase 7: morph map — kolom *_type lama menyimpan FQCN model lama (prefix App\ Models)
         // (tidak ada enforceMorphMap). Petakan FQCN lama → class baru agar data

@@ -55,6 +55,12 @@ return [
     'url' => env('APP_URL', 'http://localhost'),
 
     /*
+    | URL frontend (React). Dipakai membentuk tautan di email undangan dan
+    | reset kata sandi; backend dan frontend berada di domain berbeda.
+    */
+    'frontend_url' => rtrim((string) env('FRONTEND_URL', 'https://app.finlite.my.id'), '/'),
+
+    /*
     |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
