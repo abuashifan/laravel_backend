@@ -363,7 +363,7 @@ class FixedAssetService
             if ($remaining <= 0 || ! $asset->last_depreciation_period) {
                 continue;
             }
-            if (Carbon::createFromFormat('Y-m', (string) $asset->last_depreciation_period)->startOfMonth()->lt($openingMonth)) {
+            if (Carbon::createFromFormat('!Y-m', (string) $asset->last_depreciation_period)->startOfMonth()->lt($openingMonth)) {
                 $offenders[] = $asset->name.' (masa manfaat berakhir '.$asset->last_depreciation_period.', sisa nilai '.number_format($remaining, 2, ',', '.').')';
             }
         }
@@ -829,7 +829,7 @@ class FixedAssetService
             : null;
         $serviceStart = $data['service_start_date'] ?? null;
         $firstPeriod = $serviceStart && $lifeYears ? Carbon::parse((string) $serviceStart)->addMonthNoOverflow()->format('Y-m') : null;
-        $lastPeriod = $firstPeriod && $lifeYears ? Carbon::createFromFormat('Y-m', $firstPeriod)->addMonthsNoOverflow(($lifeYears * 12) - 1)->format('Y-m') : null;
+        $lastPeriod = $firstPeriod && $lifeYears ? Carbon::createFromFormat('!Y-m', $firstPeriod)->addMonthsNoOverflow(($lifeYears * 12) - 1)->format('Y-m') : null;
 
         // Kolom akumulasi yang dikosongkan pada aset saldo awal TIDAK berarti
         // nol -- aset warisan yang sudah dipakai bertahun-tahun hampir pasti
@@ -1040,7 +1040,7 @@ class FixedAssetService
         }
 
         $first = Carbon::parse($openingDate)->startOfMonth();
-        $last = Carbon::createFromFormat('Y-m', (string) $asset->last_depreciation_period)->startOfMonth();
+        $last = Carbon::createFromFormat('!Y-m', (string) $asset->last_depreciation_period)->startOfMonth();
         if ($last->lt($first)) {
             return;
         }

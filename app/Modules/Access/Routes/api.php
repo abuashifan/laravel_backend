@@ -5,8 +5,13 @@ use App\Modules\Access\Controllers\AccessAuditController;
 use App\Modules\Access\Controllers\CompanyInvitationAccessController;
 use App\Modules\Access\Controllers\CompanyUserAccessController;
 use App\Modules\Access\Controllers\PermissionCatalogController;
+use App\Modules\Access\Controllers\PublicInvitationController;
 use Illuminate\Support\Facades\Route;
 
+Route::middleware('throttle:20,1')->group(function () {
+    Route::get('/invitations/{token}', [PublicInvitationController::class, 'show']);
+    Route::post('/invitations/{token}/register', [PublicInvitationController::class, 'register']);
+});
 Route::post('/invitations/{token}/accept', AcceptInvitationController::class)->middleware('auth:sanctum');
 
 Route::middleware(['auth:sanctum', 'company.access'])->prefix('access')->group(function () {

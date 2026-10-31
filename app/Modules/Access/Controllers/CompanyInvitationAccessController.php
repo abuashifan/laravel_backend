@@ -3,6 +3,7 @@
 namespace App\Modules\Access\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Mail\CompanyInvitationMail;
 use App\Modules\Access\Requests\InviteCompanyUserRequest;
 use App\Shared\Api\ApiResponse;
 use App\Shared\Audit\AuditLogService;
@@ -13,7 +14,9 @@ use App\Shared\Tenant\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
+use Throwable;
 
 class CompanyInvitationAccessController extends Controller
 {
@@ -79,7 +82,31 @@ class CompanyInvitationAccessController extends Controller
             return $invitation;
         });
 
-        return $this->successResponse($invitation->refresh(), 'Invitation created.', 201);
+        return $this->successResponse($this->withDelivery($invitation->refresh(), $request), 'Invitation created.', 201);
+    }
+
+    /**
+     * Kirim email undangan. Undangan tetap tersimpan kalau email gagal terkirim;
+     * `mail_sent` dan `accept_url` memberi pemilik jalan keluar (salin tautan).
+     *
+     * @return array<string, mixed>
+     */
+    private function withDelivery(CompanyInvitation $invitation, Request $request): array
+    {
+        $companyName = (string) Company::query()->whereKey($this->tenantContext->companyId())->value('name');
+        $mailSent = true;
+
+        try {
+            Mail::to($invitation->email)->send(new CompanyInvitationMail($invitation, $companyName, $request->user()?->name));
+        } catch (Throwable $e) {
+            report($e);
+            $mailSent = false;
+        }
+
+        return array_merge($invitation->toArray(), [
+            'accept_url' => CompanyInvitationMail::acceptUrl($invitation),
+            'mail_sent' => $mailSent,
+        ]);
     }
 
     public function resend(Request $request, int $id): JsonResponse
@@ -97,7 +124,7 @@ class CompanyInvitationAccessController extends Controller
             return $invitation;
         });
 
-        return $this->successResponse($invitation, 'Invitation resent.');
+        return $this->successResponse($this->withDelivery($invitation, $request), 'Invitation resent.');
     }
 
     public function revoke(int $id): JsonResponse
