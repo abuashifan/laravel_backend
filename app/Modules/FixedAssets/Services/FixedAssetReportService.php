@@ -66,7 +66,7 @@ class FixedAssetReportService
 
     public function reconciliation(string $period): array
     {
-        $asOfDate = Carbon::createFromFormat('Y-m', $period)->endOfMonth()->toDateString();
+        $asOfDate = Carbon::createFromFormat('!Y-m', $period)->endOfMonth()->toDateString();
         $register = $this->registerSnapshot($period);
         $registerCost = (float) $register->sum('acquisition_cost');
         $registerAccumulated = (float) $register->sum('accumulated_depreciation_until_period');
@@ -107,7 +107,7 @@ class FixedAssetReportService
 
     private function registerSnapshot(string $period): Collection
     {
-        $cutoff = Carbon::createFromFormat('Y-m', $period)->endOfMonth();
+        $cutoff = Carbon::createFromFormat('!Y-m', $period)->endOfMonth();
         $cutoffDate = $cutoff->toDateString();
         $yearStartPeriod = substr($period, 0, 4).'-01';
 
