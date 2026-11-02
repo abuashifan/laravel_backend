@@ -28,6 +28,8 @@ class Product extends Model
         'unit_id',
         'is_stock_item',
         'min_stock',
+        'purchase_price',
+        'selling_price',
         'is_active',
         'description',
         'metadata',
@@ -45,6 +47,8 @@ class Product extends Model
         'unit_id' => 'integer',
         'is_stock_item' => 'boolean',
         'min_stock' => 'float',
+        'purchase_price' => 'float',
+        'selling_price' => 'float',
         'is_active' => 'boolean',
         'sales_account_id' => 'integer',
         'sales_discount_account_id' => 'integer',
@@ -55,6 +59,17 @@ class Product extends Model
         'cogs_account_id' => 'integer',
         'metadata' => 'array',
     ];
+
+    // Kolom harga NOT NULL: kiriman kosong (null) dianggap 0.
+    public function setPurchasePriceAttribute(mixed $value): void
+    {
+        $this->attributes['purchase_price'] = $value ?? 0;
+    }
+
+    public function setSellingPriceAttribute(mixed $value): void
+    {
+        $this->attributes['selling_price'] = $value ?? 0;
+    }
 
     public function category(): BelongsTo
     {

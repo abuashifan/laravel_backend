@@ -99,18 +99,31 @@ trait AppliesListQuery
         // sebelum applyListQuery() dipanggil.
         $query->where(function (Builder $q) use ($term): void {
             foreach ($this->listSearchable as $column) {
-                $q->orWhere($column, 'like', "%{$term}%");
+                $this->whereContainsInsensitive($q, $column, $term, 'or');
             }
             foreach ($this->listSearchableRelations as $relation => $columns) {
                 $q->orWhereHas($relation, function (Builder $relationQuery) use ($columns, $term): void {
                     $relationQuery->where(function (Builder $inner) use ($columns, $term): void {
                         foreach ($columns as $column) {
-                            $inner->orWhere($column, 'like', "%{$term}%");
+                            $this->whereContainsInsensitive($inner, $column, $term, 'or');
                         }
                     });
                 });
             }
         });
+    }
+
+    /**
+     * LIKE "mengandung" yang tidak peka huruf besar/kecil di semua driver.
+     * SQLite mengabaikan kapitalisasi untuk ASCII, tetapi PostgreSQL (Render)
+     * tidak -- tanpa LOWER() pencarian "listrik" tidak menemukan "Listrik".
+     *
+     * @param  Builder<covariant Model>  $query
+     */
+    protected function whereContainsInsensitive(Builder $query, string $column, string $term, string $boolean = 'and'): void
+    {
+        $wrapped = $query->getQuery()->getGrammar()->wrap($column);
+        $query->whereRaw('LOWER('.$wrapped.') LIKE ?', ['%'.mb_strtolower($term).'%'], $boolean);
     }
 
     /**

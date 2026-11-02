@@ -23,6 +23,8 @@ class StoreProductRequest extends FormRequest
             'unit_id' => ['nullable', 'integer'],
             'is_stock_item' => ['nullable', 'boolean'],
             'is_active' => ['nullable', 'boolean'],
+            'purchase_price' => ['nullable', 'numeric', 'min:0', 'max:9999999999999'],
+            'selling_price' => ['nullable', 'numeric', 'min:0', 'max:9999999999999'],
             'description' => ['nullable', 'string'],
             'sales_account_id' => ['nullable', 'integer', Rule::exists('tenant.chart_of_accounts', 'id')->where('account_type', 'revenue')->where('is_active', true), new PostableAccount],
             'sales_discount_account_id' => ['nullable', 'integer', Rule::exists('tenant.chart_of_accounts', 'id')->where('account_type', 'revenue')->where('is_active', true), new PostableAccount],

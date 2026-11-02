@@ -77,11 +77,11 @@ class ChartOfAccountService
         $query = $hierarkis ? $this->hierarchicalQuery() : ChartOfAccount::query();
 
         if ($accountCode !== '') {
-            $query->where('account_code', 'like', "%{$accountCode}%");
+            $this->whereContainsInsensitive($query, 'account_code', $accountCode);
         }
 
         if ($accountName !== '') {
-            $query->where('account_name', 'like', "%{$accountName}%");
+            $this->whereContainsInsensitive($query, 'account_name', $accountName);
         }
 
         if (array_key_exists('is_active', $filters)) {
