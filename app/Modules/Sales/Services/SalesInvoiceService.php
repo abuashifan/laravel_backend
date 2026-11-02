@@ -116,7 +116,9 @@ class SalesInvoiceService
             $appliedDp = min((float) ($data['applied_down_payment_amount'] ?? 0), (float) $headerTotals['grand_total']);
 
             $invoice = SalesInvoice::query()->create(array_merge($this->guardedForHeader($data), $headerTotals, [
-                'invoice_number' => $this->documentNumberService->generate($company, DocumentType::SALES_INVOICE, (string) $data['invoice_date']),
+                'invoice_number' => trim((string) ($data['invoice_number'] ?? '')) !== ''
+                    ? trim((string) $data['invoice_number'])
+                    : $this->documentNumberService->generate($company, DocumentType::SALES_INVOICE, (string) $data['invoice_date']),
                 'status' => 'draft',
                 'applied_down_payment_amount' => $appliedDp,
                 'paid_amount' => 0,
@@ -156,6 +158,11 @@ class SalesInvoiceService
 
     private function applyUpdate(SalesInvoice $invoice, array $data): SalesInvoice
     {
+        // Nomor kosong berarti tidak diubah; nomor lama dipertahankan.
+        if (trim((string) ($data['invoice_number'] ?? '')) === '') {
+            unset($data['invoice_number']);
+        }
+
         $this->changePolicy()->assertDocumentChange(
             TransactionPolicyService::CHANGE_EDIT,
             TransactionModule::SALES,

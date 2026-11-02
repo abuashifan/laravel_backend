@@ -5,6 +5,7 @@ namespace App\Modules\Sales\Requests;
 use App\Modules\MasterData\Models\ChartOfAccount;
 use Closure;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class StoreSalesInvoiceRequest extends FormRequest
 {
@@ -16,6 +17,8 @@ class StoreSalesInvoiceRequest extends FormRequest
     public function rules(): array
     {
         return [
+            // Kosong = nomor otomatis; diisi = nomor kustom dari user (harus unik).
+            'invoice_number' => ['nullable', 'string', 'max:190', Rule::unique('tenant.sales_invoices', 'invoice_number')->ignore($this->route('id') ? (int) $this->route('id') : null)],
             'customer_id' => ['required', 'exists:tenant.contacts,id'],
             'invoice_date' => ['required', 'date_format:Y-m-d'],
             'payment_term_id' => ['nullable', 'integer', 'exists:tenant.payment_terms,id'],

@@ -1,7 +1,6 @@
 <?php
 
 use App\Modules\Settings\Controllers\CompanySettingController;
-use App\Modules\Settings\Controllers\DocumentNumberingSettingController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth:sanctum', 'company.access'])->group(function () {
@@ -18,9 +17,5 @@ Route::middleware(['auth:sanctum', 'company.access'])->group(function () {
     Route::patch('/settings/company/modules', [CompanySettingController::class, 'updateModules'])
         ->middleware('permission:settings.company.edit');
     Route::patch('/settings/company/transaction-defaults', [CompanySettingController::class, 'updateTransactionDefaults'])
-        ->middleware('permission:settings.transactions.edit');
-    Route::get('/settings/document-numbering', [DocumentNumberingSettingController::class, 'index'])
-        ->middleware('permission:settings.transactions.view');
-    Route::patch('/settings/document-numbering/{documentType}', [DocumentNumberingSettingController::class, 'update'])
         ->middleware('permission:settings.transactions.edit');
 });

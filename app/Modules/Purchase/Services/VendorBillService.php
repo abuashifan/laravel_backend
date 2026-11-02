@@ -121,7 +121,9 @@ class VendorBillService
             $appliedDeposit = min((float) ($data['applied_vendor_deposit_amount'] ?? 0), (float) $headerTotals['grand_total']);
 
             $bill = VendorBill::query()->create(array_merge($this->guardedPurchaseHeader($data), $headerTotals, [
-                'bill_number' => $this->documentNumberService->generate($company, DocumentType::VENDOR_BILL, (string) $data['bill_date']),
+                'bill_number' => trim((string) ($data['bill_number'] ?? '')) !== ''
+                    ? trim((string) $data['bill_number'])
+                    : $this->documentNumberService->generate($company, DocumentType::VENDOR_BILL, (string) $data['bill_date']),
                 'status' => 'draft',
                 'applied_vendor_deposit_amount' => $appliedDeposit,
                 'paid_amount' => 0,
@@ -156,6 +158,11 @@ class VendorBillService
 
     private function applyUpdate(VendorBill $bill, array $data): VendorBill
     {
+        // Nomor kosong berarti tidak diubah; nomor lama dipertahankan.
+        if (trim((string) ($data['bill_number'] ?? '')) === '') {
+            unset($data['bill_number']);
+        }
+
         $this->changePolicy()->assertDocumentChange(
             TransactionPolicyService::CHANGE_EDIT,
             TransactionModule::PURCHASE,
