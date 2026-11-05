@@ -54,8 +54,10 @@ interface TenantStorage
     public function sizeBytes(string $name, string $path): ?int;
 
     /**
-     * Arahkan koneksi `tenant` ke tenant ini. Setelah ini `DB::connection('tenant')`
-     * menunjuk data milik perusahaan tersebut dan tidak ada yang lain.
+     * Arahkan koneksi `$connection` ke tenant ini. Setelah ini
+     * `DB::connection($connection)` menunjuk data milik perusahaan tersebut dan
+     * tidak ada yang lain. Tiap produk punya nama koneksinya sendiri (`tenant`
+     * untuk akuntansi, `pos` untuk kasir) supaya keduanya bisa terbuka bersamaan.
      */
-    public function connect(string $name, string $path): void;
+    public function connect(string $name, string $path, string $connection = 'tenant'): void;
 }

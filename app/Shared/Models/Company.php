@@ -56,6 +56,12 @@ class Company extends Model
         return $this->hasOne(TenantDatabase::class);
     }
 
+    /** Semua tenant perusahaan ini, dari semua produk (akuntansi, POS, ...). */
+    public function productTenants(): HasMany
+    {
+        return $this->hasMany(TenantDatabase::class)->withoutGlobalScope(TenantDatabase::ACCOUNTING_SCOPE);
+    }
+
     public function invitations(): HasMany
     {
         return $this->hasMany(CompanyInvitation::class);

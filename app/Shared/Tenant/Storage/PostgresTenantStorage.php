@@ -148,7 +148,7 @@ class PostgresTenantStorage implements TenantStorage
         return $bytes === null ? null : (int) $bytes;
     }
 
-    public function connect(string $name, string $path): void
+    public function connect(string $name, string $path, string $connection = 'tenant'): void
     {
         $schema = $this->assertValidSchema($name);
 
@@ -168,16 +168,16 @@ class PostgresTenantStorage implements TenantStorage
         $central['search_path'] = $schema;
         $central['prefix'] = '';
 
-        Config::set('database.connections.tenant', $central);
+        Config::set("database.connections.{$connection}", $central);
 
-        DB::purge('tenant');
-        DB::reconnect('tenant');
+        DB::purge($connection);
+        DB::reconnect($connection);
 
         // Sabuk pengaman kedua. Laravel sudah mengirim search_path saat koneksi
         // dibuka, tapi koneksi pooled bisa dipakai ulang lintas request; menyetel
         // ulang secara eksplisit membuat kebocoran lintas tenant jauh lebih sulit
         // terjadi diam-diam.
-        DB::connection('tenant')->statement('SET search_path TO '.$this->quote($schema));
+        DB::connection($connection)->statement('SET search_path TO '.$this->quote($schema));
     }
 
     private function centralConnection(): string

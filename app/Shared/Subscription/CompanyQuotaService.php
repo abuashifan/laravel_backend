@@ -3,6 +3,7 @@
 namespace App\Shared\Subscription;
 
 use App\Shared\Models\Plan;
+use App\Shared\Models\TenantDatabase;
 use App\Shared\Models\User;
 
 /**
@@ -26,7 +27,39 @@ class CompanyQuotaService
 
     public function __construct(
         private readonly PlanOwnerResolver $planOwnerResolver,
+        private readonly SubscriptionService $subscriptions,
     ) {}
+
+    /**
+     * Kuota untuk produk selain akuntansi (Fase 0 POS): perusahaan milik
+     * client yang punya tenant produk itu, dibatasi `max_companies` paket
+     * produk tersebut. Tanpa langganan produk, batasnya 0.
+     *
+     * @return array{used:int, limit:int, can_create:bool, plan_code:string|null, plan_name:string|null, limit_source:string}
+     */
+    public function summaryForProduct(User $user, string $product): array
+    {
+        if ($product === TenantDatabase::PRODUCT_ACCOUNTING) {
+            return $this->summaryFor($user);
+        }
+
+        $ownedCompanyIds = $user->companies()
+            ->wherePivot('role', 'owner')
+            ->wherePivot('status', 'active')
+            ->pluck('companies.id');
+        $used = TenantDatabase::forProduct($product)->whereIn('company_id', $ownedCompanyIds)->count();
+        $plan = $this->subscriptions->planFor($user, $product);
+        $limit = $plan ? max(0, (int) $plan->max_companies) : 0;
+
+        return [
+            'used' => $used,
+            'limit' => $limit,
+            'can_create' => $used < $limit,
+            'plan_code' => $plan?->code,
+            'plan_name' => $plan?->name,
+            'limit_source' => 'plan',
+        ];
+    }
 
     /**
      * Hanya perusahaan yang di-owner-i yang dihitung. Client bisa saja
@@ -35,9 +68,12 @@ class CompanyQuotaService
      */
     public function usedCount(User $user): int
     {
+        // Kuota akuntansi: perusahaan yang hanya memakai produk lain (punya
+        // tenant, tapi bukan tenant akuntansi) tidak memakan jatah ini.
         return $user->companies()
             ->wherePivot('role', 'owner')
             ->wherePivot('status', 'active')
+            ->where(fn ($query) => $query->whereHas('tenantDatabase')->orWhereDoesntHave('productTenants'))
             ->count();
     }
 

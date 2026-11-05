@@ -21,7 +21,7 @@ class PosCreditService
         // Pelunasan tunai masuk laci, jadi harus tercatat di shift yang terbuka.
         $shift = $method === 'cash' ? $this->shifts->requireOpen($user) : $this->shifts->current($user);
 
-        return DB::connection('tenant')->transaction(function () use ($user, $customer, $amount, $method, $notes, $shift) {
+        return DB::connection('pos')->transaction(function () use ($user, $customer, $amount, $method, $notes, $shift) {
             $locked = PosCustomer::query()->lockForUpdate()->findOrFail($customer->id);
             $amount = round($amount, 2);
 

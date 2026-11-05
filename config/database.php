@@ -40,6 +40,16 @@ return [
             'foreign_key_constraints' => env('DB_FOREIGN_KEYS', true),
         ],
 
+        // Tenant Finlite POS. Diisi saat runtime oleh TenantConnectionManager,
+        // sama seperti `tenant`.
+        'pos' => [
+            'driver' => 'sqlite',
+            'url' => null,
+            'database' => null,
+            'prefix' => '',
+            'foreign_key_constraints' => env('DB_FOREIGN_KEYS', true),
+        ],
+
         'sqlite' => [
             'driver' => 'sqlite',
             'url' => env('DB_URL'),

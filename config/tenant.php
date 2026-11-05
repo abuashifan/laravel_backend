@@ -36,12 +36,18 @@ return [
      */
     'products' => [
         'accounting' => [
+            'label' => 'Akuntansi',
             'suffix' => '',
             'migration_path' => 'database/migrations/tenant',
+            'connection' => 'tenant',
         ],
         'pos' => [
+            'label' => 'Kasir (POS)',
             'suffix' => '_pos',
             'migration_path' => 'database/migrations/tenant_pos',
+            // Koneksi sendiri supaya satu request bisa membuka tenant akuntansi
+            // dan tenant POS bersamaan (jembatan POS -> Akuntansi, Fase 5).
+            'connection' => 'pos',
         ],
     ],
 ];

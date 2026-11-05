@@ -36,7 +36,8 @@ class ClientUserController extends Controller
      * ribuan tenant database.
      */
     private const SUBSCRIPTION_RULES = [
-        'plan_id' => ['sometimes', 'nullable', 'integer', 'exists:plans,id'],
+        // `users.plan_id` = paket akuntansi; paket produk lain lewat langganan.
+        'plan_id' => ['sometimes', 'nullable', 'integer', 'exists:plans,id,product,accounting'],
         'company_quota' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:999'],
         // Minimal 1: perusahaan selalu punya owner, jadi batas nol tidak masuk
         // akal dan hanya akan membuat perusahaan yang ada jadi over-quota.
@@ -219,7 +220,7 @@ class ClientUserController extends Controller
         $user = $this->client($id);
 
         $data = $request->validate([
-            'plan_id' => ['present', 'nullable', 'integer', 'exists:plans,id'],
+            'plan_id' => ['present', 'nullable', 'integer', 'exists:plans,id,product,accounting'],
         ]);
 
         $user->forceFill(['plan_id' => $data['plan_id'] ?: null])->save();
@@ -351,10 +352,14 @@ class ClientUserController extends Controller
         );
     }
 
-    public function plans(): JsonResponse
+    /** `?product=pos` untuk paket produk lain; bawaan paket akuntansi. */
+    public function plans(Request $request): JsonResponse
     {
+        $product = (string) $request->query('product', 'accounting');
+
         $plans = Plan::query()
             ->where('status', 'active')
+            ->where('product', $product)
             // Custom selalu paling bawah: `max_companies` miliknya cuma nilai
             // cadangan, jadi mengurutkannya bersama tier lain menaruhnya di
             // tengah daftar dan membuat urutannya terbaca acak.
@@ -368,6 +373,7 @@ class ClientUserController extends Controller
                 'name' => $plan->name,
                 'max_companies' => (int) $plan->max_companies,
                 'max_users' => (int) $plan->max_users,
+                'product' => $plan->productKey(),
                 // Menandai tier yang jumlah perusahaannya diisi manual, supaya
                 // frontend tidak perlu mencocokkan string kodenya sendiri.
                 'is_custom' => $plan->isCustom(),
