@@ -163,7 +163,9 @@ class TenantMigrationService
      */
     public function migrateTenantDatabase(Company $company, TenantDatabase $tenantDatabase): array
     {
-        $relativePath = self::migrationPathFor((string) ($tenantDatabase->product ?: TenantDatabase::PRODUCT_ACCOUNTING));
+        $product = (string) ($tenantDatabase->product ?: TenantDatabase::PRODUCT_ACCOUNTING);
+        $relativePath = self::migrationPathFor($product);
+        $connection = TenantConnectionManager::connectionFor($product);
 
         $databaseName = (string) ($tenantDatabase->database_name ?? '');
         if (trim($databaseName) === '') {
@@ -203,10 +205,10 @@ class TenantMigrationService
         }
 
         try {
-            $this->connectionManager->connect($tenantDatabase);
+            $this->connectionManager->connect($tenantDatabase, $connection);
 
             $exitCode = Artisan::call('migrate', [
-                '--database' => 'tenant',
+                '--database' => $connection,
                 '--path' => $relativePath,
                 '--force' => true,
             ]);
@@ -240,7 +242,7 @@ class TenantMigrationService
             ];
         } finally {
             try {
-                $this->connectionManager->disconnect();
+                $this->connectionManager->disconnect($connection);
             } catch (Throwable $e) {
                 // ignore disconnect errors
             }

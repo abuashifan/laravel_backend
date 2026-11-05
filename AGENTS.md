@@ -48,6 +48,9 @@ Before backend audit, module planning, route work, migration work, or feature-ga
 2. `docs/backend-modular-monolith-plan.md`
 3. `docs/backend-missing-modules-audit.md`
 
+For tenant, subscription, multi-product, or Finlite POS work, read
+`docs/pos-dan-multi-produk.md` first and update it when that architecture changes.
+
 For fixed asset, opening balance, setup wizard, or period-end work, also read:
 
 4. `docs/accounting-setup-and-fixed-assets-context.md`

@@ -7,5 +7,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/companies', [CompanyController::class, 'index']);
     Route::post('/companies', [CompanyController::class, 'store'])->middleware('throttle:10,1');
     Route::post('/companies/select', [CompanyController::class, 'select']);
+    Route::post('/companies/{companyId}/products/{product}/activate', [CompanyController::class, 'activateProduct'])
+        ->whereNumber('companyId')
+        ->middleware('throttle:10,1');
     Route::delete('/companies/{companyId}', [CompanyController::class, 'destroy'])->middleware('throttle:10,1');
 });

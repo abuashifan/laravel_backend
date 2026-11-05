@@ -5,6 +5,8 @@ namespace Tests\Feature\Pos;
 use App\Shared\Auth\TokenAbility;
 use App\Shared\Models\Company;
 use App\Shared\Models\CompanyUser;
+use App\Shared\Models\Plan;
+use App\Shared\Models\Subscription;
 use App\Shared\Models\TenantDatabase;
 use App\Shared\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -31,6 +33,7 @@ class PosFlowTest extends TestCase
     protected function tearDown(): void
     {
         DB::disconnect('tenant');
+        DB::disconnect('pos');
         if ($this->tenantDirectory !== '' && File::isDirectory($this->tenantDirectory)) {
             File::deleteDirectory($this->tenantDirectory);
         }
@@ -44,6 +47,16 @@ class PosFlowTest extends TestCase
 
         $this->getJson('/api/pos/status', $headers)->assertOk()->assertJsonPath('data.active', false);
         $this->getJson('/api/pos/bootstrap', $headers)->assertStatus(422);
+    }
+
+    public function test_activation_requires_pos_subscription(): void
+    {
+        [, $headers] = $this->ownerCompany(subscribed: false);
+
+        $this->getJson('/api/pos/status', $headers)->assertOk()->assertJsonPath('data.subscribed', false);
+        $this->postJson('/api/pos/activate', [], $headers)
+            ->assertStatus(403)
+            ->assertJsonPath('code', 'SUBSCRIPTION_REQUIRED');
     }
 
     public function test_non_owner_cannot_activate(): void
@@ -163,7 +176,7 @@ class PosFlowTest extends TestCase
     }
 
     /** @return array{0: Company, 1: array<string,string>} */
-    private function ownerCompany(): array
+    private function ownerCompany(bool $subscribed = true): array
     {
         $user = User::factory()->create(['status' => 'active']);
         $company = Company::query()->create([
@@ -177,6 +190,17 @@ class PosFlowTest extends TestCase
             'company_id' => $company->id, 'user_id' => $user->id, 'role' => 'owner',
             'full_access' => true, 'is_owner' => true, 'status' => 'active', 'joined_at' => now(),
         ]);
+        if ($subscribed) {
+            Subscription::query()->create([
+                'user_id' => $user->id,
+                'plan_id' => Plan::query()->where('code', Plan::POS_CODE)->value('id'),
+                'product' => 'pos',
+                'starts_at' => now()->subDay(),
+                'ends_at' => now()->addMonth(),
+                'billing_cycle' => 'monthly',
+                'price' => 0,
+            ]);
+        }
         Sanctum::actingAs($user, [TokenAbility::CLIENT]);
 
         return [$company, ['X-Company-ID' => (string) $company->id]];

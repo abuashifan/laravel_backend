@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Shared\Models\Plan;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Schema;
 
 class PlanSeeder extends Seeder
 {
@@ -154,6 +155,25 @@ class PlanSeeder extends Seeder
                 ], self::ENTERPRISE_FEATURES),
             ]
         );
+
+        // Paket Finlite POS. Harga dan kuota menunggu keputusan pemilik produk.
+        // Seeder ini juga dipanggil migrasi lama (2026_09_17/18) sebelum kolom
+        // `plans.product` ada; di sana paket POS dibuat oleh migrasi 2026_11_06.
+        if (Schema::hasColumn('plans', 'product')) {
+            Plan::updateOrCreate(
+                ['code' => Plan::POS_CODE],
+                [
+                    'name' => 'Kasir (POS)',
+                    'product' => 'pos',
+                    'description' => 'Paket Finlite POS. Harga dan kuota akan ditentukan.',
+                    'max_users' => 3,
+                    'max_companies' => 1,
+                    'monthly_price' => 0,
+                    'yearly_price' => 0,
+                    'status' => 'active',
+                ]
+            );
+        }
 
         // Tier khusus: jumlah perusahaannya tidak ditentukan paket, melainkan
         // diisi per client lewat `users.company_quota`. `max_companies` di sini

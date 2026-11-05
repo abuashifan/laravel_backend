@@ -36,7 +36,7 @@ class PosSaleService
     {
         $shift = $this->shifts->requireOpen($user);
 
-        return DB::connection('tenant')->transaction(function () use ($user, $data, $shift) {
+        return DB::connection('pos')->transaction(function () use ($user, $data, $shift) {
             $lines = [];
             $subtotal = 0.0;
 
@@ -138,7 +138,7 @@ class PosSaleService
             throw ValidationException::withMessages(['sale' => ['Transaksi sudah dibatalkan.']]);
         }
 
-        return DB::connection('tenant')->transaction(function () use ($sale, $user, $reason) {
+        return DB::connection('pos')->transaction(function () use ($sale, $user, $reason) {
             $shift = $sale->shift()->lockForUpdate()->first();
             if (! $shift || $shift->status !== 'open') {
                 throw ValidationException::withMessages(['sale' => ['Shift transaksi ini sudah ditutup; transaksi tidak bisa dibatalkan.']]);

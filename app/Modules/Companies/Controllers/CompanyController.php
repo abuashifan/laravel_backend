@@ -11,9 +11,13 @@ use App\Shared\Api\ApiResponseBuilder;
 use App\Shared\Company\CompanyDeletionService;
 use App\Shared\Models\Company;
 use App\Shared\Models\CompanyUser;
+use App\Shared\Models\TenantDatabase;
+use App\Shared\Models\User;
 use App\Shared\Subscription\CompanyQuotaService;
 use App\Shared\Subscription\SubscriptionService;
 use App\Shared\Subscription\UpgradeLinkBuilder;
+use App\Shared\Tenant\ProductActivationService;
+use App\Shared\Tenant\TenantProductService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -30,7 +34,7 @@ class CompanyController extends Controller
 
         $companies = $user->companies()
             ->wherePivot('status', 'active')
-            ->with('tenantDatabase')
+            ->with('tenantDatabase', 'productTenants')
             ->get()
             ->map(fn (Company $company) => $this->companyPayload($company, $company->pivot?->role, (bool) $company->pivot?->is_owner))
             ->values();
@@ -63,10 +67,14 @@ class CompanyController extends Controller
     ): JsonResponse {
         $data = $request->validate([
             'name' => ['required', 'string', 'min:3', 'max:100'],
+            // Produk pertama perusahaan. Bawaan akuntansi (perilaku lama);
+            // `pos` membuat perusahaan tanpa tenant akuntansi.
+            'product' => ['sometimes', 'string', Rule::in(TenantProductService::products())],
         ]);
 
         $user = $request->user();
         $name = trim($data['name']);
+        $product = (string) ($data['product'] ?? TenantDatabase::PRODUCT_ACCOUNTING);
 
         // Gerbang langganan. `plan_id` (diatur admin di tab Kuota Paket) cuma
         // menentukan APA yang boleh dipakai KALAU sudah berlangganan — bukan
@@ -77,22 +85,22 @@ class CompanyController extends Controller
         // (lihat SubscriptionService::isLocked()). Login tetap dibuka untuk
         // state itu (client baru wajar belum berlangganan), tapi membuat
         // perusahaan pertama harus menunggu langganan benar-benar dimulai.
-        $subscriptionState = $subscriptionService->stateFor($user);
+        $subscriptionState = $subscriptionService->stateFor($user, $product);
         if (! in_array($subscriptionState, [SubscriptionService::STATE_ACTIVE, SubscriptionService::STATE_GRACE], true)) {
             return ApiResponseBuilder::error(
                 ApiErrorCode::SUBSCRIPTION_REQUIRED,
                 null,
                 [],
                 403,
-                ['renewal_url' => $upgradeLinkBuilder->renewalLinkFor($user)]
+                ['renewal_url' => $upgradeLinkBuilder->renewalLinkFor($user), 'product' => $product]
             );
         }
 
         // Gerbang kuota. Menurunkan paket tidak mencabut perusahaan yang sudah
         // ada, jadi `used` bisa saja melebihi `limit` — yang ditahan hanya
         // penambahan baru.
-        if (! $quotaService->canCreate($user)) {
-            $summary = $quotaService->summaryFor($user);
+        $summary = $quotaService->summaryForProduct($user, $product);
+        if (! $summary['can_create']) {
             $planLabel = $summary['plan_name'] ?? 'Anda';
 
             return $this->errorCodeResponse(
@@ -123,7 +131,7 @@ class CompanyController extends Controller
         }
 
         try {
-            $company = $creationService->createForUser($user, $name);
+            $company = $creationService->createForUser($user, $name, $product);
         } catch (InvalidArgumentException $e) {
             return $this->errorResponse($e->getMessage(), 422);
         } catch (Throwable $e) {
@@ -147,7 +155,7 @@ class CompanyController extends Controller
         }
 
         return $this->successResponse(
-            $this->companyPayload($company->load('tenantDatabase'), 'owner', true),
+            $this->companyPayload($company->load('tenantDatabase', 'productTenants'), 'owner', true),
             'Company created successfully',
             201
         );
@@ -171,6 +179,14 @@ class CompanyController extends Controller
             'user_role' => $userRole,
             // Pemilik ditentukan `is_owner`, bukan label peran lama.
             'is_owner' => $isOwner,
+            // Produk yang aktif di perusahaan ini (`accounting`, `pos`, ...).
+            'products' => $company->productTenants
+                ->where('status', 'active')
+                ->pluck('product')
+                ->map(fn ($product) => (string) $product)
+                ->sort()
+                ->values()
+                ->all(),
             'tenant_database' => $company->tenantDatabase ? [
                 'database_name' => $company->tenantDatabase->database_name,
                 'status' => $company->tenantDatabase->status,
@@ -210,7 +226,19 @@ class CompanyController extends Controller
 
         $tenantDatabase = $company->tenantDatabase;
 
-        if (! $tenantDatabase || $tenantDatabase->status !== 'active') {
+        if (! $tenantDatabase) {
+            // Perusahaan yang baru memakai produk lain (mis. POS). Frontend
+            // akuntansi menawarkan aktivasi lewat endpoint products/activate.
+            return $this->errorCodeResponse(
+                'PRODUCT_NOT_ACTIVE',
+                'Finlite Accounting belum diaktifkan untuk perusahaan ini.',
+                [],
+                422,
+                ['product' => TenantDatabase::PRODUCT_ACCOUNTING, 'can_activate' => (bool) ($companyUser->is_owner || $companyUser->full_access)]
+            );
+        }
+
+        if ($tenantDatabase->status !== 'active') {
             return $this->errorResponse('Tenant database company belum aktif.', 422);
         }
 
@@ -232,6 +260,28 @@ class CompanyController extends Controller
         return $this->successResponse([
             'active_company' => $activeCompany,
         ], 'Company selected successfully');
+    }
+
+    /**
+     * Aktifkan produk ekosistem untuk perusahaan yang sudah ada (mis. POS
+     * untuk perusahaan akuntansi, atau akuntansi untuk toko POS). Hanya
+     * pemilik/akses penuh, dan pemilik perusahaan wajib berlangganan produk
+     * tersebut. Di luar `company.access` karena produknya justru belum aktif.
+     */
+    public function activateProduct(Request $request, int $companyId, string $product, ProductActivationService $activation): JsonResponse
+    {
+        $company = Company::query()->findOrFail($companyId);
+        $denied = $activation->activate($request->user(), $company, $product);
+        if ($denied) {
+            return $denied;
+        }
+
+        $member = $activation->membership($request->user(), $company);
+
+        return $this->successResponse(
+            $this->companyPayload($company->load('tenantDatabase', 'productTenants'), $member?->role, (bool) $member?->is_owner),
+            'Produk berhasil diaktifkan.'
+        );
     }
 
     /**

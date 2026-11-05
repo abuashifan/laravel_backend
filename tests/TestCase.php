@@ -190,7 +190,9 @@ abstract class TestCase extends BaseTestCase
      */
     protected function activeSubscriptionFor(User $user, ?Plan $plan = null): Subscription
     {
-        $plan ??= $user->plan ?? Plan::query()->first() ?? Plan::query()->create([
+        // Hanya paket akuntansi: migrasi juga membuat paket `pos`, yang tidak
+        // boleh terpilih sebagai langganan akuntansi bawaan test.
+        $plan ??= $user->plan ?? Plan::query()->where('product', 'accounting')->first() ?? Plan::query()->create([
             'name' => 'Test Plan',
             'code' => 'test-plan-'.uniqid(),
             'max_users' => 10,

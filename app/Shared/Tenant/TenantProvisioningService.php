@@ -21,14 +21,19 @@ class TenantProvisioningService
      * @return array{
      *   company: Company,
      *   owner: User,
-     *   tenant_database: TenantDatabase,
+     *   tenant_database: TenantDatabase|null,
      *   company_user: CompanyUser,
      *   database_name: string,
      *   database_path: string,
      *   tenant_directory: string
      * }
      */
-    public function provision(string $name, string $slug, string $ownerEmail): array
+    /**
+     * `$withAccountingTenant = false` membuat perusahaan beserta pemiliknya saja,
+     * tanpa tenant akuntansi -- dipakai perusahaan yang hanya memakai produk
+     * lain (mis. POS). Tenant produk lalu dibuat `TenantProductService::activate()`.
+     */
+    public function provision(string $name, string $slug, string $ownerEmail, bool $withAccountingTenant = true): array
     {
         $name = trim($name);
         $slug = trim($slug);
@@ -61,6 +66,22 @@ class TenantProvisioningService
 
         $storage = $this->storages->default();
 
+        if (! $withAccountingTenant) {
+            return DB::transaction(function () use ($name, $slug, $owner) {
+                $company = $this->createCompany($name, $slug, $owner);
+
+                return [
+                    'company' => $company,
+                    'owner' => $owner,
+                    'tenant_database' => null,
+                    'company_user' => $this->createOwnerMembership($company, $owner),
+                    'database_name' => '',
+                    'database_path' => '',
+                    'tenant_directory' => (string) config('tenant.database_path'),
+                ];
+            });
+        }
+
         // Kesiapan penyimpanan diperiksa SEBELUM baris apa pun ditulis. Kalau
         // folder tenant tidak writable atau Postgres tidak terjangkau, lebih
         // baik gagal di sini daripada meninggalkan company tanpa tenant.
@@ -71,18 +92,7 @@ class TenantProvisioningService
 
         try {
             return DB::transaction(function () use ($name, $slug, $owner, $storage, $tenantDirectory, &$createdTenant) {
-                $tempCode = 'TMP-'.Str::uuid()->toString();
-
-                $company = Company::query()->create([
-                    'name' => $name,
-                    'slug' => $slug,
-                    'code' => $tempCode,
-                    'status' => 'active',
-                    'created_by' => $owner->id,
-                ]);
-
-                $companyCode = 'CMP-'.str_pad((string) $company->id, 6, '0', STR_PAD_LEFT);
-                $company->forceFill(['code' => $companyCode])->save();
+                $company = $this->createCompany($name, $slug, $owner);
 
                 $databaseName = $storage->nameFor($company->id);
                 $databasePath = $storage->pathFor($databaseName);
@@ -102,15 +112,7 @@ class TenantProvisioningService
                     'status' => 'active',
                 ]);
 
-                $companyUser = CompanyUser::query()->create([
-                    'company_id' => $company->id,
-                    'user_id' => $owner->id,
-                    'role' => 'owner',
-                    'full_access' => true,
-                    'is_owner' => true,
-                    'status' => 'active',
-                    'joined_at' => now(),
-                ]);
+                $companyUser = $this->createOwnerMembership($company, $owner);
 
                 return [
                     'company' => $company,
@@ -138,5 +140,33 @@ class TenantProvisioningService
 
             throw $e;
         }
+    }
+
+    private function createCompany(string $name, string $slug, User $owner): Company
+    {
+        $company = Company::query()->create([
+            'name' => $name,
+            'slug' => $slug,
+            'code' => 'TMP-'.Str::uuid()->toString(),
+            'status' => 'active',
+            'created_by' => $owner->id,
+        ]);
+
+        $company->forceFill(['code' => 'CMP-'.str_pad((string) $company->id, 6, '0', STR_PAD_LEFT)])->save();
+
+        return $company;
+    }
+
+    private function createOwnerMembership(Company $company, User $owner): CompanyUser
+    {
+        return CompanyUser::query()->create([
+            'company_id' => $company->id,
+            'user_id' => $owner->id,
+            'role' => 'owner',
+            'full_access' => true,
+            'is_owner' => true,
+            'status' => 'active',
+            'joined_at' => now(),
+        ]);
     }
 }

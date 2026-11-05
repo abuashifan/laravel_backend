@@ -19,12 +19,17 @@ class TenantConnectionManager
 {
     public function __construct(private readonly TenantStorageManager $storages) {}
 
-    public function connect(string|TenantDatabase $database): void
+    /**
+     * Sambungkan tenant ke koneksi milik produknya (`tenant` untuk akuntansi,
+     * `pos` untuk kasir), kecuali `$connection` diberikan eksplisit.
+     */
+    public function connect(string|TenantDatabase $database, ?string $connection = null): void
     {
         if ($database instanceof TenantDatabase) {
             $this->storages->for($database)->connect(
                 (string) $database->database_name,
                 (string) $database->database_path,
+                $connection ?? self::connectionFor((string) ($database->product ?: TenantDatabase::PRODUCT_ACCOUNTING)),
             );
 
             return;
@@ -33,12 +38,18 @@ class TenantConnectionManager
         // Bentuk string hanya bermakna untuk SQLite: pemanggil lama menyerahkan
         // path berkas secara langsung. Postgres selalu lewat TenantDatabase
         // karena butuh nama schema, bukan lokasi di disk.
-        $this->storages->driver('sqlite')->connect(basename($database), $database);
+        $this->storages->driver('sqlite')->connect(basename($database), $database, $connection ?? 'tenant');
     }
 
-    public function disconnect(): void
+    public function disconnect(string $connection = 'tenant'): void
     {
-        DB::disconnect('tenant');
+        DB::disconnect($connection);
+    }
+
+    /** Nama koneksi database untuk sebuah produk (config `tenant.products.*.connection`). */
+    public static function connectionFor(string $product): string
+    {
+        return (string) config('tenant.products.'.$product.'.connection', 'tenant');
     }
 
     /**

@@ -34,7 +34,7 @@ class PosShiftService
 
     public function open(User $user, float $openingCash, ?string $notes = null): PosShift
     {
-        return DB::connection('tenant')->transaction(function () use ($user, $openingCash, $notes) {
+        return DB::connection('pos')->transaction(function () use ($user, $openingCash, $notes) {
             if ($this->current($user)) {
                 throw ValidationException::withMessages([
                     'shift' => ['Shift Anda masih terbuka. Tutup dulu sebelum membuka shift baru.'],

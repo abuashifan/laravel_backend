@@ -8,6 +8,7 @@ use App\Shared\Models\TenantDatabase;
 use App\Shared\Models\User;
 use App\Shared\Tenant\Storage\TenantStorageManager;
 use App\Shared\Tenant\TenantMigrationService;
+use App\Shared\Tenant\TenantProductService;
 use App\Shared\Tenant\TenantProvisioningService;
 use App\Shared\Tenant\TenantStarterDataService;
 use Illuminate\Support\Str;
@@ -30,12 +31,33 @@ class CompanyCreationService
         private readonly TenantMigrationService $migrationService,
         private readonly TenantStorageManager $storages,
         private readonly TenantStarterDataService $starterData,
+        private readonly TenantProductService $products,
     ) {}
 
-    public function createForUser(User $owner, string $name): Company
+    /**
+     * `$product` = produk pertama perusahaan. `accounting` memakai jalur lama
+     * (tenant akuntansi + data awal); produk lain membuat perusahaan tanpa
+     * tenant akuntansi lalu mengaktifkan produk itu saja.
+     */
+    public function createForUser(User $owner, string $name, string $product = TenantDatabase::PRODUCT_ACCOUNTING): Company
     {
         $name = trim($name);
         $slug = $this->generateUniqueSlug($name);
+
+        if ($product !== TenantDatabase::PRODUCT_ACCOUNTING) {
+            TenantProductService::assertKnown($product);
+            $company = $this->provisioningService->provision($name, $slug, $owner->email, withAccountingTenant: false)['company'];
+
+            try {
+                $this->products->activate($company, $product);
+            } catch (Throwable $e) {
+                $this->rollbackProvisioning($company, null);
+
+                throw $e;
+            }
+
+            return $company->refresh();
+        }
 
         $result = $this->provisioningService->provision($name, $slug, $owner->email);
 

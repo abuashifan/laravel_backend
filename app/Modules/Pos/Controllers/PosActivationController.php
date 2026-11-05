@@ -2,63 +2,63 @@
 
 namespace App\Modules\Pos\Controllers;
 
-use App\Modules\Pos\Services\PosActivationService;
 use App\Modules\Pos\Services\PosSettingService;
 use App\Modules\Pos\Services\PosShiftService;
 use App\Shared\Api\ApiErrorCode;
 use App\Shared\Models\Company;
-use App\Shared\Models\CompanyUser;
+use App\Shared\Models\TenantDatabase;
 use App\Shared\Permission\PermissionService;
+use App\Shared\Subscription\SubscriptionService;
+use App\Shared\Tenant\ProductActivationService;
 use App\Shared\Tenant\TenantContext;
+use App\Shared\Tenant\TenantProductService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Throwable;
 
 class PosActivationController extends PosController
 {
-    public function __construct(private readonly PosActivationService $activation) {}
+    public function __construct(
+        private readonly TenantProductService $products,
+        private readonly ProductActivationService $activation,
+    ) {}
 
     /**
      * Status POS untuk perusahaan di header X-Company-ID. Tidak memakai
      * `company.access:pos` karena justru dipanggil sebelum POS aktif.
      */
-    public function status(Request $request): JsonResponse
+    public function status(Request $request, SubscriptionService $subscriptions): JsonResponse
     {
-        [$company, $member] = $this->membership($request);
-        if (! $company) {
+        $company = Company::query()->find($request->header('X-Company-ID'));
+        $member = $company ? $this->activation->membership($this->user($request), $company) : null;
+        if (! $company || ! $member) {
             return $this->errorCodeResponse(ApiErrorCode::COMPANY_ACCESS_DENIED, null, [], 403);
         }
 
-        $tenant = $this->activation->find($company);
+        $owner = $company->created_by ? $company->creator()->first() : null;
 
         return $this->successResponse([
             'company' => ['id' => $company->id, 'name' => $company->name],
-            'active' => $tenant?->status === 'active',
-            'can_activate' => (bool) ($member->is_owner || $member->full_access),
+            'active' => $this->products->find($company, TenantDatabase::PRODUCT_POS)?->status === 'active',
+            'can_activate' => $this->activation->canActivate($member),
+            'subscribed' => $owner !== null && $subscriptions->hasAccess($owner, TenantDatabase::PRODUCT_POS),
         ]);
     }
 
     public function activate(Request $request): JsonResponse
     {
-        [$company, $member] = $this->membership($request);
+        $company = Company::query()->find($request->header('X-Company-ID'));
         if (! $company) {
             return $this->errorCodeResponse(ApiErrorCode::COMPANY_ACCESS_DENIED, null, [], 403);
         }
-        if (! $member->is_owner && ! $member->full_access) {
-            return $this->errorCodeResponse(ApiErrorCode::FORBIDDEN, 'Hanya pemilik perusahaan yang bisa mengaktifkan POS.', [], 403);
-        }
 
-        try {
-            $tenant = $this->activation->activate($company);
-        } catch (Throwable $e) {
-            report($e);
-
-            return $this->errorResponse('POS gagal diaktifkan: '.$e->getMessage(), 500);
+        $denied = $this->activation->activate($this->user($request), $company, TenantDatabase::PRODUCT_POS);
+        if ($denied) {
+            return $denied;
         }
 
         return $this->successResponse([
             'company' => ['id' => $company->id, 'name' => $company->name],
-            'active' => $tenant->status === 'active',
+            'active' => true,
         ], 'POS berhasil diaktifkan.');
     }
 
@@ -82,22 +82,5 @@ class PosActivationController extends PosController
             'settings' => $settings->all(),
             'current_shift' => $shifts->current($user),
         ]);
-    }
-
-    /** @return array{0: ?Company, 1: ?CompanyUser} */
-    private function membership(Request $request): array
-    {
-        $company = Company::query()->find($request->header('X-Company-ID'));
-        if (! $company) {
-            return [null, null];
-        }
-
-        $member = CompanyUser::query()
-            ->where('company_id', $company->id)
-            ->where('user_id', $request->user()?->id)
-            ->where('status', 'active')
-            ->first();
-
-        return $member ? [$company, $member] : [null, null];
     }
 }

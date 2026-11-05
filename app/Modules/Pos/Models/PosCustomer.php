@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class PosCustomer extends Model
 {
-    protected $connection = 'tenant';
+    protected $connection = 'pos';
 
     protected $table = 'pos_customers';
 

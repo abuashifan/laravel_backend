@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class PosSale extends Model
 {
-    protected $connection = 'tenant';
+    protected $connection = 'pos';
 
     protected $table = 'pos_sales';
 

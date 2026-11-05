@@ -25,7 +25,7 @@ class PosCatalogController extends PosController
 
     public function storeCategory(Request $request): JsonResponse
     {
-        $data = $request->validate(['name' => ['required', 'string', 'max:100', Rule::unique('tenant.pos_categories', 'name')]]);
+        $data = $request->validate(['name' => ['required', 'string', 'max:100', Rule::unique('pos.pos_categories', 'name')]]);
 
         return $this->successResponse(PosCategory::query()->create($data), 'Kategori dibuat.', 201);
     }
@@ -33,7 +33,7 @@ class PosCatalogController extends PosController
     public function updateCategory(Request $request, int $id): JsonResponse
     {
         $category = PosCategory::query()->findOrFail($id);
-        $data = $request->validate(['name' => ['required', 'string', 'max:100', Rule::unique('tenant.pos_categories', 'name')->ignore($id)]]);
+        $data = $request->validate(['name' => ['required', 'string', 'max:100', Rule::unique('pos.pos_categories', 'name')->ignore($id)]]);
         $category->update($data);
 
         return $this->successResponse($category, 'Kategori diperbarui.');
@@ -92,7 +92,7 @@ class PosCatalogController extends PosController
         $initialStock = (float) ($data['initial_stock'] ?? 0);
         unset($data['initial_stock']);
 
-        $product = DB::connection('tenant')->transaction(function () use ($data, $initialStock, $request) {
+        $product = DB::connection('pos')->transaction(function () use ($data, $initialStock, $request) {
             $product = PosProduct::query()->create(array_merge($data, ['stock' => 0]));
             if ($product->track_stock && $initialStock > 0) {
                 $this->stock->move($product, $initialStock, 'adjustment', null, null, 'Stok awal', $request->user()?->id);
@@ -142,7 +142,7 @@ class PosCatalogController extends PosController
             return $this->validationErrorResponse(['product' => ['Stok produk ini tidak dilacak. Aktifkan "Lacak stok" dulu.']]);
         }
 
-        DB::connection('tenant')->transaction(function () use ($product, $data, $request) {
+        DB::connection('pos')->transaction(function () use ($product, $data, $request) {
             $delta = isset($data['set_stock'])
                 ? (float) $data['set_stock'] - (float) $product->stock
                 : (float) $data['quantity'];
@@ -170,9 +170,9 @@ class PosCatalogController extends PosController
 
         return [
             'name' => [$required, 'string', 'max:150'],
-            'sku' => ['nullable', 'string', 'max:50', Rule::unique('tenant.pos_products', 'sku')->ignore($id)],
-            'barcode' => ['nullable', 'string', 'max:64', Rule::unique('tenant.pos_products', 'barcode')->ignore($id)],
-            'category_id' => ['nullable', 'integer', 'exists:tenant.pos_categories,id'],
+            'sku' => ['nullable', 'string', 'max:50', Rule::unique('pos.pos_products', 'sku')->ignore($id)],
+            'barcode' => ['nullable', 'string', 'max:64', Rule::unique('pos.pos_products', 'barcode')->ignore($id)],
+            'category_id' => ['nullable', 'integer', 'exists:pos.pos_categories,id'],
             'unit' => ['nullable', 'string', 'max:20'],
             'price' => [$required, 'numeric', 'min:0'],
             'cost' => ['nullable', 'numeric', 'min:0'],

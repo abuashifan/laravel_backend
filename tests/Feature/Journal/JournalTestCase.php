@@ -126,7 +126,7 @@ abstract class JournalTestCase extends TestCase
             'status' => 'active',
         ]);
 
-        app(TenantConnectionManager::class)->connect($posPath);
-        Artisan::call('migrate', ['--database' => 'tenant', '--path' => 'database/migrations/tenant_pos', '--force' => true]);
+        app(TenantConnectionManager::class)->connect($posPath, 'pos');
+        Artisan::call('migrate', ['--database' => 'pos', '--path' => 'database/migrations/tenant_pos', '--force' => true]);
     }
 }

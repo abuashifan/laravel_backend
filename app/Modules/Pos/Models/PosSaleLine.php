@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class PosSaleLine extends Model
 {
-    protected $connection = 'tenant';
+    protected $connection = 'pos';
 
     protected $table = 'pos_sale_lines';
 

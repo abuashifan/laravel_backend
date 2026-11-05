@@ -80,7 +80,7 @@ class SqliteTenantStorage implements TenantStorage
         return $size === false ? null : (int) $size;
     }
 
-    public function connect(string $name, string $path): void
+    public function connect(string $name, string $path, string $connection = 'tenant'): void
     {
         $resolved = $this->locate($name, $path);
 
@@ -88,19 +88,21 @@ class SqliteTenantStorage implements TenantStorage
             throw new RuntimeException("Tenant database file does not exist at resolved path: {$path}");
         }
 
-        Config::set('database.connections.tenant.driver', 'sqlite');
-        Config::set('database.connections.tenant.database', $resolved);
-        Config::set('database.connections.tenant.url', null);
-        Config::set('database.connections.tenant.search_path', null);
+        Config::set("database.connections.{$connection}.driver", 'sqlite');
+        Config::set("database.connections.{$connection}.database", $resolved);
+        Config::set("database.connections.{$connection}.url", null);
+        Config::set("database.connections.{$connection}.search_path", null);
+        Config::set("database.connections.{$connection}.prefix", '');
+        Config::set("database.connections.{$connection}.foreign_key_constraints", (bool) config('database.connections.tenant.foreign_key_constraints', true));
 
-        DB::purge('tenant');
-        DB::reconnect('tenant');
+        DB::purge($connection);
+        DB::reconnect($connection);
 
         // Sebagian sandbox CI/dev melarang pembuatan berkas journal rollback.
         // Di test journal ditahan di memori supaya tidak menyentuh disk.
         if (app()->environment('testing')) {
-            DB::connection('tenant')->statement('PRAGMA journal_mode = MEMORY');
-            DB::connection('tenant')->statement('PRAGMA synchronous = OFF');
+            DB::connection($connection)->statement('PRAGMA journal_mode = MEMORY');
+            DB::connection($connection)->statement('PRAGMA synchronous = OFF');
 
             return;
         }
@@ -108,8 +110,8 @@ class SqliteTenantStorage implements TenantStorage
         // WAL membiarkan pembaca dan penulis jalan bersamaan — pola akses saat
         // worker antrean menulis sementara user bekerja di browser. busy_timeout
         // memberi ruang tunggu 5 detik sebelum SQLITE_BUSY.
-        DB::connection('tenant')->statement('PRAGMA journal_mode = WAL');
-        DB::connection('tenant')->statement('PRAGMA busy_timeout = 5000');
+        DB::connection($connection)->statement('PRAGMA journal_mode = WAL');
+        DB::connection($connection)->statement('PRAGMA busy_timeout = 5000');
     }
 
     private function directory(): string

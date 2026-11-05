@@ -44,6 +44,14 @@ class SubscriptionService
     public const STATE_CANCELLED = 'cancelled';
 
     /**
+     * Produk yang ditanggung langganan (Fase 0 POS). Semua metode menerima
+     * `$product`; nilai bawaan `accounting` menjaga pemanggil lama tetap
+     * berarti langganan Finlite Accounting. `users.plan_id` hanya mencerminkan
+     * paket akuntansi -- langganan produk lain tidak menyentuhnya.
+     */
+    public const PRODUCT_ACCOUNTING = 'accounting';
+
+    /**
      * Membuka langganan baru. Menolak kalau client sudah punya langganan
      * aktif/tenggang — hanya satu baris per client yang boleh berada di
      * salah satu dari dua keadaan itu. Mengunci harga dari paket SAAT INI ke
@@ -54,7 +62,8 @@ class SubscriptionService
     {
         $this->assertValidCycle($cycle);
 
-        $state = $this->stateFor($client);
+        $product = $plan->productKey();
+        $state = $this->stateFor($client, $product);
         if (in_array($state, [self::STATE_ACTIVE, self::STATE_GRACE], true)) {
             throw new InvalidArgumentException(
                 'Client sudah punya langganan aktif atau dalam tenggang. Pakai renew() untuk memperpanjang.'
@@ -67,13 +76,14 @@ class SubscriptionService
         $subscription = Subscription::query()->create([
             'user_id' => $client->id,
             'plan_id' => $plan->id,
+            'product' => $product,
             'starts_at' => $startsAt,
             'ends_at' => $endsAt,
             'billing_cycle' => $cycle,
             'price' => $this->priceFor($plan, $cycle),
         ]);
 
-        $client->forceFill(['plan_id' => $plan->id])->save();
+        $this->syncUserPlan($client, $plan);
 
         return $subscription;
     }
@@ -84,9 +94,10 @@ class SubscriptionService
      * periodenya sendiri. `$plan`/`$cycle` null berarti melanjutkan paket dan
      * siklus yang sama dengan langganan sebelumnya.
      */
-    public function renew(User $client, ?Plan $plan = null, ?string $cycle = null): Subscription
+    public function renew(User $client, ?Plan $plan = null, ?string $cycle = null, string $product = self::PRODUCT_ACCOUNTING): Subscription
     {
-        $previous = $this->currentFor($client);
+        $product = $plan?->productKey() ?? $product;
+        $previous = $this->currentFor($client, $product);
 
         if (! $previous) {
             throw new InvalidArgumentException(
@@ -97,6 +108,9 @@ class SubscriptionService
         $cycle ??= $previous->billing_cycle;
         $this->assertValidCycle($cycle);
         $plan ??= $previous->plan;
+        if ($plan->productKey() !== $product) {
+            throw new InvalidArgumentException('Paket baru harus untuk produk yang sama dengan langganan sebelumnya.');
+        }
 
         $startsAt = $previous->ends_at;
         $endsAt = $this->addCycle($startsAt, $cycle);
@@ -104,13 +118,14 @@ class SubscriptionService
         $subscription = Subscription::query()->create([
             'user_id' => $client->id,
             'plan_id' => $plan->id,
+            'product' => $product,
             'starts_at' => $startsAt,
             'ends_at' => $endsAt,
             'billing_cycle' => $cycle,
             'price' => $this->priceFor($plan, $cycle),
         ]);
 
-        $client->forceFill(['plan_id' => $plan->id])->save();
+        $this->syncUserPlan($client, $plan);
 
         return $subscription;
     }
@@ -120,9 +135,9 @@ class SubscriptionService
      * riwayatnya tetap ada, hanya `cancelled_at` yang terisi. Client langsung
      * masuk keadaan `cancelled` (terkunci), tanpa menunggu `ends_at`.
      */
-    public function cancel(User $client): void
+    public function cancel(User $client, string $product = self::PRODUCT_ACCOUNTING): void
     {
-        $current = $this->currentFor($client);
+        $current = $this->currentFor($client, $product);
 
         if ($current && $current->cancelled_at === null) {
             $current->forceFill(['cancelled_at' => now()])->save();
@@ -133,10 +148,11 @@ class SubscriptionService
      * Baris paling akhir milik client (berdasarkan `ends_at`), apa pun
      * keadaannya. Baris yang lebih lama sudah digantikan riwayat penagihan.
      */
-    public function currentFor(User $client): ?Subscription
+    public function currentFor(User $client, string $product = self::PRODUCT_ACCOUNTING): ?Subscription
     {
         return Subscription::query()
             ->where('user_id', $client->id)
+            ->where('product', $product)
             ->orderByDesc('ends_at')
             ->first();
     }
@@ -149,9 +165,9 @@ class SubscriptionService
      *
      * @return self::STATE_*
      */
-    public function stateFor(User $client): string
+    public function stateFor(User $client, string $product = self::PRODUCT_ACCOUNTING): string
     {
-        $subscription = $this->currentFor($client);
+        $subscription = $this->currentFor($client, $product);
 
         if (! $subscription) {
             return self::STATE_NONE;
@@ -181,9 +197,9 @@ class SubscriptionService
      * `GRACE_DAYS` berikutnya dengan akses penuh, tanpa mencatatnya sebagai
      * baris riwayat penagihan baru — status derivasinya tidak butuh itu.
      */
-    public function unlock(User $client): Subscription
+    public function unlock(User $client, string $product = self::PRODUCT_ACCOUNTING): Subscription
     {
-        $current = $this->currentFor($client);
+        $current = $this->currentFor($client, $product);
 
         if (! $current) {
             throw new InvalidArgumentException('Client belum pernah berlangganan; tidak ada yang bisa dibuka.');
@@ -198,18 +214,34 @@ class SubscriptionService
     }
 
     /** Dipakai titik login — lihat catatan kelas soal `plan_id` yang aman dipercaya. */
-    public function isLocked(User $client): bool
+    public function isLocked(User $client, string $product = self::PRODUCT_ACCOUNTING): bool
     {
-        return in_array($this->stateFor($client), [self::STATE_EXPIRED, self::STATE_CANCELLED], true);
+        return in_array($this->stateFor($client, $product), [self::STATE_EXPIRED, self::STATE_CANCELLED], true);
+    }
+
+    /** Langganan produk ini sedang aktif atau dalam masa tenggang. */
+    public function hasAccess(User $client, string $product): bool
+    {
+        return in_array($this->stateFor($client, $product), [self::STATE_ACTIVE, self::STATE_GRACE], true);
+    }
+
+    /** Paket yang sedang berlaku untuk satu produk (dari langganan terakhir). */
+    public function planFor(User $client, string $product): ?Plan
+    {
+        if ($product === self::PRODUCT_ACCOUNTING) {
+            return $client->plan;
+        }
+
+        return $this->currentFor($client, $product)?->plan;
     }
 
     /**
      * Sisa hari sampai `ends_at`. Negatif kalau sudah lewat (termasuk masa
      * tenggang). `null` kalau client belum pernah berlangganan.
      */
-    public function daysRemaining(User $client): ?int
+    public function daysRemaining(User $client, string $product = self::PRODUCT_ACCOUNTING): ?int
     {
-        $subscription = $this->currentFor($client);
+        $subscription = $this->currentFor($client, $product);
 
         if (! $subscription) {
             return null;
@@ -219,6 +251,14 @@ class SubscriptionService
         $endsAt = CarbonImmutable::instance($subscription->ends_at)->startOfDay();
 
         return (int) $today->diffInDays($endsAt, false);
+    }
+
+    /** `users.plan_id` = paket akuntansi saja (dibaca kuota & gerbang fitur akuntansi). */
+    private function syncUserPlan(User $client, Plan $plan): void
+    {
+        if ($plan->productKey() === self::PRODUCT_ACCOUNTING) {
+            $client->forceFill(['plan_id' => $plan->id])->save();
+        }
     }
 
     private function assertValidCycle(string $cycle): void

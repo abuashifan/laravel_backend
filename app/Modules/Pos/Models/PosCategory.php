@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class PosCategory extends Model
 {
-    protected $connection = 'tenant';
+    protected $connection = 'pos';
 
     protected $table = 'pos_categories';
 
