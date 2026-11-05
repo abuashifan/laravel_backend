@@ -22,7 +22,7 @@ Perbarui dokumen ini setiap kali arsitektur di bawah berubah.
 | Model tenant + global scope akuntansi | `app/Shared/Models/TenantDatabase.php` (`forProduct()`, `allProducts()`) |
 | Koneksi per produk (`tenant` / `pos`) | `app/Shared/Tenant/TenantConnectionManager.php::connectionFor()`, `config/database.php` |
 | Aktivasi produk (buat wadah + migrasi) | `app/Shared/Tenant/TenantProductService.php` |
-| Aturan siapa boleh mengaktifkan | `app/Modules/Companies/Services/ProductActivationService.php` |
+| Aturan siapa boleh mengaktifkan | `app/Shared/Tenant/ProductActivationService.php` |
 | Migrasi tenant per produk | `app/Shared/Tenant/TenantMigrationService.php` (`migrationPathFor()`) |
 | Middleware | `company.access` = akuntansi, `company.access:pos` = POS (`EnsureCompanyAccess`) |
 | Langganan per produk | `app/Shared/Subscription/SubscriptionService.php` (argumen `$product`, bawaan `accounting`) |

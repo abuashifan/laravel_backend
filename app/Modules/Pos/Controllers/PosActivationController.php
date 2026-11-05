@@ -2,7 +2,6 @@
 
 namespace App\Modules\Pos\Controllers;
 
-use App\Modules\Companies\Services\ProductActivationService;
 use App\Modules\Pos\Services\PosSettingService;
 use App\Modules\Pos\Services\PosShiftService;
 use App\Shared\Api\ApiErrorCode;
@@ -10,6 +9,7 @@ use App\Shared\Models\Company;
 use App\Shared\Models\TenantDatabase;
 use App\Shared\Permission\PermissionService;
 use App\Shared\Subscription\SubscriptionService;
+use App\Shared\Tenant\ProductActivationService;
 use App\Shared\Tenant\TenantContext;
 use App\Shared\Tenant\TenantProductService;
 use Illuminate\Http\JsonResponse;

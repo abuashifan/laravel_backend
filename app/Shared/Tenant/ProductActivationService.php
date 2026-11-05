@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Modules\Companies\Services;
+namespace App\Shared\Tenant;
 
 use App\Shared\Api\ApiErrorCode;
 use App\Shared\Api\ApiResponseBuilder;
@@ -9,7 +9,6 @@ use App\Shared\Models\CompanyUser;
 use App\Shared\Models\User;
 use App\Shared\Subscription\SubscriptionService;
 use App\Shared\Subscription\UpgradeLinkBuilder;
-use App\Shared\Tenant\TenantProductService;
 use Illuminate\Http\JsonResponse;
 use Throwable;
 
