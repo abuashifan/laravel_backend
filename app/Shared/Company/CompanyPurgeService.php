@@ -41,6 +41,11 @@ class CompanyPurgeService
     {
         $tenantDatabase = TenantDatabase::query()->where('company_id', $company->id)->first();
         $databasePath = $tenantDatabase?->database_path;
+        // Tenant produk lain (POS, ...) ikut dibuang bersama perusahaannya.
+        $otherTenants = TenantDatabase::allProducts()
+            ->where('company_id', $company->id)
+            ->where('product', '!=', TenantDatabase::PRODUCT_ACCOUNTING)
+            ->get();
 
         // Jejak audit ditulis lebih dulu: setelah baris companies hilang,
         // nama dan kodenya tidak bisa dibaca lagi dari mana pun.
@@ -81,6 +86,14 @@ class CompanyPurgeService
                 // Company-nya sudah benar-benar hilang dari central; kegagalan
                 // membuang wadahnya tidak boleh membatalkan purge yang sudah
                 // terjadi. Sisanya ditangani `companies:sweep-deleted`.
+                report($e);
+            }
+        }
+
+        foreach ($otherTenants as $other) {
+            try {
+                $this->storages->for($other)->drop((string) $other->database_name, (string) $other->database_path);
+            } catch (Throwable $e) {
                 report($e);
             }
         }

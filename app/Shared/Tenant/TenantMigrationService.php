@@ -64,7 +64,9 @@ class TenantMigrationService
      */
     public function migrateAllActive(): array
     {
-        $tenantDatabases = TenantDatabase::query()
+        // Semua produk ikut: tenant POS dimigrasikan bersama tenant akuntansi,
+        // masing-masing dengan folder migrasinya sendiri.
+        $tenantDatabases = TenantDatabase::allProducts()
             ->where('status', 'active')
             ->get();
 
@@ -140,6 +142,15 @@ class TenantMigrationService
         ];
     }
 
+    /** Folder migrasi untuk produk sebuah tenant, relatif ke base_path. */
+    public static function migrationPathFor(string $product): string
+    {
+        return (string) config(
+            'tenant.products.'.$product.'.migration_path',
+            'database/migrations/tenant',
+        );
+    }
+
     /**
      * @return array{
      *   success: bool,
@@ -150,8 +161,10 @@ class TenantMigrationService
      *   output?: string
      * }
      */
-    private function migrateTenantDatabase(Company $company, TenantDatabase $tenantDatabase): array
+    public function migrateTenantDatabase(Company $company, TenantDatabase $tenantDatabase): array
     {
+        $relativePath = self::migrationPathFor((string) ($tenantDatabase->product ?: TenantDatabase::PRODUCT_ACCOUNTING));
+
         $databaseName = (string) ($tenantDatabase->database_name ?? '');
         if (trim($databaseName) === '') {
             return [
@@ -162,11 +175,11 @@ class TenantMigrationService
             ];
         }
 
-        $migrationPath = base_path('database/migrations/tenant');
+        $migrationPath = base_path($relativePath);
         if (! File::isDirectory($migrationPath)) {
             return [
                 'success' => false,
-                'reason' => 'Migration path database/migrations/tenant tidak ditemukan.',
+                'reason' => "Migration path {$relativePath} tidak ditemukan.",
                 'company' => $company,
                 'tenant_database' => $tenantDatabase,
             ];
@@ -194,7 +207,7 @@ class TenantMigrationService
 
             $exitCode = Artisan::call('migrate', [
                 '--database' => 'tenant',
-                '--path' => 'database/migrations/tenant',
+                '--path' => $relativePath,
                 '--force' => true,
             ]);
 

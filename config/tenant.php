@@ -28,4 +28,20 @@ return [
     'database_extension' => '.sqlite',
 
     'schema_prefix' => 'tenant_',
+
+    /*
+     * Produk ekosistem yang punya tenant sendiri. `suffix` ditempel ke nama
+     * berkas/schema tenant (accounting tanpa suffix supaya tenant lama tetap
+     * bernama sama). `migration_path` relatif ke base_path.
+     */
+    'products' => [
+        'accounting' => [
+            'suffix' => '',
+            'migration_path' => 'database/migrations/tenant',
+        ],
+        'pos' => [
+            'suffix' => '_pos',
+            'migration_path' => 'database/migrations/tenant_pos',
+        ],
+    ],
 ];

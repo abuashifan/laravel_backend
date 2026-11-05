@@ -25,7 +25,7 @@ class EnsureCompanyAccess
      *
      * @param  Closure(Request): (Response|RedirectResponse)  $next
      */
-    public function handle(Request $request, Closure $next): mixed
+    public function handle(Request $request, Closure $next, string $product = TenantDatabase::PRODUCT_ACCOUNTING): mixed
     {
         $user = $request->user();
 
@@ -68,13 +68,18 @@ class EnsureCompanyAccess
             return ApiResponseBuilder::error(ApiErrorCode::COMPANY_ACCESS_DENIED, null, [], 403);
         }
 
-        $tenantDatabase = TenantDatabase::query()
+        // `company.access` = tenant akuntansi; `company.access:pos` = tenant POS.
+        $tenantDatabase = TenantDatabase::forProduct($product)
             ->where('company_id', $company->id)
             ->where('status', 'active')
             ->first();
 
         if (! $tenantDatabase) {
-            return ApiResponseBuilder::error(ApiErrorCode::TENANT_DATABASE_NOT_ACTIVE, null, [], 422);
+            $message = $product === TenantDatabase::PRODUCT_ACCOUNTING
+                ? null
+                : 'Produk '.strtoupper($product).' belum diaktifkan untuk perusahaan ini.';
+
+            return ApiResponseBuilder::error(ApiErrorCode::TENANT_DATABASE_NOT_ACTIVE, $message, [], 422, ['product' => $product]);
         }
 
         app(TenantContext::class)->set($company, $companyUser, $tenantDatabase);
