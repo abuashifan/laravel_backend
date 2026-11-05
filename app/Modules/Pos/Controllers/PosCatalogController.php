@@ -1,0 +1,183 @@
+<?php
+
+namespace App\Modules\Pos\Controllers;
+
+use App\Modules\Pos\Models\PosCategory;
+use App\Modules\Pos\Models\PosProduct;
+use App\Modules\Pos\Models\PosSaleLine;
+use App\Modules\Pos\Models\PosStockMovement;
+use App\Modules\Pos\Services\PosStockService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
+
+class PosCatalogController extends PosController
+{
+    public function __construct(private readonly PosStockService $stock) {}
+
+    // ---- Kategori ----
+
+    public function categories(): JsonResponse
+    {
+        return $this->successResponse(PosCategory::query()->withCount('products')->orderBy('name')->get());
+    }
+
+    public function storeCategory(Request $request): JsonResponse
+    {
+        $data = $request->validate(['name' => ['required', 'string', 'max:100', Rule::unique('tenant.pos_categories', 'name')]]);
+
+        return $this->successResponse(PosCategory::query()->create($data), 'Kategori dibuat.', 201);
+    }
+
+    public function updateCategory(Request $request, int $id): JsonResponse
+    {
+        $category = PosCategory::query()->findOrFail($id);
+        $data = $request->validate(['name' => ['required', 'string', 'max:100', Rule::unique('tenant.pos_categories', 'name')->ignore($id)]]);
+        $category->update($data);
+
+        return $this->successResponse($category, 'Kategori diperbarui.');
+    }
+
+    public function destroyCategory(int $id): JsonResponse
+    {
+        PosCategory::query()->findOrFail($id)->delete();
+
+        return $this->successResponse(null, 'Kategori dihapus.');
+    }
+
+    // ---- Produk ----
+
+    /**
+     * Daftar produk untuk layar kasir dan halaman produk. `barcode` = cocok
+     * persis (hasil scan), `search` = nama/SKU/barcode mengandung.
+     */
+    public function products(Request $request): JsonResponse
+    {
+        $query = PosProduct::query()->with('category:id,name')->orderBy('name');
+
+        if ($barcode = trim((string) $request->query('barcode', ''))) {
+            $query->where(fn ($q) => $q->where('barcode', $barcode)->orWhere('sku', $barcode));
+        }
+        if ($search = trim((string) $request->query('search', ''))) {
+            $query->where(function ($q) use ($search) {
+                $q->whereRaw(...$this->containsInsensitive('name', $search))
+                    ->orWhereRaw(...$this->containsInsensitive('sku', $search))
+                    ->orWhere('barcode', $search);
+            });
+        }
+        if ($request->filled('category_id')) {
+            $query->where('category_id', (int) $request->query('category_id'));
+        }
+        if ($request->has('is_active')) {
+            $query->where('is_active', filter_var($request->query('is_active'), FILTER_VALIDATE_BOOLEAN));
+        }
+        if (filter_var($request->query('low_stock', false), FILTER_VALIDATE_BOOLEAN)) {
+            $query->where('track_stock', true)->where('stock', '<=', 0);
+        }
+
+        return $this->paginated($query->paginate($this->perPage($request, 50)));
+    }
+
+    public function showProduct(int $id): JsonResponse
+    {
+        return $this->successResponse(PosProduct::query()->with('category:id,name')->findOrFail($id));
+    }
+
+    public function storeProduct(Request $request): JsonResponse
+    {
+        $data = $request->validate($this->productRules() + [
+            'initial_stock' => ['nullable', 'numeric', 'min:0'],
+        ]);
+        $initialStock = (float) ($data['initial_stock'] ?? 0);
+        unset($data['initial_stock']);
+
+        $product = DB::connection('tenant')->transaction(function () use ($data, $initialStock, $request) {
+            $product = PosProduct::query()->create(array_merge($data, ['stock' => 0]));
+            if ($product->track_stock && $initialStock > 0) {
+                $this->stock->move($product, $initialStock, 'adjustment', null, null, 'Stok awal', $request->user()?->id);
+            }
+
+            return $product;
+        });
+
+        return $this->successResponse($product->refresh()->load('category:id,name'), 'Produk dibuat.', 201);
+    }
+
+    public function updateProduct(Request $request, int $id): JsonResponse
+    {
+        $product = PosProduct::query()->findOrFail($id);
+        $product->update($request->validate($this->productRules($id, partial: true)));
+
+        return $this->successResponse($product->refresh()->load('category:id,name'), 'Produk diperbarui.');
+    }
+
+    /** Produk yang pernah terjual hanya dinonaktifkan supaya riwayat struk tetap utuh. */
+    public function destroyProduct(int $id): JsonResponse
+    {
+        $product = PosProduct::query()->findOrFail($id);
+
+        if (PosSaleLine::query()->where('product_id', $id)->exists()) {
+            $product->update(['is_active' => false]);
+
+            return $this->successResponse($product, 'Produk sudah pernah terjual, jadi dinonaktifkan.');
+        }
+
+        $product->delete();
+
+        return $this->successResponse(null, 'Produk dihapus.');
+    }
+
+    /** Ubah stok: `set_stock` (hasil hitung fisik) atau `quantity` (+ restock / - koreksi). */
+    public function adjustStock(Request $request, int $id): JsonResponse
+    {
+        $product = PosProduct::query()->findOrFail($id);
+        $data = $request->validate([
+            'set_stock' => ['required_without:quantity', 'nullable', 'numeric', 'min:0'],
+            'quantity' => ['required_without:set_stock', 'nullable', 'numeric', 'not_in:0'],
+            'notes' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        if (! $product->track_stock) {
+            return $this->validationErrorResponse(['product' => ['Stok produk ini tidak dilacak. Aktifkan "Lacak stok" dulu.']]);
+        }
+
+        DB::connection('tenant')->transaction(function () use ($product, $data, $request) {
+            $delta = isset($data['set_stock'])
+                ? (float) $data['set_stock'] - (float) $product->stock
+                : (float) $data['quantity'];
+            $type = isset($data['set_stock']) ? 'adjustment' : ($delta > 0 ? 'restock' : 'adjustment');
+
+            $this->stock->move($product, $delta, $type, null, null, $data['notes'] ?? null, $request->user()?->id);
+        });
+
+        return $this->successResponse($product->refresh(), 'Stok diperbarui.');
+    }
+
+    public function stockMovements(Request $request, int $id): JsonResponse
+    {
+        PosProduct::query()->findOrFail($id);
+
+        return $this->paginated(
+            PosStockMovement::query()->where('product_id', $id)->latest('id')->paginate($this->perPage($request))
+        );
+    }
+
+    /** @return array<string, array<int, mixed>> */
+    private function productRules(?int $id = null, bool $partial = false): array
+    {
+        $required = $partial ? 'sometimes' : 'required';
+
+        return [
+            'name' => [$required, 'string', 'max:150'],
+            'sku' => ['nullable', 'string', 'max:50', Rule::unique('tenant.pos_products', 'sku')->ignore($id)],
+            'barcode' => ['nullable', 'string', 'max:64', Rule::unique('tenant.pos_products', 'barcode')->ignore($id)],
+            'category_id' => ['nullable', 'integer', 'exists:tenant.pos_categories,id'],
+            'unit' => ['nullable', 'string', 'max:20'],
+            'price' => [$required, 'numeric', 'min:0'],
+            'cost' => ['nullable', 'numeric', 'min:0'],
+            'track_stock' => ['nullable', 'boolean'],
+            'is_active' => ['nullable', 'boolean'],
+        ];
+    }
+}

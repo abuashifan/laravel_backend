@@ -26,7 +26,8 @@ return [
         'trim',
         explode(',', (string) env(
             'CORS_ALLOWED_ORIGINS',
-            'http://localhost:3000,http://127.0.0.1:3000,https://app.finlite.my.id,https://react-frontend-three-eta.vercel.app',
+            // :3001 dan pos.finlite.my.id = aplikasi kasir (repo finlite_pos).
+            'http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,https://app.finlite.my.id,https://react-frontend-three-eta.vercel.app,https://pos.finlite.my.id',
         )),
     ))),
 

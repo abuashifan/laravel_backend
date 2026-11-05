@@ -162,4 +162,20 @@ return [
             'reports.multi_period.use' => 'Laporan multi-periode',
         ],
     ],
+    // Finlite POS (kasir) -- tenant terpisah, lihat config/tenant.php `products`.
+    'pos' => [
+        'label' => 'Kasir (POS)',
+        'features' => [
+            'pos.sales' => ['Penjualan kasir', ['view', 'create', 'delete', 'print', 'export']],
+            'pos.products' => ['Produk & kategori kasir', $master],
+            'pos.customers' => ['Pelanggan & kasbon', ['view', 'create', 'edit', 'delete']],
+            'pos.shifts' => ['Shift kasir', ['view', 'create']],
+            'pos.reports' => ['Laporan kasir', ['view', 'export']],
+            'pos.settings' => ['Pengaturan toko', ['view', 'edit']],
+        ],
+        'special' => [
+            'pos.stock.adjust' => 'Ubah stok produk kasir',
+            'pos.shifts.view_all' => 'Lihat shift semua kasir',
+        ],
+    ],
 ];
