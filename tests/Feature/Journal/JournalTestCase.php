@@ -105,4 +105,28 @@ abstract class JournalTestCase extends TestCase
             'accounts' => ['debit' => $cash->id, 'credit' => $revenue->id],
         ];
     }
+
+    /**
+     * Tenant POS untuk perusahaan uji, di berkas unik supaya aman dijalankan
+     * paralel. Rute `company.access:pos` menolak (422) tanpa tenant ini.
+     */
+    protected function setUpPosTenant(Company $company): void
+    {
+        $posPath = database_path('tenants/test_pos_'.$company->id.'_'.uniqid(getmypid().'_', true).'.sqlite');
+        File::ensureDirectoryExists(dirname($posPath));
+        File::put($posPath, '');
+        $this->registerTenantFile($posPath);
+
+        TenantDatabase::query()->create([
+            'company_id' => $company->id,
+            'product' => TenantDatabase::PRODUCT_POS,
+            'database_name' => basename($posPath),
+            'database_path' => $posPath,
+            'driver' => 'sqlite',
+            'status' => 'active',
+        ]);
+
+        app(TenantConnectionManager::class)->connect($posPath);
+        Artisan::call('migrate', ['--database' => 'tenant', '--path' => 'database/migrations/tenant_pos', '--force' => true]);
+    }
 }

@@ -88,7 +88,7 @@ class PosFlowTest extends TestCase
         $productId = $this->postJson('/api/pos/products', [
             'name' => 'Indomie Goreng', 'barcode' => '8998866200301', 'price' => 3500, 'cost' => 2800,
             'track_stock' => true, 'initial_stock' => 10,
-        ], $headers)->assertCreated()->assertJsonPath('data.stock', 10.0)->json('data.id');
+        ], $headers)->assertCreated()->assertJsonPath('data.stock', 10)->json('data.id');
 
         $serviceId = $this->postJson('/api/pos/products', ['name' => 'Fotokopi', 'price' => 500], $headers)
             ->assertCreated()->json('data.id');
@@ -108,10 +108,10 @@ class PosFlowTest extends TestCase
             'payment_method' => 'cash', 'paid_amount' => 20000, 'receipt_mode' => 'print',
             'lines' => [['product_id' => $productId, 'quantity' => 3], ['product_id' => $serviceId, 'quantity' => 10]],
         ], $headers)->assertCreated()
-            ->assertJsonPath('data.total', 15500.0)
-            ->assertJsonPath('data.change_amount', 4500.0);
+            ->assertJsonPath('data.total', 15500)
+            ->assertJsonPath('data.change_amount', 4500);
         $this->assertStringStartsWith('PJ-', $sale->json('data.number'));
-        $this->getJson("/api/pos/products/{$productId}", $headers)->assertJsonPath('data.stock', 7.0);
+        $this->getJson("/api/pos/products/{$productId}", $headers)->assertJsonPath('data.stock', 7);
 
         // Bayar kurang & stok tidak cukup ditolak.
         $this->postJson('/api/pos/sales', $this->sale($productId, 1, 'cash', 1000), $headers)->assertStatus(422);
@@ -121,13 +121,13 @@ class PosFlowTest extends TestCase
         $this->postJson('/api/pos/sales', $this->sale($productId, 2, 'credit'), $headers)->assertStatus(422);
         $customerId = $this->postJson('/api/pos/customers', ['name' => 'Bu Sri'], $headers)->assertCreated()->json('data.id');
         $creditSale = $this->postJson('/api/pos/sales', $this->sale($productId, 2, 'credit', 2000) + ['customer_id' => $customerId], $headers)
-            ->assertCreated()->assertJsonPath('data.credit_amount', 5000.0);
-        $this->getJson("/api/pos/customers/{$customerId}", $headers)->assertJsonPath('data.credit_balance', 5000.0);
+            ->assertCreated()->assertJsonPath('data.credit_amount', 5000);
+        $this->getJson("/api/pos/customers/{$customerId}", $headers)->assertJsonPath('data.credit_balance', 5000);
 
         // Pelunasan kasbon tidak boleh melebihi sisa.
         $this->postJson("/api/pos/customers/{$customerId}/payments", ['amount' => 6000, 'method' => 'cash'], $headers)->assertStatus(422);
         $this->postJson("/api/pos/customers/{$customerId}/payments", ['amount' => 3000, 'method' => 'cash'], $headers)->assertCreated();
-        $this->getJson("/api/pos/customers/{$customerId}", $headers)->assertJsonPath('data.credit_balance', 2000.0);
+        $this->getJson("/api/pos/customers/{$customerId}", $headers)->assertJsonPath('data.credit_balance', 2000);
 
         // Kasbon yang sudah dibayar sebagian tidak bisa dibatalkan.
         $this->postJson('/api/pos/sales/'.$creditSale->json('data.id').'/void', ['reason' => 'salah'], $headers)->assertStatus(422);
@@ -135,21 +135,21 @@ class PosFlowTest extends TestCase
         // Batalkan penjualan tunai -> stok kembali.
         $this->postJson('/api/pos/sales/'.$sale->json('data.id').'/void', ['reason' => 'Salah input'], $headers)
             ->assertOk()->assertJsonPath('data.status', 'voided');
-        $this->getJson("/api/pos/products/{$productId}", $headers)->assertJsonPath('data.stock', 8.0);
+        $this->getJson("/api/pos/products/{$productId}", $headers)->assertJsonPath('data.stock', 8);
 
         // Laci: 100.000 modal + 2.000 uang muka kasbon + 3.000 pelunasan (penjualan tunai sudah batal).
-        $this->getJson('/api/pos/shifts/current', $headers)->assertOk()->assertJsonPath('data.summary.expected_cash', 105000.0);
+        $this->getJson('/api/pos/shifts/current', $headers)->assertOk()->assertJsonPath('data.summary.expected_cash', 105000);
         $this->postJson("/api/pos/shifts/{$shiftId}/close", ['counted_cash' => 104000], $headers)
             ->assertOk()
             ->assertJsonPath('data.shift.status', 'closed')
-            ->assertJsonPath('data.shift.cash_difference', -1000.0);
+            ->assertJsonPath('data.shift.cash_difference', -1000);
 
         $this->getJson('/api/pos/reports/summary', $headers)
             ->assertOk()
             ->assertJsonPath('data.sales_count', 1)
-            ->assertJsonPath('data.sales_total', 7000.0)
+            ->assertJsonPath('data.sales_total', 7000)
             ->assertJsonPath('data.voided_count', 1)
-            ->assertJsonPath('data.outstanding_credit', 2000.0);
+            ->assertJsonPath('data.outstanding_credit', 2000);
     }
 
     /** @return array<string,mixed> */

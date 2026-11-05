@@ -120,6 +120,7 @@ class RoutePermissionEnforcementTest extends JournalTestCase
     public function test_every_guarded_route_denies_without_its_keys_and_passes_with_them(): void
     {
         $ctx = $this->setUpTenant(role: 'noaccess');
+        $this->setUpPosTenant($ctx['company']);
         $this->enforcePlanFeatures(false);
         $membership = CompanyUser::query()
             ->where('company_id', $ctx['company']->id)
@@ -155,6 +156,7 @@ class RoutePermissionEnforcementTest extends JournalTestCase
     public function test_full_access_passes_every_permission_middleware(): void
     {
         $ctx = $this->setUpTenant(role: 'owner');
+        $this->setUpPosTenant($ctx['company']);
         $this->enforcePlanFeatures(false);
         $denied = [];
 

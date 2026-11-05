@@ -12,13 +12,13 @@ class PermissionMatrixTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_catalog_has_ten_ordered_modules_and_all_seven_columns(): void
+    public function test_catalog_has_ordered_modules_and_all_seven_columns(): void
     {
         $catalog = app(PermissionCatalogService::class)->grouped();
 
         $this->assertSame(['daftar', 'tambah', 'ubah', 'hapus', 'persetujuan', 'cetak', 'ekspor'], $catalog['matrix_columns']);
         $this->assertSame(
-            ['general', 'master_data', 'accounting', 'budget', 'cash_bank', 'sales', 'purchase', 'inventory', 'fixed_assets', 'reports'],
+            ['general', 'master_data', 'accounting', 'budget', 'cash_bank', 'sales', 'purchase', 'inventory', 'fixed_assets', 'reports', 'pos'],
             array_column($catalog['modules'], 'key')
         );
         $reports = collect($catalog['modules'])->firstWhere('key', 'reports');
