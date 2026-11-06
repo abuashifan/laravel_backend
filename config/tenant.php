@@ -19,7 +19,12 @@ return [
      */
     'pgsql_connection' => env('TENANT_PGSQL_CONNECTION'),
 
-    'database_path' => database_path('tenants'),
+    /*
+     * Folder berkas tenant sqlite. Bisa dipindah lewat env supaya uji E2E
+     * (repo finlite_pos, folder e2e) memakai folder sementara dan tidak
+     * bertabrakan dengan berkas tenant dev di database/tenants.
+     */
+    'database_path' => env('TENANT_DATABASE_PATH', database_path('tenants')),
 
     'connection_name' => 'tenant',
 
