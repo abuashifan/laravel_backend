@@ -61,6 +61,12 @@ return [
     'frontend_url' => rtrim((string) env('FRONTEND_URL', 'https://app.finlite.my.id'), '/'),
 
     /*
+    | URL aplikasi kasir (repo finlite_pos). Tautan verifikasi email, reset
+    | kata sandi, dan undangan untuk pengguna kasir mengarah ke sini.
+    */
+    'pos_frontend_url' => rtrim((string) env('POS_FRONTEND_URL', 'https://pos.finlite.my.id'), '/'),
+
+    /*
     |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------

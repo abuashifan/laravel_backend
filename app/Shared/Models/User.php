@@ -79,6 +79,11 @@ class User extends Authenticatable
         return $this->hasMany(CompanyUser::class);
     }
 
+    public function subscriptions(): HasMany
+    {
+        return $this->hasMany(Subscription::class);
+    }
+
     public function ownedCompanies(): HasMany
     {
         return $this->hasMany(Company::class, 'created_by');

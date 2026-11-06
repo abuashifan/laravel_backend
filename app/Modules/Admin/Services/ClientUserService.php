@@ -76,6 +76,11 @@ class ClientUserService
             $query->where('plan_id', (int) $filters['plan_id']);
         }
 
+        // `product=pos`: client yang pernah berlangganan Finlite Kasir (termasuk trial).
+        if (($filters['product'] ?? null) === 'pos') {
+            $query->whereHas('subscriptions', fn (Builder $q) => $q->where('product', 'pos'));
+        }
+
         return $query;
     }
 
@@ -126,6 +131,11 @@ class ClientUserService
             'last_login_at' => $user->last_login_at?->toISOString(),
             'created_at' => $user->created_at?->toISOString(),
             'subscription' => $this->subscriptionPayload($user),
+            // Langganan Finlite Kasir (null kalau belum pernah). Bisa dari pendaftaran mandiri (trial).
+            'pos_subscription' => $this->subscriptionService->currentFor($user, 'pos')
+                ? $this->subscriptionService->summaryFor($user, 'pos')
+                : null,
+            'email_verified' => $user->email_verified_at !== null,
         ];
     }
 
@@ -147,6 +157,7 @@ class ClientUserService
             ->get()
             ->map(fn (Subscription $s) => [
                 'id' => $s->id,
+                'product' => $s->product ?: 'accounting',
                 'plan_name' => $s->plan?->name,
                 'billing_cycle' => $s->billing_cycle,
                 'price' => $s->price,

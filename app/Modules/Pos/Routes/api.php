@@ -6,18 +6,30 @@ use App\Modules\Pos\Controllers\PosCustomerController;
 use App\Modules\Pos\Controllers\PosReportController;
 use App\Modules\Pos\Controllers\PosSaleController;
 use App\Modules\Pos\Controllers\PosShiftController;
+use App\Modules\Pos\Controllers\PosSignupController;
+use App\Modules\Pos\Controllers\PosTeamController;
 use Illuminate\Support\Facades\Route;
 
 // Finlite POS. Semua rute data memakai `company.access:pos`, yaitu tenant POS
 // milik perusahaan -- bukan tenant akuntansi.
 
+// Pendaftaran mandiri Finlite Kasir (Fase 2). Trial dimulai saat email
+// terverifikasi, jadi toko (tenant) hanya bisa lahir dari email yang nyata.
+Route::prefix('pos')->group(function () {
+    Route::post('/register', [PosSignupController::class, 'register'])->middleware('throttle:5,1');
+    Route::post('/verify-email', [PosSignupController::class, 'verify'])->middleware('throttle:20,1');
+});
+
 Route::middleware(['auth:sanctum'])->prefix('pos')->group(function () {
+    Route::get('/account', [PosSignupController::class, 'account']);
+    Route::post('/verify-email/resend', [PosSignupController::class, 'resend'])->middleware('throttle:3,1');
     // Dipanggil sebelum POS aktif, jadi belum bisa memakai tenant POS.
     Route::get('/status', [PosActivationController::class, 'status']);
     Route::post('/activate', [PosActivationController::class, 'activate']);
 });
 
-Route::middleware(['auth:sanctum', 'company.access:pos'])->prefix('pos')->group(function () {
+// `product.subscription:pos`: langganan pemilik habis = hanya-baca (402 untuk tulis).
+Route::middleware(['auth:sanctum', 'company.access:pos', 'product.subscription:pos'])->prefix('pos')->group(function () {
     Route::get('/bootstrap', [PosActivationController::class, 'bootstrap']);
     Route::get('/settings', [PosReportController::class, 'settings']);
     Route::patch('/settings', [PosReportController::class, 'updateSettings'])->middleware('permission:pos.settings.edit');
@@ -59,4 +71,11 @@ Route::middleware(['auth:sanctum', 'company.access:pos'])->prefix('pos')->group(
     Route::post('/sales/{id}/void', [PosSaleController::class, 'void'])->middleware('permission:pos.sales.delete');
 
     Route::get('/reports/summary', [PosReportController::class, 'summary'])->middleware('permission:pos.reports.view');
+
+    // Pengguna toko: undang kasir dengan templat izin, ubah peran, nonaktifkan.
+    // Memakai izin `access.*` yang sama dengan layar Akses di Finlite Accounting.
+    Route::get('/team', [PosTeamController::class, 'index'])->middleware('permission:access.users.view');
+    Route::post('/team/invitations', [PosTeamController::class, 'invite'])->middleware('permission:access.invitations.create');
+    Route::post('/team/invitations/{id}/revoke', [PosTeamController::class, 'revoke'])->middleware('permission:access.invitations.delete');
+    Route::patch('/team/members/{id}', [PosTeamController::class, 'updateMember'])->middleware('permission:access.users.edit');
 });

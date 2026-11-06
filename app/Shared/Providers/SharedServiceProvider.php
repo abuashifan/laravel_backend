@@ -130,7 +130,8 @@ class SharedServiceProvider extends ServiceProvider
         $this->loadMigrationsFrom(database_path('migrations/central'));
 
         // Tautan reset kata sandi mengarah ke halaman frontend, bukan ke backend.
-        ResetPassword::createUrlUsing(fn ($user, string $token): string => config('app.frontend_url')
+        // `app=pos` di permintaan lupa sandi → tautan ke aplikasi kasir.
+        ResetPassword::createUrlUsing(fn ($user, string $token): string => (request()->input('app') === 'pos' ? config('app.pos_frontend_url') : config('app.frontend_url'))
             .'/reset-password?token='.$token.'&email='.urlencode($user->getEmailForPasswordReset()));
 
         // Fase 7: morph map — kolom *_type lama menyimpan FQCN model lama (prefix App\ Models)

@@ -19,6 +19,9 @@ class Plan extends Model
     /** Kode paket POS bawaan (dibuat migrasi 2026_11_06_000001). */
     public const POS_CODE = 'pos';
 
+    /** Lama masa coba Kasir untuk pendaftaran mandiri (dimulai saat email terverifikasi). */
+    public const POS_TRIAL_DAYS = 14;
+
     protected $fillable = [
         'name',
         'code',
