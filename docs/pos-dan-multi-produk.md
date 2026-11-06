@@ -59,3 +59,33 @@ Perbarui dokumen ini setiap kali arsitektur di bawah berubah.
 Repo `finlite_pos` (`npm run e2e`) memakainya untuk menaruh central dan tenant
 sqlite di `finlite_pos/e2e/.data`, jadi berkas tenant dev di `database/tenants`
 tidak bertabrakan. Seed E2E ada di `finlite_pos/e2e/backend/seed.php`.
+
+## Fase 2: POS berdiri sendiri (PR #17, 6 November 2026)
+
+- **Daftar mandiri** `POST /api/pos/register` (throttle 5/menit) → akun tanpa
+  langganan + email verifikasi (`App\Mail\PosVerifyEmailMail`, tautan ke
+  `POS_FRONTEND_URL/verify-email?token=`). Token = `Crypt` berisi uid, email,
+  exp (48 jam) — `PosSignupController::verificationToken()`.
+- `POST /api/pos/verify-email` (tanpa login) → `email_verified_at` + trial
+  Kasir `Plan::POS_TRIAL_DAYS` (14) lewat `SubscriptionService::startTrial()`
+  (sekali per produk, `metadata.trial`). Toko dibuat lewat `POST /companies`
+  `product=pos`, yang butuh langganan POS → email palsu tidak bisa membuat tenant.
+- `GET /api/pos/account`, `POST /api/pos/verify-email/resend`.
+- **Hanya-baca**: middleware `product.subscription:pos`
+  (`EnsureProductSubscription`) di grup rute POS. Pemilik (`companies.created_by`)
+  tanpa langganan POS aktif/tenggang → tulis ditolak 402 `SUBSCRIPTION_INACTIVE`,
+  GET tetap jalan. `bootstrap` mengirim `subscription` (+`read_only`) dan `is_owner`.
+  Test yang memakai `setUpPosTenant()` otomatis diberi langganan POS.
+- **Login** `app=pos` tidak dikunci status langganan akuntansi.
+- **Pengguna toko** `/api/pos/team*` (izin `access.users.*`/`access.invitations.*`):
+  templat peran di `config/pos.php` (`kasir`, `kepala_toko`). Undangan
+  `company_invitations.product=pos` → `CompanyInvitationMail::acceptUrl()` ke
+  `POS_FRONTEND_URL/invite/{token}`. Penerimaan memakai endpoint publik lama
+  `/api/invitations/{token}` (register/accept).
+- **Kuota pengguna** (`UserQuotaService::limitFor`) untuk toko ber-POS memakai
+  `max_users` paket POS pemilik (ambil yang lebih besar bila juga akuntansi).
+- **Reset sandi** `forgot-password` dengan `app=pos` → tautan ke aplikasi kasir.
+- **Admin**: `GET /admin/clients?product=pos`, payload `pos_subscription`,
+  `email_verified`; `renew`/`unlock` menerima `product`. UI admin belum dibuat.
+- Env: `POS_FRONTEND_URL` (default `https://pos.finlite.my.id`). Verifikasi
+  butuh pengiriman email (MAIL_*) jalan di Render.
