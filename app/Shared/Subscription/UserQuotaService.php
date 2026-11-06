@@ -4,6 +4,8 @@ namespace App\Shared\Subscription;
 
 use App\Shared\Models\Company;
 use App\Shared\Models\CompanyUser;
+use App\Shared\Models\Subscription;
+use App\Shared\Models\TenantDatabase;
 use App\Shared\Models\User;
 
 /**
@@ -37,8 +39,40 @@ class UserQuotaService
     public function limitFor(Company $company): int
     {
         $owner = $this->ownerOf($company);
+        if (! $owner) {
+            return self::FALLBACK_LIMIT;
+        }
 
-        return $owner ? $this->limitForOwner($owner) : self::FALLBACK_LIMIT;
+        // Toko yang memakai Kasir: jatah dari paket POS pemilik. Perusahaan
+        // yang memakai keduanya mendapat jatah paket yang lebih besar.
+        $products = TenantDatabase::allProducts()
+            ->where('company_id', $company->id)
+            ->where('status', 'active')
+            ->pluck('product')
+            ->all();
+        $posLimit = in_array(TenantDatabase::PRODUCT_POS, $products, true) ? $this->posLimitFor($owner) : null;
+        $usesAccounting = $products === [] || in_array(TenantDatabase::PRODUCT_ACCOUNTING, $products, true);
+
+        if ($posLimit === null) {
+            return $this->limitForOwner($owner);
+        }
+
+        $base = $usesAccounting ? max($this->baseLimitFor($owner), $posLimit) : $posLimit;
+
+        return $base + $this->addOnFor($owner);
+    }
+
+    /** Jatah user dari paket POS terakhir pemilik; null kalau belum pernah berlangganan POS. */
+    private function posLimitFor(User $owner): ?int
+    {
+        $plan = Subscription::query()
+            ->where('user_id', $owner->id)
+            ->where('product', TenantDatabase::PRODUCT_POS)
+            ->orderByDesc('ends_at')
+            ->first()
+            ?->plan;
+
+        return $plan ? max(1, (int) $plan->max_users) : null;
     }
 
     /**

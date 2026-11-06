@@ -37,6 +37,12 @@ class ApiErrorCode
     public const SUBSCRIPTION_REQUIRED = 'SUBSCRIPTION_REQUIRED';
 
     /**
+     * Langganan produk pemilik perusahaan habis/dibatalkan: data hanya-baca,
+     * permintaan tulis ditolak (lihat EnsureProductSubscription).
+     */
+    public const SUBSCRIPTION_INACTIVE = 'SUBSCRIPTION_INACTIVE';
+
+    /**
      * Kuota penyimpanan perusahaan sudah penuh (Fase 4, skema tier). Menahan
      * penambahan data baru — bukan mengunci akses baca, sejalan dengan aturan
      * yang berlaku di seluruh rencana ini.

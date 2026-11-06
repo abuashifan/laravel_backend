@@ -62,7 +62,10 @@ class AuthController extends Controller
         // menolak di sini memberi satu tempat untuk menampilkan tautan
         // WhatsApp. Client yang belum pernah berlangganan sama sekali
         // (state `none`) TIDAK terkunci — lihat SubscriptionService::stateFor().
-        if ($this->subscriptionService->isLocked($user)) {
+        // Aplikasi kasir (`app=pos`) tidak dikunci langganan akuntansi: toko
+        // POS yang langganannya habis tetap bisa login dalam mode hanya-baca
+        // (lihat EnsureProductSubscription).
+        if ($request->input('app') !== 'pos' && $this->subscriptionService->isLocked($user)) {
             return ApiResponseBuilder::error(
                 ApiErrorCode::SUBSCRIPTION_EXPIRED,
                 null,

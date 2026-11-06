@@ -1,12 +1,16 @@
 <?php
 
+use App\Shared\Api\ApiResponseBuilder;
+use App\Shared\Http\Middleware\EnsureCompanyAccess;
+use App\Shared\Http\Middleware\EnsurePermission;
+use App\Shared\Http\Middleware\EnsurePlatformAdmin;
+use App\Shared\Http\Middleware\EnsureProductSubscription;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
-use Illuminate\Database\QueryException;
 use Illuminate\Validation\ValidationException;
-use App\Shared\Api\ApiResponseBuilder;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -17,9 +21,10 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
-            'company.access' => \App\Shared\Http\Middleware\EnsureCompanyAccess::class,
-            'permission' => \App\Shared\Http\Middleware\EnsurePermission::class,
-            'platform.admin' => \App\Shared\Http\Middleware\EnsurePlatformAdmin::class,
+            'company.access' => EnsureCompanyAccess::class,
+            'permission' => EnsurePermission::class,
+            'platform.admin' => EnsurePlatformAdmin::class,
+            'product.subscription' => EnsureProductSubscription::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

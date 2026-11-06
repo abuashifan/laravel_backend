@@ -12,6 +12,8 @@ class CompanyInvitation extends Model
 
     protected $fillable = [
         'company_id',
+        // Aplikasi asal undangan (`pos` = aplikasi kasir); null = Finlite Accounting.
+        'product',
         'email',
         'role',
         'full_access',

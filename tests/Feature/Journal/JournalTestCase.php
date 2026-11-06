@@ -6,6 +6,8 @@ use App\Modules\MasterData\Models\ChartOfAccount;
 use App\Modules\Settings\Services\CompanySettingService;
 use App\Shared\Models\Company;
 use App\Shared\Models\CompanyUser;
+use App\Shared\Models\Plan;
+use App\Shared\Models\Subscription;
 use App\Shared\Models\TenantDatabase;
 use App\Shared\Models\User;
 use App\Shared\Tenant\TenantConnectionManager;
@@ -128,5 +130,18 @@ abstract class JournalTestCase extends TestCase
 
         app(TenantConnectionManager::class)->connect($posPath, 'pos');
         Artisan::call('migrate', ['--database' => 'pos', '--path' => 'database/migrations/tenant_pos', '--force' => true]);
+
+        // Rute tulis POS butuh langganan Kasir pemilik (mode hanya-baca, Fase 2).
+        if ($company->created_by && ! Subscription::query()->where('user_id', $company->created_by)->where('product', 'pos')->exists()) {
+            Subscription::query()->create([
+                'user_id' => $company->created_by,
+                'plan_id' => Plan::query()->where('code', Plan::POS_CODE)->value('id'),
+                'product' => 'pos',
+                'starts_at' => now()->subDay(),
+                'ends_at' => now()->addMonth(),
+                'billing_cycle' => 'monthly',
+                'price' => 0,
+            ]);
+        }
     }
 }

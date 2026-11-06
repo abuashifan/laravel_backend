@@ -219,6 +219,53 @@ class SubscriptionService
         return in_array($this->stateFor($client, $product), [self::STATE_EXPIRED, self::STATE_CANCELLED], true);
     }
 
+    /**
+     * Masa coba gratis untuk produk paket ini (dipakai pendaftaran mandiri
+     * Finlite Kasir). Hanya sekali per produk: client yang pernah punya
+     * langganan produk itu tidak mendapat trial lagi (null).
+     */
+    public function startTrial(User $client, Plan $plan, int $days): ?Subscription
+    {
+        $product = $plan->productKey();
+        if ($this->currentFor($client, $product)) {
+            return null;
+        }
+
+        $startsAt = now();
+        $subscription = Subscription::query()->create([
+            'user_id' => $client->id,
+            'plan_id' => $plan->id,
+            'product' => $product,
+            'starts_at' => $startsAt,
+            'ends_at' => $startsAt->copy()->addDays($days),
+            'billing_cycle' => self::CYCLE_MONTHLY,
+            'price' => 0,
+            'metadata' => ['trial' => true],
+        ]);
+
+        $this->syncUserPlan($client, $plan);
+
+        return $subscription;
+    }
+
+    /**
+     * Ringkasan langganan satu produk untuk spanduk aplikasi.
+     *
+     * @return array{state:string, ends_at:string|null, days_remaining:int|null, is_trial:bool, plan_name:string|null}
+     */
+    public function summaryFor(User $client, string $product): array
+    {
+        $current = $this->currentFor($client, $product);
+
+        return [
+            'state' => $this->stateFor($client, $product),
+            'ends_at' => $current?->ends_at?->toISOString(),
+            'days_remaining' => $current ? (int) floor(now()->diffInDays($current->ends_at, false)) : null,
+            'is_trial' => (bool) ($current?->metadata['trial'] ?? false),
+            'plan_name' => $current?->plan?->name,
+        ];
+    }
+
     /** Langganan produk ini sedang aktif atau dalam masa tenggang. */
     public function hasAccess(User $client, string $product): bool
     {

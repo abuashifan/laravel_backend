@@ -8,6 +8,7 @@ use App\Shared\Api\ApiErrorCode;
 use App\Shared\Models\Company;
 use App\Shared\Models\TenantDatabase;
 use App\Shared\Permission\PermissionService;
+use App\Shared\Subscription\PlanOwnerResolver;
 use App\Shared\Subscription\SubscriptionService;
 use App\Shared\Tenant\ProductActivationService;
 use App\Shared\Tenant\TenantContext;
@@ -67,17 +68,28 @@ class PosActivationController extends PosController
      * toko, dan shift yang sedang terbuka. Rute ini sudah di dalam
      * `company.access:pos`, jadi tenant POS tersambung.
      */
-    public function bootstrap(Request $request, PermissionService $permissions, TenantContext $context, PosSettingService $settings, PosShiftService $shifts): JsonResponse
+    public function bootstrap(Request $request, PermissionService $permissions, TenantContext $context, PosSettingService $settings, PosShiftService $shifts, SubscriptionService $subscriptions, PlanOwnerResolver $owners): JsonResponse
     {
         $user = $this->user($request);
+        // Izin POS + izin mengelola pengguna toko (layar Pengguna toko).
         $keys = array_values(array_filter(
             (array) config('permissions.matrix_keys', []),
-            fn (string $key) => str_starts_with($key, 'pos.') && $permissions->can($key),
+            fn (string $key) => (str_starts_with($key, 'pos.') || str_starts_with($key, 'access.users.') || str_starts_with($key, 'access.invitations.')) && $permissions->can($key),
         ));
 
+        // Langganan Kasir milik pemilik toko: spanduk masa coba / habis.
+        $company = $context->company();
+        $owner = $company ? $owners->ownerOf($company) : null;
+        $subscription = $owner ? $subscriptions->summaryFor($owner, TenantDatabase::PRODUCT_POS) : null;
+        if ($subscription !== null) {
+            $subscription['read_only'] = ! in_array($subscription['state'], [SubscriptionService::STATE_ACTIVE, SubscriptionService::STATE_GRACE], true);
+        }
+
         return $this->successResponse([
-            'company' => ['id' => $context->company()?->id, 'name' => $context->company()?->name],
+            'company' => ['id' => $company?->id, 'name' => $company?->name],
             'user' => ['id' => $user->id, 'name' => $user->name, 'email' => $user->email],
+            'is_owner' => $owner !== null && $owner->id === $user->id,
+            'subscription' => $subscription,
             'permissions' => $keys,
             'settings' => $settings->all(),
             'current_shift' => $shifts->current($user),

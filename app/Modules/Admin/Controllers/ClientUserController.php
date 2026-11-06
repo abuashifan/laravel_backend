@@ -55,6 +55,7 @@ class ClientUserController extends Controller
             'search' => $request->query('search'),
             'status' => $request->query('status'),
             'plan_id' => $request->query('plan_id'),
+            'product' => $request->query('product'),
             'page' => (int) $request->query('page', 1),
             'per_page' => (int) $request->query('per_page', 25),
         ]);
@@ -278,6 +279,8 @@ class ClientUserController extends Controller
         $data = $request->validate([
             'plan_id' => ['sometimes', 'nullable', 'integer', 'exists:plans,id'],
             'billing_cycle' => ['sometimes', 'nullable', Rule::in(['monthly', 'yearly'])],
+            // Produk yang diperpanjang bila `plan_id` kosong; bawaan akuntansi.
+            'product' => ['sometimes', Rule::in(['accounting', 'pos'])],
         ]);
 
         try {
@@ -285,6 +288,7 @@ class ClientUserController extends Controller
                 $user,
                 ! empty($data['plan_id']) ? Plan::query()->findOrFail($data['plan_id']) : null,
                 $data['billing_cycle'] ?? null,
+                $data['product'] ?? SubscriptionService::PRODUCT_ACCOUNTING,
             );
         } catch (InvalidArgumentException $e) {
             return $this->errorResponse($e->getMessage(), 422);
@@ -297,12 +301,13 @@ class ClientUserController extends Controller
      * Jalur pemulihan — bukan perpanjangan penuh. Lihat
      * `SubscriptionService::unlock()`.
      */
-    public function unlock(int $id, SubscriptionService $subscriptions): JsonResponse
+    public function unlock(Request $request, int $id, SubscriptionService $subscriptions): JsonResponse
     {
         $user = $this->client($id);
+        $product = $request->input('product') === 'pos' ? 'pos' : SubscriptionService::PRODUCT_ACCOUNTING;
 
         try {
-            $subscriptions->unlock($user);
+            $subscriptions->unlock($user, $product);
         } catch (InvalidArgumentException $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
