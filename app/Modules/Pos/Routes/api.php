@@ -3,6 +3,7 @@
 use App\Modules\Pos\Controllers\PosActivationController;
 use App\Modules\Pos\Controllers\PosCatalogController;
 use App\Modules\Pos\Controllers\PosCustomerController;
+use App\Modules\Pos\Controllers\PosInventoryController;
 use App\Modules\Pos\Controllers\PosReportController;
 use App\Modules\Pos\Controllers\PosSaleController;
 use App\Modules\Pos\Controllers\PosShiftController;
@@ -70,6 +71,23 @@ Route::middleware(['auth:sanctum', 'company.access:pos', 'product.subscription:p
     Route::get('/sales/{id}', [PosSaleController::class, 'show'])->middleware('permission:pos.sales.view|pos.sales.create');
     Route::post('/sales', [PosSaleController::class, 'store'])->middleware('permission:pos.sales.create');
     Route::post('/sales/{id}/void', [PosSaleController::class, 'void'])->middleware('permission:pos.sales.delete');
+    // Retur: izin sama beratnya dengan pembatalan (kepala toko).
+    Route::get('/returns', [PosSaleController::class, 'returns'])->middleware('permission:pos.sales.view');
+    Route::post('/sales/{id}/returns', [PosSaleController::class, 'storeReturn'])->middleware('permission:pos.sales.delete');
+
+    // Pemasok, stok masuk, stok opname -- baca: lihat produk; tulis: ubah stok.
+    Route::get('/suppliers', [PosInventoryController::class, 'suppliers'])->middleware('permission:pos.products.view');
+    Route::get('/suppliers/{id}', [PosInventoryController::class, 'showSupplier'])->middleware('permission:pos.products.view');
+    Route::post('/suppliers', [PosInventoryController::class, 'storeSupplier'])->middleware('permission:pos.stock.adjust');
+    Route::patch('/suppliers/{id}', [PosInventoryController::class, 'updateSupplier'])->middleware('permission:pos.stock.adjust');
+    Route::delete('/suppliers/{id}', [PosInventoryController::class, 'destroySupplier'])->middleware('permission:pos.stock.adjust');
+    Route::post('/suppliers/{id}/payments', [PosInventoryController::class, 'paySupplier'])->middleware('permission:pos.stock.adjust');
+    Route::get('/purchases', [PosInventoryController::class, 'purchases'])->middleware('permission:pos.products.view');
+    Route::get('/purchases/{id}', [PosInventoryController::class, 'showPurchase'])->middleware('permission:pos.products.view');
+    Route::post('/purchases', [PosInventoryController::class, 'storePurchase'])->middleware('permission:pos.stock.adjust');
+    Route::get('/stock-counts', [PosInventoryController::class, 'stockCounts'])->middleware('permission:pos.products.view');
+    Route::get('/stock-counts/{id}', [PosInventoryController::class, 'showStockCount'])->middleware('permission:pos.products.view');
+    Route::post('/stock-counts', [PosInventoryController::class, 'storeStockCount'])->middleware('permission:pos.stock.adjust');
 
     Route::get('/reports/summary', [PosReportController::class, 'summary'])->middleware('permission:pos.reports.view');
 

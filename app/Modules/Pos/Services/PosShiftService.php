@@ -4,6 +4,7 @@ namespace App\Modules\Pos\Services;
 
 use App\Modules\Pos\Models\PosCreditPayment;
 use App\Modules\Pos\Models\PosSale;
+use App\Modules\Pos\Models\PosSaleReturn;
 use App\Modules\Pos\Models\PosShift;
 use App\Shared\Models\User;
 use Illuminate\Support\Facades\DB;
@@ -74,7 +75,8 @@ class PosShiftService
 
     /**
      * Rekap satu shift. Uang tunai di laci = modal awal + tunai yang benar-benar
-     * diterima dari penjualan (dibayar - kembalian) + pelunasan kasbon tunai.
+     * diterima dari penjualan (dibayar - kembalian) + pelunasan kasbon tunai
+     * - uang retur tunai.
      *
      * @return array<string,mixed>
      */
@@ -100,6 +102,9 @@ class PosShiftService
         $cashFromSales = (float) (clone $sales)->whereIn('payment_method', ['cash', 'credit'])->sum(DB::raw('paid_amount - change_amount'));
         $creditPayments = PosCreditPayment::query()->where('shift_id', $shift->id);
         $cashFromCredit = (float) (clone $creditPayments)->where('method', 'cash')->sum('amount');
+        // Retur yang diproses di shift ini; yang tunai keluar dari laci.
+        $returns = PosSaleReturn::query()->where('shift_id', $shift->id);
+        $cashRefunds = (float) (clone $returns)->where('refund_method', 'cash')->sum('total');
 
         return [
             'shift_id' => $shift->id,
@@ -111,7 +116,10 @@ class PosShiftService
             'cash_from_sales' => round($cashFromSales, 2),
             'credit_payments_total' => round((float) (clone $creditPayments)->sum('amount'), 2),
             'cash_from_credit_payments' => round($cashFromCredit, 2),
-            'expected_cash' => round((float) $shift->opening_cash + $cashFromSales + $cashFromCredit, 2),
+            'returns_count' => (int) (clone $returns)->count(),
+            'returns_total' => round((float) (clone $returns)->sum('total'), 2),
+            'cash_refunds' => round($cashRefunds, 2),
+            'expected_cash' => round((float) $shift->opening_cash + $cashFromSales + $cashFromCredit - $cashRefunds, 2),
         ];
     }
 }

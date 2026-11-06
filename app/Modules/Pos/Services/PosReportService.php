@@ -5,6 +5,8 @@ namespace App\Modules\Pos\Services;
 use App\Modules\Pos\Models\PosCustomer;
 use App\Modules\Pos\Models\PosSale;
 use App\Modules\Pos\Models\PosSaleLine;
+use App\Modules\Pos\Models\PosSaleReturn;
+use App\Modules\Pos\Models\PosSaleReturnLine;
 use Carbon\CarbonImmutable;
 
 class PosReportService
@@ -63,13 +65,28 @@ class PosReportService
             ->values()
             ->all();
 
-        $revenue = $lineRevenue - $headerDiscount;
+        // Retur dihitung pada tanggal retur. Barang rusak (tidak kembali ke stok)
+        // tetap menjadi biaya, jadi hanya HPP barang yang dikembalikan ke stok dikurangi.
+        $returns = PosSaleReturn::query()->whereBetween('returned_at', [$from, $to]);
+        $returnsTotal = (float) (clone $returns)->sum('total');
+        $returnedCost = (float) PosSaleReturnLine::query()
+            ->join('pos_sale_returns', 'pos_sale_returns.id', '=', 'pos_sale_return_lines.return_id')
+            ->whereBetween('pos_sale_returns.returned_at', [$from, $to])
+            ->where('pos_sale_return_lines.restock', true)
+            ->selectRaw('SUM(pos_sale_return_lines.unit_cost * pos_sale_return_lines.quantity) as cost')
+            ->value('cost');
+        $cost -= $returnedCost;
+
+        $revenue = $lineRevenue - $headerDiscount - $returnsTotal;
 
         return [
             'date_from' => $from->toDateString(),
             'date_to' => $to->toDateString(),
             'sales_count' => (int) (clone $sales)->count(),
             'sales_total' => round((float) (clone $sales)->sum('total'), 2),
+            'returns_count' => (int) (clone $returns)->count(),
+            'returns_total' => round($returnsTotal, 2),
+            'net_sales' => round($revenue, 2),
             'cost_total' => round($cost, 2),
             'gross_profit' => round($revenue - $cost, 2),
             'voided_count' => PosSale::query()->where('status', 'voided')->whereBetween('sold_at', [$from, $to])->count(),
