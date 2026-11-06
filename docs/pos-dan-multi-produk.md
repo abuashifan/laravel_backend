@@ -110,3 +110,28 @@ tidak bertabrakan. Seed E2E ada di `finlite_pos/e2e/backend/seed.php`.
   kosong = tombol tidak tampil. Pembayaran manual, admin memperpanjang.
 - `/admin/plans?product=pos` memuat batas & harga; `/admin/clients/due-soon`
   satu baris per (client, produk) dengan `product`.
+
+## Fase 3a: operasional toko (PR #19, 6 November 2026)
+
+Migrasi tenant `tenant_pos/2026_11_10_000001_create_pos_operations_tables.php`.
+Izin memakai kunci lama: baca `pos.products.view`, tulis `pos.stock.adjust`,
+retur `pos.sales.delete` (setara pembatalan).
+
+- **Retur** `POST /pos/sales/{id}/returns` (`PosReturnService`): sebagian/penuh,
+  nilai = `line_total` proporsional x (total/subtotal) supaya diskon total ikut
+  dibagi. `restock=false` = barang rusak (stok tidak kembali, HPP tetap biaya).
+  `refund_method` bawaan mengikuti cara bayar (kasbon -> potong kasbon, tidak
+  boleh melebihi sisa kasbon). Wajib shift terbuka milik pemroses; retur tunai
+  mengurangi `expected_cash` shift itu (`cash_refunds`). Transaksi yang sudah
+  diretur tidak bisa dibatalkan. `GET /pos/sales/{id}` memuat `returns` dan
+  `returnable` (sisa per id baris). Laporan: `returns_total`, `net_sales`.
+- **Stok masuk** `POST /pos/purchases` (`PosPurchaseService`): modal rata-rata
+  tertimbang (stok minus dihitung 0; produk tanpa lacak stok = harga beli
+  terakhir). Belum lunas wajib pemasok -> `pos_suppliers.payable_balance`;
+  `POST /pos/suppliers/{id}/payments`. Uang pembelian **tidak** memengaruhi laci.
+- **Stok opname** `POST /pos/stock-counts`: hanya produk lacak stok; mutasi
+  tipe `count`, `difference_value` = selisih x modal.
+- **Kunci idempoten** `pos_sales.idempotency_key` (unik): kunci sama -> 200
+  dengan transaksi lama. Aplikasi kasir mengulang otomatis saat status 0/502-504.
+- Tipe mutasi stok baru: `purchase`, `return`, `count`.
+- Tes: `tests/Feature/Pos/PosOperationsTest.php`; E2E di `finlite_pos/e2e/kasir.spec.ts`.
