@@ -52,3 +52,10 @@ Perbarui dokumen ini setiap kali arsitektur di bawah berubah.
 - Paket `pos` dibuat migrasi `2026_11_06_000001` dengan harga 0 (tempat);
   helper test `activeSubscriptionFor()` hanya memilih paket akuntansi.
 - Angka JSON: kolom float yang bulat dikirim sebagai `10`, bukan `10.0`.
+
+## Uji E2E aplikasi kasir
+
+`config('tenant.database_path')` bisa dipindah lewat env `TENANT_DATABASE_PATH`.
+Repo `finlite_pos` (`npm run e2e`) memakainya untuk menaruh central dan tenant
+sqlite di `finlite_pos/e2e/.data`, jadi berkas tenant dev di `database/tenants`
+tidak bertabrakan. Seed E2E ada di `finlite_pos/e2e/backend/seed.php`.
