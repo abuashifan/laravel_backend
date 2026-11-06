@@ -99,6 +99,7 @@ class PosReturnService
                 'total' => $total,
                 'refund_method' => $method,
                 'reason' => $data['reason'] ?? null,
+                'tax_amount' => $sale->total > 0 ? round($total * $sale->tax_amount / $sale->total, 2) : 0.0,
             ]);
 
             foreach ($items as $item) {

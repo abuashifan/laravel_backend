@@ -12,9 +12,9 @@ class PosSale extends Model
 
     protected $table = 'pos_sales';
 
-    protected $fillable = ['number', 'shift_id', 'user_id', 'user_name', 'customer_id', 'sold_at', 'subtotal', 'discount_amount', 'total', 'payment_method', 'paid_amount', 'change_amount', 'credit_amount', 'receipt_mode', 'status', 'voided_at', 'voided_by', 'void_reason', 'notes', 'idempotency_key'];
+    protected $fillable = ['number', 'shift_id', 'user_id', 'user_name', 'customer_id', 'sold_at', 'subtotal', 'discount_amount', 'total', 'payment_method', 'paid_amount', 'change_amount', 'credit_amount', 'receipt_mode', 'status', 'voided_at', 'voided_by', 'void_reason', 'notes', 'idempotency_key', 'tax_amount', 'tax_inclusive', 'tax_rate', 'rounding_amount'];
 
-    protected $casts = ['shift_id' => 'integer', 'user_id' => 'integer', 'customer_id' => 'integer', 'sold_at' => 'datetime', 'voided_at' => 'datetime', 'subtotal' => 'float', 'discount_amount' => 'float', 'total' => 'float', 'paid_amount' => 'float', 'change_amount' => 'float', 'credit_amount' => 'float'];
+    protected $casts = ['shift_id' => 'integer', 'user_id' => 'integer', 'customer_id' => 'integer', 'sold_at' => 'datetime', 'voided_at' => 'datetime', 'subtotal' => 'float', 'discount_amount' => 'float', 'total' => 'float', 'paid_amount' => 'float', 'change_amount' => 'float', 'credit_amount' => 'float', 'tax_amount' => 'float', 'tax_inclusive' => 'boolean', 'tax_rate' => 'float', 'rounding_amount' => 'float'];
 
     public function lines(): HasMany
     {

@@ -19,6 +19,7 @@ class PosSaleService
         private readonly PosShiftService $shifts,
         private readonly PosStockService $stock,
         private readonly PosNumberService $numbers,
+        private readonly PosPricingService $pricing,
     ) {}
 
     /**
@@ -48,7 +49,10 @@ class PosSaleService
                 }
 
                 $quantity = round((float) $input['quantity'], 3);
-                $unitPrice = round((float) ($input['unit_price'] ?? $product->price), 2);
+                // Tanpa harga dari kasir: harga grosir sesuai jumlah, kalau tidak harga biasa.
+                $unitPrice = isset($input['unit_price'])
+                    ? round((float) $input['unit_price'], 2)
+                    : $this->pricing->unitPrice($product, $quantity);
                 $discount = round((float) ($input['discount_amount'] ?? 0), 2);
                 $lineTotal = round($quantity * $unitPrice - $discount, 2);
                 if ($lineTotal < 0) {
@@ -60,10 +64,13 @@ class PosSaleService
             }
 
             $discountAmount = round((float) ($data['discount_amount'] ?? 0), 2);
-            $total = round($subtotal - $discountAmount, 2);
-            if ($total < 0) {
+            $base = round($subtotal - $discountAmount, 2);
+            if ($base < 0) {
                 throw ValidationException::withMessages(['discount_amount' => ['Diskon melebihi total belanja.']]);
             }
+            // Pajak toko dan pembulatan total.
+            $totals = $this->pricing->totals($base);
+            $total = max(0.0, $totals['total']);
 
             $method = (string) $data['payment_method'];
             $paid = round((float) ($data['paid_amount'] ?? 0), 2);
@@ -93,6 +100,10 @@ class PosSaleService
                 'subtotal' => round($subtotal, 2),
                 'discount_amount' => $discountAmount,
                 'total' => $total,
+                'tax_amount' => $totals['tax_amount'],
+                'tax_inclusive' => $totals['tax_inclusive'],
+                'tax_rate' => $totals['tax_rate'],
+                'rounding_amount' => $totals['rounding_amount'],
                 'payment_method' => $method,
                 'paid_amount' => $paid,
                 'change_amount' => $change,

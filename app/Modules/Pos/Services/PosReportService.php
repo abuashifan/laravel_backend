@@ -11,6 +11,8 @@ use Carbon\CarbonImmutable;
 
 class PosReportService
 {
+    public function __construct(private readonly PosClock $clock) {}
+
     /**
      * Ringkasan penjualan kasir untuk rentang tanggal (inklusif).
      *
@@ -18,8 +20,9 @@ class PosReportService
      */
     public function summary(string $dateFrom, string $dateTo): array
     {
-        $from = CarbonImmutable::parse($dateFrom)->startOfDay();
-        $to = CarbonImmutable::parse($dateTo)->endOfDay();
+        // Batas hari menurut jam toko.
+        $from = $this->clock->startOfDay($dateFrom);
+        $to = $this->clock->endOfDay($dateTo);
 
         $sales = PosSale::query()
             ->where('status', 'completed')
@@ -44,7 +47,7 @@ class PosReportService
 
         // Dikelompokkan di PHP: fungsi tanggal SQLite dan Postgres berbeda.
         $byDay = (clone $sales)->get(['sold_at', 'total'])
-            ->groupBy(fn (PosSale $sale) => $sale->sold_at?->format('Y-m-d'))
+            ->groupBy(fn (PosSale $sale) => $sale->sold_at ? $this->clock->format($sale->sold_at, 'Y-m-d') : null)
             ->map(fn ($group, $date) => ['date' => $date, 'count' => $group->count(), 'total' => round((float) $group->sum('total'), 2)])
             ->sortKeys()
             ->values()
@@ -69,6 +72,8 @@ class PosReportService
         // tetap menjadi biaya, jadi hanya HPP barang yang dikembalikan ke stok dikurangi.
         $returns = PosSaleReturn::query()->whereBetween('returned_at', [$from, $to]);
         $returnsTotal = (float) (clone $returns)->sum('total');
+        $returnsTax = (float) (clone $returns)->sum('tax_amount');
+        $salesTax = (float) (clone $sales)->sum('tax_amount');
         $returnedCost = (float) PosSaleReturnLine::query()
             ->join('pos_sale_returns', 'pos_sale_returns.id', '=', 'pos_sale_return_lines.return_id')
             ->whereBetween('pos_sale_returns.returned_at', [$from, $to])
@@ -77,16 +82,18 @@ class PosReportService
             ->value('cost');
         $cost -= $returnedCost;
 
-        $revenue = $lineRevenue - $headerDiscount - $returnsTotal;
+        // Pendapatan bersih = total dibayar pelanggan (termasuk pembulatan) tanpa pajak, dikurangi retur.
+        $revenue = (float) (clone $sales)->sum('total') - $salesTax - ($returnsTotal - $returnsTax);
 
         return [
-            'date_from' => $from->toDateString(),
-            'date_to' => $to->toDateString(),
+            'date_from' => CarbonImmutable::parse($dateFrom)->toDateString(),
+            'date_to' => CarbonImmutable::parse($dateTo)->toDateString(),
             'sales_count' => (int) (clone $sales)->count(),
             'sales_total' => round((float) (clone $sales)->sum('total'), 2),
             'returns_count' => (int) (clone $returns)->count(),
             'returns_total' => round($returnsTotal, 2),
             'net_sales' => round($revenue, 2),
+            'tax_total' => round($salesTax - $returnsTax, 2),
             'cost_total' => round($cost, 2),
             'gross_profit' => round($revenue - $cost, 2),
             'voided_count' => PosSale::query()->where('status', 'voided')->whereBetween('sold_at', [$from, $to])->count(),

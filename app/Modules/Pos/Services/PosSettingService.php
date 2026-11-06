@@ -18,6 +18,15 @@ class PosSettingService
         'allow_negative_stock' => '0',
         // Lebar kertas printer thermal: 58 atau 80 (mm).
         'paper_width' => '58',
+        // Pajak per toko: none | exclusive (ditambahkan ke total) | inclusive (sudah di harga).
+        'tax_mode' => 'none',
+        'tax_rate' => '11',
+        'tax_name' => 'PPN',
+        // Pembulatan total: kelipatan 0 (mati) | 100 | 500 | 1000; nearest | down | up.
+        'rounding_unit' => '0',
+        'rounding_mode' => 'nearest',
+        // Zona waktu toko: batas hari untuk filter, laporan, dan nomor dokumen.
+        'timezone' => 'Asia/Jakarta',
     ];
 
     /** @return array<string,string> */

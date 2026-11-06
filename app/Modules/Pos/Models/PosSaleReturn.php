@@ -12,9 +12,9 @@ class PosSaleReturn extends Model
 
     protected $table = 'pos_sale_returns';
 
-    protected $fillable = ['number', 'sale_id', 'shift_id', 'user_id', 'user_name', 'customer_id', 'returned_at', 'total', 'refund_method', 'reason'];
+    protected $fillable = ['number', 'sale_id', 'shift_id', 'user_id', 'user_name', 'customer_id', 'returned_at', 'total', 'refund_method', 'reason', 'tax_amount'];
 
-    protected $casts = ['sale_id' => 'integer', 'shift_id' => 'integer', 'user_id' => 'integer', 'customer_id' => 'integer', 'returned_at' => 'datetime', 'total' => 'float'];
+    protected $casts = ['sale_id' => 'integer', 'shift_id' => 'integer', 'user_id' => 'integer', 'customer_id' => 'integer', 'returned_at' => 'datetime', 'total' => 'float', 'tax_amount' => 'float'];
 
     public function lines(): HasMany
     {
