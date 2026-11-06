@@ -100,6 +100,7 @@ class PosSaleService
                 'receipt_mode' => (string) ($data['receipt_mode'] ?? 'none'),
                 'status' => 'completed',
                 'notes' => $data['notes'] ?? null,
+                'idempotency_key' => $data['idempotency_key'] ?? null,
             ]);
 
             foreach ($lines as $line) {
@@ -136,6 +137,9 @@ class PosSaleService
     {
         if ($sale->status !== 'completed') {
             throw ValidationException::withMessages(['sale' => ['Transaksi sudah dibatalkan.']]);
+        }
+        if ($sale->returns()->exists()) {
+            throw ValidationException::withMessages(['sale' => ['Transaksi ini sudah ada returnya; tidak bisa dibatalkan.']]);
         }
 
         return DB::connection('pos')->transaction(function () use ($sale, $user, $reason) {
