@@ -135,3 +135,27 @@ retur `pos.sales.delete` (setara pembatalan).
   dengan transaksi lama. Aplikasi kasir mengulang otomatis saat status 0/502-504.
 - Tipe mutasi stok baru: `purchase`, `return`, `count`.
 - Tes: `tests/Feature/Pos/PosOperationsTest.php`; E2E di `finlite_pos/e2e/kasir.spec.ts`.
+
+## Fase 3b: harga, pajak, zona waktu (PR #20, 7 November 2026)
+
+Migrasi tenant `tenant_pos/2026_11_12_000001_add_price_tiers_tax_rounding.php`.
+
+- **Harga grosir** `pos_products.price_tiers` (JSON, maks 5, `min_quantity` > 1,
+  dirapikan `PosPricingService::normalizeTiers`). Server memilih harga satuan
+  menurut jumlah bila `unit_price` tidak dikirim (aplikasi kasir tidak mengirim).
+- **Pajak & pembulatan** (`PosPricingService::totals`, pengaturan `tax_mode`
+  none/exclusive/inclusive, `tax_rate`, `tax_name`, `rounding_unit` 0/100/500/1000,
+  `rounding_mode` nearest/down/up). Dasar = subtotal baris - diskon total. Pajak
+  dibulatkan ke rupiah; exclusive menambah total, inclusive hanya mencatat
+  bagiannya. Pembulatan terakhir -> `rounding_amount`. Kolom `pos_sales`:
+  `tax_amount`, `tax_inclusive`, `tax_rate`, `rounding_amount`; retur menyimpan
+  `tax_amount` proporsional.
+- Laporan: `net_sales` = Σ(total - pajak) - Σ(retur - pajak retur);
+  `tax_total` terpisah. Pembulatan dihitung sebagai pendapatan.
+- Rumus ditiru di `finlite_pos/src/lib/pricing.ts` untuk tampilan; **ubah
+  keduanya bersamaan**.
+- **Zona waktu toko** `PosClock` (pengaturan `timezone`, bawaan Asia/Jakarta):
+  dipakai `PosController::dated()` (filter `date_from/date_to`), laporan
+  (`by_day`, hari ini), dan `PosNumberService` (tanggal di nomor). Jangan pakai
+  `now()->toDateString()` / `CarbonImmutable::parse($date)->startOfDay()` di
+  modul POS: server UTC, transaksi 00.00-07.00 WIB jatuh ke kemarin.
