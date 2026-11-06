@@ -3,9 +3,11 @@
 namespace App\Modules\Pos\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Pos\Services\PosClock;
 use App\Shared\Api\ApiResponse;
 use App\Shared\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -38,6 +40,27 @@ abstract class PosController extends Controller
         $user = $request->user();
 
         return $user;
+    }
+
+    /**
+     * Filter `date_from` / `date_to` (tanggal toko, inklusif) pada kolom waktu.
+     *
+     * @template TModel of \Illuminate\Database\Eloquent\Model
+     *
+     * @param  Builder<TModel>  $query
+     * @return Builder<TModel>
+     */
+    protected function dated(Builder $query, Request $request, string $column): Builder
+    {
+        $clock = app(PosClock::class);
+        if ($request->filled('date_from')) {
+            $query->where($column, '>=', $clock->startOfDay((string) $request->query('date_from')));
+        }
+        if ($request->filled('date_to')) {
+            $query->where($column, '<=', $clock->endOfDay((string) $request->query('date_to')));
+        }
+
+        return $query;
     }
 
     /** Pencarian teks yang tidak peka huruf besar/kecil di SQLite maupun Postgres. */

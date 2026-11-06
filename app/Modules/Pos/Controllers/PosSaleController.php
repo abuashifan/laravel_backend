@@ -6,7 +6,6 @@ use App\Modules\Pos\Models\PosSale;
 use App\Modules\Pos\Models\PosSaleReturn;
 use App\Modules\Pos\Services\PosReturnService;
 use App\Modules\Pos\Services\PosSaleService;
-use Carbon\CarbonImmutable;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -21,14 +20,7 @@ class PosSaleController extends PosController
 
     public function index(Request $request): JsonResponse
     {
-        $query = PosSale::query()->with('customer:id,name')->withCount('lines')->latest('sold_at');
-
-        if ($request->filled('date_from')) {
-            $query->where('sold_at', '>=', CarbonImmutable::parse((string) $request->query('date_from'))->startOfDay());
-        }
-        if ($request->filled('date_to')) {
-            $query->where('sold_at', '<=', CarbonImmutable::parse((string) $request->query('date_to'))->endOfDay());
-        }
+        $query = $this->dated(PosSale::query()->with('customer:id,name')->withCount('lines')->latest('sold_at'), $request, 'sold_at');
         foreach (['status', 'payment_method', 'shift_id', 'customer_id'] as $filter) {
             if ($request->filled($filter)) {
                 $query->where($filter, (string) $request->query($filter));
@@ -111,13 +103,7 @@ class PosSaleController extends PosController
 
     public function returns(Request $request): JsonResponse
     {
-        $query = PosSaleReturn::query()->with('sale:id,number')->withCount('lines')->latest('returned_at');
-        if ($request->filled('date_from')) {
-            $query->where('returned_at', '>=', CarbonImmutable::parse((string) $request->query('date_from'))->startOfDay());
-        }
-        if ($request->filled('date_to')) {
-            $query->where('returned_at', '<=', CarbonImmutable::parse((string) $request->query('date_to'))->endOfDay());
-        }
+        $query = $this->dated(PosSaleReturn::query()->with('sale:id,number')->withCount('lines')->latest('returned_at'), $request, 'returned_at');
 
         return $this->paginated($query->paginate($this->perPage($request)));
     }

@@ -2,6 +2,7 @@
 
 namespace App\Modules\Pos\Controllers;
 
+use App\Modules\Pos\Services\PosClock;
 use App\Modules\Pos\Services\PosPricingService;
 use App\Modules\Pos\Services\PosReportService;
 use App\Modules\Pos\Services\PosSettingService;
@@ -11,13 +12,13 @@ use Illuminate\Validation\Rule;
 
 class PosReportController extends PosController
 {
-    public function summary(Request $request, PosReportService $reports): JsonResponse
+    public function summary(Request $request, PosReportService $reports, PosClock $clock): JsonResponse
     {
         $data = $request->validate([
             'date_from' => ['nullable', 'date_format:Y-m-d'],
             'date_to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:date_from'],
         ]);
-        $today = now()->toDateString();
+        $today = $clock->today();
 
         return $this->successResponse($reports->summary($data['date_from'] ?? $today, $data['date_to'] ?? $today));
     }
@@ -43,6 +44,7 @@ class PosReportController extends PosController
             'tax_name' => ['sometimes', 'nullable', 'string', 'max:20'],
             'rounding_unit' => ['sometimes', Rule::in([...PosPricingService::ROUNDING_UNITS, 0, 100, 500, 1000])],
             'rounding_mode' => ['sometimes', Rule::in(PosPricingService::ROUNDING_MODES)],
+            'timezone' => ['sometimes', Rule::in(PosClock::TIMEZONES)],
         ]);
 
         if (array_key_exists('allow_negative_stock', $data)) {

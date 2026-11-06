@@ -8,6 +8,7 @@ use App\Shared\Models\CompanyUser;
 use App\Shared\Models\Plan;
 use App\Shared\Models\Subscription;
 use App\Shared\Models\User;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
@@ -239,6 +240,30 @@ class PosOperationsTest extends TestCase
             ->assertJsonPath('data.sales_total', 70300)
             ->assertJsonPath('data.tax_total', 4134)
             ->assertJsonPath('data.net_sales', 66166);
+    }
+
+    public function test_store_day_follows_store_timezone(): void
+    {
+        $productId = $this->product(price: 5000, cost: 2000, stock: 10);
+        $this->postJson('/api/pos/shifts', ['opening_cash' => 0], $this->headers)->assertCreated();
+
+        // 18.30 UTC tanggal 6 = 01.30 WIB tanggal 7.
+        $this->travelTo(CarbonImmutable::parse('2026-11-06 18:30:00', 'UTC'));
+        $number = $this->postJson('/api/pos/sales', ['payment_method' => 'qris', 'lines' => [['product_id' => $productId, 'quantity' => 1]]], $this->headers)
+            ->assertCreated()->json('data.number');
+        $this->assertStringStartsWith('PJ-261107-', $number);
+
+        $this->getJson('/api/pos/sales?date_from=2026-11-07&date_to=2026-11-07', $this->headers)->assertJsonPath('data.total', 1);
+        $this->getJson('/api/pos/sales?date_from=2026-11-06&date_to=2026-11-06', $this->headers)->assertJsonPath('data.total', 0);
+        $this->getJson('/api/pos/reports/summary', $this->headers)
+            ->assertJsonPath('data.date_from', '2026-11-07')
+            ->assertJsonPath('data.sales_count', 1)
+            ->assertJsonPath('data.by_day.0.date', '2026-11-07');
+
+        // Toko WIT (UTC+9): tetap tanggal 7.
+        $this->patchJson('/api/pos/settings', ['timezone' => 'Asia/Jayapura'], $this->headers)->assertOk();
+        $this->getJson('/api/pos/sales?date_from=2026-11-07&date_to=2026-11-07', $this->headers)->assertJsonPath('data.total', 1);
+        $this->patchJson('/api/pos/settings', ['timezone' => 'Europe/London'], $this->headers)->assertStatus(422);
     }
 
     private function product(float $price, float $cost, float $stock): int

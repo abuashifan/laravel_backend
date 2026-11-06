@@ -25,6 +25,8 @@ class PosSettingService
         // Pembulatan total: kelipatan 0 (mati) | 100 | 500 | 1000; nearest | down | up.
         'rounding_unit' => '0',
         'rounding_mode' => 'nearest',
+        // Zona waktu toko: batas hari untuk filter, laporan, dan nomor dokumen.
+        'timezone' => 'Asia/Jakarta',
     ];
 
     /** @return array<string,string> */

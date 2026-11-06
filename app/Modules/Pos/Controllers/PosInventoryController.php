@@ -8,8 +8,6 @@ use App\Modules\Pos\Models\PosSupplier;
 use App\Modules\Pos\Models\PosSupplierPayment;
 use App\Modules\Pos\Services\PosPurchaseService;
 use App\Modules\Pos\Services\PosStockCountService;
-use Carbon\CarbonImmutable;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -151,24 +149,6 @@ class PosInventoryController extends PosController
         ]);
 
         return $this->successResponse($this->counts->create($this->user($request), $data), 'Stok opname tersimpan.', 201);
-    }
-
-    /**
-     * @template TModel of \Illuminate\Database\Eloquent\Model
-     *
-     * @param  Builder<TModel>  $query
-     * @return Builder<TModel>
-     */
-    private function dated(Builder $query, Request $request, string $column): Builder
-    {
-        if ($request->filled('date_from')) {
-            $query->where($column, '>=', CarbonImmutable::parse((string) $request->query('date_from'))->startOfDay());
-        }
-        if ($request->filled('date_to')) {
-            $query->where($column, '<=', CarbonImmutable::parse((string) $request->query('date_to'))->endOfDay());
-        }
-
-        return $query;
     }
 
     /** @return array<string, array<int, string>> */

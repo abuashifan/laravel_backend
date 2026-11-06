@@ -11,6 +11,8 @@ use Carbon\CarbonImmutable;
 
 class PosReportService
 {
+    public function __construct(private readonly PosClock $clock) {}
+
     /**
      * Ringkasan penjualan kasir untuk rentang tanggal (inklusif).
      *
@@ -18,8 +20,9 @@ class PosReportService
      */
     public function summary(string $dateFrom, string $dateTo): array
     {
-        $from = CarbonImmutable::parse($dateFrom)->startOfDay();
-        $to = CarbonImmutable::parse($dateTo)->endOfDay();
+        // Batas hari menurut jam toko.
+        $from = $this->clock->startOfDay($dateFrom);
+        $to = $this->clock->endOfDay($dateTo);
 
         $sales = PosSale::query()
             ->where('status', 'completed')
@@ -44,7 +47,7 @@ class PosReportService
 
         // Dikelompokkan di PHP: fungsi tanggal SQLite dan Postgres berbeda.
         $byDay = (clone $sales)->get(['sold_at', 'total'])
-            ->groupBy(fn (PosSale $sale) => $sale->sold_at?->format('Y-m-d'))
+            ->groupBy(fn (PosSale $sale) => $sale->sold_at ? $this->clock->format($sale->sold_at, 'Y-m-d') : null)
             ->map(fn ($group, $date) => ['date' => $date, 'count' => $group->count(), 'total' => round((float) $group->sum('total'), 2)])
             ->sortKeys()
             ->values()
@@ -83,8 +86,8 @@ class PosReportService
         $revenue = (float) (clone $sales)->sum('total') - $salesTax - ($returnsTotal - $returnsTax);
 
         return [
-            'date_from' => $from->toDateString(),
-            'date_to' => $to->toDateString(),
+            'date_from' => CarbonImmutable::parse($dateFrom)->toDateString(),
+            'date_to' => CarbonImmutable::parse($dateTo)->toDateString(),
             'sales_count' => (int) (clone $sales)->count(),
             'sales_total' => round((float) (clone $sales)->sum('total'), 2),
             'returns_count' => (int) (clone $returns)->count(),

@@ -11,10 +11,12 @@ use Illuminate\Database\Eloquent\Model;
  */
 class PosNumberService
 {
+    public function __construct(private readonly PosClock $clock) {}
+
     /** @param class-string<Model> $modelClass */
     public function next(string $modelClass, string $prefix, string $column = 'number'): string
     {
-        $head = $prefix.'-'.now()->format('ymd').'-';
+        $head = $prefix.'-'.$this->clock->format(now(), 'ymd').'-';
 
         $last = $modelClass::query()
             ->where($column, 'like', $head.'%')
