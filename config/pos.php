@@ -47,4 +47,9 @@ return [
             ]),
         ],
     ],
+
+    // Nomor WhatsApp penjual untuk tombol "Berlangganan" di aplikasi kasir
+    // (format 628xxx). Kosong = tombol tidak tampil. Pembayaran masih manual:
+    // admin memperpanjang dari panel admin setelah pembayaran diterima.
+    'sales_whatsapp' => env('POS_SALES_WHATSAPP', ''),
 ];

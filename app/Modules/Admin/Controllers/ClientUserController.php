@@ -378,6 +378,10 @@ class ClientUserController extends Controller
                 'name' => $plan->name,
                 'max_companies' => (int) $plan->max_companies,
                 'max_users' => (int) $plan->max_users,
+                // null = tanpa batas (paket Kasir).
+                'max_products' => $plan->max_products,
+                'monthly_price' => (string) $plan->monthly_price,
+                'yearly_price' => (string) $plan->yearly_price,
                 'product' => $plan->productKey(),
                 // Menandai tier yang jumlah perusahaannya diisi manual, supaya
                 // frontend tidak perlu mencocokkan string kodenya sendiri.

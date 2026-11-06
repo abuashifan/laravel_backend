@@ -156,17 +156,32 @@ class PlanSeeder extends Seeder
             ]
         );
 
-        // Paket Finlite POS. Harga dan kuota menunggu keputusan pemilik produk.
-        // Seeder ini juga dipanggil migrasi lama (2026_09_17/18) sebelum kolom
-        // `plans.product` ada; di sana paket POS dibuat oleh migrasi 2026_11_06.
-        if (Schema::hasColumn('plans', 'product')) {
+        // Paket Finlite Kasir. Kolom ini baru ada setelah migrasi 2026_11_06/08;
+        // seeder ini juga dipanggil migrasi lama sebelum kolom itu ada.
+        // HARGA: menunggu keputusan pemilik produk -- ubah monthly/yearly_price di sini.
+        if (Schema::hasColumn('plans', 'max_products')) {
             Plan::updateOrCreate(
                 ['code' => Plan::POS_CODE],
                 [
-                    'name' => 'Kasir (POS)',
+                    'name' => 'Kasir',
                     'product' => 'pos',
-                    'description' => 'Paket Finlite POS. Harga dan kuota akan ditentukan.',
+                    'description' => 'Paket Finlite Kasir: 3 pengguna, 1 toko, produk tanpa batas.',
                     'max_users' => 3,
+                    'max_products' => null,
+                    'max_companies' => 1,
+                    'monthly_price' => 0,
+                    'yearly_price' => 0,
+                    'status' => 'active',
+                ]
+            );
+            Plan::updateOrCreate(
+                ['code' => Plan::POS_FREE_CODE],
+                [
+                    'name' => 'Kasir Gratis',
+                    'product' => 'pos',
+                    'description' => 'Gratis selamanya: 1 pengguna, 1 toko, maksimal 30 produk.',
+                    'max_users' => 1,
+                    'max_products' => 30,
                     'max_companies' => 1,
                     'monthly_price' => 0,
                     'yearly_price' => 0,

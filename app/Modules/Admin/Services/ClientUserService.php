@@ -229,32 +229,50 @@ class ClientUserService
      */
     public function dueSoon(): array
     {
-        $clientIds = Subscription::query()->distinct()->pluck('user_id');
-
-        return User::query()
-            ->whereIn('id', $clientIds)
+        $rows = Subscription::query()
+            ->select(['user_id', 'product'])
+            ->distinct()
+            ->get();
+        $users = User::query()
+            ->whereIn('id', $rows->pluck('user_id')->unique())
             ->where('is_platform_admin', false)
             ->get()
-            ->map(function (User $user) {
-                $state = $this->subscriptionService->stateFor($user);
-                $days = $this->subscriptionService->daysRemaining($user);
+            ->keyBy('id');
 
-                return [$user, $state, $days];
+        // Satu baris per (client, produk): client Kasir dan Akuntansi ditagih terpisah.
+        return $rows
+            ->map(function (Subscription $row) use ($users) {
+                $user = $users->get($row->user_id);
+                $product = $row->product ?: SubscriptionService::PRODUCT_ACCOUNTING;
+                if (! $user) {
+                    return null;
+                }
+
+                return [
+                    $user,
+                    $product,
+                    $this->subscriptionService->stateFor($user, $product),
+                    $this->subscriptionService->daysRemaining($user, $product),
+                ];
             })
-            ->filter(function (array $row) {
-                [, $state, $days] = $row;
+            ->filter(function (?array $row) {
+                if ($row === null) {
+                    return false;
+                }
+                [, , $state, $days] = $row;
 
                 return $state === SubscriptionService::STATE_GRACE
                     || ($state === SubscriptionService::STATE_ACTIVE && $days !== null && $days <= 14);
             })
             ->map(function (array $row) {
-                [$user, $state, $days] = $row;
+                [$user, $product, $state, $days] = $row;
 
                 return [
                     'id' => $user->id,
                     'name' => $user->name,
                     'email' => $user->email,
                     'phone' => $user->phone,
+                    'product' => $product,
                     'state' => $state,
                     'days_remaining' => $days,
                 ];

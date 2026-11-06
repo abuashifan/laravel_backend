@@ -7,6 +7,7 @@ use App\Mail\PosVerifyEmailMail;
 use App\Modules\Pos\Controllers\PosSignupController;
 use App\Shared\Models\CompanyInvitation;
 use App\Shared\Models\CompanyUser;
+use App\Shared\Models\Plan;
 use App\Shared\Models\Subscription;
 use App\Shared\Models\TenantDatabase;
 use App\Shared\Models\User;
@@ -173,6 +174,73 @@ class PosSignupTeamTest extends TestCase
 
         $ownerMemberId = CompanyUser::query()->where('company_id', $headers['X-Company-ID'])->where('is_owner', true)->value('id');
         $this->patchJson("/api/pos/team/members/{$ownerMemberId}", ['status' => 'inactive'], $headers)->assertStatus(422);
+    }
+
+    public function test_claim_free_plan_after_trial_and_product_limit(): void
+    {
+        config(['pos.sales_whatsapp' => '+62 812-0000-1111']);
+        [$owner, $headers] = $this->verifiedOwnerWithStore();
+        $auth = ['Authorization' => $headers['Authorization']];
+
+        // Masih masa coba: paket gratis tidak boleh memotongnya.
+        $this->getJson('/api/pos/account', $auth)->assertOk()
+            ->assertJsonPath('data.can_claim_free', false)
+            ->assertJsonPath('data.subscription.plan_code', 'pos')
+            ->assertJsonPath('data.subscription.limits.products', null);
+        $this->postJson('/api/pos/subscription/free', [], $auth)->assertStatus(422)
+            ->assertJsonPath('code', 'SUBSCRIPTION_STILL_ACTIVE');
+
+        Subscription::query()->where('user_id', $owner->id)->update([
+            'starts_at' => now()->subMonths(2),
+            'ends_at' => now()->subDays(30),
+        ]);
+
+        $account = $this->getJson('/api/pos/account', $auth)->assertOk()
+            ->assertJsonPath('data.can_claim_free', true);
+        $this->assertStringStartsWith('https://wa.me/6281200001111?text=', $account->json('data.upgrade_url'));
+
+        $this->postJson('/api/pos/subscription/free', [], $auth)->assertOk()
+            ->assertJsonPath('data.subscription.state', 'active')
+            ->assertJsonPath('data.subscription.plan_code', 'pos_free')
+            ->assertJsonPath('data.subscription.limits.users', 1)
+            ->assertJsonPath('data.subscription.limits.products', 30);
+        $this->assertNull($owner->refresh()->plan_id, 'Paket Kasir tidak boleh mengubah paket akuntansi.');
+
+        // Batas produk: kecilkan supaya test cepat. Produk lama tidak dihapus.
+        Plan::query()->where('code', Plan::POS_FREE_CODE)->update(['max_products' => 2]);
+        $this->postJson('/api/pos/products', ['name' => 'Kopi', 'price' => 3000], $headers)->assertCreated();
+        $this->postJson('/api/pos/products', ['name' => 'Teh', 'price' => 3000], $headers)->assertCreated();
+        $this->postJson('/api/pos/products', ['name' => 'Gula', 'price' => 1000], $headers)
+            ->assertStatus(422)->assertJsonPath('code', 'PRODUCT_QUOTA_EXCEEDED');
+
+        $this->getJson('/api/pos/bootstrap', $headers)->assertOk()
+            ->assertJsonPath('data.subscription.usage.products', 2)
+            ->assertJsonPath('data.subscription.read_only', false);
+
+        // Paket gratis = 1 pengguna: undangan kasir ditolak.
+        $this->postJson('/api/pos/team/invitations', ['email' => 'kasir@warung.test', 'role' => 'kasir'], $headers)
+            ->assertStatus(422)->assertJsonPath('code', 'USER_QUOTA_EXCEEDED');
+    }
+
+    public function test_admin_sees_pos_plans_and_renews_pos_client(): void
+    {
+        [$owner] = $this->verifiedOwnerWithStore();
+        $admin = User::factory()->create(['is_platform_admin' => true]);
+        $adminAuth = ['Authorization' => 'Bearer '.$admin->createToken('admin', ['platform-admin'])->plainTextToken];
+
+        $plans = $this->getJson('/api/admin/plans?product=pos', $adminAuth)->assertOk()->json('data');
+        $this->assertEqualsCanonicalizing(['pos', 'pos_free'], array_column($plans, 'code'));
+
+        $this->getJson('/api/admin/clients?product=pos', $adminAuth)->assertOk()
+            ->assertJsonPath('data.data.0.id', $owner->id)
+            ->assertJsonPath('data.data.0.pos_subscription.is_trial', true);
+
+        $paid = Plan::query()->where('code', Plan::POS_CODE)->value('id');
+        $this->postJson("/api/admin/clients/{$owner->id}/renew", ['plan_id' => $paid, 'billing_cycle' => 'monthly'], $adminAuth)
+            ->assertOk()->assertJsonPath('data.pos_subscription.billing_cycle', 'monthly');
+
+        $due = $this->getJson('/api/admin/clients/due-soon', $adminAuth)->assertOk()->json('data');
+        $this->assertSame([], array_values(array_filter($due, fn ($row) => $row['id'] === $owner->id)), 'Trial + 1 bulan tidak jatuh tempo ≤14 hari.');
     }
 
     /** @return array{0: User, 1: array<string, string>} */

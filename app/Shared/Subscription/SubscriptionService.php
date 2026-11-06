@@ -251,18 +251,28 @@ class SubscriptionService
     /**
      * Ringkasan langganan satu produk untuk spanduk aplikasi.
      *
-     * @return array{state:string, ends_at:string|null, days_remaining:int|null, is_trial:bool, plan_name:string|null}
+     * `limits` = batas paket yang sedang berlaku (null = tanpa batas).
+     *
+     * @return array{state:string, ends_at:string|null, days_remaining:int|null, is_trial:bool, plan_name:string|null, plan_code:string|null, billing_cycle:string|null, limits:array{users:int|null, stores:int|null, products:int|null}|null}
      */
     public function summaryFor(User $client, string $product): array
     {
         $current = $this->currentFor($client, $product);
+        $plan = $current?->plan;
 
         return [
             'state' => $this->stateFor($client, $product),
             'ends_at' => $current?->ends_at?->toISOString(),
             'days_remaining' => $current ? (int) floor(now()->diffInDays($current->ends_at, false)) : null,
             'is_trial' => (bool) ($current?->metadata['trial'] ?? false),
-            'plan_name' => $current?->plan?->name,
+            'plan_name' => $plan?->name,
+            'plan_code' => $plan?->code,
+            'billing_cycle' => $current?->billing_cycle,
+            'limits' => $plan ? [
+                'users' => $plan->max_users !== null ? (int) $plan->max_users : null,
+                'stores' => $plan->max_companies !== null ? (int) $plan->max_companies : null,
+                'products' => $plan->max_products,
+            ] : null,
         ];
     }
 

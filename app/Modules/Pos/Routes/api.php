@@ -23,6 +23,7 @@ Route::prefix('pos')->group(function () {
 Route::middleware(['auth:sanctum'])->prefix('pos')->group(function () {
     Route::get('/account', [PosSignupController::class, 'account']);
     Route::post('/verify-email/resend', [PosSignupController::class, 'resend'])->middleware('throttle:3,1');
+    Route::post('/subscription/free', [PosSignupController::class, 'claimFree'])->middleware('throttle:5,1');
     // Dipanggil sebelum POS aktif, jadi belum bisa memakai tenant POS.
     Route::get('/status', [PosActivationController::class, 'status']);
     Route::post('/activate', [PosActivationController::class, 'activate']);
