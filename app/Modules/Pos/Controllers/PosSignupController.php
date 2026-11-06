@@ -3,6 +3,7 @@
 namespace App\Modules\Pos\Controllers;
 
 use App\Mail\PosVerifyEmailMail;
+use App\Modules\Pos\Services\PosPlanService;
 use App\Shared\Auth\TokenAbility;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Models\Plan;
@@ -32,7 +33,10 @@ class PosSignupController extends PosController
     /** Masa berlaku tautan verifikasi email. */
     private const VERIFY_TTL_HOURS = 48;
 
-    public function __construct(private readonly SubscriptionService $subscriptions) {}
+    public function __construct(
+        private readonly SubscriptionService $subscriptions,
+        private readonly PosPlanService $plans,
+    ) {}
 
     public function register(Request $request, UserRegistrationService $registration): JsonResponse
     {
@@ -70,6 +74,31 @@ class PosSignupController extends PosController
         $user = $this->user($request);
 
         return $this->successResponse($this->accountPayload($user));
+    }
+
+    /**
+     * Paket Kasir Gratis diambil sendiri setelah masa coba/langganan habis:
+     * toko kembali bisa dipakai dengan batas paket gratis. Berlaku setahun dan
+     * bisa diambil lagi. Tidak memotong langganan yang masih aktif.
+     */
+    public function claimFree(Request $request): JsonResponse
+    {
+        $user = $this->user($request);
+        if ($user->email_verified_at === null) {
+            throw ApiException::make('EMAIL_NOT_VERIFIED', 'Verifikasi email dulu sebelum memilih paket.', 403);
+        }
+        if ($this->subscriptions->hasAccess($user, TenantDatabase::PRODUCT_POS)) {
+            throw ApiException::make('SUBSCRIPTION_STILL_ACTIVE', 'Langganan Kasir kamu masih aktif.', 422);
+        }
+
+        $plan = Plan::query()->where('code', Plan::POS_FREE_CODE)->where('status', 'active')->first();
+        if (! $plan) {
+            throw ApiException::make('PLAN_NOT_AVAILABLE', 'Paket gratis sedang tidak tersedia.', 422);
+        }
+
+        $this->subscriptions->subscribe($user, $plan, 'yearly');
+
+        return $this->successResponse($this->accountPayload($user->refresh()), 'Paket Kasir Gratis aktif.');
     }
 
     public function resend(Request $request): JsonResponse
@@ -150,10 +179,14 @@ class PosSignupController extends PosController
     /** @return array<string, mixed> */
     private function accountPayload(User $user): array
     {
+        $verified = $user->email_verified_at !== null;
+
         return [
             'email' => $user->email,
-            'email_verified' => $user->email_verified_at !== null,
+            'email_verified' => $verified,
             'subscription' => $this->subscriptions->summaryFor($user, TenantDatabase::PRODUCT_POS),
+            'can_claim_free' => $verified && ! $this->subscriptions->hasAccess($user, TenantDatabase::PRODUCT_POS),
+            'upgrade_url' => $this->plans->upgradeUrl($user),
         ];
     }
 }

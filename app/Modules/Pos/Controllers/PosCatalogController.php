@@ -6,7 +6,9 @@ use App\Modules\Pos\Models\PosCategory;
 use App\Modules\Pos\Models\PosProduct;
 use App\Modules\Pos\Models\PosSaleLine;
 use App\Modules\Pos\Models\PosStockMovement;
+use App\Modules\Pos\Services\PosPlanService;
 use App\Modules\Pos\Services\PosStockService;
+use App\Shared\Tenant\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -84,11 +86,14 @@ class PosCatalogController extends PosController
         return $this->successResponse(PosProduct::query()->with('category:id,name')->findOrFail($id));
     }
 
-    public function storeProduct(Request $request): JsonResponse
+    public function storeProduct(Request $request, PosPlanService $plans, TenantContext $context): JsonResponse
     {
         $data = $request->validate($this->productRules() + [
             'initial_stock' => ['nullable', 'numeric', 'min:0'],
         ]);
+        if ($company = $context->company()) {
+            $plans->assertCanAddProduct($company);
+        }
         $initialStock = (float) ($data['initial_stock'] ?? 0);
         unset($data['initial_stock']);
 

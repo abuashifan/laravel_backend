@@ -19,6 +19,9 @@ class Plan extends Model
     /** Kode paket POS bawaan (dibuat migrasi 2026_11_06_000001). */
     public const POS_CODE = 'pos';
 
+    /** Paket Kasir gratis terbatas yang bisa diambil sendiri dari aplikasi kasir. */
+    public const POS_FREE_CODE = 'pos_free';
+
     /** Lama masa coba Kasir untuk pendaftaran mandiri (dimulai saat email terverifikasi). */
     public const POS_TRIAL_DAYS = 14;
 
@@ -28,6 +31,7 @@ class Plan extends Model
         'product',
         'description',
         'max_users',
+        'max_products',
         'max_companies',
         'max_transactions_per_month',
         'storage_quota_mb',
@@ -43,6 +47,7 @@ class Plan extends Model
     ];
 
     protected $casts = [
+        'max_products' => 'integer',
         'can_use_sales' => 'boolean',
         'can_use_purchases' => 'boolean',
         'can_use_inventory' => 'boolean',

@@ -2,6 +2,7 @@
 
 namespace App\Modules\Pos\Controllers;
 
+use App\Modules\Pos\Services\PosPlanService;
 use App\Modules\Pos\Services\PosSettingService;
 use App\Modules\Pos\Services\PosShiftService;
 use App\Shared\Api\ApiErrorCode;
@@ -68,7 +69,7 @@ class PosActivationController extends PosController
      * toko, dan shift yang sedang terbuka. Rute ini sudah di dalam
      * `company.access:pos`, jadi tenant POS tersambung.
      */
-    public function bootstrap(Request $request, PermissionService $permissions, TenantContext $context, PosSettingService $settings, PosShiftService $shifts, SubscriptionService $subscriptions, PlanOwnerResolver $owners): JsonResponse
+    public function bootstrap(Request $request, PermissionService $permissions, TenantContext $context, PosSettingService $settings, PosShiftService $shifts, SubscriptionService $subscriptions, PlanOwnerResolver $owners, PosPlanService $plans): JsonResponse
     {
         $user = $this->user($request);
         // Izin POS + izin mengelola pengguna toko (layar Pengguna toko).
@@ -83,6 +84,9 @@ class PosActivationController extends PosController
         $subscription = $owner ? $subscriptions->summaryFor($owner, TenantDatabase::PRODUCT_POS) : null;
         if ($subscription !== null) {
             $subscription['read_only'] = ! in_array($subscription['state'], [SubscriptionService::STATE_ACTIVE, SubscriptionService::STATE_GRACE], true);
+            $subscription['usage'] = $company ? $plans->usage($company) : null;
+            // Hanya pemilik yang membayar; kasir tidak diberi tautan berlangganan.
+            $subscription['upgrade_url'] = $owner->id === $user->id ? $plans->upgradeUrl($user, $company) : null;
         }
 
         return $this->successResponse([
