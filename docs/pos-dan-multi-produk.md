@@ -86,6 +86,27 @@ tidak bertabrakan. Seed E2E ada di `finlite_pos/e2e/backend/seed.php`.
   `max_users` paket POS pemilik (ambil yang lebih besar bila juga akuntansi).
 - **Reset sandi** `forgot-password` dengan `app=pos` → tautan ke aplikasi kasir.
 - **Admin**: `GET /admin/clients?product=pos`, payload `pos_subscription`,
-  `email_verified`; `renew`/`unlock` menerima `product`. UI admin belum dibuat.
+  `email_verified`; `renew`/`unlock` menerima `product`. UI: tab "Finlite
+  Kasir" di detail client (react_frontend#10).
 - Env: `POS_FRONTEND_URL` (default `https://pos.finlite.my.id`). Verifikasi
   butuh pengiriman email (MAIL_*) jalan di Render.
+
+### Paket Kasir (PR #18)
+
+- Paket `pos` = **Kasir** (3 pengguna, 1 toko, produk tanpa batas; dipakai
+  trial) dan `pos_free` = **Kasir Gratis** (1 pengguna, 1 toko, 30 produk).
+  Kolom `plans.max_products` (null = tanpa batas). **Harga masih 0**: ubah di
+  `PlanSeeder` setelah pemilik produk memutuskan.
+- `POST /api/pos/subscription/free`: pemilik mengambil Kasir Gratis sendiri
+  (email terverifikasi, langganan Kasir tidak aktif). Langganan tahunan Rp 0,
+  bisa diambil lagi.
+- Batas produk: `PosPlanService::assertCanAddProduct()` di `storeProduct` → 422
+  `PRODUCT_QUOTA_EXCEEDED`. Produk lama tidak dihapus saat turun paket; jatah
+  pengguna juga hanya menahan undangan baru.
+- `summaryFor()` memuat `plan_code`, `billing_cycle`, `limits`. `bootstrap`
+  menambah `usage` dan `upgrade_url` (pemilik saja); `account` menambah
+  `can_claim_free`, `upgrade_url`.
+- `upgrade_url` = WhatsApp penjual dari env `POS_SALES_WHATSAPP` (628xxx);
+  kosong = tombol tidak tampil. Pembayaran manual, admin memperpanjang.
+- `/admin/plans?product=pos` memuat batas & harga; `/admin/clients/due-soon`
+  satu baris per (client, produk) dengan `product`.
