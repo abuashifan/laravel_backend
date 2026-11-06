@@ -193,6 +193,54 @@ class PosOperationsTest extends TestCase
         $this->getJson("/api/pos/products/{$productId}", $this->headers)->assertJsonPath('data.stock', 9);
     }
 
+    public function test_wholesale_price_tiers_tax_and_rounding(): void
+    {
+        $productId = $this->postJson('/api/pos/products', [
+            'name' => 'Air mineral', 'price' => 5000, 'cost' => 3000,
+            'price_tiers' => [
+                ['min_quantity' => 10, 'price' => 4500],
+                ['min_quantity' => 5, 'price' => 4800],
+            ],
+        ], $this->headers)->assertCreated()
+            ->assertJsonPath('data.price_tiers.0.min_quantity', 5)
+            ->assertJsonPath('data.price_tiers.1.price', 4500)
+            ->json('data.id');
+        $this->postJson('/api/pos/products', ['name' => 'X', 'price' => 1, 'price_tiers' => [['min_quantity' => 1, 'price' => 1]]], $this->headers)
+            ->assertStatus(422);
+        $this->postJson('/api/pos/shifts', ['opening_cash' => 0], $this->headers)->assertCreated();
+
+        // Tanpa pajak & pembulatan: 6 x harga grosir 4.800.
+        $this->postJson('/api/pos/sales', ['payment_method' => 'qris', 'lines' => [['product_id' => $productId, 'quantity' => 6]]], $this->headers)
+            ->assertCreated()->assertJsonPath('data.lines.0.unit_price', 4800)->assertJsonPath('data.total', 28800);
+
+        // PPN 11% ditambahkan, dibulatkan ke 100 terdekat: 28.800 + 3.168 = 31.968 -> 32.000.
+        $this->patchJson('/api/pos/settings', ['tax_mode' => 'exclusive', 'tax_rate' => 11, 'rounding_unit' => '100', 'rounding_mode' => 'nearest'], $this->headers)
+            ->assertOk()->assertJsonPath('data.tax_mode', 'exclusive');
+        $this->postJson('/api/pos/sales', ['payment_method' => 'cash', 'paid_amount' => 32000, 'lines' => [['product_id' => $productId, 'quantity' => 6]]], $this->headers)
+            ->assertCreated()
+            ->assertJsonPath('data.tax_amount', 3168)
+            ->assertJsonPath('data.rounding_amount', 32)
+            ->assertJsonPath('data.total', 32000);
+
+        // PPN sudah termasuk harga, diskon per baris, bulat ke bawah 500:
+        // 2 x 5.000 - 250 = 9.750 (pajak di dalamnya 966) -> 9.500.
+        $this->patchJson('/api/pos/settings', ['tax_mode' => 'inclusive', 'rounding_unit' => '500', 'rounding_mode' => 'down'], $this->headers)->assertOk();
+        $this->postJson('/api/pos/sales', [
+            'payment_method' => 'transfer',
+            'lines' => [['product_id' => $productId, 'quantity' => 2, 'discount_amount' => 250]],
+        ], $this->headers)->assertCreated()
+            ->assertJsonPath('data.tax_inclusive', true)
+            ->assertJsonPath('data.tax_amount', 966)
+            ->assertJsonPath('data.rounding_amount', -250)
+            ->assertJsonPath('data.total', 9500);
+
+        // Laporan: pajak dipisah dari pendapatan bersih.
+        $this->getJson('/api/pos/reports/summary', $this->headers)
+            ->assertJsonPath('data.sales_total', 70300)
+            ->assertJsonPath('data.tax_total', 4134)
+            ->assertJsonPath('data.net_sales', 66166);
+    }
+
     private function product(float $price, float $cost, float $stock): int
     {
         return (int) $this->postJson('/api/pos/products', [

@@ -2,6 +2,7 @@
 
 namespace App\Modules\Pos\Controllers;
 
+use App\Modules\Pos\Services\PosPricingService;
 use App\Modules\Pos\Services\PosReportService;
 use App\Modules\Pos\Services\PosSettingService;
 use Illuminate\Http\JsonResponse;
@@ -37,6 +38,11 @@ class PosReportController extends PosController
             'default_receipt_mode' => ['sometimes', Rule::in(['none', 'digital', 'print'])],
             'allow_negative_stock' => ['sometimes', Rule::in(['0', '1', 0, 1, true, false])],
             'paper_width' => ['sometimes', Rule::in(['58', '80', 58, 80])],
+            'tax_mode' => ['sometimes', Rule::in(PosPricingService::TAX_MODES)],
+            'tax_rate' => ['sometimes', 'numeric', 'min:0', 'max:100'],
+            'tax_name' => ['sometimes', 'nullable', 'string', 'max:20'],
+            'rounding_unit' => ['sometimes', Rule::in([...PosPricingService::ROUNDING_UNITS, 0, 100, 500, 1000])],
+            'rounding_mode' => ['sometimes', Rule::in(PosPricingService::ROUNDING_MODES)],
         ]);
 
         if (array_key_exists('allow_negative_stock', $data)) {

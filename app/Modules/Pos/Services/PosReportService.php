@@ -69,6 +69,8 @@ class PosReportService
         // tetap menjadi biaya, jadi hanya HPP barang yang dikembalikan ke stok dikurangi.
         $returns = PosSaleReturn::query()->whereBetween('returned_at', [$from, $to]);
         $returnsTotal = (float) (clone $returns)->sum('total');
+        $returnsTax = (float) (clone $returns)->sum('tax_amount');
+        $salesTax = (float) (clone $sales)->sum('tax_amount');
         $returnedCost = (float) PosSaleReturnLine::query()
             ->join('pos_sale_returns', 'pos_sale_returns.id', '=', 'pos_sale_return_lines.return_id')
             ->whereBetween('pos_sale_returns.returned_at', [$from, $to])
@@ -77,7 +79,8 @@ class PosReportService
             ->value('cost');
         $cost -= $returnedCost;
 
-        $revenue = $lineRevenue - $headerDiscount - $returnsTotal;
+        // Pendapatan bersih = total dibayar pelanggan (termasuk pembulatan) tanpa pajak, dikurangi retur.
+        $revenue = (float) (clone $sales)->sum('total') - $salesTax - ($returnsTotal - $returnsTax);
 
         return [
             'date_from' => $from->toDateString(),
@@ -87,6 +90,7 @@ class PosReportService
             'returns_count' => (int) (clone $returns)->count(),
             'returns_total' => round($returnsTotal, 2),
             'net_sales' => round($revenue, 2),
+            'tax_total' => round($salesTax - $returnsTax, 2),
             'cost_total' => round($cost, 2),
             'gross_profit' => round($revenue - $cost, 2),
             'voided_count' => PosSale::query()->where('status', 'voided')->whereBetween('sold_at', [$from, $to])->count(),

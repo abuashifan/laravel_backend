@@ -7,6 +7,7 @@ use App\Modules\Pos\Models\PosProduct;
 use App\Modules\Pos\Models\PosSaleLine;
 use App\Modules\Pos\Models\PosStockMovement;
 use App\Modules\Pos\Services\PosPlanService;
+use App\Modules\Pos\Services\PosPricingService;
 use App\Modules\Pos\Services\PosStockService;
 use App\Shared\Tenant\TenantContext;
 use Illuminate\Http\JsonResponse;
@@ -96,6 +97,7 @@ class PosCatalogController extends PosController
         }
         $initialStock = (float) ($data['initial_stock'] ?? 0);
         unset($data['initial_stock']);
+        $data = $this->withTiers($data);
 
         $product = DB::connection('pos')->transaction(function () use ($data, $initialStock, $request) {
             $product = PosProduct::query()->create(array_merge($data, ['stock' => 0]));
@@ -112,7 +114,7 @@ class PosCatalogController extends PosController
     public function updateProduct(Request $request, int $id): JsonResponse
     {
         $product = PosProduct::query()->findOrFail($id);
-        $product->update($request->validate($this->productRules($id, partial: true)));
+        $product->update($this->withTiers($request->validate($this->productRules($id, partial: true))));
 
         return $this->successResponse($product->refresh()->load('category:id,name'), 'Produk diperbarui.');
     }
@@ -168,6 +170,20 @@ class PosCatalogController extends PosController
         );
     }
 
+    /**
+     * @param  array<string,mixed>  $data
+     * @return array<string,mixed>
+     */
+    private function withTiers(array $data): array
+    {
+        if (array_key_exists('price_tiers', $data)) {
+            $tiers = PosPricingService::normalizeTiers($data['price_tiers']);
+            $data['price_tiers'] = $tiers === [] ? null : $tiers;
+        }
+
+        return $data;
+    }
+
     /** @return array<string, array<int, mixed>> */
     private function productRules(?int $id = null, bool $partial = false): array
     {
@@ -183,6 +199,10 @@ class PosCatalogController extends PosController
             'cost' => ['nullable', 'numeric', 'min:0'],
             'track_stock' => ['nullable', 'boolean'],
             'is_active' => ['nullable', 'boolean'],
+            // Harga grosir: beli minimal sekian, harga satuan jadi sekian.
+            'price_tiers' => ['nullable', 'array', 'max:5'],
+            'price_tiers.*.min_quantity' => ['required', 'numeric', 'gt:1'],
+            'price_tiers.*.price' => ['required', 'numeric', 'min:0'],
         ];
     }
 }
