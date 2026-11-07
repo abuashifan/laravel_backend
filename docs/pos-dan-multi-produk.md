@@ -159,3 +159,25 @@ Migrasi tenant `tenant_pos/2026_11_12_000001_add_price_tiers_tax_rounding.php`.
   (`by_day`, hari ini), dan `PosNumberService` (tanggal di nomor). Jangan pakai
   `now()->toDateString()` / `CarbonImmutable::parse($date)->startOfDay()` di
   modul POS: server UTC, transaksi 00.00-07.00 WIB jatuh ke kemarin.
+
+## Fase 3c: impor Excel, foto produk (PR #21, 7 November 2026)
+
+Migrasi tenant `tenant_pos/2026_11_14_000001_add_product_photos.php`.
+
+- **Impor** `POST /pos/products/import` (`PosProductImportService`): XLSX/CSV,
+  `commit=0` pratinjau tanpa menyimpan, `commit=1` simpan baris benar dan lewati
+  yang salah (berkas dibaca ulang, tidak disimpan di disk). Kolom = konstanta
+  `COLUMNS` (+ alias). Cocok ke produk lama lewat SKU → barcode → nama persis;
+  sel kosong = nilai lama; stok produk lama tidak diubah (pakai stok masuk /
+  opname); produk baru dengan kolom Stok = stok dilacak + mutasi "Stok awal
+  (impor)". Kategori dibuat otomatis. Batas paket `max_products` dihitung per
+  baris. CSV titik koma dikenali; angka teks lewat `parseNumber()` ("Rp 3.500",
+  "3.500,50"), sel angka XLSX dipakai apa adanya. Maks 1000 baris.
+- **Ekspor** `GET /pos/products/export` (`?template=1` = kosong), kolom sama.
+- **Foto** `GET/POST/DELETE /pos/products/{id}/photo` (`PosProductPhotoService`).
+  Disimpan sebagai data URL di database toko (`pos_product_photos.data`) karena
+  disk kontainer Render hilang tiap deploy; gambar mini di
+  `pos_products.photo_thumb` ikut daftar produk. Aplikasi kasir memperkecil
+  foto (480px / 96px JPEG); server cek mime + `getimagesizefromstring`, maks
+  300 KB / 24 KB, kuota total per toko `POS_PHOTO_QUOTA_MB` (bawaan 50).
+- Scan barcode kamera murni di aplikasi kasir (BarcodeDetector, ZXing untuk iOS).
