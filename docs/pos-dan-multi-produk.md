@@ -181,3 +181,22 @@ Migrasi tenant `tenant_pos/2026_11_14_000001_add_product_photos.php`.
   foto (480px / 96px JPEG); server cek mime + `getimagesizefromstring`, maks
   300 KB / 24 KB, kuota total per toko `POS_PHOTO_QUOTA_MB` (bawaan 50).
 - Scan barcode kamera murni di aplikasi kasir (BarcodeDetector, ZXing untuk iOS).
+
+## Fase 4a: laporan rinci & dasbor (PR #22, 7 November 2026)
+
+Migrasi tenant `tenant_pos/2026_11_16_000001_add_product_min_stock.php`
+(`pos_products.min_stock` + indeks laporan).
+
+- `PosReportTableService`: setiap laporan = `{title, columns[{key,label,type}],
+  rows, totals}`; layar kasir merender tabel generik dan
+  `GET /pos/reports/{type}/export` memakai `exportRows()` → XLSX. Tipe:
+  `cashiers`, `shifts`, `products` (laba = baris setelah diskon baris, sebelum
+  diskon nota, dikurangi retur; HPP retur yang kembali ke stok dikembalikan),
+  `categories`, `hours` (jam toko, dikelompokkan di PHP per 2000 baris),
+  `low-stock` (stok ≤ minimum atau habis ≤ 7 hari menurut rata-rata 14 hari;
+  saran beli cukup 14 hari), `credit-aging` (FIFO: sisa kasbon = transaksi
+  kasbon terbaru senilai saldo). Tambah tipe = tambah ke `TYPES` + `match`.
+- `GET /pos/reports/dashboard`: hari ini vs kemarin, 7 hari, terlaris, jumlah
+  stok menipis, kasbon beredar, shift buka.
+- Filter `low_stock` produk kini `stock <= COALESCE(min_stock, 0)`; impor/ekspor
+  punya kolom "Stok minimum".
