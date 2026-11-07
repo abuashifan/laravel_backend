@@ -33,6 +33,7 @@ class PosProductImportService
         'Harga jual' => 'price',
         'Harga modal' => 'cost',
         'Stok' => 'stock',
+        'Stok minimum' => 'min_stock',
     ];
 
     /** Judul lain yang juga dikenali (huruf kecil, tanpa spasi ganda). */
@@ -44,6 +45,7 @@ class PosProductImportService
         'modal' => 'cost', 'harga beli' => 'cost', 'hpp' => 'cost',
         'stok awal' => 'stock', 'jumlah stok' => 'stock', 'qty' => 'stock',
         'unit' => 'unit',
+        'stok min' => 'min_stock', 'min stok' => 'min_stock', 'minimum stok' => 'min_stock',
     ];
 
     public function __construct(
@@ -118,7 +120,7 @@ class PosProductImportService
                 if ($key !== null && ! isset($values[$key])) {
                     $cell = $cells[$column] ?? null;
                     // Angka asli dari XLSX dipakai apa adanya, tidak ditebak pemisahnya.
-                    $values[$key] = in_array($key, ['price', 'cost', 'stock'], true) && (is_int($cell) || is_float($cell))
+                    $values[$key] = in_array($key, ['price', 'cost', 'stock', 'min_stock'], true) && (is_int($cell) || is_float($cell))
                         ? (float) $cell
                         : $this->cellText($cell);
                 }
@@ -235,7 +237,7 @@ class PosProductImportService
             }
 
             $numbers = [];
-            foreach (['price' => 'Harga jual', 'cost' => 'Harga modal', 'stock' => 'Stok'] as $key => $label) {
+            foreach (['price' => 'Harga jual', 'cost' => 'Harga modal', 'stock' => 'Stok', 'min_stock' => 'Stok minimum'] as $key => $label) {
                 $raw = $values[$key] ?? '';
                 if ($raw === '') {
                     continue;
@@ -324,7 +326,7 @@ class PosProductImportService
                 $data[$key] = $values[$key];
             }
         }
-        foreach (['price', 'cost'] as $key) {
+        foreach (['price', 'cost', 'min_stock'] as $key) {
             if (isset($values[$key])) {
                 $data[$key] = $values[$key];
             }
