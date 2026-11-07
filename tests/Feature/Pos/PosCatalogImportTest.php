@@ -120,7 +120,7 @@ class PosCatalogImportTest extends TestCase
         $this->get('/api/pos/products/export', $this->headers)->assertOk()
             ->assertHeader('content-disposition');
         $this->get('/api/pos/products/export?template=1', $this->headers)->assertOk();
-        $this->assertSame(['Nama', 'SKU', 'Barcode', 'Kategori', 'Satuan', 'Harga jual', 'Harga modal', 'Stok'], array_keys(PosProductImportService::COLUMNS));
+        $this->assertSame(['Nama', 'SKU', 'Barcode', 'Kategori', 'Satuan', 'Harga jual', 'Harga modal', 'Stok', 'Stok minimum'], array_keys(PosProductImportService::COLUMNS));
     }
 
     public function test_product_photo_upload_show_and_delete(): void

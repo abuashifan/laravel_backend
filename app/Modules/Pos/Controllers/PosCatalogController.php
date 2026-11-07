@@ -81,7 +81,7 @@ class PosCatalogController extends PosController
             $query->where('is_active', filter_var($request->query('is_active'), FILTER_VALIDATE_BOOLEAN));
         }
         if (filter_var($request->query('low_stock', false), FILTER_VALIDATE_BOOLEAN)) {
-            $query->where('track_stock', true)->where('stock', '<=', 0);
+            $query->where('track_stock', true)->whereRaw('stock <= COALESCE(min_stock, 0)');
         }
 
         return $this->paginated($query->paginate($this->perPage($request, 50)));
@@ -219,6 +219,7 @@ class PosCatalogController extends PosController
                 $product->price,
                 $product->cost,
                 $product->track_stock ? $product->stock : null,
+                $product->min_stock,
             ],
             'produk-kasir',
         );
@@ -287,6 +288,8 @@ class PosCatalogController extends PosController
             'price' => [$required, 'numeric', 'min:0'],
             'cost' => ['nullable', 'numeric', 'min:0'],
             'track_stock' => ['nullable', 'boolean'],
+            // Batas stok menipis (laporan stok menipis & filter produk).
+            'min_stock' => ['nullable', 'numeric', 'min:0'],
             'is_active' => ['nullable', 'boolean'],
             // Harga grosir: beli minimal sekian, harga satuan jadi sekian.
             'price_tiers' => ['nullable', 'array', 'max:5'],

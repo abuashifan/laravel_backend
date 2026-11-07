@@ -9,6 +9,7 @@ use App\Modules\Pos\Controllers\PosSaleController;
 use App\Modules\Pos\Controllers\PosShiftController;
 use App\Modules\Pos\Controllers\PosSignupController;
 use App\Modules\Pos\Controllers\PosTeamController;
+use App\Modules\Pos\Services\PosReportTableService;
 use Illuminate\Support\Facades\Route;
 
 // Finlite POS. Semua rute data memakai `company.access:pos`, yaitu tenant POS
@@ -96,6 +97,9 @@ Route::middleware(['auth:sanctum', 'company.access:pos', 'product.subscription:p
     Route::post('/stock-counts', [PosInventoryController::class, 'storeStockCount'])->middleware('permission:pos.stock.adjust');
 
     Route::get('/reports/summary', [PosReportController::class, 'summary'])->middleware('permission:pos.reports.view');
+    Route::get('/reports/dashboard', [PosReportController::class, 'dashboard'])->middleware('permission:pos.reports.view');
+    Route::get('/reports/{type}', [PosReportController::class, 'table'])->whereIn('type', PosReportTableService::TYPES)->middleware('permission:pos.reports.view');
+    Route::get('/reports/{type}/export', [PosReportController::class, 'exportTable'])->whereIn('type', PosReportTableService::TYPES)->middleware('permission:pos.reports.export');
 
     // Pengguna toko: undang kasir dengan templat izin, ubah peran, nonaktifkan.
     // Memakai izin `access.*` yang sama dengan layar Akses di Finlite Accounting.
