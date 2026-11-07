@@ -73,12 +73,12 @@ class PosCatalogImportTest extends TestCase
         $this->assertNotEmpty($rows[3]['notes']);
         $this->assertSame(['Harga jual wajib diisi untuk produk baru.'], $rows[4]['errors']);
         $this->assertSame('error', $rows[6]['action']);
-        $this->getJson('/api/pos/products', $this->headers)->assertJsonPath('total', 1);
+        $this->getJson('/api/pos/products', $this->headers)->assertJsonPath('data.total', 1);
 
         $this->postJson('/api/pos/products/import', ['file' => $this->csv($csv), 'commit' => true], $this->headers)
             ->assertOk()->assertJsonPath('data.committed', true);
 
-        $kopi = $this->getJson('/api/pos/products?search=Kopi', $this->headers)->json('data.0');
+        $kopi = $this->getJson('/api/pos/products?search=Kopi', $this->headers)->json('data.data.0');
         $this->assertSame(1500, (int) $kopi['price']);
         $this->assertSame(1100, (int) $kopi['cost']);
         $this->assertSame(24, (int) $kopi['stock']);
@@ -91,7 +91,7 @@ class PosCatalogImportTest extends TestCase
             ->assertJsonPath('data.price', 16000)
             ->assertJsonPath('data.cost', 12000)
             ->assertJsonPath('data.stock', 5);
-        $this->getJson('/api/pos/products', $this->headers)->assertJsonPath('total', 2);
+        $this->getJson('/api/pos/products', $this->headers)->assertJsonPath('data.total', 2);
     }
 
     public function test_import_respects_plan_product_limit_and_rejects_bad_files(): void
@@ -104,7 +104,7 @@ class PosCatalogImportTest extends TestCase
 
         $this->postJson('/api/pos/products/import', ['file' => $this->csv($lines), 'commit' => true], $this->headers)
             ->assertOk()->assertJsonPath('data.summary', ['create' => 30, 'update' => 0, 'error' => 2]);
-        $this->getJson('/api/pos/products', $this->headers)->assertJsonPath('total', 30);
+        $this->getJson('/api/pos/products', $this->headers)->assertJsonPath('data.total', 30);
 
         $this->postJson('/api/pos/products/import', ['file' => $this->csv("Produk,Modal\nA,1\n")], $this->headers)->assertStatus(422);
         $this->postJson('/api/pos/products/import', [
@@ -136,7 +136,7 @@ class PosCatalogImportTest extends TestCase
 
         $this->postJson("/api/pos/products/{$id}/photo", ['photo' => self::PNG, 'thumb' => self::PNG], $this->headers)
             ->assertOk()->assertJsonPath('data.photo_thumb', self::PNG);
-        $this->getJson('/api/pos/products', $this->headers)->assertJsonPath('data.0.photo_thumb', self::PNG);
+        $this->getJson('/api/pos/products', $this->headers)->assertJsonPath('data.data.0.photo_thumb', self::PNG);
         $this->getJson("/api/pos/products/{$id}/photo", $this->headers)
             ->assertOk()->assertJsonPath('data.photo', self::PNG)->assertJsonPath('data.quota_bytes', 50 * 1024 * 1024);
 
