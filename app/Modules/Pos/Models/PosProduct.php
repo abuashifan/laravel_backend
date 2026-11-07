@@ -11,7 +11,7 @@ class PosProduct extends Model
 
     protected $table = 'pos_products';
 
-    protected $fillable = ['sku', 'barcode', 'name', 'category_id', 'unit', 'price', 'cost', 'track_stock', 'stock', 'is_active', 'price_tiers'];
+    protected $fillable = ['sku', 'barcode', 'name', 'category_id', 'unit', 'price', 'cost', 'track_stock', 'stock', 'is_active', 'price_tiers', 'photo_thumb'];
 
     protected $casts = ['category_id' => 'integer', 'price' => 'float', 'cost' => 'float', 'track_stock' => 'boolean', 'stock' => 'float', 'is_active' => 'boolean', 'price_tiers' => 'array'];
 

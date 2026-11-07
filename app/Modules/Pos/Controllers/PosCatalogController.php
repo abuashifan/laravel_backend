@@ -4,16 +4,21 @@ namespace App\Modules\Pos\Controllers;
 
 use App\Modules\Pos\Models\PosCategory;
 use App\Modules\Pos\Models\PosProduct;
+use App\Modules\Pos\Models\PosProductPhoto;
 use App\Modules\Pos\Models\PosSaleLine;
 use App\Modules\Pos\Models\PosStockMovement;
 use App\Modules\Pos\Services\PosPlanService;
 use App\Modules\Pos\Services\PosPricingService;
+use App\Modules\Pos\Services\PosProductImportService;
+use App\Modules\Pos\Services\PosProductPhotoService;
 use App\Modules\Pos\Services\PosStockService;
+use App\Shared\Export\ExcelExportService;
 use App\Shared\Tenant\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class PosCatalogController extends PosController
 {
@@ -133,6 +138,90 @@ class PosCatalogController extends PosController
         $product->delete();
 
         return $this->successResponse(null, 'Produk dihapus.');
+    }
+
+    // ---- Foto produk ----
+
+    public function photo(int $id, PosProductPhotoService $photos): JsonResponse
+    {
+        PosProduct::query()->findOrFail($id);
+
+        return $this->successResponse([
+            'photo' => PosProductPhoto::query()->where('product_id', $id)->value('data'),
+        ] + $photos->usage());
+    }
+
+    /** Foto (sisi panjang ~480px) dan gambar mini (~96px) sebagai data URL, sudah diperkecil di aplikasi. */
+    public function storePhoto(Request $request, int $id, PosProductPhotoService $photos): JsonResponse
+    {
+        $product = PosProduct::query()->findOrFail($id);
+        $data = $request->validate([
+            'photo' => ['required', 'string', 'max:'.(int) (PosProductPhotoService::MAX_PHOTO_BYTES * 1.4)],
+            'thumb' => ['required', 'string', 'max:'.(int) (PosProductPhotoService::MAX_THUMB_BYTES * 1.4)],
+        ]);
+
+        $photos->store($product, $data['photo'], $data['thumb']);
+
+        return $this->successResponse($product->refresh()->load('category:id,name'), 'Foto produk disimpan.');
+    }
+
+    public function destroyPhoto(int $id, PosProductPhotoService $photos): JsonResponse
+    {
+        $product = PosProduct::query()->findOrFail($id);
+        $photos->delete($product);
+
+        return $this->successResponse($product->refresh()->load('category:id,name'), 'Foto produk dihapus.');
+    }
+
+    // ---- Impor & ekspor ----
+
+    /**
+     * `commit` false = pratinjau (tidak menyimpan apa pun), true = simpan baris
+     * yang benar dan lewati baris yang salah.
+     */
+    public function importProducts(Request $request, PosProductImportService $import, TenantContext $context): JsonResponse
+    {
+        $data = $request->validate([
+            'file' => ['required', 'file', 'max:5120'],
+            'commit' => ['nullable', 'boolean'],
+        ]);
+        $file = $data['file'];
+        $commit = (bool) ($data['commit'] ?? false);
+
+        $result = $import->run(
+            (string) $file->getRealPath(),
+            (string) $file->getClientOriginalExtension(),
+            $commit,
+            $context->company(),
+            $request->user()?->id,
+        );
+
+        return $this->successResponse($result, $commit ? 'Impor produk selesai.' : 'Pratinjau impor.');
+    }
+
+    /** Ekspor produk dengan kolom yang sama seperti templat impor (ubah di Excel, impor lagi). */
+    public function exportProducts(Request $request, ExcelExportService $excel): StreamedResponse
+    {
+        $query = PosProduct::query()->with('category:id,name')->orderBy('name');
+        if (filter_var($request->query('template', false), FILTER_VALIDATE_BOOLEAN)) {
+            $query->whereRaw('1 = 0');
+        }
+
+        return $excel->download(
+            $query,
+            array_keys(PosProductImportService::COLUMNS),
+            fn (PosProduct $product) => [
+                $product->name,
+                $product->sku,
+                $product->barcode,
+                $product->category?->name,
+                $product->unit,
+                $product->price,
+                $product->cost,
+                $product->track_stock ? $product->stock : null,
+            ],
+            'produk-kasir',
+        );
     }
 
     /** Ubah stok: `set_stock` (hasil hitung fisik) atau `quantity` (+ restock / - koreksi). */
