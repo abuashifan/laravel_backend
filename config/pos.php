@@ -52,4 +52,8 @@ return [
     // (format 628xxx). Kosong = tombol tidak tampil. Pembayaran masih manual:
     // admin memperpanjang dari panel admin setelah pembayaran diterima.
     'sales_whatsapp' => env('POS_SALES_WHATSAPP', ''),
+
+    // Kuota total foto produk per toko (MB). Foto disimpan di database toko
+    // (~30-60 KB per produk setelah diperkecil aplikasi kasir).
+    'photo_quota_mb' => (int) env('POS_PHOTO_QUOTA_MB', 50),
 ];

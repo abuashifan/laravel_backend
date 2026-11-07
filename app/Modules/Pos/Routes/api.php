@@ -43,11 +43,17 @@ Route::middleware(['auth:sanctum', 'company.access:pos', 'product.subscription:p
     Route::delete('/categories/{id}', [PosCatalogController::class, 'destroyCategory'])->middleware('permission:pos.products.delete');
 
     Route::get('/products', [PosCatalogController::class, 'products'])->middleware('permission:pos.products.view|pos.sales.create');
+    // Impor/ekspor didaftarkan sebelum /products/{id}.
+    Route::get('/products/export', [PosCatalogController::class, 'exportProducts'])->middleware('permission:pos.products.view');
+    Route::post('/products/import', [PosCatalogController::class, 'importProducts'])->middleware('permission:pos.products.create');
     Route::get('/products/{id}', [PosCatalogController::class, 'showProduct'])->middleware('permission:pos.products.view|pos.sales.create');
     Route::post('/products', [PosCatalogController::class, 'storeProduct'])->middleware('permission:pos.products.create');
     Route::patch('/products/{id}', [PosCatalogController::class, 'updateProduct'])->middleware('permission:pos.products.edit');
     Route::delete('/products/{id}', [PosCatalogController::class, 'destroyProduct'])->middleware('permission:pos.products.delete');
     Route::post('/products/{id}/stock', [PosCatalogController::class, 'adjustStock'])->middleware('permission:pos.stock.adjust');
+    Route::get('/products/{id}/photo', [PosCatalogController::class, 'photo'])->middleware('permission:pos.products.view|pos.sales.create');
+    Route::post('/products/{id}/photo', [PosCatalogController::class, 'storePhoto'])->middleware('permission:pos.products.edit');
+    Route::delete('/products/{id}/photo', [PosCatalogController::class, 'destroyPhoto'])->middleware('permission:pos.products.edit');
     Route::get('/products/{id}/stock-movements', [PosCatalogController::class, 'stockMovements'])->middleware('permission:pos.products.view');
 
     // Pelanggan & kasbon -- kasir boleh mencari & menambah pelanggan cepat saat menjual.
