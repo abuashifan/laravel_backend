@@ -19,8 +19,12 @@ itulah syarat deploy Render ("After CI Checks Pass").
   - `gh run watch <run-id> -R abuashifan/laravel_backend --exit-status`
   - `gh run view <run-id> -R abuashifan/laravel_backend --log-failed` (bila gagal)
   - `gh api "repos/abuashifan/laravel_backend/actions/runs?branch=<branch>"`
-- **Workflow `Tests` hanya terpicu oleh `pull_request` dan push ke `main`**
-  (tidak ada `workflow_dispatch`). Branch kerja tanpa PR tidak punya run CI.
+- **Workflow `Tests` terpicu oleh `pull_request`, push ke `main`, dan
+  `workflow_dispatch`.** Dispatch manual: `gh workflow run tests.yml
+  -R abuashifan/laravel_backend --ref <branch>`, lalu cari run-nya dengan
+  `gh run list -b <branch> -L 1 --json event,databaseId` (event `workflow_dispatch`).
+  Pemicu dispatch baru dikenali GitHub setelah berkas workflow ada di `main`;
+  sebelum itu, branch kerja tanpa PR tidak punya run CI.
 - **Buka PR draft sejak awal setiap pekerjaan**, begitu commit pertama di-push
   (tool GitHub MCP `create_pull_request` dengan `draft: true`), supaya setiap push
   berikutnya otomatis menjalankan CI. Tulis di deskripsi bahwa PR itu draft dan
