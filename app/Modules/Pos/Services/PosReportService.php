@@ -45,11 +45,15 @@ class PosReportService
             ->values()
             ->all();
 
-        // Dikelompokkan di PHP: fungsi tanggal SQLite dan Postgres berbeda.
-        $byDay = (clone $sales)->get(['sold_at', 'total'])
-            ->groupBy(fn (PosSale $sale) => $sale->sold_at ? $this->clock->format($sale->sold_at, 'Y-m-d') : null)
-            ->map(fn ($group, $date) => ['date' => $date, 'count' => $group->count(), 'total' => round((float) $group->sum('total'), 2)])
-            ->sortKeys()
+        // Dikelompokkan di database menurut hari toko; menarik setiap baris ke
+        // PHP membuat ringkasan 30 hari butuh belasan detik di toko ramai.
+        $dateSql = $this->clock->localDateSql('sold_at');
+        $byDay = (clone $sales)
+            ->selectRaw("{$dateSql} as day, COUNT(*) as count, SUM(total) as total")
+            ->groupByRaw($dateSql)
+            ->orderByRaw($dateSql)
+            ->get()
+            ->map(fn ($row) => ['date' => $row->day, 'count' => (int) $row->count, 'total' => round((float) $row->total, 2)])
             ->values()
             ->all();
 

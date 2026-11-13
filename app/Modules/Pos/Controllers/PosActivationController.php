@@ -3,6 +3,7 @@
 namespace App\Modules\Pos\Controllers;
 
 use App\Modules\Pos\Services\PosPlanService;
+use App\Modules\Pos\Services\PosSecurityService;
 use App\Modules\Pos\Services\PosSettingService;
 use App\Modules\Pos\Services\PosShiftService;
 use App\Shared\Api\ApiErrorCode;
@@ -69,7 +70,7 @@ class PosActivationController extends PosController
      * toko, dan shift yang sedang terbuka. Rute ini sudah di dalam
      * `company.access:pos`, jadi tenant POS tersambung.
      */
-    public function bootstrap(Request $request, PermissionService $permissions, TenantContext $context, PosSettingService $settings, PosShiftService $shifts, SubscriptionService $subscriptions, PlanOwnerResolver $owners, PosPlanService $plans): JsonResponse
+    public function bootstrap(Request $request, PermissionService $permissions, TenantContext $context, PosSettingService $settings, PosSecurityService $security, PosShiftService $shifts, SubscriptionService $subscriptions, PlanOwnerResolver $owners, PosPlanService $plans): JsonResponse
     {
         $user = $this->user($request);
         // Izin POS + izin mengelola pengguna toko (layar Pengguna toko).
@@ -95,7 +96,7 @@ class PosActivationController extends PosController
             'is_owner' => $owner !== null && $owner->id === $user->id,
             'subscription' => $subscription,
             'permissions' => $keys,
-            'settings' => $settings->all(),
+            'settings' => $settings->all() + ['supervisor_pin_set' => $security->pinIsSet() ? '1' : '0'],
             'current_shift' => $shifts->current($user),
         ]);
     }

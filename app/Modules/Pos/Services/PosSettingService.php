@@ -27,6 +27,12 @@ class PosSettingService
         'rounding_mode' => 'nearest',
         // Zona waktu toko: batas hari untuk filter, laporan, dan nomor dokumen.
         'timezone' => 'Asia/Jakarta',
+        // Fase 4b. Batas diskon bawaan (persen) untuk pengguna tanpa izin
+        // `pos.discount.override`; kosong = tanpa batas. Batas pribadi per
+        // kasir (pos_member_limits) mengalahkan nilai ini.
+        'max_discount_percent' => '',
+        // '1' = kasir boleh membatalkan/meretur dengan PIN kepala toko.
+        'cashier_void_with_pin' => '0',
     ];
 
     /** @return array<string,string> */

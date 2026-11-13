@@ -200,3 +200,115 @@ Migrasi tenant `tenant_pos/2026_11_16_000001_add_product_min_stock.php`
   stok menipis, kasbon beredar, shift buka.
 - Filter `low_stock` produk kini `stock <= COALESCE(min_stock, 0)`; impor/ekspor
   punya kolom "Stok minimum".
+
+## Fase 4b: log audit, batas wewenang, PIN kepala toko
+
+Migrasi tenant `tenant_pos/2026_11_18_000001_create_pos_audit_and_controls.php`
+(`pos_audit_logs`, `pos_member_limits`, `pos_supervisor_pins`) dan migrasi pusat
+`2026_11_18_000002_sync_pos_control_permissions.php` (izin baru).
+
+- **Log audit** `PosAuditService::record()` (aksi di `ACTIONS`). Ditulis di
+  dalam transaksi aksi yang dicatat, jadi aksi yang batal tidak meninggalkan
+  jejak. Tercatat: buka/tutup shift (dengan selisih laci), batal transaksi,
+  retur, ubah harga jual/modal/grosir produk, ubah stok manual dan stok
+  opname, diskon di atas batas, ganti/hapus PIN, PIN salah, ubah pengaturan
+  toko dan batas diskon kasir. Baca: `GET /pos/audit-logs` (filter `action`,
+  `user_id`, `search`, `date_from/date_to`) dan `/audit-logs/actions`, izin
+  `pos.audit.view`. Tabel hanya ditambah, tidak ada rute ubah/hapus.
+  **Belum tercatat:** perubahan harga lewat impor produk, stok masuk (punya
+  dokumen sendiri), dan penyesuaian stok produk baru (stok awal).
+- **Batas diskon** `PosSecurityService::discountLimit()`: izin
+  `pos.discount.override` (kepala toko, pemilik) = tanpa batas; selain itu batas
+  pribadi (`pos_member_limits`, diatur dari `PATCH /pos/team/members/{id}`
+  `max_discount_percent`) mengalahkan batas toko (`max_discount_percent` di
+  pengaturan; kosong = tanpa batas). Persentase = (potongan dari harga resmi
+  + diskon baris + diskon nota) / nilai harga resmi. Harga yang diturunkan kasir
+  lewat `unit_price` dihitung sebagai diskon juga. Melebihi batas = 422 di kunci
+  `supervisor_pin`; kirim ulang dengan `supervisor_pin` benar untuk lolos
+  (tercatat `discount.override`).
+- **PIN kepala toko**: satu PIN per toko (4-8 angka), hash bcrypt di
+  `pos_supervisor_pins` (sengaja bukan `pos_settings`, karena pengaturan dibaca
+  semua pengguna). `PUT/DELETE /pos/security/pin` (izin `pos.settings.edit`;
+  pemilik boleh ganti tanpa PIN lama). Lima kali salah = terkunci 5 menit.
+  **`verifyPin()` wajib dipanggil di luar transaksi DB**, kalau tidak pencacah
+  dan log salah-PIN ikut ter-rollback. Pengaturan dan bootstrap hanya
+  menampilkan `supervisor_pin_set`.
+- **Batal/retur oleh kasir**: rutenya terbuka untuk `pos.sales.delete` atau
+  `pos.sales.create`; penjaganya `PosSecurityService::authorizeSensitive()`.
+  Kepala toko/pemilik langsung jalan; kasir hanya kalau pengaturan
+  `cashier_void_with_pin` = 1 (mati bawaan, butuh PIN sudah dibuat) dan
+  `supervisor_pin` benar, selain itu 403. Log memberi tanda
+  `approved_with_pin`. Menghapus PIN mematikan `cashier_void_with_pin`.
+- Templat peran `kepala_toko` kini memuat `pos.audit.view` dan
+  `pos.discount.override`. Anggota yang diundang sebelum 4b memegang set lama
+  dan akan tampil "Khusus" sampai perannya disetel ulang.
+- Tes: `tests/Feature/Pos/PosControlsTest.php`.
+
+## Fase 4c: ketahanan beban (2.000 transaksi per hari)
+
+Migrasi tenant `tenant_pos/2026_11_20_000001_add_load_indexes.php` dan
+`2026_11_20_000002_create_pos_number_sequences.php`. Diukur di Postgres 16
+dengan 30 hari x 2.000 transaksi (60.000 nota, sekitar 180.000 baris barang, dan
+mutasi stok untuk produk berstok) lewat `tests/TenantPgsql/PosLoadTest.php`.
+
+Sebelum dan sesudah (waktu satu permintaan, hangat):
+
+| Permintaan | Sebelum | Sesudah |
+| --- | --- | --- |
+| Ringkasan 30 hari | 15,7 dtk | 0,24 dtk |
+| Laporan per jam 30 hari | 20,2 dtk | 0,04 dtk |
+| Dasbor pemilik | 5,3 dtk | 0,24 dtk |
+| Ringkasan 7 hari | 3,6 dtk | 0,14 dtk |
+| Daftar transaksi hari ini (100) | 0,58 dtk | 0,03 dtk |
+| Laporan umur kasbon | 0,53 dtk | 0,04 dtk |
+| Simpan transaksi (rata-rata) | 48 md | 23 md |
+
+Penyebab dan perbaikan:
+
+- **Pengelompokan di PHP.** `by_day` di ringkasan dan laporan per jam menarik
+  setiap nota ke PHP (hidrasi model + Carbon, ~0,26 md per baris). Kini
+  `GROUP BY` di database lewat `PosClock::localDateSql()` / `localHourSql()`
+  (cabang `pgsql` dan `sqlite`; zona Indonesia tanpa DST, jadi cukup digeser
+  menit). Tes batas hari WIB: `PosScalingTest` (SQLite) dan
+  `PosLoadTest::test_postgres_groups_sales_by_the_store_day_and_hour`.
+- **Indeks foreign key.** Postgres tidak mengindeks FK otomatis (MySQL iya).
+  `pos_sale_lines.sale_id` dan `product_id` tidak punya indeks, jadi join
+  laporan, hitungan baris per nota, dan hapus produk memindai seluruh tabel.
+  Ditambah juga `pos_sales (customer_id, sold_at)`, FK retur, pelunasan kasbon,
+  baris stok masuk dan opname.
+- **Umur kasbon** memakai satu query (kursor) untuk semua pelanggan, bukan satu
+  per pelanggan.
+- **Zona waktu toko** dibaca sekali per instance `PosClock`; sebelumnya satu
+  query pengaturan per baris di laporan shift dan umur kasbon.
+- **Nomor dokumen bentrok.** Cara lama (`SELECT ... FOR UPDATE LIMIT 1` pada
+  nomor terakhir) hanya mengunci satu baris dan tidak mengunci apa pun pada
+  transaksi pertama hari itu. Uji bersamaan (8 permintaan serentak, backend 8
+  worker, Postgres): 24 dari 120 transaksi gagal 500 di kolom nomor UNIQUE.
+  Kini `PosNumberService` memakai penghitung atomik `pos_number_sequences`
+  (satu baris per awalan per hari, dinaikkan dengan `UPDATE ... last_value + 1`
+  yang mengunci barisnya sampai commit). Hasil: 120/120 dan 200/200 (keranjang
+  dengan urutan produk berlawanan) tanpa gagal, tanpa nomor kembar, tanpa
+  deadlock. Karena kunci penghitung diambil di awal transaksi, transaksi simpan
+  mengantre rapi dan tidak saling mengunci baris stok. Nomor tidak bolong kalau
+  transaksi batal (penghitung ikut rollback). Baris penghitung yang hilang
+  diisi ulang dari nomor tertinggi yang tersimpan.
+
+Menjalankan uji beban (butuh Postgres; suite lain dilewati tanpa URL):
+
+```bash
+TENANT_TEST_PGSQL_URL="postgresql://user:pass@127.0.0.1:5432/db" \
+POS_LOAD_DAYS=30 POS_LOAD_PER_DAY=2000 POS_LOAD_BUDGET_MS=1500 \
+vendor/bin/phpunit --testsuite=TenantPgsql --filter PosLoadTest
+```
+
+Tes gagal kalau satu permintaan baca melewati `POS_LOAD_BUDGET_MS` atau
+rata-rata simpan transaksi melewatinya. Tabel waktu ditulis ke
+`storage/logs/pos-load.txt`. Angka sandbox bukan Neon: sebelum rilis, jalankan
+juga ke database Neon (URL direct) karena latensi jaringan ke database menambah
+tiap query.
+
+Yang belum diukur: Neon sungguhan, dan beban baca-tulis bersamaan dari banyak
+perangkat selama jam ramai (uji bersamaan di atas hanya 8 penyimpan serentak).
+`GET /pos/reports/summary` menjalankan beberapa query agregat per panggilan;
+wajar di angka di atas, tetapi dasbor yang di-refresh otomatis per beberapa
+detik dari banyak perangkat perlu cache bila kelak dibuat.

@@ -11,7 +11,6 @@ use App\Modules\Pos\Models\PosSaleReturn;
 use App\Modules\Pos\Models\PosSaleReturnLine;
 use App\Modules\Pos\Models\PosShift;
 use Carbon\CarbonImmutable;
-use Illuminate\Support\Collection;
 
 /**
  * Laporan rinci Fase 4a. Setiap laporan berbentuk tabel yang sama
@@ -272,18 +271,17 @@ class PosReportTableService
 
     private function hours(CarbonImmutable $from, CarbonImmutable $to): array
     {
-        // Dikelompokkan di PHP menurut jam toko (fungsi jam SQLite/Postgres berbeda).
+        // Dikelompokkan di database menurut jam toko.
+        $hourSql = $this->clock->localHourSql('sold_at');
         $rows = [];
-        PosSale::query()->where('status', 'completed')->whereBetween('sold_at', [$from, $to])
-            ->select(['id', 'sold_at', 'total'])
-            ->chunkById(2000, function (Collection $sales) use (&$rows) {
-                foreach ($sales as $sale) {
-                    $hour = (int) $this->clock->format($sale->sold_at, 'G');
-                    $rows[$hour] ??= ['hour' => sprintf('%02d.00-%02d.59', $hour, $hour), 'sales_count' => 0, 'sales_total' => 0.0];
-                    $rows[$hour]['sales_count']++;
-                    $rows[$hour]['sales_total'] += (float) $sale->total;
-                }
-            });
+        $grouped = PosSale::query()->where('status', 'completed')->whereBetween('sold_at', [$from, $to])
+            ->selectRaw("{$hourSql} as hour, COUNT(*) as sales_count, SUM(total) as sales_total")
+            ->groupByRaw($hourSql)
+            ->get();
+        foreach ($grouped as $group) {
+            $hour = (int) $group->hour;
+            $rows[$hour] = ['hour' => sprintf('%02d.00-%02d.59', $hour, $hour), 'sales_count' => (int) $group->sales_count, 'sales_total' => (float) $group->sales_total];
+        }
         ksort($rows);
         foreach ($rows as &$row) {
             $row['sales_total'] = round($row['sales_total'], 2);
@@ -354,34 +352,55 @@ class PosReportTableService
     private function creditAging(): array
     {
         $today = CarbonImmutable::parse($this->clock->today());
-        $rows = [];
-        foreach (PosCustomer::query()->where('credit_balance', '>', 0)->orderByDesc('credit_balance')->get() as $customer) {
-            $remaining = (float) $customer->credit_balance;
-            $buckets = ['age_0_30' => 0.0, 'age_31_60' => 0.0, 'age_61_90' => 0.0, 'age_90' => 0.0];
-            $oldest = null;
-            $sales = PosSale::query()->where('customer_id', $customer->id)->where('status', 'completed')
-                ->where('credit_amount', '>', 0)->orderByDesc('sold_at')->get(['sold_at', 'credit_amount']);
-            foreach ($sales as $sale) {
-                if ($remaining <= 0.004) {
-                    break;
-                }
-                $portion = min($remaining, (float) $sale->credit_amount);
-                $remaining -= $portion;
+        $customers = PosCustomer::query()->where('credit_balance', '>', 0)->orderByDesc('credit_balance')->get();
+
+        // Satu query untuk semua pelanggan berkasbon (bukan satu per pelanggan),
+        // terbaru dulu: sisa kasbon dianggap berasal dari transaksi kasbon
+        // terbaru senilai saldo (FIFO).
+        $state = [];
+        foreach ($customers as $customer) {
+            $state[$customer->id] = [
+                'remaining' => (float) $customer->credit_balance,
+                'buckets' => ['age_0_30' => 0.0, 'age_31_60' => 0.0, 'age_61_90' => 0.0, 'age_90' => 0.0],
+                'oldest' => null,
+            ];
+        }
+
+        $sales = PosSale::query()
+            ->whereIn('customer_id', PosCustomer::query()->select('id')->where('credit_balance', '>', 0))
+            ->where('status', 'completed')
+            ->where('credit_amount', '>', 0)
+            ->orderBy('customer_id')
+            ->orderByDesc('sold_at')
+            ->select(['customer_id', 'sold_at', 'credit_amount'])
+            ->cursor();
+        foreach ($sales as $sale) {
+            $entry = &$state[$sale->customer_id];
+            if ($entry['remaining'] > 0.004) {
+                $portion = min($entry['remaining'], (float) $sale->credit_amount);
+                $entry['remaining'] -= $portion;
                 $date = CarbonImmutable::parse($this->clock->format($sale->sold_at, 'Y-m-d'));
-                $oldest = $date;
-                $buckets[$this->bucket((int) $date->diffInDays($today))] += $portion;
+                $entry['oldest'] = $date;
+                $entry['buckets'][$this->bucket((int) $date->diffInDays($today))] += $portion;
             }
+            unset($entry);
+        }
+
+        $rows = [];
+        foreach ($customers as $customer) {
+            $entry = $state[$customer->id];
             // Saldo tanpa transaksi asal (mis. data lama) dianggap paling tua.
-            if ($remaining > 0.004) {
-                $buckets['age_90'] += $remaining;
+            if ($entry['remaining'] > 0.004) {
+                $entry['buckets']['age_90'] += $entry['remaining'];
             }
+            $oldest = $entry['oldest'];
             $rows[] = [
                 'customer_name' => $customer->name,
                 'phone' => $customer->phone,
                 'balance' => round((float) $customer->credit_balance, 2),
                 'oldest_date' => $oldest?->toDateString(),
                 'age_days' => $oldest ? (int) $oldest->diffInDays($today) : null,
-            ] + array_map(fn ($value) => round($value, 2), $buckets);
+            ] + array_map(fn ($value) => round($value, 2), $entry['buckets']);
         }
 
         return ['Umur kasbon', [

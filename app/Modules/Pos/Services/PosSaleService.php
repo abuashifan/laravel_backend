@@ -20,6 +20,8 @@ class PosSaleService
         private readonly PosStockService $stock,
         private readonly PosNumberService $numbers,
         private readonly PosPricingService $pricing,
+        private readonly PosSecurityService $security,
+        private readonly PosAuditService $audit,
     ) {}
 
     /**
@@ -40,6 +42,12 @@ class PosSaleService
         return DB::connection('pos')->transaction(function () use ($user, $data, $shift) {
             $lines = [];
             $subtotal = 0.0;
+            // Acuan batas diskon: nilai di harga resmi (harga grosir sesuai
+            // jumlah) dan potongan dari harga resmi itu -- baik lewat kolom
+            // diskon maupun harga yang diubah kasir.
+            $listTotal = 0.0;
+            $priceCut = 0.0;
+            $lineDiscounts = 0.0;
 
             foreach ((array) $data['lines'] as $index => $input) {
                 /** @var PosProduct|null $product */
@@ -59,6 +67,11 @@ class PosSaleService
                     throw ValidationException::withMessages(["lines.{$index}.discount_amount" => ['Diskon melebihi harga baris.']]);
                 }
 
+                $listPrice = $this->pricing->unitPrice($product, $quantity);
+                $listTotal += $quantity * $listPrice;
+                $priceCut += max(0.0, $quantity * ($listPrice - $unitPrice));
+                $lineDiscounts += $discount;
+
                 $subtotal += $lineTotal;
                 $lines[] = compact('product', 'quantity', 'unitPrice', 'discount', 'lineTotal');
             }
@@ -68,6 +81,19 @@ class PosSaleService
             if ($base < 0) {
                 throw ValidationException::withMessages(['discount_amount' => ['Diskon melebihi total belanja.']]);
             }
+            $discountPercent = $listTotal > 0
+                ? round(($priceCut + $lineDiscounts + $discountAmount) / $listTotal * 100, 2)
+                : 0.0;
+            $limit = $this->security->discountLimit($user);
+            $overLimit = $limit !== null && $discountPercent > $limit + 0.005;
+            if ($overLimit && empty($data['supervisor_approved'])) {
+                throw ValidationException::withMessages(['supervisor_pin' => [sprintf(
+                    'Diskon %s%% melebihi batas %s%% untuk Anda. Minta PIN kepala toko.',
+                    rtrim(rtrim(number_format($discountPercent, 2, ',', ''), '0'), ','),
+                    rtrim(rtrim(number_format((float) $limit, 2, ',', ''), '0'), ','),
+                )]]);
+            }
+
             // Pajak toko dan pembulatan total.
             $totals = $this->pricing->totals($base);
             $total = max(0.0, $totals['total']);
@@ -136,6 +162,17 @@ class PosSaleService
                 $customer->forceFill(['credit_balance' => round((float) $customer->credit_balance + $credit, 2)])->save();
             }
 
+            if ($overLimit) {
+                $this->audit->record(
+                    'discount.override',
+                    sprintf('Diskon %s%% di transaksi %s disetujui dengan PIN kepala toko (batas %s%%).', $discountPercent, $sale->number, $limit),
+                    $user,
+                    ['type' => 'sale', 'id' => $sale->id, 'label' => $sale->number],
+                    ['discount_percent' => $discountPercent, 'limit_percent' => $limit, 'total' => $total],
+                    approvedWithPin: true,
+                );
+            }
+
             return $sale->load('lines', 'customer');
         });
     }
@@ -144,7 +181,7 @@ class PosSaleService
      * Batalkan transaksi. Hanya selama shift-nya masih terbuka, supaya setoran
      * shift yang sudah ditutup tidak berubah diam-diam.
      */
-    public function void(PosSale $sale, User $user, string $reason): PosSale
+    public function void(PosSale $sale, User $user, string $reason, bool $approvedWithPin = false): PosSale
     {
         if ($sale->status !== 'completed') {
             throw ValidationException::withMessages(['sale' => ['Transaksi sudah dibatalkan.']]);
@@ -153,7 +190,7 @@ class PosSaleService
             throw ValidationException::withMessages(['sale' => ['Transaksi ini sudah ada returnya; tidak bisa dibatalkan.']]);
         }
 
-        return DB::connection('pos')->transaction(function () use ($sale, $user, $reason) {
+        return DB::connection('pos')->transaction(function () use ($sale, $user, $reason, $approvedWithPin) {
             $shift = $sale->shift()->lockForUpdate()->first();
             if (! $shift || $shift->status !== 'open') {
                 throw ValidationException::withMessages(['sale' => ['Shift transaksi ini sudah ditutup; transaksi tidak bisa dibatalkan.']]);
@@ -180,6 +217,16 @@ class PosSaleService
                 'voided_by' => $user->id,
                 'void_reason' => $reason,
             ])->save();
+
+            $this->audit->record(
+                'sale.void',
+                "Transaksi {$sale->number} dibatalkan.",
+                $user,
+                ['type' => 'sale', 'id' => $sale->id, 'label' => $sale->number],
+                ['total' => (float) $sale->total, 'payment_method' => $sale->payment_method],
+                $reason,
+                $approvedWithPin,
+            );
 
             return $sale->refresh()->load('lines', 'customer');
         });

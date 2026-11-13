@@ -7,6 +7,7 @@ use App\Modules\Pos\Models\PosProduct;
 use App\Modules\Pos\Models\PosProductPhoto;
 use App\Modules\Pos\Models\PosSaleLine;
 use App\Modules\Pos\Models\PosStockMovement;
+use App\Modules\Pos\Services\PosAuditService;
 use App\Modules\Pos\Services\PosPlanService;
 use App\Modules\Pos\Services\PosPricingService;
 use App\Modules\Pos\Services\PosProductImportService;
@@ -22,7 +23,10 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class PosCatalogController extends PosController
 {
-    public function __construct(private readonly PosStockService $stock) {}
+    public function __construct(
+        private readonly PosStockService $stock,
+        private readonly PosAuditService $audit,
+    ) {}
 
     // ---- Kategori ----
 
@@ -119,7 +123,31 @@ class PosCatalogController extends PosController
     public function updateProduct(Request $request, int $id): JsonResponse
     {
         $product = PosProduct::query()->findOrFail($id);
-        $product->update($this->withTiers($request->validate($this->productRules($id, partial: true))));
+        $data = $this->withTiers($request->validate($this->productRules($id, partial: true)));
+
+        DB::connection('pos')->transaction(function () use ($product, $data, $request) {
+            $watched = ['price', 'cost', 'price_tiers'];
+            $before = $this->priceSnapshot($product);
+            $product->update($data);
+            $after = $this->priceSnapshot($product->refresh());
+
+            $changes = [];
+            foreach ($watched as $field) {
+                if (json_encode($before[$field]) !== json_encode($after[$field])) {
+                    $changes[$field] = [$before[$field], $after[$field]];
+                }
+            }
+            if ($changes !== []) {
+                $labels = ['price' => 'harga jual', 'cost' => 'harga modal', 'price_tiers' => 'harga grosir'];
+                $this->audit->record(
+                    'product.price_change',
+                    'Harga '.$product->name.' diubah ('.implode(', ', array_map(fn ($field) => $labels[$field], array_keys($changes))).').',
+                    $request->user(),
+                    ['type' => 'product', 'id' => $product->id, 'label' => $product->name],
+                    $changes,
+                );
+            }
+        });
 
         return $this->successResponse($product->refresh()->load('category:id,name'), 'Produk diperbarui.');
     }
@@ -244,11 +272,38 @@ class PosCatalogController extends PosController
                 ? (float) $data['set_stock'] - (float) $product->stock
                 : (float) $data['quantity'];
             $type = isset($data['set_stock']) ? 'adjustment' : ($delta > 0 ? 'restock' : 'adjustment');
+            $stockBefore = (float) $product->stock;
 
             $this->stock->move($product, $delta, $type, null, null, $data['notes'] ?? null, $request->user()?->id);
+
+            if ($delta != 0.0) {
+                $this->audit->record(
+                    'stock.adjust',
+                    sprintf('Stok %s diubah dari %s menjadi %s.', $product->name, $this->plain($stockBefore), $this->plain((float) $product->stock)),
+                    $request->user(),
+                    ['type' => 'product', 'id' => $product->id, 'label' => $product->name],
+                    ['stock' => [$stockBefore, (float) $product->stock], 'delta' => $delta],
+                    $data['notes'] ?? null,
+                );
+            }
         });
 
         return $this->successResponse($product->refresh(), 'Stok diperbarui.');
+    }
+
+    /** @return array{price: float, cost: float, price_tiers: mixed} */
+    private function priceSnapshot(PosProduct $product): array
+    {
+        return [
+            'price' => (float) $product->price,
+            'cost' => (float) $product->cost,
+            'price_tiers' => $product->price_tiers,
+        ];
+    }
+
+    private function plain(float $value): string
+    {
+        return rtrim(rtrim(number_format($value, 3, '.', ''), '0'), '.');
     }
 
     public function stockMovements(Request $request, int $id): JsonResponse

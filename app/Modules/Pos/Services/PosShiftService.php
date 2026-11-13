@@ -12,6 +12,8 @@ use Illuminate\Validation\ValidationException;
 
 class PosShiftService
 {
+    public function __construct(private readonly PosAuditService $audit) {}
+
     public function current(User $user): ?PosShift
     {
         return PosShift::query()
@@ -42,7 +44,7 @@ class PosShiftService
                 ]);
             }
 
-            return PosShift::query()->create([
+            $shift = PosShift::query()->create([
                 'user_id' => $user->id,
                 'user_name' => $user->name,
                 'opened_at' => now(),
@@ -50,10 +52,20 @@ class PosShiftService
                 'notes' => $notes,
                 'status' => 'open',
             ]);
+
+            $this->audit->record(
+                'shift.open',
+                'Shift dibuka dengan modal Rp '.number_format($openingCash, 0, ',', '.').'.',
+                $user,
+                ['type' => 'shift', 'id' => $shift->id, 'label' => 'Shift #'.$shift->id],
+                ['opening_cash' => round($openingCash, 2)],
+            );
+
+            return $shift;
         });
     }
 
-    public function close(PosShift $shift, float $countedCash, ?string $notes = null): PosShift
+    public function close(PosShift $shift, float $countedCash, ?string $notes = null, ?User $actor = null): PosShift
     {
         if ($shift->status !== 'open') {
             throw ValidationException::withMessages(['shift' => ['Shift sudah ditutup.']]);
@@ -61,6 +73,13 @@ class PosShiftService
 
         $expected = $this->summary($shift)['expected_cash'];
 
+        DB::connection('pos')->transaction(fn () => $this->closeShift($shift, $countedCash, $notes, $expected, $actor));
+
+        return $shift->refresh();
+    }
+
+    private function closeShift(PosShift $shift, float $countedCash, ?string $notes, float $expected, ?User $actor): void
+    {
         $shift->forceFill([
             'closed_at' => now(),
             'expected_cash' => $expected,
@@ -70,7 +89,16 @@ class PosShiftService
             'status' => 'closed',
         ])->save();
 
-        return $shift->refresh();
+        $difference = round($countedCash - $expected, 2);
+        $this->audit->record(
+            'shift.close',
+            $difference == 0.0
+                ? 'Shift ditutup, uang laci cocok.'
+                : 'Shift ditutup dengan selisih laci Rp '.number_format($difference, 0, ',', '.').'.',
+            $actor,
+            ['type' => 'shift', 'id' => $shift->id, 'label' => 'Shift #'.$shift->id],
+            ['expected_cash' => $expected, 'counted_cash' => round($countedCash, 2), 'difference' => $difference, 'shift_owner' => $shift->user_name],
+        );
     }
 
     /**

@@ -27,6 +27,7 @@ class PosReturnService
         private readonly PosShiftService $shifts,
         private readonly PosStockService $stock,
         private readonly PosNumberService $numbers,
+        private readonly PosAuditService $audit,
     ) {}
 
     /**
@@ -120,6 +121,16 @@ class PosReturnService
                     $this->stock->move($product, $item['quantity'], 'return', 'pos_sale_return', $return->id, $return->number, $user->id);
                 }
             }
+
+            $this->audit->record(
+                'sale.return',
+                "Retur {$return->number} untuk transaksi {$sale->number}.",
+                $user,
+                ['type' => 'return', 'id' => $return->id, 'label' => $return->number],
+                ['sale' => $sale->number, 'total' => $total, 'refund_method' => $method],
+                $data['reason'] ?? null,
+                (bool) ($data['approved_with_pin'] ?? false),
+            );
 
             return $return->load('lines');
         });

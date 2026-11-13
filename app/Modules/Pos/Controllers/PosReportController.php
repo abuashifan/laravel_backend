@@ -3,10 +3,12 @@
 namespace App\Modules\Pos\Controllers;
 
 use App\Modules\Pos\Models\PosShift;
+use App\Modules\Pos\Services\PosAuditService;
 use App\Modules\Pos\Services\PosClock;
 use App\Modules\Pos\Services\PosPricingService;
 use App\Modules\Pos\Services\PosReportService;
 use App\Modules\Pos\Services\PosReportTableService;
+use App\Modules\Pos\Services\PosSecurityService;
 use App\Modules\Pos\Services\PosSettingService;
 use App\Shared\Export\ExcelExportService;
 use Carbon\CarbonImmutable;
@@ -87,12 +89,12 @@ class PosReportController extends PosController
     }
 
     /** Pengaturan toko dibaca semua pengguna POS (dipakai untuk mencetak struk). */
-    public function settings(PosSettingService $settings): JsonResponse
+    public function settings(PosSettingService $settings, PosSecurityService $security): JsonResponse
     {
-        return $this->successResponse($settings->all());
+        return $this->successResponse($this->withSecurity($settings->all(), $security));
     }
 
-    public function updateSettings(Request $request, PosSettingService $settings): JsonResponse
+    public function updateSettings(Request $request, PosSettingService $settings, PosSecurityService $security, PosAuditService $audit): JsonResponse
     {
         $data = $request->validate([
             'store_name' => ['sometimes', 'nullable', 'string', 'max:150'],
@@ -108,12 +110,49 @@ class PosReportController extends PosController
             'rounding_unit' => ['sometimes', Rule::in([...PosPricingService::ROUNDING_UNITS, 0, 100, 500, 1000])],
             'rounding_mode' => ['sometimes', Rule::in(PosPricingService::ROUNDING_MODES)],
             'timezone' => ['sometimes', Rule::in(PosClock::TIMEZONES)],
+            'max_discount_percent' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:100'],
+            'cashier_void_with_pin' => ['sometimes', Rule::in(['0', '1', 0, 1, true, false])],
         ]);
 
         if (array_key_exists('allow_negative_stock', $data)) {
             $data['allow_negative_stock'] = filter_var($data['allow_negative_stock'], FILTER_VALIDATE_BOOLEAN) ? '1' : '0';
         }
 
-        return $this->successResponse($settings->update($data), 'Pengaturan toko disimpan.');
+        if (array_key_exists('cashier_void_with_pin', $data)) {
+            $data['cashier_void_with_pin'] = filter_var($data['cashier_void_with_pin'], FILTER_VALIDATE_BOOLEAN) ? '1' : '0';
+        }
+        if (array_key_exists('max_discount_percent', $data)) {
+            $data['max_discount_percent'] = $data['max_discount_percent'] === null ? '' : (string) (float) $data['max_discount_percent'];
+        }
+        if (($data['cashier_void_with_pin'] ?? '0') === '1' && ! $security->pinIsSet()) {
+            return $this->validationErrorResponse(['cashier_void_with_pin' => ['Buat PIN kepala toko dulu sebelum mengizinkan kasir membatalkan dengan PIN.']]);
+        }
+
+        $before = $settings->all();
+        $after = $settings->update($data);
+
+        // Hanya kunci yang benar-benar berubah masuk log (nilai lama -> baru).
+        $changes = [];
+        foreach (array_intersect_key($data, $after) as $key => $_) {
+            if (($before[$key] ?? null) !== ($after[$key] ?? null)) {
+                $changes[$key] = [$before[$key] ?? null, $after[$key] ?? null];
+            }
+        }
+        if ($changes !== []) {
+            $audit->record('settings.update', 'Pengaturan toko diubah: '.implode(', ', array_keys($changes)).'.', $this->user($request), changes: $changes);
+        }
+
+        return $this->successResponse($this->withSecurity($after, $security), 'Pengaturan toko disimpan.');
+    }
+
+    /**
+     * PIN-nya sendiri tidak pernah keluar; layar cuma perlu tahu sudah dibuat atau belum.
+     *
+     * @param  array<string,string>  $values
+     * @return array<string,string>
+     */
+    private function withSecurity(array $values, PosSecurityService $security): array
+    {
+        return $values + ['supervisor_pin_set' => $security->pinIsSet() ? '1' : '0'];
     }
 }

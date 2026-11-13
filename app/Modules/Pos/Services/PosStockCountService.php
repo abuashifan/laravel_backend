@@ -17,6 +17,7 @@ class PosStockCountService
     public function __construct(
         private readonly PosStockService $stock,
         private readonly PosNumberService $numbers,
+        private readonly PosAuditService $audit,
     ) {}
 
     /** @param  array<string,mixed>  $data */
@@ -64,6 +65,15 @@ class PosStockCountService
             }
 
             $count->forceFill(['difference_value' => round($value, 2)])->save();
+
+            $this->audit->record(
+                'stock.count',
+                "Stok opname {$count->number}: ".count((array) $data['lines']).' produk dihitung.',
+                $user,
+                ['type' => 'stock_count', 'id' => $count->id, 'label' => $count->number],
+                ['difference_value' => round($value, 2)],
+                $data['notes'] ?? null,
+            );
 
             return $count->load('lines');
         });

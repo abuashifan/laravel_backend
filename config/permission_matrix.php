@@ -176,6 +176,8 @@ return [
         'special' => [
             'pos.stock.adjust' => 'Ubah stok produk kasir',
             'pos.shifts.view_all' => 'Lihat shift semua kasir',
+            'pos.audit.view' => 'Lihat log aktivitas toko',
+            'pos.discount.override' => 'Beri diskon melebihi batas',
         ],
     ],
 ];
