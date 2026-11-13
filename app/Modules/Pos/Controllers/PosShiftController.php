@@ -3,6 +3,7 @@
 namespace App\Modules\Pos\Controllers;
 
 use App\Modules\Pos\Models\PosShift;
+use App\Modules\Pos\Services\PosBridgeService;
 use App\Modules\Pos\Services\PosShiftService;
 use App\Shared\Permission\PermissionService;
 use Illuminate\Http\JsonResponse;
@@ -13,6 +14,7 @@ class PosShiftController extends PosController
     public function __construct(
         private readonly PosShiftService $shifts,
         private readonly PermissionService $permissions,
+        private readonly PosBridgeService $bridge,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -65,6 +67,8 @@ class PosShiftController extends PosController
         ]);
 
         $shift = $this->shifts->close($shift, (float) $data['counted_cash'], $data['notes'] ?? null, $this->user($request));
+        // Jembatan ke Akuntansi (bila menyala). Tidak pernah menggagalkan penutupan shift.
+        $this->bridge->onShiftClosed($shift);
 
         return $this->successResponse(['shift' => $shift, 'summary' => $this->shifts->summary($shift)], 'Shift ditutup.');
     }

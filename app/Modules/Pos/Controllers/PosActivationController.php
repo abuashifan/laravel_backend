@@ -2,6 +2,7 @@
 
 namespace App\Modules\Pos\Controllers;
 
+use App\Modules\Pos\Services\PosBridgeService;
 use App\Modules\Pos\Services\PosPlanService;
 use App\Modules\Pos\Services\PosSecurityService;
 use App\Modules\Pos\Services\PosSettingService;
@@ -70,7 +71,7 @@ class PosActivationController extends PosController
      * toko, dan shift yang sedang terbuka. Rute ini sudah di dalam
      * `company.access:pos`, jadi tenant POS tersambung.
      */
-    public function bootstrap(Request $request, PermissionService $permissions, TenantContext $context, PosSettingService $settings, PosSecurityService $security, PosShiftService $shifts, SubscriptionService $subscriptions, PlanOwnerResolver $owners, PosPlanService $plans): JsonResponse
+    public function bootstrap(Request $request, PermissionService $permissions, TenantContext $context, PosSettingService $settings, PosSecurityService $security, PosBridgeService $bridge, PosShiftService $shifts, SubscriptionService $subscriptions, PlanOwnerResolver $owners, PosPlanService $plans): JsonResponse
     {
         $user = $this->user($request);
         // Izin POS + izin mengelola pengguna toko (layar Pengguna toko).
@@ -97,6 +98,8 @@ class PosActivationController extends PosController
             'subscription' => $subscription,
             'permissions' => $keys,
             'settings' => $settings->all() + ['supervisor_pin_set' => $security->pinIsSet() ? '1' : '0'],
+            // Menu "Hubungkan ke Akuntansi" hanya tampil kalau toko juga memakai Finlite Accounting.
+            'accounting_active' => $bridge->accountingTenant() !== null,
             'current_shift' => $shifts->current($user),
         ]);
     }
