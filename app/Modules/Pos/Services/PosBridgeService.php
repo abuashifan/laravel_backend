@@ -2,8 +2,6 @@
 
 namespace App\Modules\Pos\Services;
 
-use App\Modules\Accounting\Services\AnnualClosingGateService;
-use App\Modules\Accounting\Services\PeriodLockService;
 use App\Modules\Journal\Models\JournalEntry;
 use App\Modules\Journal\Services\SystemJournalBuilder;
 use App\Modules\MasterData\Models\ChartOfAccount;
@@ -16,6 +14,7 @@ use App\Shared\Models\TenantDatabase;
 use App\Shared\Models\User;
 use App\Shared\Tenant\TenantConnectionManager;
 use App\Shared\Tenant\TenantContext;
+use App\Shared\TransactionLifecycle\TransactionDateGuardService;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -59,8 +58,7 @@ class PosBridgeService
         private readonly TenantConnectionManager $connections,
         private readonly PosBridgeJournalBuilder $builder,
         private readonly SystemJournalBuilder $journals,
-        private readonly PeriodLockService $periodLocks,
-        private readonly AnnualClosingGateService $annualGate,
+        private readonly TransactionDateGuardService $dateGuard,
         private readonly PosClock $clock,
     ) {}
 
@@ -367,22 +365,25 @@ class PosBridgeService
     /**
      * Alasan kiriman harus ditahan, atau null kalau boleh masuk.
      *
-     * Hanya kunci periode dan tahun fiskal yang dicek -- bukan seluruh
-     * `TransactionDateGuardService`. Aturan tanggal mundur/masa depan di sana
-     * dibuat untuk input manual dan memakai tanggal server (UTC): shift yang
-     * ditutup antara 00.00-07.00 WIB punya tanggal toko yang sudah "besok"
-     * menurut server, jadi akan ditolak sebagai transaksi masa depan.
+     * Hanya kunci periode/tahun fiskal yang dicek (`lockDenialForCompany`), bukan
+     * seluruh `check()`: aturan tanggal mundur/masa depan di sana untuk input
+     * manual dan memakai tanggal server (UTC), jadi shift yang ditutup 00.00-07.00
+     * WIB (tanggal toko sudah "besok" menurut server) akan ditolak sebagai
+     * transaksi masa depan.
      */
     private function heldReason(Company $company, string $date): ?string
     {
-        if ($this->periodLocks->isDateReadOnly($company, $date)) {
-            return 'periode akuntansi untuk tanggal '.$date.' sudah terkunci. Buka periodenya lalu kirim ulang.';
-        }
-        if ($blocking = $this->annualGate->blockingFiscalYear($company, $date)) {
-            return 'tahun fiskal '.$blocking->year.' belum ditutup. Tutup tahun buku sebelumnya lalu kirim ulang.';
+        $denial = $this->dateGuard->lockDenialForCompany($company, $date);
+        if (! $denial) {
+            return null;
         }
 
-        return null;
+        $info = $denial->toArray();
+
+        return match ($info['code']) {
+            'PREVIOUS_FISCAL_YEAR_NOT_CLOSED' => 'tahun fiskal '.($info['meta']['blocking_fiscal_year'] ?? 'sebelumnya').' belum ditutup. Tutup tahun buku sebelumnya lalu kirim ulang.',
+            default => 'periode akuntansi untuk tanggal '.$date.' sudah terkunci. Buka periodenya lalu kirim ulang.',
+        };
     }
 
     private bool $accountingConnected = false;
