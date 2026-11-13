@@ -20,8 +20,17 @@ itulah syarat deploy Render ("After CI Checks Pass").
   - `gh run view <run-id> -R abuashifan/laravel_backend --log-failed` (bila gagal)
   - `gh api "repos/abuashifan/laravel_backend/actions/runs?branch=<branch>"`
 - **Workflow `Tests` hanya terpicu oleh `pull_request` dan push ke `main`**
-  (tidak ada `workflow_dispatch`). Branch kerja tanpa PR tidak punya run CI, jadi
-  untuk menjalankan tes penuh buka PR (draft boleh) dari branch kerja.
+  (tidak ada `workflow_dispatch`). Branch kerja tanpa PR tidak punya run CI.
+- **Buka PR draft sejak awal setiap pekerjaan**, begitu commit pertama di-push
+  (tool GitHub MCP `create_pull_request` dengan `draft: true`), supaya setiap push
+  berikutnya otomatis menjalankan CI. Tulis di deskripsi bahwa PR itu draft dan
+  belum boleh di-merge kalau pemilik minta menunggu. PR draft tidak memicu deploy
+  (Render hanya deploy dari `main`). Jangan membuka PR baru kalau branch itu sudah
+  punya PR terbuka; branch yang PR-nya sudah di-merge dimulai ulang dari `main`
+  terbaru sebelum PR draft berikutnya.
+- **Push baru membatalkan run CI yang sedang jalan** di branch yang sama
+  (`concurrency: cancel-in-progress`). Jangan push perubahan kecil selagi CI
+  belum selesai kalau hasil run itu masih dibutuhkan.
 - **Jangan pakai `gh pr ...`** (list, checks, create, merge): perintah itu memakai
   GraphQL dan ditolak di sesi Claude Code (HTTP 403). Untuk PR dan statusnya pakai
   tool GitHub MCP (`create_pull_request`, `pull_request_read` dengan
