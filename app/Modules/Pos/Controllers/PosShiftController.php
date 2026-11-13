@@ -64,7 +64,7 @@ class PosShiftController extends PosController
             'notes' => ['nullable', 'string', 'max:500'],
         ]);
 
-        $shift = $this->shifts->close($shift, (float) $data['counted_cash'], $data['notes'] ?? null);
+        $shift = $this->shifts->close($shift, (float) $data['counted_cash'], $data['notes'] ?? null, $this->user($request));
 
         return $this->successResponse(['shift' => $shift, 'summary' => $this->shifts->summary($shift)], 'Shift ditutup.');
     }

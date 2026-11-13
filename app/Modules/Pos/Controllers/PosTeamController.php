@@ -3,6 +3,9 @@
 namespace App\Modules\Pos\Controllers;
 
 use App\Mail\CompanyInvitationMail;
+use App\Modules\Pos\Models\PosMemberLimit;
+use App\Modules\Pos\Services\PosAuditService;
+use App\Modules\Pos\Services\PosSecurityService;
 use App\Shared\Audit\AuditLogService;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Models\Company;
@@ -33,11 +36,14 @@ class PosTeamController extends PosController
         private readonly CompanyAccessService $access,
         private readonly UserQuotaService $quota,
         private readonly AuditLogService $audit,
+        private readonly PosSecurityService $security,
+        private readonly PosAuditService $posAudit,
     ) {}
 
     public function index(): JsonResponse
     {
         $company = $this->company();
+        $limits = PosMemberLimit::query()->pluck('max_discount_percent', 'user_id');
         $members = CompanyUser::query()
             ->with(['user:id,name,email', 'assignedPermissions:id,key'])
             ->where('company_id', $company->id)
@@ -52,6 +58,8 @@ class PosTeamController extends PosController
                 'email' => $member->user?->email,
                 'status' => $member->status,
                 'is_owner' => (bool) $member->is_owner,
+                // null = ikut batas bawaan toko (pengaturan).
+                'max_discount_percent' => $limits->has($member->user_id) && $limits[$member->user_id] !== null ? (float) $limits[$member->user_id] : null,
                 'role' => $this->roleOf((bool) $member->is_owner, (bool) $member->full_access, $member->assignedPermissions->pluck('key')->all()),
             ]);
 
@@ -168,8 +176,9 @@ class PosTeamController extends PosController
         $data = $request->validate([
             'role' => ['sometimes', Rule::in(array_keys((array) config('pos.role_templates')))],
             'status' => ['sometimes', Rule::in(['active', 'inactive'])],
+            'max_discount_percent' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:100'],
         ]);
-        $member = CompanyUser::query()->where('company_id', $this->company()->id)->findOrFail($id);
+        $member = CompanyUser::query()->where('company_id', $this->company()->id)->with('user:id,name')->findOrFail($id);
         $actor = (int) $request->user()?->id;
 
         if ($member->is_owner) {
@@ -185,6 +194,21 @@ class PosTeamController extends PosController
         }
         if (isset($data['status']) && $data['status'] !== $member->status) {
             $this->access->changeStatus($member, $data['status'], $actor);
+        }
+        if (array_key_exists('max_discount_percent', $data)) {
+            $stored = PosMemberLimit::query()->where('user_id', $member->user_id)->value('max_discount_percent');
+            $before = $stored === null ? null : round((float) $stored, 2);
+            $percent = $data['max_discount_percent'] === null ? null : round((float) $data['max_discount_percent'], 2);
+            $this->security->setMemberLimit((int) $member->user_id, $percent);
+            if ($before !== $percent) {
+                $this->posAudit->record(
+                    'settings.update',
+                    sprintf('Batas diskon %s diubah menjadi %s.', $member->user?->name ?? 'pengguna', $percent === null ? 'ikut bawaan toko' : $percent.'%'),
+                    $request->user(),
+                    ['type' => 'member', 'id' => (int) $member->user_id, 'label' => $member->user?->name],
+                    ['max_discount_percent' => [$before, $percent]],
+                );
+            }
         }
 
         return $this->successResponse(null, 'Pengguna toko diperbarui.');

@@ -1,11 +1,13 @@
 <?php
 
 use App\Modules\Pos\Controllers\PosActivationController;
+use App\Modules\Pos\Controllers\PosAuditController;
 use App\Modules\Pos\Controllers\PosCatalogController;
 use App\Modules\Pos\Controllers\PosCustomerController;
 use App\Modules\Pos\Controllers\PosInventoryController;
 use App\Modules\Pos\Controllers\PosReportController;
 use App\Modules\Pos\Controllers\PosSaleController;
+use App\Modules\Pos\Controllers\PosSecurityController;
 use App\Modules\Pos\Controllers\PosShiftController;
 use App\Modules\Pos\Controllers\PosSignupController;
 use App\Modules\Pos\Controllers\PosTeamController;
@@ -77,10 +79,12 @@ Route::middleware(['auth:sanctum', 'company.access:pos', 'product.subscription:p
     Route::get('/sales', [PosSaleController::class, 'index'])->middleware('permission:pos.sales.view');
     Route::get('/sales/{id}', [PosSaleController::class, 'show'])->middleware('permission:pos.sales.view|pos.sales.create');
     Route::post('/sales', [PosSaleController::class, 'store'])->middleware('permission:pos.sales.create');
-    Route::post('/sales/{id}/void', [PosSaleController::class, 'void'])->middleware('permission:pos.sales.delete');
-    // Retur: izin sama beratnya dengan pembatalan (kepala toko).
+    // Batal dan retur: kepala toko (izin delete) langsung; kasir hanya dengan PIN
+    // kepala toko dan hanya bila pemilik mengizinkan -- dijaga di controller
+    // (`PosSecurityService::authorizeSensitive`).
+    Route::post('/sales/{id}/void', [PosSaleController::class, 'void'])->middleware('permission:pos.sales.delete|pos.sales.create');
     Route::get('/returns', [PosSaleController::class, 'returns'])->middleware('permission:pos.sales.view');
-    Route::post('/sales/{id}/returns', [PosSaleController::class, 'storeReturn'])->middleware('permission:pos.sales.delete');
+    Route::post('/sales/{id}/returns', [PosSaleController::class, 'storeReturn'])->middleware('permission:pos.sales.delete|pos.sales.create');
 
     // Pemasok, stok masuk, stok opname -- baca: lihat produk; tulis: ubah stok.
     Route::get('/suppliers', [PosInventoryController::class, 'suppliers'])->middleware('permission:pos.products.view');
@@ -95,6 +99,12 @@ Route::middleware(['auth:sanctum', 'company.access:pos', 'product.subscription:p
     Route::get('/stock-counts', [PosInventoryController::class, 'stockCounts'])->middleware('permission:pos.products.view');
     Route::get('/stock-counts/{id}', [PosInventoryController::class, 'showStockCount'])->middleware('permission:pos.products.view');
     Route::post('/stock-counts', [PosInventoryController::class, 'storeStockCount'])->middleware('permission:pos.stock.adjust');
+
+    // Fase 4b: log aktivitas, PIN kepala toko.
+    Route::get('/audit-logs', [PosAuditController::class, 'index'])->middleware('permission:pos.audit.view');
+    Route::get('/audit-logs/actions', [PosAuditController::class, 'actions'])->middleware('permission:pos.audit.view');
+    Route::put('/security/pin', [PosSecurityController::class, 'setPin'])->middleware('permission:pos.settings.edit');
+    Route::delete('/security/pin', [PosSecurityController::class, 'clearPin'])->middleware('permission:pos.settings.edit');
 
     Route::get('/reports/summary', [PosReportController::class, 'summary'])->middleware('permission:pos.reports.view');
     Route::get('/reports/dashboard', [PosReportController::class, 'dashboard'])->middleware('permission:pos.reports.view');

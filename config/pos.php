@@ -29,7 +29,7 @@ return [
         ],
         'kepala_toko' => [
             'label' => 'Kepala toko',
-            'description' => 'Semua tugas kasir, plus produk & stok, batalkan transaksi, kasbon, laporan, dan shift semua kasir.',
+            'description' => 'Semua tugas kasir, plus produk & stok, batalkan transaksi, diskon tanpa batas, kasbon, laporan, log aktivitas, dan shift semua kasir.',
             'permissions' => array_merge($kasir, [
                 'pos.sales.delete',
                 'pos.sales.export',
@@ -44,6 +44,8 @@ return [
                 'pos.reports.view',
                 'pos.reports.export',
                 'pos.settings.view',
+                'pos.audit.view',
+                'pos.discount.override',
             ]),
         ],
     ],
