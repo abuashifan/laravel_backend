@@ -4,6 +4,7 @@ use App\Modules\Pos\Controllers\PosActivationController;
 use App\Modules\Pos\Controllers\PosAuditController;
 use App\Modules\Pos\Controllers\PosBridgeController;
 use App\Modules\Pos\Controllers\PosCatalogController;
+use App\Modules\Pos\Controllers\PosClientErrorController;
 use App\Modules\Pos\Controllers\PosCustomerController;
 use App\Modules\Pos\Controllers\PosInventoryController;
 use App\Modules\Pos\Controllers\PosReportController;
@@ -23,6 +24,8 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('pos')->group(function () {
     Route::post('/register', [PosSignupController::class, 'register'])->middleware('throttle:5,1');
     Route::post('/verify-email', [PosSignupController::class, 'verify'])->middleware('throttle:20,1');
+    // Laporan error dari browser (bisa sebelum login); dibatasi laju, hanya dicatat ke log.
+    Route::post('/client-errors', [PosClientErrorController::class, 'store'])->middleware('throttle:20,1');
 });
 
 Route::middleware(['auth:sanctum'])->prefix('pos')->group(function () {
