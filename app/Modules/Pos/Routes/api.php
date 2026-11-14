@@ -113,6 +113,8 @@ Route::middleware(['auth:sanctum', 'company.access:pos', 'product.subscription:p
     // Fase 5: jembatan ke Finlite Accounting (hanya kalau toko juga memakai Akuntansi).
     Route::get('/bridge', [PosBridgeController::class, 'show'])->middleware('permission:pos.settings.view');
     Route::get('/bridge/accounts', [PosBridgeController::class, 'accounts'])->middleware('permission:pos.settings.view');
+    Route::get('/bridge/products', [PosBridgeController::class, 'accountingProducts'])->middleware('permission:pos.products.create');
+    Route::post('/bridge/products/import', [PosBridgeController::class, 'importAccountingProducts'])->middleware('permission:pos.products.create');
     Route::put('/bridge', [PosBridgeController::class, 'update'])->middleware('permission:pos.settings.edit');
     Route::get('/bridge/dispatches', [PosBridgeController::class, 'dispatches'])->middleware('permission:pos.settings.view');
     Route::post('/bridge/sync', [PosBridgeController::class, 'sync'])->middleware('permission:pos.settings.edit');
