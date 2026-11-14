@@ -49,3 +49,13 @@ itulah syarat deploy Render ("After CI Checks Pass").
   Jalankan lokal bila perubahan menyentuh jalur itu. Aturan ini hanya untuk
   backend ini; `finlite_pos` (E2E butuh PHP dan repo backend, tanpa CI) dan
   `react_frontend` (build ±2 detik) tetap diuji lokal.
+
+## Sebelum rilis production: cadangan wajib
+
+Jangan menyatakan Finlite siap rilis production sebelum cadangan database Neon
+beres. Per 14 November 2026 belum: retensi pemulihan hanya 6 jam, tanpa snapshot
+terjadwal, branch `production` belum dilindungi, dan pemulihan belum pernah diuji.
+Daftar periksa lengkap ada di `Finlite_knowladge`:
+`plans/ekosistem-aplikasi-pendukung/08-finlite-pos-rencana-fase.md`
+(bagian "Daftar periksa sebelum rilis production"). Ingatkan pemilik setiap kali
+pembicaraan menyentuh rilis, deploy production, atau mengundang toko sungguhan.
