@@ -32,6 +32,39 @@ class TransactionDateGuardService implements TransactionDateGuard
         return $this->checkForCompany($company, $transactionDate, $action, $module);
     }
 
+    /**
+     * Hanya KUNCI yang menolak tanggal (periode/tahun fiskal terkunci, tahun
+     * fiskal sebelumnya belum ditutup), tanpa aturan tanggal mundur, masa depan,
+     * atau di luar tahun fiskal aktif. Aturan-aturan itu dibuat untuk input
+     * manual dan membandingkan dengan tanggal server (UTC); dokumen sistem yang
+     * bertanggal menurut jam toko (jembatan Kasir) tidak boleh ikut ditolak
+     * karenanya. Tidak membuat tahun fiskal baru sebagai efek samping.
+     *
+     * @return TransactionPolicyResult|null null = tidak terkunci
+     */
+    public function lockDenialForCompany(Company $company, string $transactionDate): ?TransactionPolicyResult
+    {
+        $date = Carbon::parse($transactionDate)->toDateString();
+
+        if ($this->periodLockService->isDateReadOnly($company, $date)) {
+            return $this->periodLockService->blockingReasonForDate($company, $date) === 'FISCAL_YEAR_CLOSED'
+                ? TransactionPolicyResult::deny('FISCAL_YEAR_CLOSED', 'Fiscal year is closed. Transaction is read-only.')
+                : TransactionPolicyResult::deny('TRANSACTION_PERIOD_LOCKED', 'Transactions for this fiscal period are locked.');
+        }
+
+        $blockingFy = $this->annualClosingGateService->blockingFiscalYear($company, $date);
+        if ($blockingFy) {
+            return TransactionPolicyResult::deny(
+                'PREVIOUS_FISCAL_YEAR_NOT_CLOSED',
+                'Previous fiscal year must be closed before entering transactions in the next fiscal year.',
+                [],
+                ['blocking_fiscal_year' => $blockingFy->year]
+            );
+        }
+
+        return null;
+    }
+
     public function checkForCompany(
         Company $company,
         ?string $transactionDate,

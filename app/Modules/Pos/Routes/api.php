@@ -2,6 +2,7 @@
 
 use App\Modules\Pos\Controllers\PosActivationController;
 use App\Modules\Pos\Controllers\PosAuditController;
+use App\Modules\Pos\Controllers\PosBridgeController;
 use App\Modules\Pos\Controllers\PosCatalogController;
 use App\Modules\Pos\Controllers\PosCustomerController;
 use App\Modules\Pos\Controllers\PosInventoryController;
@@ -105,6 +106,14 @@ Route::middleware(['auth:sanctum', 'company.access:pos', 'product.subscription:p
     Route::get('/audit-logs/actions', [PosAuditController::class, 'actions'])->middleware('permission:pos.audit.view');
     Route::put('/security/pin', [PosSecurityController::class, 'setPin'])->middleware('permission:pos.settings.edit');
     Route::delete('/security/pin', [PosSecurityController::class, 'clearPin'])->middleware('permission:pos.settings.edit');
+
+    // Fase 5: jembatan ke Finlite Accounting (hanya kalau toko juga memakai Akuntansi).
+    Route::get('/bridge', [PosBridgeController::class, 'show'])->middleware('permission:pos.settings.view');
+    Route::get('/bridge/accounts', [PosBridgeController::class, 'accounts'])->middleware('permission:pos.settings.view');
+    Route::put('/bridge', [PosBridgeController::class, 'update'])->middleware('permission:pos.settings.edit');
+    Route::get('/bridge/dispatches', [PosBridgeController::class, 'dispatches'])->middleware('permission:pos.settings.view');
+    Route::post('/bridge/sync', [PosBridgeController::class, 'sync'])->middleware('permission:pos.settings.edit');
+    Route::post('/bridge/dispatches/{id}/retry', [PosBridgeController::class, 'retry'])->middleware('permission:pos.settings.edit');
 
     Route::get('/reports/summary', [PosReportController::class, 'summary'])->middleware('permission:pos.reports.view');
     Route::get('/reports/dashboard', [PosReportController::class, 'dashboard'])->middleware('permission:pos.reports.view');

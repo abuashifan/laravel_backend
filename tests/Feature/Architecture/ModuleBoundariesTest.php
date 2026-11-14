@@ -45,6 +45,10 @@ class ModuleBoundariesTest extends TestCase
         'Inventory → App\\Modules\\Purchase\\Services\\PurchaseAccountResolverService',
         'Inventory → App\\Modules\\Settings\\Services\\CompanySettingService',
         'Inventory → App\\Modules\\Journal\\Services\\SystemJournalBuilder',
+        // Jembatan Kasir -> Accounting (Fase 5): jurnal Rekap Kasir dibuat lewat
+        // pembangun jurnal sistem yang sama dengan Inventory, bukan menulis model
+        // langsung, supaya penomoran dan status posted mengikuti aturan jurnal.
+        'Pos → App\\Modules\\Journal\\Services\\SystemJournalBuilder',
         'Journal → App\\Modules\\Budget\\Services\\BudgetWarningService',
         'Journal → App\\Modules\\Settings\\Services\\CompanySettingService',
         // Gap B — peringatan over-budget disambungkan ke transaksi non-Journal

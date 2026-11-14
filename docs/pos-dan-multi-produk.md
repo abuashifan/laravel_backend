@@ -312,3 +312,66 @@ perangkat selama jam ramai (uji bersamaan di atas hanya 8 penyimpan serentak).
 `GET /pos/reports/summary` menjalankan beberapa query agregat per panggilan;
 wajar di angka di atas, tetapi dasbor yang di-refresh otomatis per beberapa
 detik dari banyak perangkat perlu cache bila kelak dibuat.
+
+## Fase 5: jembatan Kasir -> Finlite Accounting
+
+Migrasi tenant `tenant_pos/2026_11_22_000001_create_pos_bridge_tables.php`
+(`pos_bridge_config`, `pos_bridge_dispatches`). Kode: `PosBridgeService`,
+`PosBridgeJournalBuilder`, `PosBridgeController`; tes `tests/Feature/Pos/PosBridgeTest.php`.
+
+**Prinsip:** arus SATU ARAH dan IDEMPOTEN. POS mengirim ringkasan; Akuntansi
+tidak mengubah data POS. Toko hanya-Kasir tidak terpengaruh (`eligible=false`,
+menu tidak tampil; `bootstrap.accounting_active`).
+
+- **Satuan kiriman = satu shift yang sudah ditutup.** Shift tertutup tidak
+  berubah (batal hanya selama shift terbuka; retur dan pelunasan kasbon
+  tercatat di shift pemrosesnya), jadi aman jadi dasar jurnal. Satu jurnal
+  sistem "Rekap Kasir" per shift, lewat `SystemJournalBuilder` (posted,
+  `is_system_generated`, `source_type=pos_shift`, `source_module=pos`,
+  `source_id`=id shift).
+- **Isi jurnal** (`PosBridgeJournalBuilder`): debit Kas/Bank/QRIS/Piutang kasbon
+  menurut cara bayar (uang muka kasbon = tunai); debit Diskon penjualan; kredit
+  Pendapatan = subtotal + pembulatan - pajak yang sudah termasuk harga; kredit
+  Pajak keluaran; retur di shift (debit Retur penjualan dan Pajak, kredit
+  Kas/Bank/QRIS/Piutang menurut cara kembali uang); pelunasan kasbon (debit
+  Kas/Bank/QRIS, kredit Piutang); opsional `post_cogs`: debit HPP, kredit
+  Persediaan memakai `unit_cost` saat jual (retur yang kembali ke stok
+  mengurangi). Akun yang sama dijumlahkan bersih. Tidak seimbang -> tidak
+  dikirim (gagal).
+- **Idempotensi dua lapis:** unik `(kind, source_id)` di `pos_bridge_dispatches`,
+  dan sebelum membuat jurnal dicari jurnal bersumber shift itu di akuntansi
+  (termasuk yang di-void/dihapus lunak). Putus dan sambung ulang, hapus baris
+  kiriman, atau kirim ulang tidak menggandakan jurnal.
+- **Kegagalan tidak pernah menggagalkan aksi kasir.** `onShiftClosed()` memakai
+  try/catch; menutup shift tetap 200. Status kiriman: `pending`, `sent`,
+  `failed` (pesan galat, mis. akun belum dipetakan), `held` (periode atau tahun
+  fiskal terkunci), `skipped` (shift tanpa transaksi, tidak membuat jurnal kosong).
+  Kirim ulang: `POST /pos/bridge/dispatches/{id}/retry` atau `/bridge/sync`.
+- **Yang dicek sebelum kirim hanya kunci periode/tahun fiskal**
+  (`PeriodLockService::isDateReadOnly`, `AnnualClosingGateService`), BUKAN seluruh
+  `TransactionDateGuardService`. Aturan tanggal mundur/masa depan di sana untuk
+  input manual dan memakai tanggal server (UTC): shift yang ditutup 00.00-07.00
+  WIB sudah "besok" menurut server dan akan ditolak "Future transaction is not
+  allowed" -- terbukti di tes. Tanggal jurnal = tanggal tutup shift menurut
+  jam toko (`PosClock`). Regresi dikunci `test_late_night_shift_is_not_held_as_a_future_transaction`.
+- **Pengaturan** `pos_bridge_config` (satu baris): `enabled`, `start_date`
+  (shift ditutup pada/setelah tanggal ini ikut, termasuk yang lama),
+  `post_cogs`, `account_map` (kunci -> id akun di tenant AKUNTANSI; wajib:
+  cash, bank, qris, receivable, revenue; discount/sales_return jatuh ke revenue
+  bila kosong; tax/cogs/inventory baru wajib saat nilainya muncul). Akun harus
+  aktif, terbawah, dan jenisnya sesuai (`ALLOWED_TYPES`).
+- **Endpoint** (izin `pos.settings.view` baca, `pos.settings.edit` tulis):
+  `GET /pos/bridge`, `GET /pos/bridge/accounts` (akun + usulan dari kode
+  template, mis. 1100/1110/1120/4100/2120), `PUT /pos/bridge`,
+  `GET /pos/bridge/dispatches?status=`, `POST /pos/bridge/sync`,
+  `POST /pos/bridge/dispatches/{id}/retry`. Menyalakan jembatan langsung
+  mengantre dan mengirim shift lama (maks 100 per panggilan; sisanya lewat
+  sync). Perubahan tercatat di log audit (`settings.update`).
+- Memutus jembatan menghentikan kiriman baru; jurnal yang sudah terkirim tetap.
+- Koneksi akuntansi (`tenant`) dibuka dari dalam request POS lewat
+  `TenantConnectionManager::connect()` (dua koneksi hidup berdampingan).
+
+**Belum dikerjakan (Fase 5 berikutnya):** stok masuk dan pembayaran pemasok
+sebagai jurnal (butuh akun Hutang pemasok), sinkron produk POS <-> Akuntansi,
+dan tautan dari jurnal Rekap Kasir ke layar shift di aplikasi akuntansi
+(saat ini jurnal bisa disaring lewat Jenis Jurnal -> Rekap Kasir).
