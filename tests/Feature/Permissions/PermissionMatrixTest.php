@@ -18,7 +18,7 @@ class PermissionMatrixTest extends TestCase
 
         $this->assertSame(['daftar', 'tambah', 'ubah', 'hapus', 'persetujuan', 'cetak', 'ekspor'], $catalog['matrix_columns']);
         $this->assertSame(
-            ['general', 'master_data', 'accounting', 'budget', 'cash_bank', 'sales', 'purchase', 'inventory', 'fixed_assets', 'reports', 'pos'],
+            ['general', 'master_data', 'accounting', 'budget', 'cash_bank', 'sales', 'purchase', 'inventory', 'fixed_assets', 'reports', 'pos', 'gudang'],
             array_column($catalog['modules'], 'key')
         );
         $reports = collect($catalog['modules'])->firstWhere('key', 'reports');

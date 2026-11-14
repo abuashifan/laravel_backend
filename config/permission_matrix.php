@@ -180,4 +180,19 @@ return [
             'pos.discount.override' => 'Beri diskon melebihi batas',
         ],
     ],
+    // Finlite Gudang -- tenant terpisah, lihat config/tenant.php `products`.
+    // Kunci Fase 0; fitur gudang bertambah per fase (rencana: dokumen 11).
+    'gudang' => [
+        'label' => 'Gudang',
+        'features' => [
+            'gudang.items' => ['Barang', $master],
+            'gudang.warehouses' => ['Gudang & lokasi', $master],
+            'gudang.stock' => ['Stok', ['view', 'export']],
+            'gudang.settings' => ['Pengaturan gudang', ['view', 'edit']],
+        ],
+        'special' => [
+            'gudang.stock.adjust' => 'Penyesuaian stok gudang',
+            'gudang.audit.view' => 'Lihat log aktivitas gudang',
+        ],
+    ],
 ];

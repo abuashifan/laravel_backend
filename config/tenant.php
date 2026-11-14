@@ -54,5 +54,13 @@ return [
             // dan tenant POS bersamaan (jembatan POS -> Akuntansi, Fase 5).
             'connection' => 'pos',
         ],
+        'gudang' => [
+            'label' => 'Gudang',
+            'suffix' => '_gudang',
+            'migration_path' => 'database/migrations/tenant_gudang',
+            // Koneksi sendiri supaya satu request bisa membuka tenant Gudang dan
+            // tenant Kasir/Akuntansi bersamaan (jembatan opsional, Fase 4 Gudang).
+            'connection' => 'gudang',
+        ],
     ],
 ];
