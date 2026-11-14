@@ -87,6 +87,12 @@ class PosOperationsTest extends TestCase
 
         // Pemasok yang masih punya hutang tidak bisa dihapus.
         $this->deleteJson("/api/pos/suppliers/{$supplierId}", [], $this->headers)->assertStatus(422);
+
+        // Log aktivitas: stok masuk (dengan perubahan harga modal) dan bayar hutang tercatat.
+        $stockIn = $this->getJson('/api/pos/audit-logs?action=stock.in', $this->headers)->assertOk()->assertJsonPath('data.total', 1);
+        $this->assertStringContainsString('Toko Grosir Jaya', $stockIn->json('data.data.0.summary'));
+        $this->assertEquals([2000, 2500], $stockIn->json('data.data.0.changes.harga_modal')['Gula 1kg']);
+        $this->getJson('/api/pos/audit-logs?action=supplier.pay', $this->headers)->assertOk()->assertJsonPath('data.total', 1);
     }
 
     public function test_partial_return_refunds_cash_and_restocks(): void

@@ -23,6 +23,7 @@ class PosPurchaseService
     public function __construct(
         private readonly PosStockService $stock,
         private readonly PosNumberService $numbers,
+        private readonly PosAuditService $audit,
     ) {}
 
     /**
@@ -84,6 +85,7 @@ class PosPurchaseService
                 'notes' => $data['notes'] ?? null,
             ]);
 
+            $costChanges = [];
             foreach ($lines as $line) {
                 /** @var PosProduct $product */
                 $product = PosProduct::query()->lockForUpdate()->findOrFail($line['product']->id);
@@ -97,10 +99,14 @@ class PosPurchaseService
                 ]);
 
                 $oldStock = max(0.0, (float) $product->stock);
+                $oldCost = (float) $product->cost;
                 $newCost = $product->track_stock && $oldStock + $line['quantity'] > 0
                     ? ($oldStock * (float) $product->cost + $line['quantity'] * $line['unitCost']) / ($oldStock + $line['quantity'])
                     : $line['unitCost'];
                 $product->forceFill(['cost' => round($newCost, 2)])->save();
+                if (abs(round($newCost, 2) - $oldCost) > 0.004) {
+                    $costChanges[$product->name] = [$oldCost, round($newCost, 2)];
+                }
 
                 $this->stock->move($product, $line['quantity'], 'purchase', 'pos_purchase', $purchase->id, $purchase->number, $user->id);
             }
@@ -108,6 +114,14 @@ class PosPurchaseService
             if ($supplier && $payable > 0) {
                 $supplier->forceFill(['payable_balance' => round((float) $supplier->payable_balance + $payable, 2)])->save();
             }
+
+            $this->audit->record(
+                'stock.in',
+                sprintf('Stok masuk %s: %d jenis barang, total Rp %s%s.', $purchase->number, count($lines), number_format($total, 0, ',', '.'), $supplier ? ' dari '.$supplier->name : ''),
+                $user,
+                ['type' => 'purchase', 'id' => $purchase->id, 'label' => $purchase->number],
+                array_filter(['total' => $total, 'dibayar' => $paid, 'hutang' => $payable, 'harga_modal' => $costChanges ?: null]),
+            );
 
             return $purchase->load('lines', 'supplier');
         });
@@ -136,6 +150,14 @@ class PosPurchaseService
 
             $locked->forceFill(['payable_balance' => round((float) $locked->payable_balance - $amount, 2)])->save();
             $supplier->setRawAttributes($locked->getAttributes(), true);
+
+            $this->audit->record(
+                'supplier.pay',
+                sprintf('Bayar hutang %s Rp %s (%s).', $locked->name, number_format($amount, 0, ',', '.'), $method),
+                $user,
+                ['type' => 'supplier', 'id' => $locked->id, 'label' => $locked->name],
+                ['hutang' => [round((float) $locked->payable_balance + $amount, 2), (float) $locked->payable_balance], 'nomor' => $payment->number],
+            );
 
             return $payment;
         });

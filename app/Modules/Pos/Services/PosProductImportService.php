@@ -6,6 +6,7 @@ use App\Modules\Pos\Models\PosCategory;
 use App\Modules\Pos\Models\PosProduct;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Models\Company;
+use App\Shared\Models\User;
 use Illuminate\Support\Facades\DB;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use Throwable;
@@ -51,24 +52,36 @@ class PosProductImportService
     public function __construct(
         private readonly PosStockService $stock,
         private readonly PosPlanService $plans,
+        private readonly PosAuditService $audit,
     ) {}
 
     /**
      * @return array{rows: list<array<string, mixed>>, summary: array{create: int, update: int, error: int}, committed: bool}
      */
-    public function run(string $path, string $extension, bool $commit, ?Company $company, ?int $userId): array
+    public function run(string $path, string $extension, bool $commit, ?Company $company, ?int $userId, ?User $actor = null): array
     {
         $rows = $this->plan($this->read($path, $extension), $company);
 
         if ($commit) {
-            DB::connection('pos')->transaction(function () use (&$rows, $userId) {
+            DB::connection('pos')->transaction(function () use (&$rows, $userId, $actor) {
                 $categories = [];
                 foreach ($rows as &$row) {
                     if ($row['action'] !== 'error') {
-                        $row['product_id'] = $this->apply($row, $categories, $userId);
+                        $row['product_id'] = $this->apply($row, $categories, $userId, $actor);
                     }
                 }
                 unset($row);
+
+                $done = array_values(array_filter($rows, fn ($row) => $row['action'] !== 'error'));
+                if ($done !== []) {
+                    $created = count(array_filter($done, fn ($row) => $row['action'] === 'create'));
+                    $this->audit->record(
+                        'product.import',
+                        sprintf('Impor produk: %d baru, %d diperbarui.', $created, count($done) - $created),
+                        $actor,
+                        changes: ['baru' => $created, 'diperbarui' => count($done) - $created],
+                    );
+                }
             });
         }
 
@@ -317,7 +330,7 @@ class PosProductImportService
      * @param  array<string, mixed>  $row
      * @param  array<string, int>  $categories
      */
-    private function apply(array $row, array &$categories, ?int $userId): int
+    private function apply(array $row, array &$categories, ?int $userId, ?User $actor): int
     {
         $values = $row['values'];
         $data = [];
@@ -340,7 +353,26 @@ class PosProductImportService
 
         if ($row['existing']) {
             $product = PosProduct::query()->findOrFail($row['existing']);
+            $before = ['price' => (float) $product->price, 'cost' => (float) $product->cost];
             $product->update($data);
+            $changes = [];
+            foreach ($before as $field => $old) {
+                $new = (float) $product->refresh()->{$field};
+                if (abs($new - $old) > 0.004) {
+                    $changes[$field] = [$old, $new];
+                }
+            }
+            if ($changes !== []) {
+                $labels = ['price' => 'harga jual', 'cost' => 'harga modal'];
+                $this->audit->record(
+                    'product.price_change',
+                    'Harga '.$product->name.' diubah lewat impor ('.implode(', ', array_map(fn ($field) => $labels[$field], array_keys($changes))).').',
+                    $actor,
+                    ['type' => 'product', 'id' => $product->id, 'label' => $product->name],
+                    $changes,
+                    'Impor produk',
+                );
+            }
 
             return $product->id;
         }
@@ -349,6 +381,14 @@ class PosProductImportService
         $product = PosProduct::query()->create($data + ['unit' => 'pcs', 'cost' => 0, 'stock' => 0, 'track_stock' => $tracked, 'is_active' => true]);
         if ($tracked && $values['stock'] > 0) {
             $this->stock->move($product, (float) $values['stock'], 'adjustment', null, null, 'Stok awal (impor)', $userId);
+            $this->audit->record(
+                'stock.adjust',
+                sprintf('Stok awal %s: %s (impor).', $product->name, rtrim(rtrim(number_format((float) $values['stock'], 3, '.', ''), '0'), '.')),
+                $actor,
+                ['type' => 'product', 'id' => $product->id, 'label' => $product->name],
+                ['stock' => [0.0, (float) $values['stock']]],
+                'Impor produk',
+            );
         }
 
         return $product->id;
