@@ -43,7 +43,7 @@ class PosBridgeTest extends JournalTestCase
         foreach ([
             ['1100', 'Kas', 'asset'], ['1110', 'Bank', 'asset'], ['1120', 'Piutang Usaha', 'asset'], ['1131', 'Persediaan Barang', 'asset'], ['2100', 'Hutang Usaha', 'liability'],
             ['2120', 'PPN Keluaran', 'liability'], ['4100', 'Pendapatan Penjualan', 'revenue'], ['4110', 'Retur Penjualan', 'revenue'],
-            ['4120', 'Diskon Penjualan', 'revenue'], ['5100', 'Harga Pokok Penjualan', 'expense'],
+            ['4120', 'Diskon Penjualan', 'revenue'], ['5100', 'Harga Pokok Penjualan', 'expense'], ['5120', 'Selisih Persediaan', 'expense'],
         ] as [$code, $name, $type]) {
             $this->acc[$code] = ChartOfAccount::query()->create([
                 'account_code' => $code, 'account_name' => $name, 'account_type' => $type,
@@ -352,6 +352,44 @@ class PosBridgeTest extends JournalTestCase
         $this->postJson('/api/pos/bridge/sync', [], $this->headers)->assertOk();
         $this->assertSame(1, JournalEntry::query()->forSource('pos_purchase', $purchaseId)->count());
         $this->assertSame(1, JournalEntry::query()->forSource('pos_supplier_payment', $paymentId)->count());
+    }
+
+    public function test_stock_count_difference_becomes_a_journal_with_cogs(): void
+    {
+        $this->connect(['post_cogs' => true, 'account_map' => $this->cogsMap() + ['stock_variance' => $this->acc['5120']]])->assertOk();
+
+        // Sistem 100, hitungan fisik 97: kurang 3 x modal 3.000 = 9.000.
+        $loss = $this->postJson('/api/pos/stock-counts', ['lines' => [['product_id' => $this->productId, 'counted_quantity' => 97]]], $this->headers)->assertCreated();
+        $lossId = (int) $loss->json('data.id');
+        $dispatch = PosBridgeDispatch::query()->where('kind', 'count')->where('source_id', $lossId)->firstOrFail();
+        $this->assertSame('sent', $dispatch->status, (string) $dispatch->error);
+        $this->assertEquals([
+            '1131' => ['debit' => 0.0, 'credit' => 9000.0],
+            '5120' => ['debit' => 9000.0, 'credit' => 0.0],
+        ], $this->linesOf(JournalEntry::query()->forSource('pos_stock_count', $lossId)->with('lines')->firstOrFail()));
+
+        // Lebih 2 (97 -> 99): debit persediaan, kredit selisih persediaan.
+        $gainId = (int) $this->postJson('/api/pos/stock-counts', ['lines' => [['product_id' => $this->productId, 'counted_quantity' => 99]]], $this->headers)->assertCreated()->json('data.id');
+        $this->assertEquals([
+            '1131' => ['debit' => 6000.0, 'credit' => 0.0],
+            '5120' => ['debit' => 0.0, 'credit' => 6000.0],
+        ], $this->linesOf(JournalEntry::query()->forSource('pos_stock_count', $gainId)->with('lines')->firstOrFail()));
+
+        // Opname tanpa selisih tidak membuat kiriman; kirim ulang tidak menggandakan.
+        $this->postJson('/api/pos/stock-counts', ['lines' => [['product_id' => $this->productId, 'counted_quantity' => 99]]], $this->headers)->assertCreated();
+        $this->assertSame(2, PosBridgeDispatch::query()->where('kind', 'count')->count());
+        $this->postJson('/api/pos/bridge/sync', [], $this->headers)->assertOk();
+        $this->assertSame(1, JournalEntry::query()->forSource('pos_stock_count', $lossId)->count());
+    }
+
+    public function test_stock_count_without_variance_mapping_fails_only_the_dispatch(): void
+    {
+        $this->connect(['post_cogs' => true, 'account_map' => $this->cogsMap()])->assertOk();
+        $countId = (int) $this->postJson('/api/pos/stock-counts', ['lines' => [['product_id' => $this->productId, 'counted_quantity' => 90]]], $this->headers)->assertCreated()->json('data.id');
+
+        $dispatch = PosBridgeDispatch::query()->where('kind', 'count')->where('source_id', $countId)->firstOrFail();
+        $this->assertSame('failed', $dispatch->status);
+        $this->assertStringContainsString('Selisih persediaan', (string) $dispatch->error);
     }
 
     public function test_stock_in_is_only_sent_together_with_cogs_and_catches_up_when_enabled(): void

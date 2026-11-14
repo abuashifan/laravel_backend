@@ -9,6 +9,7 @@ use App\Modules\Pos\Models\PosBridgeConfig;
 use App\Modules\Pos\Models\PosBridgeDispatch;
 use App\Modules\Pos\Models\PosPurchase;
 use App\Modules\Pos\Models\PosShift;
+use App\Modules\Pos\Models\PosStockCount;
 use App\Modules\Pos\Models\PosSupplierPayment;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Models\Company;
@@ -46,6 +47,7 @@ class PosBridgeService
         'shift' => ['type' => 'pos_shift', 'title' => 'Rekap Kasir'],
         'purchase' => ['type' => 'pos_purchase', 'title' => 'Stok Masuk Kasir'],
         'payment' => ['type' => 'pos_supplier_payment', 'title' => 'Bayar Hutang Kasir'],
+        'count' => ['type' => 'pos_stock_count', 'title' => 'Selisih Stok Kasir'],
     ];
 
     /** Batas kiriman sekali jalan saat menyalakan/menyinkronkan, supaya request tidak kelamaan. */
@@ -55,14 +57,14 @@ class PosBridgeService
     private const SUGGESTED_CODES = [
         'cash' => ['1100'], 'bank' => ['1110'], 'qris' => ['1110'], 'receivable' => ['1120'],
         'revenue' => ['4100'], 'discount' => ['4120'], 'sales_return' => ['4110'], 'tax' => ['2120'],
-        'cogs' => ['5100'], 'inventory' => ['1131', '1130'], 'payable' => ['2100'],
+        'cogs' => ['5100'], 'inventory' => ['1131', '1130'], 'payable' => ['2100'], 'stock_variance' => ['5120'],
     ];
 
     /** Jenis akun yang masuk akal per kunci. */
     private const ALLOWED_TYPES = [
         'cash' => ['asset'], 'bank' => ['asset'], 'qris' => ['asset'], 'receivable' => ['asset'],
         'revenue' => ['revenue'], 'discount' => ['revenue', 'expense'], 'sales_return' => ['revenue', 'expense'],
-        'tax' => ['liability'], 'cogs' => ['expense'], 'inventory' => ['asset'], 'payable' => ['liability'],
+        'tax' => ['liability'], 'cogs' => ['expense'], 'inventory' => ['asset'], 'payable' => ['liability'], 'stock_variance' => ['expense'],
     ];
 
     public function __construct(
@@ -262,6 +264,14 @@ class PosBridgeService
         });
     }
 
+    /** Stok opname baru tersimpan. Hanya dikirim bila HPP/persediaan ikut dikirim. */
+    public function onStockCountCreated(PosStockCount $count): void
+    {
+        $this->safely('stok opname '.$count->id, function (PosBridgeConfig $config) use ($count) {
+            return $this->queueCount($count, $config);
+        });
+    }
+
     /** @param  callable(PosBridgeConfig): ?PosBridgeDispatch  $queue */
     private function safely(string $what, callable $queue): void
     {
@@ -311,6 +321,17 @@ class PosBridgeService
         return $this->queue('payment', $payment->id, 'Bayar hutang '.$payment->number.($supplier ? ' - '.$supplier : ''), $payment->paid_at, $config);
     }
 
+    public function queueCount(PosStockCount $count, ?PosBridgeConfig $config = null): ?PosBridgeDispatch
+    {
+        $config ??= $this->config();
+        // Opname tanpa selisih nilai tidak perlu jurnal.
+        if (! $config->post_cogs || abs((float) $count->difference_value) < 0.005) {
+            return null;
+        }
+
+        return $this->queue('count', $count->id, 'Stok opname '.$count->number, $count->counted_at, $config);
+    }
+
     /** Baris kiriman baru bila tanggalnya masuk rentang tanggal mulai; yang sudah ada dikembalikan apa adanya. */
     private function queue(string $kind, int $sourceId, string $label, \DateTimeInterface $moment, ?PosBridgeConfig $config): ?PosBridgeDispatch
     {
@@ -327,8 +348,8 @@ class PosBridgeService
     }
 
     /**
-     * Antrekan sumber yang belum punya kiriman (shift tertutup, stok masuk, dan
-     * pembayaran hutang), lalu kirim yang belum terkirim. Aman dipanggil berulang.
+     * Antrekan sumber yang belum punya kiriman (shift tertutup, stok masuk,
+     * pembayaran hutang, dan stok opname), lalu kirim yang belum terkirim. Aman dipanggil berulang.
      *
      * @return array{queued:int, sent:int, failed:int, held:int, skipped:int, remaining:int}
      */
@@ -375,6 +396,17 @@ class PosBridgeService
                         $result['queued']++;
                     }
                 });
+
+            $known = $unqueued('count');
+            PosStockCount::query()->where('difference_value', '!=', 0)
+                ->when($known !== [], fn ($query) => $query->whereNotIn('id', $known))
+                ->when($since, fn ($query) => $query->where('counted_at', '>=', $since))
+                ->orderBy('counted_at')->limit(self::BATCH * 5)->get()
+                ->each(function (PosStockCount $count) use ($config, &$result) {
+                    if ($this->queueCount($count, $config)) {
+                        $result['queued']++;
+                    }
+                });
         }
 
         $open = PosBridgeDispatch::query()->whereIn('status', ['pending', 'failed', 'held'])->orderBy('entry_date')->orderBy('id');
@@ -412,6 +444,7 @@ class PosBridgeService
             $built = match ($dispatch->kind) {
                 'purchase' => $this->builder->forPurchase(PosPurchase::query()->findOrFail($dispatch->source_id), $map),
                 'payment' => $this->builder->forSupplierPayment(PosSupplierPayment::query()->findOrFail($dispatch->source_id), $map),
+                'count' => $this->builder->forStockCount(PosStockCount::query()->findOrFail($dispatch->source_id), $map),
                 default => $this->builder->forShift(PosShift::query()->findOrFail($dispatch->source_id), $map, (bool) $config->post_cogs),
             };
             $dispatch->summary = $built['summary'];

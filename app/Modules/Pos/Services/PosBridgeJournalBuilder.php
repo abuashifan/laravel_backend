@@ -9,6 +9,7 @@ use App\Modules\Pos\Models\PosSaleLine;
 use App\Modules\Pos\Models\PosSaleReturn;
 use App\Modules\Pos\Models\PosSaleReturnLine;
 use App\Modules\Pos\Models\PosShift;
+use App\Modules\Pos\Models\PosStockCount;
 use App\Modules\Pos\Models\PosSupplierPayment;
 use RuntimeException;
 
@@ -45,6 +46,7 @@ class PosBridgeJournalBuilder
         'cogs' => 'Harga pokok penjualan',
         'inventory' => 'Persediaan',
         'payable' => 'Hutang pemasok',
+        'stock_variance' => 'Selisih persediaan (opname)',
     ];
 
     /** Wajib saat jembatan dinyalakan. Sisanya hanya dibutuhkan kalau nilainya muncul. */
@@ -183,6 +185,28 @@ class PosBridgeJournalBuilder
         $lines = $this->assemble($accounts);
 
         return ['lines' => $lines, 'empty' => $lines === [], 'summary' => ['amount' => round((float) $payment->amount, 2)]];
+    }
+
+    /**
+     * Stok opname: selisih nilai (selisih jumlah x harga modal) antara stok
+     * sistem dan hitungan fisik. Lebih = debit Persediaan, kredit Selisih
+     * persediaan; kurang = sebaliknya. Dikirim bersama HPP seperti stok masuk.
+     *
+     * @param  array<string,int|null>  $map
+     * @return array{lines: list<array{account_id:int, debit:float, credit:float, description:string, line_order:int}>, summary: array<string,float|int>, empty: bool}
+     */
+    public function forStockCount(PosStockCount $count, array $map): array
+    {
+        $accounts = [];
+        $add = $this->adder($map, $accounts);
+
+        $value = round((float) $count->difference_value, 2);
+        $add('inventory', $value, 'selisih stok opname');
+        $add('stock_variance', -$value, 'selisih stok opname');
+
+        $lines = $this->assemble($accounts);
+
+        return ['lines' => $lines, 'empty' => $lines === [], 'summary' => ['difference_value' => $value]];
     }
 
     /** Cara bayar POS -> kunci pemetaan akun. */

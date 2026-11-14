@@ -155,7 +155,10 @@ class PosInventoryController extends PosController
             'lines.*.counted_quantity' => ['required', 'numeric', 'min:0'],
         ]);
 
-        return $this->successResponse($this->counts->create($this->user($request), $data), 'Stok opname tersimpan.', 201);
+        $count = $this->counts->create($this->user($request), $data);
+        $this->bridge->onStockCountCreated($count);
+
+        return $this->successResponse($count, 'Stok opname tersimpan.', 201);
     }
 
     /** @return array<string, array<int, string>> */
