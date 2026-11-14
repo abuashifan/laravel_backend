@@ -519,6 +519,12 @@ class PosBridgeService
 
     private bool $accountingConnected = false;
 
+    /** Sambungkan koneksi tenant akuntansi untuk layanan lain yang membaca data akuntansi (impor produk). */
+    public function useAccounting(): void
+    {
+        $this->connectAccounting();
+    }
+
     private function connectAccounting(): void
     {
         if ($this->accountingConnected) {

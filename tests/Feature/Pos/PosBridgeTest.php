@@ -5,8 +5,12 @@ namespace Tests\Feature\Pos;
 use App\Modules\Accounting\Services\FiscalYearService;
 use App\Modules\Journal\Models\JournalEntry;
 use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\MasterData\Models\Product;
+use App\Modules\MasterData\Models\ProductCategory;
+use App\Modules\MasterData\Models\Unit;
 use App\Modules\Pos\Models\PosBridgeConfig;
 use App\Modules\Pos\Models\PosBridgeDispatch;
+use App\Modules\Pos\Models\PosProduct;
 use App\Modules\Pos\Services\PosClock;
 use App\Shared\Models\Company;
 use App\Shared\Models\CompanyUser;
@@ -390,6 +394,41 @@ class PosBridgeTest extends JournalTestCase
         $dispatch = PosBridgeDispatch::query()->where('kind', 'count')->where('source_id', $countId)->firstOrFail();
         $this->assertSame('failed', $dispatch->status);
         $this->assertStringContainsString('Selisih persediaan', (string) $dispatch->error);
+    }
+
+    public function test_products_can_be_pulled_from_accounting_once_without_overwriting(): void
+    {
+        $category = ProductCategory::query()->create(['name' => 'Minuman', 'is_active' => true]);
+        $unit = Unit::query()->create(['code' => 'BTL', 'name' => 'botol', 'precision' => 0, 'is_active' => true]);
+        $make = fn (string $code, string $name, array $extra = []) => Product::factory()->create(array_merge([
+            'product_code' => $code, 'product_name' => $name, 'selling_price' => 5000, 'purchase_price' => 3500,
+            'product_category_id' => $category->id, 'unit_id' => $unit->id,
+        ], $extra));
+        $make('TB1', 'Teh Botol');
+        $make('KS1', 'Kopi Susu Akuntansi');
+        $make('OFF', 'Produk nonaktif', ['is_active' => false]);
+        // Kopi Susu sudah ada di Kasir dengan SKU yang sama: dilewati, tidak ditimpa.
+        PosProduct::query()->whereKey($this->productId)->update(['sku' => 'KS1']);
+
+        $list = $this->getJson('/api/pos/bridge/products', $this->headers)->assertOk();
+        $this->assertCount(2, $list->json('data'));
+        $this->assertEquals(['TB1' => false, 'KS1' => true], collect($list->json('data'))->pluck('in_pos', 'code')->all());
+
+        $this->postJson('/api/pos/bridge/products/import', [], $this->headers)->assertOk()
+            ->assertJsonPath('data.created', 1)->assertJsonPath('data.skipped', 1);
+        $tea = PosProduct::query()->where('sku', 'TB1')->firstOrFail();
+        $this->assertSame('Teh Botol', $tea->name);
+        $this->assertSame('botol', $tea->unit);
+        $this->assertEquals(5000, $tea->price);
+        $this->assertEquals(3500, $tea->cost);
+        $this->assertFalse($tea->track_stock);
+        $this->assertEquals(100, PosProduct::query()->find($this->productId)->stock);
+        $this->assertSame('Minuman', $tea->category()->value('name'));
+        $this->getJson('/api/pos/audit-logs?action=product.import', $this->headers)->assertOk()->assertJsonPath('data.total', 1);
+
+        // Diulang: tidak menggandakan.
+        $this->postJson('/api/pos/bridge/products/import', [], $this->headers)->assertOk()->assertJsonPath('data.created', 0);
+        $this->assertSame(1, PosProduct::query()->where('sku', 'TB1')->count());
     }
 
     public function test_stock_in_is_only_sent_together_with_cogs_and_catches_up_when_enabled(): void

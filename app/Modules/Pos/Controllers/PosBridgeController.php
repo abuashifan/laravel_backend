@@ -3,8 +3,10 @@
 namespace App\Modules\Pos\Controllers;
 
 use App\Modules\Pos\Models\PosBridgeDispatch;
+use App\Modules\Pos\Services\PosAccountingProductService;
 use App\Modules\Pos\Services\PosAuditService;
 use App\Modules\Pos\Services\PosBridgeService;
+use App\Shared\Tenant\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -28,6 +30,27 @@ class PosBridgeController extends PosController
         abort_if($this->bridge->accountingTenant() === null, 422, 'Toko ini belum memakai Finlite Accounting.');
 
         return $this->successResponse($this->bridge->accountChoices());
+    }
+
+    /** Produk Finlite Accounting yang bisa diambil ke Kasir (sekali jalan, bukan sinkron). */
+    public function accountingProducts(PosAccountingProductService $products): JsonResponse
+    {
+        abort_if($this->bridge->accountingTenant() === null, 422, 'Toko ini belum memakai Finlite Accounting.');
+        $this->bridge->useAccounting();
+
+        return $this->successResponse($products->list());
+    }
+
+    /** `ids` kosong/tidak ada = semua produk aktif yang belum ada di Kasir. */
+    public function importAccountingProducts(Request $request, PosAccountingProductService $products, TenantContext $context): JsonResponse
+    {
+        $data = $request->validate(['ids' => ['nullable', 'array', 'max:1000'], 'ids.*' => ['integer']]);
+        abort_if($this->bridge->accountingTenant() === null, 422, 'Toko ini belum memakai Finlite Accounting.');
+        $this->bridge->useAccounting();
+
+        $result = $products->import(isset($data['ids']) ? array_map('intval', $data['ids']) : null, $context->company(), $request->user());
+
+        return $this->successResponse($result, sprintf('%d produk diambil dari Akuntansi.', $result['created']));
     }
 
     public function update(Request $request): JsonResponse
