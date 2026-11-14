@@ -22,6 +22,11 @@ class Plan extends Model
     /** Paket Kasir gratis terbatas yang bisa diambil sendiri dari aplikasi kasir. */
     public const POS_FREE_CODE = 'pos_free';
 
+    /** Paket Finlite Gudang bawaan dan paket gratis terbatasnya (Fase 0 Gudang). */
+    public const GUDANG_CODE = 'gudang';
+
+    public const GUDANG_FREE_CODE = 'gudang_free';
+
     /** Lama masa coba Kasir untuk pendaftaran mandiri (dimulai saat email terverifikasi). */
     public const POS_TRIAL_DAYS = 14;
 

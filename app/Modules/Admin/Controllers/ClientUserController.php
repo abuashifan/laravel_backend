@@ -280,7 +280,7 @@ class ClientUserController extends Controller
             'plan_id' => ['sometimes', 'nullable', 'integer', 'exists:plans,id'],
             'billing_cycle' => ['sometimes', 'nullable', Rule::in(['monthly', 'yearly'])],
             // Produk yang diperpanjang bila `plan_id` kosong; bawaan akuntansi.
-            'product' => ['sometimes', Rule::in(['accounting', 'pos'])],
+            'product' => ['sometimes', Rule::in(['accounting', 'pos', 'gudang'])],
         ]);
 
         try {
@@ -304,7 +304,7 @@ class ClientUserController extends Controller
     public function unlock(Request $request, int $id, SubscriptionService $subscriptions): JsonResponse
     {
         $user = $this->client($id);
-        $product = $request->input('product') === 'pos' ? 'pos' : SubscriptionService::PRODUCT_ACCOUNTING;
+        $product = in_array($request->input('product'), ['pos', 'gudang'], true) ? (string) $request->input('product') : SubscriptionService::PRODUCT_ACCOUNTING;
 
         try {
             $subscriptions->unlock($user, $product);

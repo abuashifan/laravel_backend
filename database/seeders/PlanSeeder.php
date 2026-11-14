@@ -190,6 +190,39 @@ class PlanSeeder extends Seeder
             );
         }
 
+        // Finlite Gudang (Fase 0). Batas barang memakai kolom `max_products`.
+        // HARGA dan batas final: menunggu keputusan pemilik produk (dokumen 10 bagian 9).
+        if (Schema::hasColumn('plans', 'max_products')) {
+            Plan::updateOrCreate(
+                ['code' => Plan::GUDANG_CODE],
+                [
+                    'name' => 'Gudang',
+                    'product' => 'gudang',
+                    'description' => 'Paket Finlite Gudang: 3 pengguna, barang tanpa batas.',
+                    'max_users' => 3,
+                    'max_products' => null,
+                    'max_companies' => 1,
+                    'monthly_price' => 0,
+                    'yearly_price' => 0,
+                    'status' => 'active',
+                ]
+            );
+            Plan::updateOrCreate(
+                ['code' => Plan::GUDANG_FREE_CODE],
+                [
+                    'name' => 'Gudang Gratis',
+                    'product' => 'gudang',
+                    'description' => 'Gratis selamanya: 1 pengguna, maksimal 100 barang.',
+                    'max_users' => 1,
+                    'max_products' => 100,
+                    'max_companies' => 1,
+                    'monthly_price' => 0,
+                    'yearly_price' => 0,
+                    'status' => 'active',
+                ]
+            );
+        }
+
         // Tier khusus: jumlah perusahaannya tidak ditentukan paket, melainkan
         // diisi per client lewat `users.company_quota`. `max_companies` di sini
         // hanya nilai cadangan kalau kuota client belum diisi. Fiturnya sengaja

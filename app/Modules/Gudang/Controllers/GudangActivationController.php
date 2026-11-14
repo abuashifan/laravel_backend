@@ -1,0 +1,89 @@
+<?php
+
+namespace App\Modules\Gudang\Controllers;
+
+use App\Shared\Api\ApiErrorCode;
+use App\Shared\Models\Company;
+use App\Shared\Models\TenantDatabase;
+use App\Shared\Permission\PermissionService;
+use App\Shared\Subscription\PlanOwnerResolver;
+use App\Shared\Subscription\SubscriptionService;
+use App\Shared\Tenant\ProductActivationService;
+use App\Shared\Tenant\TenantContext;
+use App\Shared\Tenant\TenantProductService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+
+/**
+ * Aktivasi dan data awal aplikasi Gudang (Fase 0). Pola sama dengan
+ * `PosActivationController`: status dan aktivasi dipanggil sebelum produk aktif,
+ * jadi tanpa `company.access:gudang`; bootstrap sudah di dalamnya.
+ */
+class GudangActivationController extends GudangController
+{
+    public function __construct(
+        private readonly TenantProductService $products,
+        private readonly ProductActivationService $activation,
+    ) {}
+
+    public function status(Request $request, SubscriptionService $subscriptions): JsonResponse
+    {
+        $company = Company::query()->find($request->header('X-Company-ID'));
+        $member = $company ? $this->activation->membership($this->user($request), $company) : null;
+        if (! $company || ! $member) {
+            return $this->errorCodeResponse(ApiErrorCode::COMPANY_ACCESS_DENIED, null, [], 403);
+        }
+
+        $owner = $company->created_by ? $company->creator()->first() : null;
+
+        return $this->successResponse([
+            'company' => ['id' => $company->id, 'name' => $company->name],
+            'active' => $this->products->find($company, TenantDatabase::PRODUCT_GUDANG)?->status === 'active',
+            'can_activate' => $this->activation->canActivate($member),
+            'subscribed' => $owner !== null && $subscriptions->hasAccess($owner, TenantDatabase::PRODUCT_GUDANG),
+        ]);
+    }
+
+    public function activate(Request $request): JsonResponse
+    {
+        $company = Company::query()->find($request->header('X-Company-ID'));
+        if (! $company) {
+            return $this->errorCodeResponse(ApiErrorCode::COMPANY_ACCESS_DENIED, null, [], 403);
+        }
+
+        $denied = $this->activation->activate($this->user($request), $company, TenantDatabase::PRODUCT_GUDANG);
+        if ($denied) {
+            return $denied;
+        }
+
+        return $this->successResponse([
+            'company' => ['id' => $company->id, 'name' => $company->name],
+            'active' => true,
+        ], 'Gudang berhasil diaktifkan.');
+    }
+
+    /** Perusahaan, pengguna, izin `gudang.*`, dan langganan pemilik (spanduk masa coba/habis). */
+    public function bootstrap(Request $request, PermissionService $permissions, TenantContext $context, SubscriptionService $subscriptions, PlanOwnerResolver $owners): JsonResponse
+    {
+        $user = $this->user($request);
+        $keys = array_values(array_filter(
+            (array) config('permissions.matrix_keys', []),
+            fn (string $key) => (str_starts_with($key, 'gudang.') || str_starts_with($key, 'access.users.') || str_starts_with($key, 'access.invitations.')) && $permissions->can($key),
+        ));
+
+        $company = $context->company();
+        $owner = $company ? $owners->ownerOf($company) : null;
+        $subscription = $owner ? $subscriptions->summaryFor($owner, TenantDatabase::PRODUCT_GUDANG) : null;
+        if ($subscription !== null) {
+            $subscription['read_only'] = ! in_array($subscription['state'], [SubscriptionService::STATE_ACTIVE, SubscriptionService::STATE_GRACE], true);
+        }
+
+        return $this->successResponse([
+            'company' => ['id' => $company?->id, 'name' => $company?->name],
+            'user' => ['id' => $user->id, 'name' => $user->name, 'email' => $user->email],
+            'is_owner' => $owner !== null && $owner->id === $user->id,
+            'subscription' => $subscription,
+            'permissions' => $keys,
+        ]);
+    }
+}

@@ -50,6 +50,15 @@ return [
             'foreign_key_constraints' => env('DB_FOREIGN_KEYS', true),
         ],
 
+        // Tenant Finlite Gudang. Diisi saat runtime oleh TenantConnectionManager.
+        'gudang' => [
+            'driver' => 'sqlite',
+            'url' => null,
+            'database' => null,
+            'prefix' => '',
+            'foreign_key_constraints' => env('DB_FOREIGN_KEYS', true),
+        ],
+
         'sqlite' => [
             'driver' => 'sqlite',
             'url' => env('DB_URL'),
