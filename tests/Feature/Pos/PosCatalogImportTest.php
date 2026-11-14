@@ -92,6 +92,14 @@ class PosCatalogImportTest extends TestCase
             ->assertJsonPath('data.cost', 12000)
             ->assertJsonPath('data.stock', 5);
         $this->getJson('/api/pos/products', $this->headers)->assertJsonPath('data.total', 2);
+
+        // Log aktivitas: ringkasan impor, ubah harga produk lama, dan stok awal produk baru.
+        $this->getJson('/api/pos/audit-logs?action=product.import', $this->headers)->assertOk()
+            ->assertJsonPath('data.total', 1)->assertJsonPath('data.data.0.changes.baru', 1)->assertJsonPath('data.data.0.changes.diperbarui', 1);
+        $this->getJson('/api/pos/audit-logs?action=product.price_change', $this->headers)->assertOk()
+            ->assertJsonPath('data.total', 1);
+        $this->assertEquals([15000, 16000], $this->getJson('/api/pos/audit-logs?action=product.price_change', $this->headers)->json('data.data.0.changes.price'));
+        $this->getJson('/api/pos/audit-logs?action=stock.adjust', $this->headers)->assertOk()->assertJsonPath('data.total', 1);
     }
 
     public function test_import_respects_plan_product_limit_and_rejects_bad_files(): void

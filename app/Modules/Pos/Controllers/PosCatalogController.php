@@ -222,6 +222,7 @@ class PosCatalogController extends PosController
             $commit,
             $context->company(),
             $request->user()?->id,
+            $request->user(),
         );
 
         return $this->successResponse($result, $commit ? 'Impor produk selesai.' : 'Pratinjau impor.');
