@@ -3,11 +3,13 @@
 namespace App\Modules\Pos\Services;
 
 use App\Modules\Pos\Models\PosCreditPayment;
+use App\Modules\Pos\Models\PosPurchase;
 use App\Modules\Pos\Models\PosSale;
 use App\Modules\Pos\Models\PosSaleLine;
 use App\Modules\Pos\Models\PosSaleReturn;
 use App\Modules\Pos\Models\PosSaleReturnLine;
 use App\Modules\Pos\Models\PosShift;
+use App\Modules\Pos\Models\PosSupplierPayment;
 use RuntimeException;
 
 /**
@@ -42,10 +44,18 @@ class PosBridgeJournalBuilder
         'tax' => 'Pajak keluaran',
         'cogs' => 'Harga pokok penjualan',
         'inventory' => 'Persediaan',
+        'payable' => 'Hutang pemasok',
     ];
 
     /** Wajib saat jembatan dinyalakan. Sisanya hanya dibutuhkan kalau nilainya muncul. */
     public const REQUIRED_KEYS = ['cash', 'bank', 'qris', 'receivable', 'revenue'];
+
+    /**
+     * Wajib kalau HPP dan persediaan ikut dikirim (`post_cogs`). Stok masuk
+     * menaikkan Persediaan dan hutang pemasok, HPP menurunkannya; keduanya satu
+     * paket supaya nilai persediaan di Akuntansi tidak naik terus tanpa pernah turun.
+     */
+    public const REQUIRED_WITH_COGS = ['cogs', 'inventory', 'payable'];
 
     /**
      * @param  array<string,int|null>  $map
@@ -55,17 +65,7 @@ class PosBridgeJournalBuilder
     {
         /** @var array<int, array{net: float, labels: list<string>}> $accounts */
         $accounts = [];
-        $add = function (string $key, float $amount, string $label, ?string $fallback = null) use (&$accounts, $map): void {
-            if (abs($amount) < 0.005) {
-                return;
-            }
-            $accountId = $map[$key] ?? ($fallback !== null ? ($map[$fallback] ?? null) : null);
-            if (! $accountId) {
-                throw new RuntimeException('Pemetaan akun "'.self::MAP_KEYS[$key].'" belum diisi, padahal ada nilainya di shift ini ('.$label.').');
-            }
-            $accounts[$accountId]['net'] = ($accounts[$accountId]['net'] ?? 0.0) + $amount;
-            $accounts[$accountId]['labels'][] = $label;
-        };
+        $add = $this->adder($map, $accounts);
 
         $sales = PosSale::query()->where('shift_id', $shift->id)->where('status', 'completed');
         $byMethod = (clone $sales)
@@ -123,6 +123,108 @@ class PosBridgeJournalBuilder
             $add('inventory', -$cogs, 'pengurangan persediaan');
         }
 
+        $lines = $this->assemble($accounts);
+
+        return [
+            'lines' => $lines,
+            'empty' => $lines === [],
+            'summary' => [
+                'sales_count' => (int) $byMethod->sum('count'),
+                'sales_total' => round((float) $totals->total, 2),
+                'returns_total' => round($returnsTotal, 2),
+                'credit_payments_total' => round($paymentsTotal, 2),
+                'cogs' => $cogs,
+            ],
+        ];
+    }
+
+    /**
+     * Stok masuk: debit Persediaan sebesar total; kredit Kas/Bank/QRIS sebesar
+     * yang dibayar (uang pembelian keluar dari kas pemilik, bukan laci) dan kredit
+     * Hutang pemasok sebesar sisanya.
+     *
+     * @param  array<string,int|null>  $map
+     * @return array{lines: list<array{account_id:int, debit:float, credit:float, description:string, line_order:int}>, summary: array<string,float|int>, empty: bool}
+     */
+    public function forPurchase(PosPurchase $purchase, array $map): array
+    {
+        $accounts = [];
+        $add = $this->adder($map, $accounts);
+
+        $add('inventory', (float) $purchase->total, 'stok masuk');
+        if ((float) $purchase->paid_amount > 0) {
+            $add(self::methodKey((string) $purchase->payment_method), -(float) $purchase->paid_amount, 'pembayaran stok masuk');
+        }
+        $add('payable', -(float) $purchase->payable_amount, 'hutang ke pemasok');
+
+        $lines = $this->assemble($accounts);
+
+        return [
+            'lines' => $lines,
+            'empty' => $lines === [],
+            'summary' => ['purchase_total' => round((float) $purchase->total, 2), 'paid' => round((float) $purchase->paid_amount, 2), 'payable' => round((float) $purchase->payable_amount, 2)],
+        ];
+    }
+
+    /**
+     * Pembayaran hutang pemasok: debit Hutang pemasok, kredit Kas/Bank/QRIS.
+     *
+     * @param  array<string,int|null>  $map
+     * @return array{lines: list<array{account_id:int, debit:float, credit:float, description:string, line_order:int}>, summary: array<string,float|int>, empty: bool}
+     */
+    public function forSupplierPayment(PosSupplierPayment $payment, array $map): array
+    {
+        $accounts = [];
+        $add = $this->adder($map, $accounts);
+
+        $add('payable', (float) $payment->amount, 'pembayaran hutang pemasok');
+        $add(self::methodKey((string) $payment->method), -(float) $payment->amount, 'pembayaran hutang pemasok');
+
+        $lines = $this->assemble($accounts);
+
+        return ['lines' => $lines, 'empty' => $lines === [], 'summary' => ['amount' => round((float) $payment->amount, 2)]];
+    }
+
+    /** Cara bayar POS -> kunci pemetaan akun. */
+    public static function methodKey(string $method): string
+    {
+        return match ($method) {
+            'transfer' => 'bank',
+            'qris' => 'qris',
+            default => 'cash',
+        };
+    }
+
+    /**
+     * Penambah nilai bertanda (debit positif) per akun. Akun tanpa pemetaan
+     * ditolak dengan pesan yang menyebut bagian rekap-nya.
+     *
+     * @param  array<string,int|null>  $map
+     * @param  array<int, array{net: float, labels: list<string>}>  $accounts
+     */
+    private function adder(array $map, array &$accounts): \Closure
+    {
+        return function (string $key, float $amount, string $label, ?string $fallback = null) use (&$accounts, $map): void {
+            if (abs($amount) < 0.005) {
+                return;
+            }
+            $accountId = $map[$key] ?? ($fallback !== null ? ($map[$fallback] ?? null) : null);
+            if (! $accountId) {
+                throw new RuntimeException('Pemetaan akun "'.self::MAP_KEYS[$key].'" belum diisi, padahal ada nilainya ('.$label.').');
+            }
+            $accounts[$accountId]['net'] = ($accounts[$accountId]['net'] ?? 0.0) + $amount;
+            $accounts[$accountId]['labels'][] = $label;
+        };
+    }
+
+    /**
+     * Baris jurnal dari saldo bersih per akun; menolak yang tidak seimbang.
+     *
+     * @param  array<int, array{net: float, labels: list<string>}>  $accounts
+     * @return list<array{account_id:int, debit:float, credit:float, description:string, line_order:int}>
+     */
+    private function assemble(array $accounts): array
+    {
         $lines = [];
         $order = 1;
         $balance = 0.0;
@@ -136,25 +238,15 @@ class PosBridgeJournalBuilder
                 'account_id' => (int) $accountId,
                 'debit' => $net > 0 ? $net : 0.0,
                 'credit' => $net < 0 ? -$net : 0.0,
-                'description' => 'Rekap Kasir: '.implode(', ', array_unique($entry['labels'])),
+                'description' => 'Kasir: '.implode(', ', array_unique($entry['labels'])),
                 'line_order' => $order++,
             ];
         }
 
         if (abs($balance) >= 0.01) {
-            throw new RuntimeException('Rekap shift tidak seimbang (selisih '.number_format($balance, 2, ',', '.').'). Jurnal tidak dikirim.');
+            throw new RuntimeException('Jurnal tidak seimbang (selisih '.number_format($balance, 2, ',', '.').'). Jurnal tidak dikirim.');
         }
 
-        return [
-            'lines' => $lines,
-            'empty' => $lines === [],
-            'summary' => [
-                'sales_count' => (int) $byMethod->sum('count'),
-                'sales_total' => round((float) $totals->total, 2),
-                'returns_total' => round($returnsTotal, 2),
-                'credit_payments_total' => round($paymentsTotal, 2),
-                'cogs' => $cogs,
-            ],
-        ];
+        return $lines;
     }
 }

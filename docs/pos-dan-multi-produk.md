@@ -371,7 +371,35 @@ menu tidak tampil; `bootstrap.accounting_active`).
 - Koneksi akuntansi (`tenant`) dibuka dari dalam request POS lewat
   `TenantConnectionManager::connect()` (dua koneksi hidup berdampingan).
 
-**Belum dikerjakan (Fase 5 berikutnya):** stok masuk dan pembayaran pemasok
-sebagai jurnal (butuh akun Hutang pemasok), sinkron produk POS <-> Akuntansi,
-dan tautan dari jurnal Rekap Kasir ke layar shift di aplikasi akuntansi
-(saat ini jurnal bisa disaring lewat Jenis Jurnal -> Rekap Kasir).
+### Fase 5b: stok masuk dan pembayaran hutang pemasok
+
+Dipicu dari `PosInventoryController` (`onPurchaseCreated`, `onSupplierPayment`),
+lewat antrean, idempotensi, status, dan kirim ulang yang sama dengan shift.
+Jenis kiriman di `pos_bridge_dispatches.kind` (`PosBridgeService::KINDS`):
+
+| kind | `source_type` jurnal | Isi jurnal |
+| --- | --- | --- |
+| `shift` | `pos_shift` | Rekap Kasir (di atas) |
+| `purchase` | `pos_purchase` | Debit Persediaan sebesar total; kredit Kas/Bank/QRIS sebesar yang dibayar (uang pembelian keluar dari kas pemilik, bukan laci); kredit Hutang pemasok sebesar sisanya |
+| `payment` | `pos_supplier_payment` | Debit Hutang pemasok; kredit Kas/Bank/QRIS menurut cara bayar |
+
+- **Hanya dikirim bersama HPP (`post_cogs`).** Stok masuk menaikkan Persediaan,
+  HPP menurunkannya; mengirim satu sisi saja membuat nilai persediaan di
+  Akuntansi naik terus. Karena itu `post_cogs` berarti "persediaan, HPP, dan
+  hutang pemasok". Menyalakannya menuntut akun Persediaan, HPP, dan Hutang
+  pemasok (`REQUIRED_WITH_COGS`); stok masuk dan pembayaran yang sudah ada
+  sejak tanggal mulai ikut terkirim saat `sync`.
+- Kunci pemetaan baru `payable` (jenis liability; usulan kode 2100).
+- Tanggal jurnal = tanggal terima/bayar menurut jam toko; periode terkunci
+  menahan kiriman, sama seperti shift.
+- Stok masuk atau pembayaran yang gagal dikirim tidak menggagalkan penyimpanannya
+  (`safely()` hanya mencatat log dan menandai kiriman gagal).
+- Tes: `PosBridgeTest` (stok masuk + bayar hutang, sinkronisasi saat HPP
+  dinyalakan, hutang belum dipetakan).
+
+**Belum dikerjakan (di luar Fase 5):** selisih stok opname dan penyesuaian stok
+manual belum dijurnal (nilai Persediaan di Akuntansi hanya mengikuti stok masuk
+dan HPP, jadi bisa menyimpang dari nilai stok POS setelah opname), persediaan
+awal (stok awal produk), sinkron produk POS <-> Akuntansi (opsional, bawaan
+tidak sinkron), dan tautan dari jurnal ke layar shift di aplikasi akuntansi
+(jurnal bisa disaring lewat Jenis Jurnal -> Rekap Kasir/Stok Masuk Kasir/Bayar Hutang Kasir).

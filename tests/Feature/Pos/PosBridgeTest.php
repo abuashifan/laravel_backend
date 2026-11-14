@@ -5,6 +5,7 @@ namespace Tests\Feature\Pos;
 use App\Modules\Accounting\Services\FiscalYearService;
 use App\Modules\Journal\Models\JournalEntry;
 use App\Modules\MasterData\Models\ChartOfAccount;
+use App\Modules\Pos\Models\PosBridgeConfig;
 use App\Modules\Pos\Models\PosBridgeDispatch;
 use App\Modules\Pos\Services\PosClock;
 use App\Shared\Models\Company;
@@ -40,7 +41,7 @@ class PosBridgeTest extends JournalTestCase
 
         // COA minimal template Perdagangan Umum.
         foreach ([
-            ['1100', 'Kas', 'asset'], ['1110', 'Bank', 'asset'], ['1120', 'Piutang Usaha', 'asset'], ['1131', 'Persediaan Barang', 'asset'],
+            ['1100', 'Kas', 'asset'], ['1110', 'Bank', 'asset'], ['1120', 'Piutang Usaha', 'asset'], ['1131', 'Persediaan Barang', 'asset'], ['2100', 'Hutang Usaha', 'liability'],
             ['2120', 'PPN Keluaran', 'liability'], ['4100', 'Pendapatan Penjualan', 'revenue'], ['4110', 'Retur Penjualan', 'revenue'],
             ['4120', 'Diskon Penjualan', 'revenue'], ['5100', 'Harga Pokok Penjualan', 'expense'],
         ] as [$code, $name, $type]) {
@@ -63,6 +64,12 @@ class PosBridgeTest extends JournalTestCase
             'cash' => $this->acc['1100'], 'bank' => $this->acc['1110'], 'qris' => $this->acc['1110'], 'receivable' => $this->acc['1120'],
             'revenue' => $this->acc['4100'], 'discount' => $this->acc['4120'], 'sales_return' => $this->acc['4110'], 'tax' => $this->acc['2120'],
         ], $override);
+    }
+
+    /** Pemetaan lengkap untuk HPP, persediaan, dan hutang pemasok. */
+    private function cogsMap(): array
+    {
+        return $this->map(['cogs' => $this->acc['5100'], 'inventory' => $this->acc['1131'], 'payable' => $this->acc['2100']]);
     }
 
     /** Hari ini menurut jam toko (WIB), yang dipakai tanggal jurnal; bukan tanggal server (UTC). */
@@ -309,9 +316,84 @@ class PosBridgeTest extends JournalTestCase
         $this->assertEquals($journal->lines->sum('debit'), $journal->lines->sum('credit'));
     }
 
+    public function test_stock_in_and_supplier_payments_become_journals_with_cogs(): void
+    {
+        $this->connect(['post_cogs' => true, 'account_map' => $this->cogsMap()])->assertOk();
+        $supplierId = (int) $this->postJson('/api/pos/suppliers', ['name' => 'Toko Abadi'], $this->headers)->assertCreated()->json('data.id');
+
+        // 10 x 3.000 = 30.000; dibayar tunai 10.000, sisa 20.000 jadi hutang.
+        $purchase = $this->postJson('/api/pos/purchases', [
+            'supplier_id' => $supplierId, 'paid_amount' => 10000, 'payment_method' => 'cash',
+            'lines' => [['product_id' => $this->productId, 'quantity' => 10, 'unit_cost' => 3000]],
+        ], $this->headers)->assertCreated();
+        $purchaseId = (int) $purchase->json('data.id');
+
+        $dispatch = PosBridgeDispatch::query()->where('kind', 'purchase')->where('source_id', $purchaseId)->firstOrFail();
+        $this->assertSame('sent', $dispatch->status, (string) $dispatch->error);
+        $this->assertStringContainsString('Toko Abadi', $dispatch->source_label);
+        $journal = JournalEntry::query()->forSource('pos_purchase', $purchaseId)->with('lines')->firstOrFail();
+        $this->assertSame('pos', $journal->source_module);
+        $this->assertEquals([
+            '1100' => ['debit' => 0.0, 'credit' => 10000.0],
+            '1131' => ['debit' => 30000.0, 'credit' => 0.0],
+            '2100' => ['debit' => 0.0, 'credit' => 20000.0],
+        ], $this->linesOf($journal));
+
+        // Bayar hutang 20.000 lewat transfer.
+        $payment = $this->postJson("/api/pos/suppliers/{$supplierId}/payments", ['amount' => 20000, 'method' => 'transfer'], $this->headers)->assertCreated();
+        $paymentId = (int) $payment->json('data.payment.id');
+        $this->assertSame('sent', PosBridgeDispatch::query()->where('kind', 'payment')->where('source_id', $paymentId)->value('status'));
+        $this->assertEquals([
+            '1110' => ['debit' => 0.0, 'credit' => 20000.0],
+            '2100' => ['debit' => 20000.0, 'credit' => 0.0],
+        ], $this->linesOf(JournalEntry::query()->forSource('pos_supplier_payment', $paymentId)->with('lines')->firstOrFail()));
+
+        // Kirim ulang tidak menggandakan.
+        $this->postJson('/api/pos/bridge/sync', [], $this->headers)->assertOk();
+        $this->assertSame(1, JournalEntry::query()->forSource('pos_purchase', $purchaseId)->count());
+        $this->assertSame(1, JournalEntry::query()->forSource('pos_supplier_payment', $paymentId)->count());
+    }
+
+    public function test_stock_in_is_only_sent_together_with_cogs_and_catches_up_when_enabled(): void
+    {
+        $this->connect()->assertOk();
+        $purchaseId = (int) $this->postJson('/api/pos/purchases', [
+            'paid_amount' => 6000, 'payment_method' => 'cash',
+            'lines' => [['product_id' => $this->productId, 'quantity' => 2, 'unit_cost' => 3000]],
+        ], $this->headers)->assertCreated()->json('data.id');
+
+        // Tanpa HPP, stok masuk tidak dikirim (persediaan akan naik tanpa pernah turun).
+        $this->assertSame(0, PosBridgeDispatch::query()->where('kind', 'purchase')->count());
+
+        // HPP dinyalakan: stok masuk yang sudah ada ikut terkirim.
+        $this->connect(['post_cogs' => true, 'account_map' => $this->cogsMap()])->assertOk()->assertJsonPath('data.sync.queued', 1);
+        $this->assertSame('sent', PosBridgeDispatch::query()->where('kind', 'purchase')->where('source_id', $purchaseId)->value('status'));
+        $this->assertSame(1, JournalEntry::query()->forSource('pos_purchase', $purchaseId)->count());
+    }
+
+    public function test_missing_payable_mapping_fails_the_purchase_dispatch_but_not_the_purchase(): void
+    {
+        $this->connect(['post_cogs' => true, 'account_map' => $this->cogsMap()])->assertOk();
+        // Hutang pemasok dilepas dari pemetaan tanpa mematikan HPP: simpan langsung ke konfigurasi.
+        $config = PosBridgeConfig::query()->firstOrFail();
+        $map = (array) $config->account_map;
+        unset($map['payable']);
+        $config->forceFill(['account_map' => $map])->save();
+
+        $supplierId = (int) $this->postJson('/api/pos/suppliers', ['name' => 'Toko Abadi'], $this->headers)->assertCreated()->json('data.id');
+        $purchaseId = (int) $this->postJson('/api/pos/purchases', [
+            'supplier_id' => $supplierId, 'paid_amount' => 0,
+            'lines' => [['product_id' => $this->productId, 'quantity' => 1, 'unit_cost' => 3000]],
+        ], $this->headers)->assertCreated()->json('data.id');
+
+        $dispatch = PosBridgeDispatch::query()->where('kind', 'purchase')->where('source_id', $purchaseId)->firstOrFail();
+        $this->assertSame('failed', $dispatch->status);
+        $this->assertStringContainsString('Hutang pemasok', (string) $dispatch->error);
+    }
+
     public function test_cogs_and_an_empty_shift(): void
     {
-        $this->connect(['post_cogs' => true, 'account_map' => $this->map(['cogs' => $this->acc['5100'], 'inventory' => $this->acc['1131']])])->assertOk();
+        $this->connect(['post_cogs' => true, 'account_map' => $this->cogsMap()])->assertOk();
 
         // Shift tanpa transaksi: tidak membuat jurnal kosong.
         $emptyId = (int) $this->postJson('/api/pos/shifts', ['opening_cash' => 0], $this->headers)->assertCreated()->json('data.shift.id');

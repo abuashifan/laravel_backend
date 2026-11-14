@@ -2,8 +2,11 @@
 
 namespace Tests\TenantPgsql;
 
+use App\Modules\Journal\Models\JournalEntry;
 use App\Modules\MasterData\Models\ChartOfAccount;
 use App\Modules\MasterData\Services\ChartOfAccountService;
+use App\Modules\Reports\Services\TrialBalanceService;
+use App\Shared\Reports\Data\TrialBalanceFilter;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 
@@ -97,5 +100,46 @@ class PostgresTenantQueryTest extends PostgresTenantTestCase
 
         $this->assertSame(['import_row' => 3, 'setup_locked' => true], json_decode((string) $locked, true));
         $this->assertNull($untouched);
+    }
+
+    /**
+     * Neraca Saldo menyaring tanggal jurnal dengan `substr(je.journal_date, 1, 10)`.
+     * `journal_date` bertipe `date`, dan `substr(date, int, int)` tidak ada di
+     * Postgres, jadi laporan itu 500 di setiap tenant Postgres (halaman memunculkan
+     * "Gagal memuat laporan") sementara suite SQLite tetap hijau. Laporan lain sudah
+     * memakai `whereDate()`.
+     */
+    public function test_trial_balance_runs_on_postgres(): void
+    {
+        $storage = $this->storage();
+        $schema = $this->uniqueSchema('trialbal');
+        $storage->create($schema, $schema);
+        $storage->connect($schema, $schema);
+        $exitCode = Artisan::call('migrate', ['--database' => 'tenant', '--path' => 'database/migrations/tenant', '--force' => true]);
+        $this->assertSame(0, $exitCode, 'Migration tenant gagal: '.Artisan::output());
+
+        $cash = ChartOfAccount::query()->create(['account_code' => '1100', 'account_name' => 'Kas', 'account_type' => 'asset', 'normal_balance' => 'debit', 'is_active' => true]);
+        $equity = ChartOfAccount::query()->create(['account_code' => '3100', 'account_name' => 'Modal', 'account_type' => 'equity', 'normal_balance' => 'credit', 'is_active' => true]);
+
+        // Saldo awal sebelum periode, dan satu jurnal di dalam periode.
+        foreach ([['2025-12-31', 'JV-OPEN', 1000], ['2026-03-10', 'JV-IN', 250]] as [$date, $number, $amount]) {
+            $journal = JournalEntry::query()->create([
+                'journal_number' => $number, 'journal_date' => $date, 'description' => $number, 'status' => 'posted',
+                'revision_no' => 1, 'is_obsolete' => false, 'is_system_generated' => false,
+            ]);
+            $journal->lines()->createMany([
+                ['account_id' => $cash->id, 'debit' => $amount, 'credit' => 0, 'line_order' => 1],
+                ['account_id' => $equity->id, 'debit' => 0, 'credit' => $amount, 'line_order' => 2],
+            ]);
+        }
+
+        $result = app(TrialBalanceService::class)->getTrialBalance(new TrialBalanceFilter(startDate: '2026-01-01', endDate: '2026-11-14'));
+
+        $this->assertTrue($result['valid'], json_encode($result));
+        $rows = collect($result['accounts'])->keyBy('account_code');
+        $this->assertEquals(1000.0, (float) $rows['1100']['opening_debit']);
+        $this->assertEquals(250.0, (float) $rows['1100']['period_debit']);
+        $this->assertEquals(1250.0, (float) $rows['1100']['ending_debit']);
+        $this->assertEquals(1250.0, (float) $rows['3100']['ending_credit']);
     }
 }

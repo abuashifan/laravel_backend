@@ -7,7 +7,9 @@ use App\Modules\Journal\Services\SystemJournalBuilder;
 use App\Modules\MasterData\Models\ChartOfAccount;
 use App\Modules\Pos\Models\PosBridgeConfig;
 use App\Modules\Pos\Models\PosBridgeDispatch;
+use App\Modules\Pos\Models\PosPurchase;
 use App\Modules\Pos\Models\PosShift;
+use App\Modules\Pos\Models\PosSupplierPayment;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Models\Company;
 use App\Shared\Models\TenantDatabase;
@@ -36,6 +38,16 @@ class PosBridgeService
 
     public const SOURCE_MODULE = 'pos';
 
+    /**
+     * Jenis kiriman -> `source_type` jurnal di akuntansi dan judul jurnalnya.
+     * Stok masuk dan pembayaran hutang hanya dikirim bersama HPP (`post_cogs`).
+     */
+    public const KINDS = [
+        'shift' => ['type' => 'pos_shift', 'title' => 'Rekap Kasir'],
+        'purchase' => ['type' => 'pos_purchase', 'title' => 'Stok Masuk Kasir'],
+        'payment' => ['type' => 'pos_supplier_payment', 'title' => 'Bayar Hutang Kasir'],
+    ];
+
     /** Batas kiriman sekali jalan saat menyalakan/menyinkronkan, supaya request tidak kelamaan. */
     private const BATCH = 100;
 
@@ -43,14 +55,14 @@ class PosBridgeService
     private const SUGGESTED_CODES = [
         'cash' => ['1100'], 'bank' => ['1110'], 'qris' => ['1110'], 'receivable' => ['1120'],
         'revenue' => ['4100'], 'discount' => ['4120'], 'sales_return' => ['4110'], 'tax' => ['2120'],
-        'cogs' => ['5100'], 'inventory' => ['1131', '1130'],
+        'cogs' => ['5100'], 'inventory' => ['1131', '1130'], 'payable' => ['2100'],
     ];
 
     /** Jenis akun yang masuk akal per kunci. */
     private const ALLOWED_TYPES = [
         'cash' => ['asset'], 'bank' => ['asset'], 'qris' => ['asset'], 'receivable' => ['asset'],
         'revenue' => ['revenue'], 'discount' => ['revenue', 'expense'], 'sales_return' => ['revenue', 'expense'],
-        'tax' => ['liability'], 'cogs' => ['expense'], 'inventory' => ['asset'],
+        'tax' => ['liability'], 'cogs' => ['expense'], 'inventory' => ['asset'], 'payable' => ['liability'],
     ];
 
     public function __construct(
@@ -93,6 +105,7 @@ class PosBridgeService
             'account_map' => (array) ($config->account_map ?? []),
             'map_keys' => collect(PosBridgeJournalBuilder::MAP_KEYS)->map(fn (string $label, string $key) => [
                 'key' => $key, 'label' => $label, 'required' => in_array($key, PosBridgeJournalBuilder::REQUIRED_KEYS, true),
+                'with_cogs' => in_array($key, PosBridgeJournalBuilder::REQUIRED_WITH_COGS, true),
             ])->values()->all(),
             'counts' => collect(PosBridgeDispatch::STATUSES)
                 ->mapWithKeys(fn (string $status) => [$status => PosBridgeDispatch::query()->where('status', $status)->count()])
@@ -161,7 +174,7 @@ class PosBridgeService
 
         if ($enabled) {
             $missing = [];
-            $required = array_merge(PosBridgeJournalBuilder::REQUIRED_KEYS, $postCogs ? ['cogs', 'inventory'] : []);
+            $required = array_merge(PosBridgeJournalBuilder::REQUIRED_KEYS, $postCogs ? PosBridgeJournalBuilder::REQUIRED_WITH_COGS : []);
             foreach ($required as $key) {
                 if (empty($map[$key])) {
                     $missing[] = PosBridgeJournalBuilder::MAP_KEYS[$key];
@@ -228,41 +241,94 @@ class PosBridgeService
      */
     public function onShiftClosed(PosShift $shift): void
     {
+        $this->safely('shift '.$shift->id, function (PosBridgeConfig $config) use ($shift) {
+            return $this->queueShift($shift, $config);
+        });
+    }
+
+    /** Stok masuk baru tersimpan. Hanya dikirim bila HPP/persediaan ikut dikirim. */
+    public function onPurchaseCreated(PosPurchase $purchase): void
+    {
+        $this->safely('stok masuk '.$purchase->id, function (PosBridgeConfig $config) use ($purchase) {
+            return $this->queuePurchase($purchase, $config);
+        });
+    }
+
+    /** Pembayaran hutang pemasok baru tersimpan. */
+    public function onSupplierPayment(PosSupplierPayment $payment): void
+    {
+        $this->safely('pembayaran hutang '.$payment->id, function (PosBridgeConfig $config) use ($payment) {
+            return $this->queuePayment($payment, $config);
+        });
+    }
+
+    /** @param  callable(PosBridgeConfig): ?PosBridgeDispatch  $queue */
+    private function safely(string $what, callable $queue): void
+    {
         try {
             $config = $this->config();
             if (! $config->enabled || ! $this->accountingTenant()) {
                 return;
             }
-            $dispatch = $this->queueShift($shift, $config);
+            $dispatch = $queue($config);
             if ($dispatch) {
                 $this->send($dispatch);
             }
         } catch (Throwable $e) {
-            Log::warning('Jembatan kasir: gagal memproses shift '.$shift->id.': '.$e->getMessage());
+            Log::warning('Jembatan kasir: gagal memproses '.$what.': '.$e->getMessage());
         }
     }
 
     /** Buat baris kiriman untuk shift tertutup yang masuk rentang tanggal mulai. */
     public function queueShift(PosShift $shift, ?PosBridgeConfig $config = null): ?PosBridgeDispatch
     {
-        $config ??= $this->config();
         if ($shift->status !== 'closed' || ! $shift->closed_at) {
             return null;
         }
-        $date = $this->clock->format($shift->closed_at, 'Y-m-d');
+
+        return $this->queue('shift', $shift->id, 'Shift #'.$shift->id.' - '.($shift->user_name ?: 'kasir'), $shift->closed_at, $config);
+    }
+
+    public function queuePurchase(PosPurchase $purchase, ?PosBridgeConfig $config = null): ?PosBridgeDispatch
+    {
+        $config ??= $this->config();
+        if (! $config->post_cogs) {
+            return null;
+        }
+        $supplier = $purchase->supplier_id ? $purchase->supplier()->value('name') : null;
+
+        return $this->queue('purchase', $purchase->id, 'Stok masuk '.$purchase->number.($supplier ? ' - '.$supplier : ''), $purchase->received_at, $config);
+    }
+
+    public function queuePayment(PosSupplierPayment $payment, ?PosBridgeConfig $config = null): ?PosBridgeDispatch
+    {
+        $config ??= $this->config();
+        if (! $config->post_cogs) {
+            return null;
+        }
+        $supplier = $payment->supplier()->value('name');
+
+        return $this->queue('payment', $payment->id, 'Bayar hutang '.$payment->number.($supplier ? ' - '.$supplier : ''), $payment->paid_at, $config);
+    }
+
+    /** Baris kiriman baru bila tanggalnya masuk rentang tanggal mulai; yang sudah ada dikembalikan apa adanya. */
+    private function queue(string $kind, int $sourceId, string $label, \DateTimeInterface $moment, ?PosBridgeConfig $config): ?PosBridgeDispatch
+    {
+        $config ??= $this->config();
+        $date = $this->clock->format($moment, 'Y-m-d');
         if ($config->start_date && $date < $config->start_date->toDateString()) {
             return null;
         }
 
         return PosBridgeDispatch::query()->firstOrCreate(
-            ['kind' => 'shift', 'source_id' => $shift->id],
-            ['source_label' => 'Shift #'.$shift->id.' - '.($shift->user_name ?: 'kasir'), 'entry_date' => $date, 'status' => 'pending'],
+            ['kind' => $kind, 'source_id' => $sourceId],
+            ['source_label' => $label, 'entry_date' => $date, 'status' => 'pending'],
         );
     }
 
     /**
-     * Antrekan shift tertutup yang belum punya kiriman, lalu kirim yang belum
-     * terkirim. Aman dipanggil berulang.
+     * Antrekan sumber yang belum punya kiriman (shift tertutup, stok masuk, dan
+     * pembayaran hutang), lalu kirim yang belum terkirim. Aman dipanggil berulang.
      *
      * @return array{queued:int, sent:int, failed:int, held:int, skipped:int, remaining:int}
      */
@@ -274,7 +340,10 @@ class PosBridgeService
             return $result;
         }
 
-        $known = PosBridgeDispatch::query()->where('kind', 'shift')->pluck('source_id')->all();
+        $since = $config->start_date ? $this->clock->startOfDay($config->start_date->toDateString()) : null;
+        $unqueued = fn (string $kind) => PosBridgeDispatch::query()->where('kind', $kind)->pluck('source_id')->all();
+
+        $known = $unqueued('shift');
         PosShift::query()->where('status', 'closed')->whereNotNull('closed_at')
             ->when($known !== [], fn ($query) => $query->whereNotIn('id', $known))
             ->orderBy('closed_at')->limit(self::BATCH * 5)->get()
@@ -283,6 +352,30 @@ class PosBridgeService
                     $result['queued']++;
                 }
             });
+
+        if ($config->post_cogs) {
+            $known = $unqueued('purchase');
+            PosPurchase::query()
+                ->when($known !== [], fn ($query) => $query->whereNotIn('id', $known))
+                ->when($since, fn ($query) => $query->where('received_at', '>=', $since))
+                ->orderBy('received_at')->limit(self::BATCH * 5)->get()
+                ->each(function (PosPurchase $purchase) use ($config, &$result) {
+                    if ($this->queuePurchase($purchase, $config)) {
+                        $result['queued']++;
+                    }
+                });
+
+            $known = $unqueued('payment');
+            PosSupplierPayment::query()
+                ->when($known !== [], fn ($query) => $query->whereNotIn('id', $known))
+                ->when($since, fn ($query) => $query->where('paid_at', '>=', $since))
+                ->orderBy('paid_at')->limit(self::BATCH * 5)->get()
+                ->each(function (PosSupplierPayment $payment) use ($config, &$result) {
+                    if ($this->queuePayment($payment, $config)) {
+                        $result['queued']++;
+                    }
+                });
+        }
 
         $open = PosBridgeDispatch::query()->whereIn('status', ['pending', 'failed', 'held'])->orderBy('entry_date')->orderBy('id');
         foreach ((clone $open)->limit(self::BATCH)->get() as $dispatch) {
@@ -294,7 +387,7 @@ class PosBridgeService
         return $result;
     }
 
-    /** Kirim satu shift sebagai jurnal. Hasilnya tersimpan di baris kiriman. */
+    /** Kirim satu sumber (shift, stok masuk, atau pembayaran hutang) sebagai jurnal. Hasilnya tersimpan di baris kiriman. */
     public function send(PosBridgeDispatch $dispatch): PosBridgeDispatch
     {
         if (in_array($dispatch->status, ['sent', 'skipped'], true)) {
@@ -304,22 +397,27 @@ class PosBridgeService
         $dispatch->forceFill(['attempts' => $dispatch->attempts + 1])->save();
 
         try {
+            $kind = self::KINDS[$dispatch->kind] ?? throw new \RuntimeException('Jenis kiriman tidak dikenal: '.$dispatch->kind);
             $company = $this->context->company();
             $this->connectAccounting();
 
-            // Lapis kedua idempotensi: jurnal bersumber shift ini sudah ada di akuntansi.
-            $existing = JournalEntry::withTrashed()->forSource(self::SOURCE_TYPE, $dispatch->source_id)->forSourceModule(self::SOURCE_MODULE)->first();
+            // Lapis kedua idempotensi: jurnal bersumber dokumen ini sudah ada di akuntansi.
+            $existing = JournalEntry::withTrashed()->forSource($kind['type'], $dispatch->source_id)->forSourceModule(self::SOURCE_MODULE)->first();
             if ($existing) {
                 return $this->mark($dispatch, 'sent', ['journal_id' => $existing->id, 'journal_number' => $existing->journal_number, 'error' => null, 'sent_at' => now()]);
             }
 
-            $shift = PosShift::query()->findOrFail($dispatch->source_id);
             $config = $this->config();
-            $built = $this->builder->forShift($shift, (array) $config->account_map, (bool) $config->post_cogs);
+            $map = (array) $config->account_map;
+            $built = match ($dispatch->kind) {
+                'purchase' => $this->builder->forPurchase(PosPurchase::query()->findOrFail($dispatch->source_id), $map),
+                'payment' => $this->builder->forSupplierPayment(PosSupplierPayment::query()->findOrFail($dispatch->source_id), $map),
+                default => $this->builder->forShift(PosShift::query()->findOrFail($dispatch->source_id), $map, (bool) $config->post_cogs),
+            };
             $dispatch->summary = $built['summary'];
 
             if ($built['empty']) {
-                return $this->mark($dispatch, 'skipped', ['error' => 'Tidak ada transaksi di shift ini.', 'sent_at' => now()]);
+                return $this->mark($dispatch, 'skipped', ['error' => 'Tidak ada nilai yang perlu dijurnal.', 'sent_at' => now()]);
             }
 
             $date = $dispatch->entry_date->toDateString();
@@ -328,12 +426,12 @@ class PosBridgeService
             }
 
             $journal = $this->journals->create([
-                'source_type' => self::SOURCE_TYPE,
+                'source_type' => $kind['type'],
                 'source_id' => $dispatch->source_id,
                 'source_number' => $dispatch->source_label,
                 'source_module' => self::SOURCE_MODULE,
                 'journal_date' => $date,
-                'description' => 'Rekap Kasir '.$date.' - '.$dispatch->source_label,
+                'description' => $kind['title'].' '.$date.' - '.$dispatch->source_label,
             ], $built['lines']);
 
             return $this->mark($dispatch, 'sent', ['journal_id' => $journal->id, 'journal_number' => $journal->journal_number, 'error' => null, 'sent_at' => now()]);

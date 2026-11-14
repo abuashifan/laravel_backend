@@ -6,6 +6,7 @@ use App\Modules\Pos\Models\PosPurchase;
 use App\Modules\Pos\Models\PosStockCount;
 use App\Modules\Pos\Models\PosSupplier;
 use App\Modules\Pos\Models\PosSupplierPayment;
+use App\Modules\Pos\Services\PosBridgeService;
 use App\Modules\Pos\Services\PosPurchaseService;
 use App\Modules\Pos\Services\PosStockCountService;
 use Illuminate\Http\JsonResponse;
@@ -18,6 +19,7 @@ class PosInventoryController extends PosController
     public function __construct(
         private readonly PosPurchaseService $purchases,
         private readonly PosStockCountService $counts,
+        private readonly PosBridgeService $bridge,
     ) {}
 
     // ---- Pemasok ----
@@ -87,6 +89,8 @@ class PosInventoryController extends PosController
         ]);
 
         $payment = $this->purchases->pay($supplier, $this->user($request), (float) $data['amount'], $data['method'], $data['notes'] ?? null);
+        // Jembatan ke Akuntansi (bila menyala dan HPP ikut dikirim); tidak pernah menggagalkan pembayaran.
+        $this->bridge->onSupplierPayment($payment);
 
         return $this->successResponse(['payment' => $payment, 'supplier' => $supplier], 'Pembayaran hutang tersimpan.', 201);
     }
@@ -122,7 +126,10 @@ class PosInventoryController extends PosController
             'lines.*.unit_cost' => ['required', 'numeric', 'min:0'],
         ]);
 
-        return $this->successResponse($this->purchases->create($this->user($request), $data), 'Stok masuk tersimpan.', 201);
+        $purchase = $this->purchases->create($this->user($request), $data);
+        $this->bridge->onPurchaseCreated($purchase);
+
+        return $this->successResponse($purchase, 'Stok masuk tersimpan.', 201);
     }
 
     // ---- Stok opname ----
