@@ -62,7 +62,7 @@ class TrialBalanceService
         $q = $this->applyDimensionFilters(
             $this->baseReportableJournalLineQuery(),
             $filter
-        )->whereRaw('substr(je.journal_date, 1, 10) < ?', [$filter->startDate]);
+        )->whereDate('je.journal_date', '<', $filter->startDate);
 
         return $this->sumLinesByAccount($q);
     }
@@ -75,10 +75,10 @@ class TrialBalanceService
         );
 
         if ($filter->startDate) {
-            $q->whereRaw('substr(je.journal_date, 1, 10) >= ?', [$filter->startDate]);
+            $q->whereDate('je.journal_date', '>=', $filter->startDate);
         }
         if ($filter->endDate) {
-            $q->whereRaw('substr(je.journal_date, 1, 10) <= ?', [$filter->endDate]);
+            $q->whereDate('je.journal_date', '<=', $filter->endDate);
         }
 
         return $this->sumLinesByAccount($q);
