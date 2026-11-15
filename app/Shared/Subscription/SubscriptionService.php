@@ -263,7 +263,9 @@ class SubscriptionService
         return [
             'state' => $this->stateFor($client, $product),
             'ends_at' => $current?->ends_at?->toISOString(),
-            'days_remaining' => $current ? (int) floor(now()->diffInDays($current->ends_at, false)) : null,
+            // Sama persis dengan `daysRemaining()` (selisih tanggal kalender), supaya Kasir dan
+            // Accounting menampilkan sisa hari yang sama untuk tanggal berakhir yang sama.
+            'days_remaining' => $this->daysRemaining($client, $product),
             'is_trial' => (bool) ($current?->metadata['trial'] ?? false),
             'plan_name' => $plan?->name,
             'plan_code' => $plan?->code,
