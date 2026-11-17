@@ -107,6 +107,23 @@ class SalesOrderTest extends SalesTestCase
         $this->assertNotNull($order['lines'][0]['quotation_line_id']);
     }
 
+    public function test_source_document_picker_lists_sent_quotations_until_converted(): void
+    {
+        $ctx = $this->setUpTenant();
+        $quotation = $this->postJson('/api/sales/quotations', $this->quotationPayload(), $ctx['headers'])->assertStatus(201)->json('data');
+        $query = '/api/sales/source-documents?target_type=sales.orders&source_type=sales_quotation';
+
+        // Draft belum bisa diambil; setelah dikirim muncul di daftar (bentuk data.data[]).
+        $this->assertCount(0, $this->getJson($query, $ctx['headers'])->assertOk()->json('data.data'));
+        $this->patchJson('/api/sales/quotations/'.$quotation['id'].'/send', [], $ctx['headers'])->assertStatus(200);
+        $listed = $this->getJson($query, $ctx['headers'])->assertOk()->json('data.data');
+        $this->assertCount(1, $listed);
+        $this->assertNotEmpty($listed[0]['lines']);
+
+        $this->postJson('/api/sales/orders/from-quotation/'.$quotation['id'], [], $ctx['headers'])->assertStatus(201);
+        $this->assertCount(0, $this->getJson($query, $ctx['headers'])->assertOk()->json('data.data'));
+    }
+
     public function test_quotation_id_nullable_and_down_payment_false_works(): void
     {
         $ctx = $this->setUpTenant();

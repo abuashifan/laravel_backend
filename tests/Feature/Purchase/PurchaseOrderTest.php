@@ -84,6 +84,29 @@ class PurchaseOrderTest extends PurchaseTestCase
         $this->assertNotNull($order['lines'][0]['purchase_request_line_id']);
     }
 
+    public function test_source_document_picker_lists_open_purchase_requests_until_converted(): void
+    {
+        $ctx = $this->setUpTenant();
+        $request = $this->postJson('/api/purchase/requests', $this->purchaseRequestPayload(), $ctx['headers'])->assertStatus(201)->json('data');
+        $this->patchJson('/api/purchase/requests/'.$request['id'].'/submit', [], $ctx['headers'])->assertStatus(200);
+        $this->patchJson('/api/purchase/requests/'.$request['id'].'/approve', [], $ctx['headers'])->assertStatus(200);
+
+        // Bentuk yang dibaca panel "Ambil dari Dokumen Sebelumnya" di frontend: data.data[] (paginator).
+        $query = '/api/purchase/source-documents?target_type=purchase.orders&source_type=purchase_request';
+        $listed = $this->getJson($query, $ctx['headers'])->assertOk()->json('data.data');
+        $this->assertCount(1, $listed);
+        $this->assertSame($request['id'], $listed[0]['id']);
+        $this->assertNotEmpty($listed[0]['document_number']);
+        $this->assertNotEmpty($listed[0]['lines']);
+        // Pencarian nomor tidak peka huruf besar/kecil.
+        $this->assertCount(1, $this->getJson($query.'&search='.urlencode(mb_strtolower($listed[0]['document_number'])), $ctx['headers'])->assertOk()->json('data.data'));
+
+        // Tanpa vendor ditolak; dengan vendor PO terbentuk dan Permintaan hilang dari daftar.
+        $this->postJson('/api/purchase/orders/from-request/'.$request['id'], [], $ctx['headers'])->assertStatus(422)->assertJsonPath('code', 'VENDOR_REQUIRED');
+        $this->postJson('/api/purchase/orders/from-request/'.$request['id'], ['vendor_id' => $this->createVendor()], $ctx['headers'])->assertStatus(201);
+        $this->assertCount(0, $this->getJson($query, $ctx['headers'])->assertOk()->json('data.data'));
+    }
+
     public function test_purchase_request_id_nullable_and_down_payment_false_works(): void
     {
         $ctx = $this->setUpTenant();

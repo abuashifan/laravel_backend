@@ -187,10 +187,13 @@ class SourceDocumentPickerService
 
         if ($search !== '') {
             $numberField = $definition['number'];
-            $query->where(function (Builder $inner) use ($numberField, $search): void {
-                $inner->where($numberField, 'like', '%'.$search.'%')
-                    ->orWhere('source_number', 'like', '%'.$search.'%')
-                    ->orWhere('notes', 'like', '%'.$search.'%');
+            // LOWER(): PostgreSQL (production) membedakan huruf besar/kecil pada LIKE.
+            $term = '%'.mb_strtolower($search).'%';
+            $query->where(function (Builder $inner) use ($numberField, $term): void {
+                $grammar = $inner->getQuery()->getGrammar();
+                $inner->whereRaw('LOWER('.$grammar->wrap($numberField).') LIKE ?', [$term])
+                    ->orWhereRaw('LOWER('.$grammar->wrap('source_number').') LIKE ?', [$term])
+                    ->orWhereRaw('LOWER('.$grammar->wrap('notes').') LIKE ?', [$term]);
             });
         }
 
