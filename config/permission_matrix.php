@@ -194,7 +194,7 @@ return [
             'gudang.settings' => ['Pengaturan gudang', ['view', 'edit']],
         ],
         'special' => [
-            'gudang.stock.approve' => 'Setujui penyesuaian dan selisih transfer',
+            'gudang.stock.approve' => 'Setujui penyesuaian, selisih, pelepasan kondisi dan dokumen balik',
             'gudang.stock.adjust' => 'Penyesuaian stok gudang',
             'gudang.audit.view' => 'Lihat log aktivitas gudang',
         ],

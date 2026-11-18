@@ -51,7 +51,7 @@ class ReportController extends GudangController
                 $query->selectRaw('w.name as gudang,i.sku,i.name as barang,sum(b.quantity_milli)/1000.0 as jumlah,i.unit as satuan')
                     ->groupBy('w.name', 'i.sku', 'i.name', 'i.unit')->orderBy('w.name')->orderBy('i.sku');
             } else {
-                $query->selectRaw('w.name as gudang,l.name as lokasi,i.sku,i.name as barang,b.quantity_milli/1000.0 as jumlah,i.unit as satuan');
+                $query->selectRaw('w.name as gudang,l.name as lokasi,l.kind as kondisi,i.sku,i.name as barang,b.quantity_milli/1000.0 as jumlah,i.unit as satuan');
                 if ($movement) {
                     $query->join('gudang_stock_documents as d', 'd.id', '=', 'b.document_id')
                         ->addSelect('d.id as dokumen', 'd.type as jenis', DB::raw('coalesce(b.occurred_at,d.posted_at) as waktu'))->orderByDesc('b.id');
@@ -71,8 +71,8 @@ class ReportController extends GudangController
                 'audit' => ['dokumen', 'jenis', 'aksi', 'pengguna', 'waktu', 'alasan'],
                 'low' => ['sku', 'barang', 'jumlah', 'minimum', 'satuan'],
                 'warehouse' => ['gudang', 'sku', 'barang', 'jumlah', 'satuan'],
-                'movements' => ['gudang', 'lokasi', 'sku', 'barang', 'jumlah', 'satuan', 'dokumen', 'jenis', 'waktu'],
-                default => ['gudang', 'lokasi', 'sku', 'barang', 'jumlah', 'satuan'],
+                'movements' => ['gudang', 'lokasi', 'kondisi', 'sku', 'barang', 'jumlah', 'satuan', 'dokumen', 'jenis', 'waktu'],
+                default => ['gudang', 'lokasi', 'kondisi', 'sku', 'barang', 'jumlah', 'satuan'],
             };
             $rows = $query->get()->map(fn ($row) => array_map(function ($key) use ($row) {
                 $value = $row->$key;

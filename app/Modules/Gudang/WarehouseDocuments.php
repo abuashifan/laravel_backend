@@ -9,11 +9,12 @@ use Illuminate\Validation\ValidationException;
 
 final class WarehouseDocuments
 {
-    public const PREFIX = ['receipt' => 'TRM', 'order' => 'PO', 'issue' => 'SJ', 'transfer' => 'TF', 'putaway' => 'PT', 'adjustment' => 'ADJ'];
+    public const PREFIX = ['receipt' => 'TRM', 'order' => 'PO', 'issue' => 'SJ', 'transfer' => 'TF', 'putaway' => 'PT', 'adjustment' => 'ADJ', 'release' => 'PLS', 'reversal' => 'KOR'];
 
     public const PERMISSION = [
         'receipt' => 'gudang.receipts.create', 'order' => 'gudang.receipts.create', 'issue' => 'gudang.issues.create',
         'transfer' => 'gudang.transfers.create', 'putaway' => 'gudang.transfers.create', 'adjustment' => 'gudang.stock.adjust',
+        'release' => 'gudang.stock.approve', 'reversal' => 'gudang.stock.approve',
     ];
 
     public function __construct(private StockLedger $ledger, private WarehouseAccess $access, private PermissionService $permissions) {}
@@ -21,12 +22,14 @@ final class WarehouseDocuments
     public function draft(array $input, int $actor): object
     {
         $type = $input['type'];
+        $this->check($type !== 'reversal', 'Dokumen balik dibuat melalui dokumen asal.');
         abort_unless($this->permissions->can(self::PERMISSION[$type]), 403);
         $target = $input['target_id'] ?? null;
-        $relocation = in_array($type, ['transfer', 'putaway'], true);
+        $relocation = in_array($type, ['transfer', 'putaway', 'release'], true);
         $this->check($relocation === ($target !== null), 'Lokasi tujuan wajib untuk perpindahan barang.');
         $this->access->requireLocations(array_filter([$input['location_id'], $target]));
         $db = DB::connection('gudang');
+        $this->requireStockCondition($type, (int) $input['location_id'], $target);
         if ($type === 'putaway') {
             $this->check($db->table('gudang_locations')->whereIn('id', [$input['location_id'], $target])->distinct()->count('warehouse_id') === 1, 'Putaway hanya di dalam satu gudang.');
         }
@@ -53,7 +56,7 @@ final class WarehouseDocuments
                 foreach ($lines as $item => $quantity) {
                     $db->table('gudang_doc_lines')->insert(['document_id' => $doc->id, 'item_id' => $item, 'quantity_milli' => $quantity]);
                 }
-                $this->audit($doc, 'draft', $actor, 'draft:'.$input['request_key'], $hash, null);
+                $this->audit($doc, 'draft', $actor, 'draft:'.$input['request_key'], $hash, $type === 'release' ? $input['source'] : null);
             }
 
             return $doc;
@@ -75,6 +78,23 @@ final class WarehouseDocuments
         }
     }
 
+    private function requireStockCondition(string $type, int $origin, ?int $target): void
+    {
+        $locations = DB::connection('gudang')->table('gudang_locations')->whereIn('id', array_filter([$origin, $target]))->get()->keyBy('id');
+        $restricted = in_array($locations[$origin]->kind, ['karantina', 'rusak'], true);
+        if ($type === 'issue') {
+            $this->check(! $restricted, 'Barang karantina atau rusak harus dilepas kondisinya sebelum pengeluaran normal.');
+        }
+        if ($type === 'release') {
+            $this->check($restricted && $target !== null, 'Pelepasan kondisi harus berasal dari lokasi karantina atau rusak.');
+            $this->check(in_array($locations[$target]->kind, ['simpan', 'terima'], true), 'Tujuan pelepasan harus lokasi simpan atau terima.');
+            $this->check($locations[$origin]->warehouse_id === $locations[$target]->warehouse_id, 'Pelepasan kondisi harus di dalam satu gudang.');
+        }
+        if ($restricted && in_array($type, ['transfer', 'putaway'], true)) {
+            $this->check($target !== null && in_array($locations[$target]->kind, ['karantina', 'rusak'], true), 'Gunakan dokumen pelepasan kondisi untuk memindahkan barang ke lokasi normal.');
+        }
+    }
+
     public function act(int $id, array $input, int $actor): object
     {
         $db = DB::connection('gudang');
@@ -91,13 +111,17 @@ final class WarehouseDocuments
             $locations = $doc->type === 'transfer' && $action === 'receive'
                 ? [$doc->target_id] : [$doc->location_id];
             $this->access->requireLocations(array_filter($locations));
+            if (in_array($action, ['post', 'ship'], true)) {
+                $this->access->requireLocations(array_filter([$doc->location_id, $doc->target_id]));
+                $this->requireStockCondition($doc->type, (int) $doc->location_id, $doc->target_id);
+            }
             $key = 'act:'.$input['request_key'];
             $amounts = [];
             foreach ($input['lines'] ?? [] as $line) {
                 $amounts[(int) $line['item_id']] = StockLedger::milli($line['quantity']);
             }
             ksort($amounts);
-            $note = $input['note'] ?? null;
+            $note = $input['note'] ?? ($doc->type === 'release' ? $doc->source : null);
             $resolution = $input['resolution'] ?? 'return';
             $acceptExtra = ($input['surplus'] ?? 'return') === 'accept';
             $signature = [$actor, $id, $action, $amounts, $note];
@@ -141,10 +165,10 @@ final class WarehouseDocuments
             foreach ($lines as $line) {
                 $item = (int) $line->item_id;
                 $qty = (int) $line->quantity_milli;
-                if ($action === 'ship' || ($action === 'post' && in_array($doc->type, ['issue', 'putaway'], true))) {
+                if ($action === 'ship' || ($action === 'post' && in_array($doc->type, ['issue', 'putaway', 'release'], true))) {
                     $this->ledger->move($id, $item, $doc->location_id, -$qty);
                 }
-                if ($action === 'post' && $doc->type === 'putaway') {
+                if ($action === 'post' && in_array($doc->type, ['putaway', 'release'], true)) {
                     $this->ledger->move($id, $item, $doc->target_id, $qty);
                 }
                 if (($action === 'post' && $doc->type === 'receipt') || $action === 'approve') {
@@ -188,6 +212,76 @@ final class WarehouseDocuments
             $doc->status = $status;
 
             return $doc;
+        }, 3);
+    }
+
+    public function reverse(int $id, array $input, int $actor): object
+    {
+        abort_unless($this->permissions->can('gudang.stock.approve'), 403);
+        $note = trim($input['note']);
+        $this->check($note !== '', 'Alasan koreksi wajib diisi.');
+        $key = 'reverse:'.$input['request_key'];
+        $hash = hash('sha256', json_encode([$id, $actor, $note], JSON_THROW_ON_ERROR));
+        $db = DB::connection('gudang');
+
+        return $db->transaction(function () use ($db, $id, $actor, $note, $key, $hash) {
+            $documents = $db->table('gudang_stock_documents');
+            $reference = (clone $documents)->where('id', $id)->firstOrFail();
+            // Penerimaan bertahap mengunci induk lebih dulu, sama dengan aksi receive.
+            $parent = $reference->type === 'receipt' && $reference->parent_id !== null
+                ? (clone $documents)->where('id', $reference->parent_id)->lockForUpdate()->firstOrFail()
+                : null;
+            $source = (clone $documents)->where('id', $id)->lockForUpdate()->firstOrFail();
+            $movements = $db->table('gudang_stock_movements')->where('document_id', $id)
+                ->selectRaw('item_id, location_id, sum(quantity_milli) as quantity_milli')
+                ->groupBy('item_id', 'location_id')->orderBy('item_id')->orderBy('location_id')->get();
+            $this->access->requireLocations($movements->pluck('location_id')->all());
+            $previous = (clone $documents)->where('request_key', $key)->first();
+            if ($previous) {
+                $this->check(hash_equals($previous->payload_hash, $hash), 'Kunci koreksi sudah digunakan untuk permintaan lain.');
+
+                return $previous;
+            }
+            $this->check($source->type !== 'reversal' && in_array($source->status, ['posted', 'approved', 'received', 'resolved'], true), 'Koreksi hanya untuk dokumen terposting yang sudah selesai.');
+            $this->check($movements->isNotEmpty(), 'Koreksi penerimaan bertahap melalui bukti masing-masing kiriman.');
+            $this->check($movements->contains(fn ($movement) => (int) $movement->quantity_milli !== 0), 'Saldo dokumen sudah kembali seluruhnya. Tidak ada mutasi bersih untuk dibalik.');
+            $this->check(! (clone $documents)->where('reverses_id', $id)->exists(), 'Dokumen ini sudah memiliki dokumen balik.');
+            $number = self::PREFIX[$source->type].'-'.$source->serial;
+            $reversal = (object) [
+                'public_id' => (string) Str::uuid(), 'type' => 'reversal', 'status' => 'posted',
+                'request_key' => $key, 'payload_hash' => $hash, 'user_id' => $actor,
+                'source' => 'Koreksi '.$number, 'reverses_id' => $id,
+                'document_date' => now('Asia/Jakarta')->toDateString(), 'posted_at' => now(),
+                'location_id' => $source->location_id, 'target_id' => $source->target_id,
+            ];
+            $inserted = (clone $documents)->insertOrIgnore((array) $reversal);
+            $reversal = (clone $documents)->where('request_key', $key)->first();
+            $this->check($reversal !== null && hash_equals($reversal->payload_hash, $hash), 'Kunci koreksi sudah digunakan untuk permintaan lain.');
+            if (! $inserted) {
+                return $reversal;
+            }
+            StockLedger::assignNumber($reversal);
+            foreach ($movements as $movement) {
+                $this->ledger->move($reversal->id, (int) $movement->item_id, (int) $movement->location_id, -(int) $movement->quantity_milli);
+            }
+            if ($parent) {
+                $received = $movements->groupBy('item_id');
+                foreach ($received as $item => $locations) {
+                    $quantity = (int) $locations->sum('quantity_milli');
+                    $updated = $db->table('gudang_doc_lines')->where('document_id', $parent->id)->where('item_id', $item)
+                        ->where('received_milli', '>=', $quantity)->decrement('received_milli', $quantity);
+                    $this->check($quantity > 0 && $updated === 1, 'Rincian penerimaan induk tidak sesuai dengan bukti kiriman.');
+                }
+                $remaining = $db->table('gudang_doc_lines')->where('document_id', $parent->id)->sum('received_milli');
+                $parentStatus = (int) $remaining > 0 ? 'partial' : ($parent->type === 'order' ? 'ordered' : 'draft');
+                (clone $documents)->where('id', $parent->id)->update(['status' => $parentStatus]);
+                $this->audit($parent, 'reverse_delivery', $actor, 'parent:'.$key, $hash, $note);
+            }
+            (clone $documents)->where('id', $id)->update(['status' => 'reversed']);
+            $this->audit($source, 'reverse', $actor, 'source:'.$key, $hash, $note);
+            $this->audit($reversal, 'reverse', $actor, $key, $hash, $note);
+
+            return $reversal;
         }, 3);
     }
 }

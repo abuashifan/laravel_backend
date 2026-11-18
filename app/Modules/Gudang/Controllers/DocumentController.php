@@ -16,13 +16,15 @@ class DocumentController extends GudangController
         $data = $request->validate(['page' => 'sometimes|integer|min:1', 'open' => 'sometimes|boolean', 'id' => 'sometimes|integer|min:1']);
         $types = array_keys(array_filter(WarehouseDocuments::PERMISSION, fn ($permission) => $permissions->can($permission)));
         if ($permissions->can('gudang.stock.approve')) {
-            array_push($types, 'transfer', 'adjustment');
+            $types = array_keys(WarehouseDocuments::PREFIX);
         }
         $db = DB::connection('gudang');
         $docs = $db->table('gudang_stock_documents as d')
             ->leftJoin('gudang_locations as l', 'l.id', '=', 'd.location_id')
             ->leftJoin('gudang_locations as t', 't.id', '=', 'd.target_id')
             ->leftJoin('gudang_stock_documents as parent', 'parent.id', '=', 'd.parent_id')
+            ->leftJoin('gudang_stock_documents as original', 'original.id', '=', 'd.reverses_id')
+            ->leftJoin('gudang_stock_documents as correction', 'correction.reverses_id', '=', 'd.id')
             ->whereIn('d.type', $types)
             ->where(function ($q) use ($access, $db) {
                 $q->whereIn('d.location_id', $access->locations())->orWhereIn('d.target_id', $access->locations())
@@ -34,21 +36,28 @@ class DocumentController extends GudangController
             })
             ->when(! empty($data['open']), fn ($q) => $q->whereIn('d.status', ['draft', 'ordered', 'partial', 'transit', 'disputed', 'pending']))
             ->when(isset($data['id']), fn ($q) => $q->where('d.id', $data['id']))
-            ->orderByDesc('d.id')->paginate(30, ['d.id', 'd.serial', 'd.type', 'd.public_id', 'd.status', 'd.source', 'parent.type as parent_type', 'parent.serial as parent_serial', 'd.location_id', 'd.target_id', 'd.document_date', 'l.name as origin', 't.name as destination']);
+            ->orderByDesc('d.id')->paginate(30, ['d.id', 'd.serial', 'd.type', 'd.public_id', 'd.status', 'd.source', 'parent.type as parent_type', 'parent.serial as parent_serial', 'original.type as reverses_type', 'original.serial as reverses_serial', 'correction.serial as reversal_serial', 'd.location_id', 'd.target_id', 'd.document_date', 'l.name as origin', 't.name as destination']);
         $lines = $db->table('gudang_doc_lines as x')->join('gudang_items as i', 'i.id', '=', 'x.item_id')
             ->whereIn('x.document_id', $docs->pluck('id'))->orderBy('x.id')
             ->get(['x.document_id', 'x.item_id', 'x.quantity_milli', 'x.received_milli', 'i.name', 'i.unit', 'i.sku'])->groupBy('document_id');
-        $legacyIds = $docs->where('type', 'receipt')->where('status', 'posted')->pluck('id')->diff($lines->keys());
+        $legacyIds = $docs->whereIn('type', ['receipt', 'reversal'])->pluck('id')->diff($lines->keys());
         $receipts = $db->table('gudang_stock_movements as m')->join('gudang_items as i', 'i.id', '=', 'm.item_id')
             ->join('gudang_locations as l', 'l.id', '=', 'm.location_id')
-            ->whereIn('m.document_id', $legacyIds)->orderBy('m.id')
+            ->whereIn('m.document_id', $legacyIds)->whereIn('m.location_id', $access->locations())->orderBy('m.id')
             ->get(['m.document_id', 'm.item_id', 'm.quantity_milli', 'm.quantity_milli as received_milli', 'i.name', 'i.unit', 'i.sku', 'l.name as location_name'])
             ->groupBy('document_id');
         $resolutions = $db->table('gudang_actions')->whereIn('document_id', $docs->pluck('id'))
             ->whereIn('action', ['resolve', 'resolve_return', 'resolve_loss', 'resolve_return_extra', 'resolve_loss_extra'])->pluck('action', 'document_id');
-        $visibleLocations = $access->locations()->whereIn('id', $docs->pluck('location_id')->merge($docs->pluck('target_id'))->filter())->pluck('id')->flip();
-        $docs->through(function ($doc) use ($lines, $receipts, $resolutions, $visibleLocations) {
-            $doc->access_origin = $visibleLocations->has($doc->location_id);
+        $visibleLocations = $access->locations()->pluck('id')->flip();
+        $movementLocations = $db->table('gudang_stock_movements')->whereIn('document_id', $docs->pluck('id'))
+            ->distinct()->get(['document_id', 'location_id'])->groupBy('document_id');
+        $effectiveDocuments = $db->table('gudang_stock_movements')->whereIn('document_id', $docs->pluck('id'))
+            ->groupBy('document_id', 'item_id', 'location_id')->havingRaw('sum(quantity_milli) <> 0')->pluck('document_id')->flip();
+        $reversalNotes = $db->table('gudang_actions')->whereIn('document_id', $docs->pluck('id'))->where('action', 'reverse')->pluck('note', 'document_id');
+        $docs->through(function ($doc) use ($lines, $receipts, $resolutions, $visibleLocations, $movementLocations, $effectiveDocuments, $reversalNotes, $permissions) {
+            $allLocations = $movementLocations->get($doc->id, collect());
+            $canAccessMovements = $allLocations->isNotEmpty() && $allLocations->every(fn ($row) => $visibleLocations->has($row->location_id));
+            $doc->access_origin = $doc->location_id === null ? $canAccessMovements : $visibleLocations->has($doc->location_id);
             $doc->access_target = $visibleLocations->has($doc->target_id ?? 0);
             $doc->resolution = match ($resolutions->get($doc->id)) {
                 'resolve_loss','resolve_loss_extra' => 'loss', 'resolve_return','resolve_return_extra','resolve' => 'return', default => null,
@@ -56,6 +65,11 @@ class DocumentController extends GudangController
             $doc->surplus_accepted = str_ends_with((string) $resolutions->get($doc->id), '_extra');
             $doc->number = WarehouseDocuments::PREFIX[$doc->type].'-'.$doc->serial;
             $doc->parent_number = $doc->parent_type ? WarehouseDocuments::PREFIX[$doc->parent_type].'-'.$doc->parent_serial : null;
+            $doc->reverses_number = $doc->reverses_type ? WarehouseDocuments::PREFIX[$doc->reverses_type].'-'.$doc->reverses_serial : null;
+            $doc->reversal_number = $doc->reversal_serial !== null ? 'KOR-'.$doc->reversal_serial : null;
+            $doc->reversal_note = $reversalNotes->get($doc->id);
+            $doc->can_reverse = $permissions->can('gudang.stock.approve') && $canAccessMovements && $effectiveDocuments->has($doc->id) && $doc->type !== 'reversal'
+                && in_array($doc->status, ['posted', 'approved', 'received', 'resolved'], true);
             $doc->lines = $lines->get($doc->id, $receipts->get($doc->id, []));
 
             return $doc;
@@ -67,7 +81,7 @@ class DocumentController extends GudangController
     public function store(Request $request, WarehouseDocuments $documents)
     {
         $input = $request->validate([
-            'type' => ['required', Rule::in(array_keys(WarehouseDocuments::PREFIX))],
+            'type' => ['required', Rule::in(array_diff(array_keys(WarehouseDocuments::PREFIX), ['reversal']))],
             'request_key' => 'required|string|max:80', 'source' => 'required|string|max:160',
             'location_id' => 'required|integer|exists:gudang.gudang_locations,id',
             'target_id' => 'nullable|integer|different:location_id|exists:gudang.gudang_locations,id',
@@ -89,6 +103,16 @@ class DocumentController extends GudangController
         ]);
 
         return $this->saved($documents->act($id, $input, $this->user($request)->id));
+    }
+
+    public function reverse(int $id, Request $request, WarehouseDocuments $documents)
+    {
+        $input = $request->validate([
+            'request_key' => 'required|string|max:72',
+            'note' => 'required|string|max:500',
+        ]);
+
+        return $this->saved($documents->reverse($id, $input, $this->user($request)->id));
     }
 
     private function saved(object $document)
