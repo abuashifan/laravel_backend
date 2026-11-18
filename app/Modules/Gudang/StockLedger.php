@@ -12,6 +12,7 @@ final class StockLedger
     {
         [$whole, $fraction] = array_pad(explode('.', ltrim((string) $value, '-'), 2), 2, '');
         $absolute = (int) $whole * 1000 + (int) str_pad($fraction, 3, '0');
+
         return str_starts_with((string) $value, '-') ? -$absolute : $absolute;
     }
 
@@ -19,10 +20,10 @@ final class StockLedger
     {
         $db = DB::connection('gudang');
         $seq = $db->table('gudang_number_sequences');
-        $seq->insertOrIgnore(['type'=>$doc->type]);
-        $seq->where('type',$doc->type)->increment('last_number');
+        $seq->insertOrIgnore(['type' => $doc->type]);
+        $seq->where('type', $doc->type)->increment('last_number');
         $doc->serial = $seq->value('last_number');
-        $db->table('gudang_stock_documents')->where('id',$doc->id)->update(['serial'=>$doc->serial]);
+        $db->table('gudang_stock_documents')->where('id', $doc->id)->update(['serial' => $doc->serial]);
     }
 
     /** Pemanggil harus memegang transaksi dokumen. Update bersyarat juga mengunci saldo di PostgreSQL. */

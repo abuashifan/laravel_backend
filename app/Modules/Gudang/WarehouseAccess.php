@@ -22,6 +22,7 @@ class WarehouseAccess
         if (! $this->owner()) {
             $warehouses->whereIn('id', $db->table('gudang_members')->select('warehouse_id')->where('user_id', auth()->id()));
         }
+
         return $warehouses;
     }
 

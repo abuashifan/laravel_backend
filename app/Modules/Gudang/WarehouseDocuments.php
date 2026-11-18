@@ -9,11 +9,11 @@ use Illuminate\Validation\ValidationException;
 
 final class WarehouseDocuments
 {
-    public const PREFIX = ['receipt'=>'TRM', 'order'=>'PO', 'issue'=>'SJ', 'transfer'=>'TF', 'putaway'=>'PT', 'adjustment'=>'ADJ'];
+    public const PREFIX = ['receipt' => 'TRM', 'order' => 'PO', 'issue' => 'SJ', 'transfer' => 'TF', 'putaway' => 'PT', 'adjustment' => 'ADJ'];
 
     public const PERMISSION = [
-        'receipt'=>'gudang.receipts.create', 'order'=>'gudang.receipts.create', 'issue'=>'gudang.issues.create',
-        'transfer'=>'gudang.transfers.create', 'putaway'=>'gudang.transfers.create', 'adjustment'=>'gudang.stock.adjust',
+        'receipt' => 'gudang.receipts.create', 'order' => 'gudang.receipts.create', 'issue' => 'gudang.issues.create',
+        'transfer' => 'gudang.transfers.create', 'putaway' => 'gudang.transfers.create', 'adjustment' => 'gudang.stock.adjust',
     ];
 
     public function __construct(private StockLedger $ledger, private WarehouseAccess $access, private PermissionService $permissions) {}
@@ -38,22 +38,24 @@ final class WarehouseDocuments
         }
         ksort($lines);
         $hash = hash('sha256', json_encode([$type, $actor, $input['source'], (int) $input['location_id'], (int) $target, $input['document_date'], $lines], JSON_THROW_ON_ERROR));
+
         return $db->transaction(function () use ($db, $input, $actor, $type, $target, $lines, $hash) {
             $docs = $db->table('gudang_stock_documents');
             $inserted = $docs->insertOrIgnore([
-                'public_id'=>(string) Str::uuid(), 'request_key'=>$input['request_key'], 'payload_hash'=>$hash,
-                'type'=>$type, 'status'=>'draft', 'source'=>$input['source'], 'user_id'=>$actor,
-                'location_id'=>$input['location_id'], 'target_id'=>$target, 'document_date'=>$input['document_date'], 'posted_at'=>now(),
+                'public_id' => (string) Str::uuid(), 'request_key' => $input['request_key'], 'payload_hash' => $hash,
+                'type' => $type, 'status' => 'draft', 'source' => $input['source'], 'user_id' => $actor,
+                'location_id' => $input['location_id'], 'target_id' => $target, 'document_date' => $input['document_date'], 'posted_at' => now(),
             ]);
             $doc = $docs->where('request_key', $input['request_key'])->firstOrFail();
             $this->check(hash_equals($doc->payload_hash, $hash), 'Kunci simpan sudah digunakan.');
             if ($inserted) {
                 StockLedger::assignNumber($doc);
                 foreach ($lines as $item => $quantity) {
-                    $db->table('gudang_doc_lines')->insert(['document_id'=>$doc->id, 'item_id'=>$item, 'quantity_milli'=>$quantity]);
+                    $db->table('gudang_doc_lines')->insert(['document_id' => $doc->id, 'item_id' => $item, 'quantity_milli' => $quantity]);
                 }
                 $this->audit($doc, 'draft', $actor, 'draft:'.$input['request_key'], $hash, null);
             }
+
             return $doc;
         }, 3);
     }
@@ -61,21 +63,22 @@ final class WarehouseDocuments
     private function audit(object $doc, string $action, int $actor, string $key, string $hash, ?string $note): void
     {
         DB::connection('gudang')->table('gudang_actions')->insert([
-            'document_id'=>$doc->id, 'user_id'=>$actor, 'action'=>$action, 'request_key'=>$key,
-            'payload_hash'=>$hash, 'note'=>$note, 'created_at'=>now(),
+            'document_id' => $doc->id, 'user_id' => $actor, 'action' => $action, 'request_key' => $key,
+            'payload_hash' => $hash, 'note' => $note, 'created_at' => now(),
         ]);
     }
 
     private function check(bool $ok, string $message): void
     {
         if (! $ok) {
-            throw ValidationException::withMessages(['document'=>$message]);
+            throw ValidationException::withMessages(['document' => $message]);
         }
     }
 
     public function act(int $id, array $input, int $actor): object
     {
         $db = DB::connection('gudang');
+
         return $db->transaction(function () use ($db, $id, $input, $actor) {
             $docs = $db->table('gudang_stock_documents')->where('id', $id);
             $doc = (clone $docs)->lockForUpdate()->firstOrFail();
@@ -95,39 +98,50 @@ final class WarehouseDocuments
             }
             ksort($amounts);
             $note = $input['note'] ?? null;
-            $hash = hash('sha256', json_encode([$actor,$id,$action,$amounts,$note], JSON_THROW_ON_ERROR));
+            $resolution = $input['resolution'] ?? 'return';
+            $acceptExtra = ($input['surplus'] ?? 'return') === 'accept';
+            $signature = [$actor, $id, $action, $amounts, $note];
+            if ($action === 'resolve' && $acceptExtra) {
+                $this->access->requireLocations([$doc->location_id, $doc->target_id]);
+                $signature[] = 'accept_extra';
+            }
+            if ($action === 'resolve' && $resolution === 'loss') {
+                $signature[] = 'loss';
+            }
+            $hash = hash('sha256', json_encode($signature, JSON_THROW_ON_ERROR));
             $previous = $db->table('gudang_actions')->where('request_key', $key)->first();
             if ($previous) {
                 $this->check(hash_equals($previous->payload_hash, $hash), 'Kunci aksi sudah digunakan.');
+
                 return $doc;
             }
             $allowed = match ($doc->status) {
-                'draft' => $doc->type === 'receipt' ? ['cancel','post','receive'] : ['cancel', match ($doc->type) {
-                    'transfer'=>'ship', 'adjustment'=>'submit', 'order'=>'order', default=>'post',
+                'draft' => $doc->type === 'receipt' ? ['cancel', 'post', 'receive'] : ['cancel', match ($doc->type) {
+                    'transfer' => 'ship', 'adjustment' => 'submit', 'order' => 'order', default => 'post',
                 }],
                 'ordered','partial','transit' => ['receive'],
                 'disputed' => ['resolve'],
-                'pending' => ['approve','reject'],
+                'pending' => ['approve', 'reject'],
                 default => [],
             };
             $this->check(in_array($action, $allowed, true), 'Status dokumen sudah berubah. Muat ulang dokumen.');
             $lines = $db->table('gudang_doc_lines')->where('document_id', $id)->orderBy('item_id')->get();
             $status = match ($action) {
-                'cancel'=>'cancelled', 'ship'=>'transit', 'submit'=>'pending', 'approve'=>'approved', 'reject'=>'rejected',
-                'resolve'=>'resolved', 'receive'=>'received', 'order'=>'ordered', default=>'posted',
+                'cancel' => 'cancelled', 'ship' => 'transit', 'submit' => 'pending', 'approve' => 'approved', 'reject' => 'rejected',
+                'resolve' => 'resolved', 'receive' => 'received', 'order' => 'ordered', default => 'posted',
             };
             if ($action === 'receive') {
-                $this->check(count($amounts) === $lines->count() && !array_diff(array_keys($amounts), $lines->pluck('item_id')->all()), 'Isi jumlah aktual semua barang.');
+                $this->check(count($amounts) === $lines->count() && ! array_diff(array_keys($amounts), $lines->pluck('item_id')->all()), 'Isi jumlah aktual semua barang.');
                 $this->check($doc->type === 'transfer' || array_sum($amounts) > 0, 'Isi jumlah penerimaan.');
             }
             if ($action === 'resolve') {
-                $this->check(is_string($note) && trim($note) !== '', 'Alasan pengembalian selisih ke asal wajib diisi.');
+                $this->check(is_string($note) && trim($note) !== '', 'Alasan keputusan selisih wajib diisi.');
             }
             $delivery = [];
             foreach ($lines as $line) {
                 $item = (int) $line->item_id;
                 $qty = (int) $line->quantity_milli;
-                if ($action === 'ship' || ($action === 'post' && in_array($doc->type, ['issue','putaway'], true))) {
+                if ($action === 'ship' || ($action === 'post' && in_array($doc->type, ['issue', 'putaway'], true))) {
                     $this->ledger->move($id, $item, $doc->location_id, -$qty);
                 }
                 if ($action === 'post' && $doc->type === 'putaway') {
@@ -139,31 +153,40 @@ final class WarehouseDocuments
                 if ($action === 'receive') {
                     $actual = $amounts[$item];
                     $remaining = $qty - $line->received_milli;
-                    $this->check($actual >= 0 && $actual <= $remaining, 'Jumlah diterima melebihi sisa dokumen.');
+                    $this->check($actual >= 0 && ($doc->type === 'transfer' || $actual <= $remaining), 'Jumlah diterima melebihi sisa dokumen.');
                     if ($doc->type === 'transfer') {
-                        $this->ledger->move($id, $item, $doc->target_id, $actual);
+                        $this->ledger->move($id, $item, $doc->target_id, min($actual, $remaining));
                     } elseif ($actual > 0) {
-                        $delivery[] = ['item_id'=>$item,'location_id'=>$doc->location_id,
-                            'quantity'=>sprintf('%d.%03d',intdiv($actual,1000),$actual%1000)];
+                        $delivery[] = ['item_id' => $item, 'location_id' => $doc->location_id,
+                            'quantity' => sprintf('%d.%03d', intdiv($actual, 1000), $actual % 1000)];
                     }
                     $db->table('gudang_doc_lines')->where('id', $line->id)->increment('received_milli', $actual);
-                    if ($actual < $remaining) {
+                    if ($actual !== $remaining) {
                         $status = $doc->type === 'transfer' ? 'disputed' : 'partial';
                     }
                 }
                 if ($action === 'resolve') {
-                    $this->ledger->move($id, $item, $doc->location_id, $qty - $line->received_milli);
+                    $missing = $qty - $line->received_milli;
+                    if ($missing > 0 && $resolution === 'return') {
+                        $this->ledger->move($id, $item, $doc->location_id, $missing);
+                    }
+                    if ($missing < 0 && $acceptExtra) {
+                        $this->ledger->move($id, $item, $doc->location_id, $missing);
+                        $this->ledger->move($id, $item, $doc->target_id, -$missing);
+                    }
                 }
             }
             if ($delivery !== []) {
                 $this->ledger->receive([
-                    'request_key'=>'delivery-'.hash('sha256',$key),'source'=>$doc->source,
-                    'parent_id'=>$id,'document_date'=>now('Asia/Jakarta')->toDateString(),'lines'=>$delivery,
-                ],$actor);
+                    'request_key' => 'delivery-'.hash('sha256', $key), 'source' => $doc->source,
+                    'parent_id' => $id, 'document_date' => now('Asia/Jakarta')->toDateString(), 'lines' => $delivery,
+                ], $actor);
             }
-            $docs->update(['status'=>$status, 'posted_at'=>now()]);
-            $this->audit($doc, $action, $actor, $key, $hash, $note);
+            $docs->update(['status' => $status, 'posted_at' => now()]);
+            $auditAction = $action === 'resolve' ? 'resolve_'.$resolution.($acceptExtra ? '_extra' : '') : $action;
+            $this->audit($doc, $auditAction, $actor, $key, $hash, $note);
             $doc->status = $status;
+
             return $doc;
         }, 3);
     }

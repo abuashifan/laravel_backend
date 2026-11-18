@@ -2,12 +2,12 @@
 
 namespace App\Modules\Gudang\Controllers;
 
-use App\Modules\Gudang\StockLedger;
 use App\Modules\Gudang\ItemCatalog;
+use App\Modules\Gudang\StockLedger;
 use App\Modules\Gudang\WarehouseAccess;
-use Illuminate\Support\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -21,6 +21,7 @@ class InventoryController extends GudangController
         foreach ($items as $item) {
             $item->barcodes = $codes->get($item->id, collect())->pluck('code');
         }
+
         return $this->successResponse($items);
     }
 
@@ -49,14 +50,14 @@ class InventoryController extends GudangController
         $location = $request->validate([
             'warehouse_id' => ['required', 'integer', 'exists:gudang.gudang_warehouses,id'],
             'name' => ['required', 'string', 'max:100'],
-            'parent_id' => ['nullable','integer'],
-            'kind' => ['sometimes','in:simpan,terima,karantina,rusak'],
-            'barcode' => ['nullable','string','max:100','unique:gudang.gudang_locations,barcode'],
+            'parent_id' => ['nullable', 'integer'],
+            'kind' => ['sometimes', 'in:simpan,terima,karantina,rusak'],
+            'barcode' => ['nullable', 'string', 'max:100', 'unique:gudang.gudang_locations,barcode'],
         ]);
-        abort_unless($access->warehouses()->where('id',$location['warehouse_id'])->exists(), 403);
+        abort_unless($access->warehouses()->where('id', $location['warehouse_id'])->exists(), 403);
         $locations = DB::connection('gudang')->table('gudang_locations');
-        if (!empty($location['parent_id'])) {
-            abort_unless((clone $locations)->where('id',$location['parent_id'])->where('warehouse_id',$location['warehouse_id'])->exists(), 422, 'Induk lokasi harus satu gudang.');
+        if (! empty($location['parent_id'])) {
+            abort_unless((clone $locations)->where('id', $location['parent_id'])->where('warehouse_id', $location['warehouse_id'])->exists(), 422, 'Induk lokasi harus satu gudang.');
         }
         if (! $locations->insertOrIgnore($location)) {
             throw ValidationException::withMessages(['name' => 'Nama lokasi sudah digunakan di gudang ini.']);
@@ -76,7 +77,8 @@ class InventoryController extends GudangController
             'lines.*.quantity' => ['required', 'numeric', 'gt:0', 'regex:/^\d{1,8}(\.\d{1,3})?$/D'],
         ]);
 
-        $access->requireLocations(array_column($input['lines'],'location_id'));
+        $access->requireLocations(array_column($input['lines'], 'location_id'));
+
         return $this->successResponse($ledger->receive($input, $this->user($request)->id), 'Penerimaan tercatat.');
     }
 

@@ -52,7 +52,7 @@ return new class extends Migration
             $t->foreignId('item_id')->constrained('gudang_items');
             $t->bigInteger('quantity_milli');
             $t->bigInteger('received_milli')->default(0);
-            $t->unique(['document_id','item_id']);
+            $t->unique(['document_id', 'item_id']);
         });
         $schema->create('gudang_actions', function (Blueprint $t) {
             $t->id();
@@ -76,21 +76,21 @@ return new class extends Migration
         $schema->dropIfExists('gudang_actions');
         $schema->dropIfExists('gudang_doc_lines');
         $schema->table('gudang_stock_documents', function (Blueprint $t) {
-            foreach (['location_id','target_id','parent_id'] as $column) {
+            foreach (['location_id', 'target_id', 'parent_id'] as $column) {
                 $t->dropConstrainedForeignId($column);
             }
             $t->dropIndex(['status']);
-            $t->dropColumn(['status','document_date']);
+            $t->dropColumn(['status', 'document_date']);
         });
         $schema->dropIfExists('gudang_parties');
         $schema->dropIfExists('gudang_members');
         $schema->table('gudang_locations', function (Blueprint $t) {
             $t->dropConstrainedForeignId('parent_id');
             $t->dropUnique(['barcode']);
-            $t->dropColumn(['kind','barcode']);
+            $t->dropColumn(['kind', 'barcode']);
         });
         $schema->dropIfExists('gudang_barcodes');
         $schema->dropIfExists('gudang_item_photos');
-        $schema->table('gudang_items', fn (Blueprint $t) => $t->dropColumn(['category','minimum_milli']));
+        $schema->table('gudang_items', fn (Blueprint $t) => $t->dropColumn(['category', 'minimum_milli']));
     }
 };
