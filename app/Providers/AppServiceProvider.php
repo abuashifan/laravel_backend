@@ -12,6 +12,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        $this->app->bind(\App\Shared\Export\TabularFileReader::class, \App\Modules\Imports\Services\SpreadsheetReaderFactory::class);
         // Cross-cutting bindings moved to App\Shared\Providers\SharedServiceProvider (Fase 0).
     }
 

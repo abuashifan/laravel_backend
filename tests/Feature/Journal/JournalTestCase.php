@@ -114,29 +114,34 @@ abstract class JournalTestCase extends TestCase
      */
     protected function setUpPosTenant(Company $company): void
     {
-        $posPath = database_path('tenants/test_pos_'.$company->id.'_'.uniqid(getmypid().'_', true).'.sqlite');
-        File::ensureDirectoryExists(dirname($posPath));
-        File::put($posPath, '');
-        $this->registerTenantFile($posPath);
+        $this->setUpProductTenant($company, TenantDatabase::PRODUCT_POS);
+    }
+
+    protected function setUpProductTenant(Company $company, string $product): void
+    {
+        $productPath = database_path('tenants/test_'.$product.'_'.$company->id.'_'.uniqid(getmypid().'_', true).'.sqlite');
+        File::ensureDirectoryExists(dirname($productPath));
+        File::put($productPath, '');
+        $this->registerTenantFile($productPath);
 
         TenantDatabase::query()->create([
             'company_id' => $company->id,
-            'product' => TenantDatabase::PRODUCT_POS,
-            'database_name' => basename($posPath),
-            'database_path' => $posPath,
+            'product' => $product,
+            'database_name' => basename($productPath),
+            'database_path' => $productPath,
             'driver' => 'sqlite',
             'status' => 'active',
         ]);
 
-        app(TenantConnectionManager::class)->connect($posPath, 'pos');
-        Artisan::call('migrate', ['--database' => 'pos', '--path' => 'database/migrations/tenant_pos', '--force' => true]);
+        app(TenantConnectionManager::class)->connect($productPath, $product);
+        Artisan::call('migrate', ['--database' => $product, '--path' => \App\Shared\Tenant\TenantMigrationService::migrationPathFor($product), '--force' => true]);
 
-        // Rute tulis POS butuh langganan Kasir pemilik (mode hanya-baca, Fase 2).
-        if ($company->created_by && ! Subscription::query()->where('user_id', $company->created_by)->where('product', 'pos')->exists()) {
+        // Rute tulis memerlukan langganan produk pemilik.
+        if ($company->created_by && ! Subscription::query()->where('user_id', $company->created_by)->where('product', $product)->exists()) {
             Subscription::query()->create([
                 'user_id' => $company->created_by,
-                'plan_id' => Plan::query()->where('code', Plan::POS_CODE)->value('id'),
-                'product' => 'pos',
+                'plan_id' => Plan::query()->where('code', $product)->value('id'),
+                'product' => $product,
                 'starts_at' => now()->subDay(),
                 'ends_at' => now()->addMonth(),
                 'billing_cycle' => 'monthly',

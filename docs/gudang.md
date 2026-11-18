@@ -1,32 +1,53 @@
-# Finlite Gudang: peta ringkas backend (Fase 0)
+# Finlite Gudang
 
-Rencana dan riset: `Finlite_knowladge/plans/ekosistem-aplikasi-pendukung/10-…` dan `11-…`.
-Pola mengikuti `docs/pos-dan-multi-produk.md`; baca itu dulu untuk konsep tenant per produk.
+Gudang memakai Finlite ID, anggota perusahaan, dan langganan produk dari platform.
+Data operasional berada di koneksi `gudang` dengan migrasi `database/migrations/tenant_gudang`.
+Perusahaan dapat menggunakan Gudang sendiri. Panduan arsitektur multi-produk tersedia di
+[docs/pos-dan-multi-produk.md](pos-dan-multi-produk.md).
 
-## Status
+## Alur inventaris Fase 1
 
-Fase 0 (fondasi platform) selesai di sisi backend. **Belum ada fitur gudang**: tenant
-Gudang baru berisi tabel `gudang_settings`. Barang, lokasi, dan buku stok datang di Fase 1.
-
-## Yang ditambahkan
-
-| Hal | Lokasi |
+| Dokumen | Perubahan stok |
 | --- | --- |
-| Produk `gudang` (suffix `_gudang`, koneksi `gudang`) | `config/tenant.php` `products`, `config/database.php` |
-| Migrasi tenant Gudang | `database/migrations/tenant_gudang` |
-| Paket `gudang` dan `gudang_free` (harga 0 = tempat; barang maks 100 untuk gratis) | migrasi `2026_11_15_000001_…`, `PlanSeeder`, `Plan::GUDANG_CODE` |
-| Izin `gudang.*` | `config/permission_matrix.php` modul `gudang` |
-| Modul | `app/Modules/Gudang` (`GET /gudang/status`, `POST /gudang/activate`, `GET /gudang/bootstrap`) |
-| Admin: perpanjang/buka kunci langganan produk `gudang` | `ClientUserController` |
-| Tes | `tests/Feature/Gudang/GudangFoundationTest.php` |
+| Penerimaan langsung | Pemasok, barang dan lokasi dicatat bersama mutasi masuk. |
+| PO atau penerimaan bertahap | Setiap kiriman aktual menghasilkan bukti penerimaan sendiri dengan UUID dan referensi ke dokumen induk. Sisa kuantitas tetap terbuka. |
+| Surat jalan | Draf dapat dibatalkan. Penerbitan mengurangi saldo dan surat jalan dapat dicetak. |
+| Putaway | Satu transaksi memindahkan barang antar lokasi dalam gudang yang sama. |
+| Transfer | Kirim mengurangi stok asal dan membuka kuantitas dalam perjalanan. Terima menambah jumlah aktual di tujuan. Kekurangan dapat dikembalikan atau dikonfirmasi hilang. Kelebihan ditahan sampai pengembalian atau penerimaan dikonfirmasi. Menerima kelebihan juga mengurangi saldo asal dalam transaksi yang sama. Setiap keputusan mencatat pelaku dan alasan. |
+| Penyesuaian | Alasan dan kuantitas bertanda disimpan di draf. Saldo berubah setelah persetujuan khusus. |
 
-Aktivasi memakai jalur umum yang sama: `POST /companies` dengan `product=gudang`,
-atau `POST /companies/{id}/products/gudang/activate`. Rute data Gudang memakai
-`company.access:gudang` dan `product.subscription:gudang` (hanya-baca saat langganan habis).
+`StockLedger::move` menulis saldo dan mutasi di dalam transaksi dokumen dan log aktivitas.
+Satuan dasar memiliki ketelitian 0,001. Pengeluaran memeriksa saldo melalui pembaruan
+bersyarat pada database. Pemilik atau pengelola berizin dapat mengaktifkan saldo negatif.
+Nomor berurutan per jenis dipakai di dokumen cetak. Integrasi Finlite Project kelak
+merujuk perusahaan, produk, jenis dan UUID tetap. Kuantitas gudang dicatat di sini.
+Pembebanan material proyek dan jurnal memerlukan transaksi dalam domain masing-masing.
 
-## Belum ada (sengaja)
+## Akses dan penggunaan
 
-- Pendaftaran mandiri dan masa coba Gudang (Kasir punya `PosSignupController`); sementara paket diberikan admin.
-- Harga dan batas final paket: menunggu keputusan pemilik produk.
-- Aplikasi frontend Gudang (repositori terpisah, belum dibuat).
-- Panel admin client: tab Gudang.
+Pengguna baru meminta kode lewat email dan memverifikasinya untuk memulai masa coba 14 hari.
+Pengiriman kode menggunakan konfigurasi mail dan cache Laravel. Pengguna lama dapat memakai
+email dan kata sandi Finlite. Masa coba hanya diberikan untuk riwayat langganan Gudang yang memenuhi syarat.
+Selain izin fitur dalam matriks, akses lokasi staf mengikuti gudang yang diberikan pemilik.
+Langganan habis membatasi akses menjadi hanya-baca.
+
+| API di bawah `/api/gudang` | Kegunaan |
+| --- | --- |
+| `status`, `activate`, `bootstrap` | Aktivasi dan sesi tenant |
+| `items`, `locations`, `warehouses`, `parties`, `members`, `settings` | Master data, penugasan gudang, pengaturan |
+| `receipts`, `documents`, `documents/{id}/actions` | Penerimaan langsung, draf dan perubahan status |
+| `stock`, `items/{id}/card`, `reports` | Saldo, kartu stok, laporan dengan filter serta ekspor Excel |
+| `import/template`, `import` | Pratinjau dan komit baris Excel/CSV, termasuk saldo awal per lokasi dan tanggal |
+
+Impor membaca berkas yang sama saat pratinjau dan saat disimpan. Setiap baris valid
+menggunakan layanan barang dan buku stok. Baris salah mendapat pesan sendiri. Pengiriman
+ulang berkas saldo awal yang sama untuk lokasi yang sama mengacu ke dokumen terdahulu.
+
+## Verifikasi
+
+GitHub Actions menjalankan suite Laravel, pengujian izin dan impor, serta uji tenant PostgreSQL
+pada `tests/TenantPgsql/GudangLoadTest.php`. Fixture meliputi 5.000 SKU dan 3.500 mutasi
+untuk tujuh tanggal dokumen. Dua proses bersaing mengeluarkan stok terakhir. Target baca
+250 ms diukur lewat endpoint aplikasi pada runner. Repo `finlite-gudang` menjalankan
+lint, build dan Playwright dengan backend pada revisi yang tercatat di workflow.
+Validasi lapangan memerlukan operasi satu minggu dan pembandingan hasil hitung fisik.
