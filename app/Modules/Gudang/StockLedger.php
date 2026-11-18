@@ -73,7 +73,8 @@ final class StockLedger
             $inserted = $documents->insertOrIgnore([
                 'public_id' => (string) Str::uuid(),
                 'type' => 'receipt',
-                'document_date' => $input['document_date'] ?? now()->toDateString(),
+                'document_date' => $input['document_date'] ?? now('Asia/Jakarta')->toDateString(),
+                'parent_id' => $input['parent_id'] ?? null,
                 'location_id' => count(array_unique(array_column($lines, 'location_id'))) === 1 ? $lines[0]['location_id'] : null,
                 'user_id' => $actor,
                 'source' => $input['source'],

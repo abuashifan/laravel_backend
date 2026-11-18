@@ -78,7 +78,7 @@ final class WarehouseDocuments
         $db = DB::connection('gudang');
         return $db->transaction(function () use ($db, $id, $input, $actor) {
             $docs = $db->table('gudang_stock_documents')->where('id', $id);
-            $doc = $docs->lockForUpdate()->firstOrFail();
+            $doc = (clone $docs)->lockForUpdate()->firstOrFail();
             $action = $input['action'];
             $permission = match ($action) {
                 'approve','reject','resolve' => 'gudang.stock.approve',
@@ -102,7 +102,7 @@ final class WarehouseDocuments
                 return $doc;
             }
             $allowed = match ($doc->status) {
-                'draft' => ['cancel', match ($doc->type) {
+                'draft' => $doc->type === 'receipt' ? ['cancel','post','receive'] : ['cancel', match ($doc->type) {
                     'transfer'=>'ship', 'adjustment'=>'submit', 'order'=>'order', default=>'post',
                 }],
                 'ordered','partial','transit' => ['receive'],
@@ -123,6 +123,7 @@ final class WarehouseDocuments
             if ($action === 'resolve') {
                 $this->check(is_string($note) && trim($note) !== '', 'Alasan pengembalian selisih ke asal wajib diisi.');
             }
+            $delivery = [];
             foreach ($lines as $line) {
                 $item = (int) $line->item_id;
                 $qty = (int) $line->quantity_milli;
@@ -139,7 +140,12 @@ final class WarehouseDocuments
                     $actual = $amounts[$item];
                     $remaining = $qty - $line->received_milli;
                     $this->check($actual >= 0 && $actual <= $remaining, 'Jumlah diterima melebihi sisa dokumen.');
-                    $this->ledger->move($id, $item, $doc->target_id ?? $doc->location_id, $actual);
+                    if ($doc->type === 'transfer') {
+                        $this->ledger->move($id, $item, $doc->target_id, $actual);
+                    } elseif ($actual > 0) {
+                        $delivery[] = ['item_id'=>$item,'location_id'=>$doc->location_id,
+                            'quantity'=>sprintf('%d.%03d',intdiv($actual,1000),$actual%1000)];
+                    }
                     $db->table('gudang_doc_lines')->where('id', $line->id)->increment('received_milli', $actual);
                     if ($actual < $remaining) {
                         $status = $doc->type === 'transfer' ? 'disputed' : 'partial';
@@ -149,9 +155,16 @@ final class WarehouseDocuments
                     $this->ledger->move($id, $item, $doc->location_id, $qty - $line->received_milli);
                 }
             }
+            if ($delivery !== []) {
+                $this->ledger->receive([
+                    'request_key'=>'delivery-'.hash('sha256',$key),'source'=>$doc->source,
+                    'parent_id'=>$id,'document_date'=>now('Asia/Jakarta')->toDateString(),'lines'=>$delivery,
+                ],$actor);
+            }
             $docs->update(['status'=>$status, 'posted_at'=>now()]);
             $this->audit($doc, $action, $actor, $key, $hash, $note);
-            return $docs->firstOrFail();
+            $doc->status = $status;
+            return $doc;
         }, 3);
     }
 }

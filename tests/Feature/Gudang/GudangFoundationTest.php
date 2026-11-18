@@ -185,6 +185,8 @@ class GudangFoundationTest extends TestCase
         $this->assertSame('partial',$partial->json('data.status'),$partial->getContent());
         $act($order,'receive',$actual('8'))->assertUnprocessable();
         $act($order,'receive',$actual('7.5'))->assertOk()->assertJsonPath('data.status','received');
+        $this->assertSame(2,DB::connection('gudang')->table('gudang_stock_documents')->where('parent_id',$order)->where('type','receipt')->count());
+        $this->getJson('/api/gudang/documents',$h)->assertOk()->assertJsonPath('data.data.0.parent_number','PO-1');
         $issue = $draft('issue','3');
         $act($issue,'post',['request_key'=>'ulang'])->assertOk();
         $act($issue,'post',['request_key'=>'ulang'])->assertOk();
@@ -203,6 +205,10 @@ class GudangFoundationTest extends TestCase
         $this->assertEquals(5500,$stock->firstWhere('location_id',$origin)['quantity_milli']);
         $this->assertEquals(3000,$stock->firstWhere('location_id',$target)['quantity_milli']);
         $this->getJson('/api/gudang/reports?kind=low&q=89901',$h)->assertOk()->assertJsonPath('data.total',1);
+        $rack = $this->postJson('/api/gudang/locations',['warehouse_id'=>1,'parent_id'=>$origin,'name'=>'Bin 2','kind'=>'simpan','barcode'=>'BIN-02'],$h)->assertCreated()->json('data.id');
+        $putaway = $draft('putaway','0.5',$rack);
+        $act($putaway,'post')->assertOk();
+        $act($draft('receipt','2'),'cancel')->assertOk()->assertJsonPath('data.status','cancelled');
         $this->getJson('/api/gudang/reports?kind=audit',$h)->assertOk();
         $this->getJson('/api/gudang/reports?kind=movements&export=1',$h)->assertOk()->assertDownload('gudang-movements.xlsx');
 
@@ -211,7 +217,8 @@ class GudangFoundationTest extends TestCase
         $this->assignTestPermissions($member,['gudang.stock.view','gudang.issues.create','gudang.stock.adjust']);
         $this->putJson('/api/gudang/members/'.$staff->id,['warehouses'=>[DB::connection('gudang')->table('gudang_locations')->where('id',$origin)->value('warehouse_id')]],$h)->assertOk();
         Sanctum::actingAs($staff,['*']);
-        $this->getJson('/api/gudang/stock',$h)->assertOk()->assertJsonCount(1,'data');
+        $scoped = $this->getJson('/api/gudang/stock',$h)->assertOk()->assertJsonCount(2,'data')->json('data');
+        $this->assertNotContains($target,array_column($scoped,'location_id'));
         $this->getJson('/api/gudang/reports?kind=stock&warehouse_id=2',$h)->assertOk()->assertJsonPath('data.total',0);
         $this->postJson('/api/gudang/documents',['type'=>'issue','request_key'=>'outscope','source'=>'x',
             'document_date'=>'2026-11-18','location_id'=>$target,'lines'=>[['item_id'=>$item,'quantity'=>'1']]],$h)->assertForbidden();
