@@ -67,6 +67,7 @@ try {
 }
 PHP
             ,$tenant->database_name,(string)$posted->id,(string)$location],base_path(),['TENANT_TEST_PGSQL_URL'=>env('TENANT_TEST_PGSQL_URL')]);
+        $db = DB::connection('gudang');
         $db->beginTransaction();
         try {
             $ledger->move($posted->id,1,$location,-1000);
@@ -77,7 +78,7 @@ PHP
                     ->where('application_name','gudang_concurrent_issue')->where('wait_event_type','Lock')->exists();
                 if (!$waiting) usleep(30_000);
             } while (!$waiting && $worker->isRunning() && microtime(true)<$limit);
-            $this->assertTrue($waiting,'Penulis kedua harus menunggu kunci saldo. '.$worker->getErrorOutput());
+            $this->assertTrue($waiting,'Penulis kedua harus menunggu kunci saldo. '.$worker->getErrorOutput().$worker->getOutput());
             $db->commit();
             $this->assertSame(0,$worker->wait(),$worker->getErrorOutput());
             $this->assertSame('stock-rejected',$worker->getOutput());

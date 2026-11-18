@@ -178,8 +178,10 @@ class GudangFoundationTest extends TestCase
         };
         $actual = fn ($qty) => ['lines'=>[['item_id'=>$item,'quantity'=>$qty]]];
         $order = $draft('order','12.5');
-        $act($order,'order')->assertOk();
-        $act($order,'receive',$actual('5'))->assertOk()->assertJsonPath('data.status','partial');
+        $this->assertNotNull($order,'Draf harus menghasilkan ID dokumen.');
+        $act($order,'order')->assertOk()->assertJsonPath('data.status','ordered');
+        $partial = $act($order,'receive',$actual('5'))->assertOk();
+        $this->assertSame('partial',$partial->json('data.status'),$partial->getContent());
         $act($order,'receive',$actual('8'))->assertUnprocessable();
         $act($order,'receive',$actual('7.5'))->assertOk()->assertJsonPath('data.status','received');
         $issue = $draft('issue','3');

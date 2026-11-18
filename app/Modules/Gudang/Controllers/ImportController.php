@@ -5,7 +5,7 @@ namespace App\Modules\Gudang\Controllers;
 use App\Modules\Gudang\ItemCatalog;
 use App\Modules\Gudang\StockLedger;
 use App\Modules\Gudang\WarehouseAccess;
-use App\Modules\Imports\Services\SpreadsheetReaderFactory;
+use App\Shared\Export\TabularFileReader;
 use App\Shared\Export\ExcelExportService;
 use App\Shared\Permission\PermissionService;
 use Illuminate\Http\Request;
@@ -22,15 +22,15 @@ class ImportController extends GudangController
         return $excel->downloadTemplate(['headers'=>self::COLUMNS,'rows'=>[],'filename'=>'templat-barang-gudang']);
     }
 
-    public function upload(Request $request, SpreadsheetReaderFactory $factory, ItemCatalog $catalog, StockLedger $ledger, WarehouseAccess $access, PermissionService $permissions)
+    public function upload(Request $request, TabularFileReader $reader, ItemCatalog $catalog, StockLedger $ledger, WarehouseAccess $access, PermissionService $permissions)
     {
         $input = $request->validate(['file'=>'required|file|max:4096|extensions:xlsx,csv','commit'=>'required|boolean','location_id'=>'required|integer']);
         $location = (int) $input['location_id'];
         $access->requireLocations([$location]);
         $file = $input['file'];
-        $reader = $factory->make(strtolower($file->getClientOriginalExtension()));
+        $extension = strtolower($file->getClientOriginalExtension());
         $path = $file->getRealPath();
-        if (array_diff(['SKU','Nama','Satuan'],$reader->headers($path))) {
+        if (array_diff(['SKU','Nama','Satuan'],$reader->fileHeaders($extension,$path))) {
             throw ValidationException::withMessages(['file'=>'Kolom wajib: SKU, Nama, Satuan. Gunakan templat.']);
         }
         $signature = hash_file('sha256',$path);
@@ -38,7 +38,7 @@ class ImportController extends GudangController
         $result = [];
         $db->beginTransaction();
         try {
-            foreach ($reader->rows($path) as $row => $values) {
+            foreach ($reader->fileRows($extension,$path) as $row => $values) {
                 abort_if(count($result) >= 5000,422,'Maksimum 5.000 baris per berkas.');
                 try {
                     $action = $db->transaction(function () use ($db,$catalog,$ledger,$permissions,$row,$values,$signature,$location) {
