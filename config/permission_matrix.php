@@ -187,6 +187,7 @@ return [
         'features' => [
             'gudang.items' => ['Barang', $master],
             'gudang.warehouses' => ['Gudang & lokasi', $master],
+            'gudang.receipts' => ['Penerimaan barang', ['create']],
             'gudang.stock' => ['Stok', ['view', 'export']],
             'gudang.settings' => ['Pengaturan gudang', ['view', 'edit']],
         ],

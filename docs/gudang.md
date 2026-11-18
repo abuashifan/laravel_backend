@@ -5,8 +5,21 @@ Pola mengikuti `docs/pos-dan-multi-produk.md`; baca itu dulu untuk konsep tenant
 
 ## Status
 
-Fase 0 (fondasi platform) selesai di sisi backend. **Belum ada fitur gudang**: tenant
-Gudang baru berisi tabel `gudang_settings`. Barang, lokasi, dan buku stok datang di Fase 1.
+Fase 1 dimulai dengan satu gudang per tenant, beberapa lokasi dan penerimaan tanpa PO.
+Master barang memakai SKU unik dan satuan dasar. Penerimaan multi-baris mencatat dokumen,
+mutasi dan saldo per barang/lokasi secara atomik, dalam kelipatan 0,001 satuan.
+Kartu stok menampilkan dokumen asal, waktu dan lokasi. Aktor disimpan di dokumen.
+
+Finlite Project dan produk Finlite lain kelak dapat merujuk dokumen dengan identitas
+perusahaan, produk `gudang`, jenis dokumen dan `public_id` (UUID stabil). Nomor TRM
+dipakai pada tampilan. Setiap produk membaca data melalui kontrak layanan yang
+memverifikasi perusahaan dan izin. Kuantitas fisik dimiliki Gudang, valuasi dan jurnal
+dimiliki Accounting. Pencatatan biaya atau pemakaian bahan proyek memerlukan transaksi
+tersendiri. Penerimaan saat ini hanya mengubah stok fisik.
+
+Endpoint tenant: GET/POST `/gudang/items` dan `/gudang/locations`, POST
+`/gudang/receipts`, GET `/gudang/stock` dan GET `/gudang/items/{id}/card`.
+Pengulangan penerimaan dengan request_key dan isi yang sama mengembalikan dokumen awal.
 
 ## Yang ditambahkan
 
@@ -28,5 +41,5 @@ atau `POST /companies/{id}/products/gudang/activate`. Rute data Gudang memakai
 
 - Pendaftaran mandiri dan masa coba Gudang (Kasir punya `PosSignupController`); sementara paket diberikan admin.
 - Harga dan batas final paket: menunggu keputusan pemilik produk.
-- Aplikasi frontend Gudang (repositori terpisah, belum dibuat).
+- Pengeluaran, transfer, dan persetujuan penyesuaian stok.
 - Panel admin client: tab Gudang.

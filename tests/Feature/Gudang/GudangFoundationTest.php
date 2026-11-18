@@ -126,6 +126,36 @@ class GudangFoundationTest extends TestCase
         // yang sudah diuji generik untuk Kasir; rute tulis Gudang pertama datang di Fase 1.
         $this->getJson('/api/gudang/bootstrap', $headers)->assertOk()
             ->assertJsonPath('data.subscription.read_only', true);
+        $this->postJson('/api/gudang/receipts', [], $headers)->assertStatus(402);
+    }
+
+    public function test_receipt_is_atomic_and_retry_safe_and_stock_is_visible_by_location(): void
+    {
+        $this->client(gudang: true);
+        $company = $this->postJson('/api/companies', ['name' => 'Gudang Pilot', 'product' => 'gudang'])->assertCreated()->json('data.id');
+        $headers = ['X-Company-ID' => (string) $company];
+        $sku = ['sku' => 'B01', 'name' => 'Baut', 'unit' => 'kg'];
+        $item = $this->postJson('/api/gudang/items', $sku, $headers)->assertCreated()->json('data.id');
+        $this->postJson('/api/gudang/items', $sku, $headers)->assertUnprocessable();
+        $default = $this->getJson('/api/gudang/locations', $headers)->assertOk()->json('data.0');
+        $rack = $this->postJson('/api/gudang/locations', [
+            'warehouse_id' => $default['warehouse_id'], 'name' => 'Rak A',
+        ], $headers)->assertCreated()->json('data.id');
+
+        $line = ['item_id' => $item, 'location_id' => $rack, 'quantity' => '1.125'];
+        $receipt = ['request_key' => 'retry-1', 'source' => 'SJ-1', 'lines' => [$line]];
+        $this->postJson('/api/gudang/receipts', array_merge($receipt, ['lines' => [$line, array_merge($line, ['item_id' => 9999])]]), $headers)
+            ->assertUnprocessable();
+        $this->getJson('/api/gudang/stock', $headers)->assertOk()->assertJsonCount(0, 'data');
+        $posted = $this->postJson('/api/gudang/receipts', $receipt, $headers)->assertOk()->json('data');
+        $this->assertNotEmpty($posted['public_id']);
+        $this->postJson('/api/gudang/receipts', $receipt, $headers)->assertOk()->assertJsonPath('data.public_id', $posted['public_id']);
+        $this->postJson('/api/gudang/receipts', array_merge($receipt, ['source' => 'SJ-2']), $headers)->assertUnprocessable();
+        $this->getJson('/api/gudang/stock', $headers)->assertOk()->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.quantity_milli', 1125)->assertJsonPath('data.0.location_name', 'Rak A');
+        $this->getJson("/api/gudang/items/$item/card", $headers)->assertOk()->assertJsonPath('data.total', 1)
+            ->assertJsonPath('data.data.0.public_id', $posted['public_id']);
+        $this->getJson("/api/gudang/items/$item/card?location_id=".$default['id'], $headers)->assertOk()->assertJsonPath('data.total', 0);
     }
 
     private function subscribe(User $user, string $product): void
