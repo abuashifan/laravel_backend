@@ -42,6 +42,7 @@ Route::middleware(['auth:sanctum', 'company.access:gudang', 'product.subscriptio
     Route::get('/documents', [DocumentController::class, 'index'])->middleware('permission:gudang.receipts.create|gudang.issues.create|gudang.transfers.create|gudang.stock.adjust|gudang.stock.approve');
     Route::post('/documents', [DocumentController::class, 'store'])->middleware('permission:gudang.receipts.create|gudang.issues.create|gudang.transfers.create|gudang.stock.adjust|gudang.stock.approve');
     Route::post('/documents/{id}/actions', [DocumentController::class, 'act'])->whereNumber('id')->middleware('permission:gudang.receipts.create|gudang.issues.create|gudang.transfers.create|gudang.stock.adjust|gudang.stock.approve');
+    Route::post('/documents/{id}/reverse', [DocumentController::class, 'reverse'])->whereNumber('id')->middleware('permission:gudang.stock.approve');
     Route::get('/reports', [ReportController::class, 'show'])->middleware('permission:gudang.stock.view|gudang.audit.view');
     Route::get('/import/template', [ImportController::class, 'template'])->middleware('permission:gudang.items.create');
     Route::post('/import', [ImportController::class, 'upload'])->middleware('permission:gudang.items.create');

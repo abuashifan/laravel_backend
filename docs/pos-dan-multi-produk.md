@@ -403,3 +403,37 @@ dan HPP, jadi bisa menyimpang dari nilai stok POS setelah opname), persediaan
 awal (stok awal produk), sinkron produk POS <-> Akuntansi (opsional, bawaan
 tidak sinkron), dan tautan dari jurnal ke layar shift di aplikasi akuntansi
 (jurnal bisa disaring lewat Jenis Jurnal -> Rekap Kasir/Stok Masuk Kasir/Bayar Hutang Kasir).
+
+## Gudang — inventaris dan pelengkap Fase 1
+
+Gudang memakai produk/koneksi `gudang`, migrasi `database/migrations/tenant_gudang`
+dan modul `app/Modules/Gudang`. Akun dan perusahaan mengikuti platform bersama.
+Kuantitas fisik Gudang memiliki buku stok tersendiri melalui `StockLedger::move`.
+Kontrak integrasi Accounting, Kasir dan Project mengikuti pemilik angka per produk.
+
+- Pengeluaran normal dibatasi pada lokasi simpan/terima. Transfer dan putaway dari
+  karantina/rusak tetap menuju lokasi terbatas.
+- Dokumen `release` bernomor PLS memindahkan barang dari karantina/rusak ke
+  simpan/terima dalam gudang yang sama. Pembuat dan pelaksana wajib memiliki
+  `gudang.stock.approve` serta akses kedua lokasi. Alasan tersimpan pada dokumen dan audit.
+- `POST /gudang/documents/{id}/reverse` memakai izin `gudang.stock.approve`.
+  Payload berisi `request_key` maksimal 72 karakter dan `note` wajib maksimal 500 karakter.
+  Respons mengikuti kontrak penyimpanan dokumen, termasuk UUID, nomor dan status.
+- Dokumen `reversal` bernomor KOR dibuat oleh layanan koreksi dan ditautkan melalui
+  `reverses_id` yang unik. Histori mutasi asal dipertahankan. Mutasi bersih per barang
+  dan lokasi dibalik melalui buku stok dalam satu transaksi bersama status dan audit.
+- Koreksi memerlukan akses semua lokasi mutasi sumber dan dokumen selesai dengan
+  status posted/approved/received/resolved. Status transit/disputed diselesaikan lebih
+  dulu. Sumber berstatus reversed sesudah koreksi. Dokumen dengan saldo bersih nol
+  sudah terselesaikan tanpa perubahan saldo yang perlu dibalik.
+- Koreksi bukti kiriman penerimaan bertahap mengurangi jumlah diterima pada induk
+  dan membuka sisa PO/penerimaan. Penguncian induk mendahului bukti kiriman.
+- Pengulangan kunci dengan payload sama mengembalikan dokumen yang sama. Kunci
+  dengan sumber/alasan berbeda ditolak. Pengurangan saldo mengikuti pengaturan
+  `allow_negative`, dengan pemeriksaan ketersediaan saldo secara atomik saat stok negatif dibatasi.
+- Daftar dokumen menyajikan `can_reverse`, `reverses_number`, `reversal_number` dan
+  `reversal_note`. Laporan per lokasi dan pergerakan menambahkan kolom `kondisi`.
+
+Eksekusi tes backend dan browser untuk pelengkap ini mengikuti kampanye simulasi
+Fase 6 pada dokumen 13 Finlite_knowladge. Bukti CI Fase 1 sebelumnya terikat pada
+commit yang dicatat dalam roadmap.
