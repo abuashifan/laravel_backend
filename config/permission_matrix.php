@@ -187,11 +187,14 @@ return [
         'features' => [
             'gudang.items' => ['Barang', $master],
             'gudang.warehouses' => ['Gudang & lokasi', $master],
+            'gudang.issues' => ['Surat jalan', ['create']],
+            'gudang.transfers' => ['Transfer & putaway', ['create']],
             'gudang.receipts' => ['Penerimaan barang', ['create']],
             'gudang.stock' => ['Stok', ['view', 'export']],
             'gudang.settings' => ['Pengaturan gudang', ['view', 'edit']],
         ],
         'special' => [
+            'gudang.stock.approve' => 'Setujui penyesuaian dan selisih transfer',
             'gudang.stock.adjust' => 'Penyesuaian stok gudang',
             'gudang.audit.view' => 'Lihat log aktivitas gudang',
         ],
