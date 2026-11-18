@@ -15,6 +15,16 @@ final class StockLedger
         return str_starts_with((string) $value, '-') ? -$absolute : $absolute;
     }
 
+    public static function assignNumber(object $doc): void
+    {
+        $db = DB::connection('gudang');
+        $seq = $db->table('gudang_number_sequences');
+        $seq->insertOrIgnore(['type'=>$doc->type]);
+        $seq->where('type',$doc->type)->increment('last_number');
+        $doc->serial = $seq->value('last_number');
+        $db->table('gudang_stock_documents')->where('id',$doc->id)->update(['serial'=>$doc->serial]);
+    }
+
     /** Pemanggil harus memegang transaksi dokumen. Update bersyarat juga mengunci saldo di PostgreSQL. */
     public function move(int $document, int $item, int $location, int $amount): void
     {
@@ -76,6 +86,7 @@ final class StockLedger
                 throw ValidationException::withMessages(['request_key' => 'Kunci simpan sudah dipakai untuk dokumen lain.']);
             }
             if ($inserted) {
+                self::assignNumber($document);
                 $db->table('gudang_actions')->insert([
                     'document_id' => $document->id, 'user_id' => $actor, 'action' => 'receive',
                     'request_key' => 'receipt:'.$input['request_key'], 'payload_hash' => $hash, 'created_at' => now(),
@@ -88,7 +99,7 @@ final class StockLedger
             return (object) [
                 'id' => $document->id,
                 'public_id' => $document->public_id,
-                'number' => 'TRM-'.$document->id,
+                'number' => 'TRM-'.$document->serial,
             ];
         }, 3);
     }

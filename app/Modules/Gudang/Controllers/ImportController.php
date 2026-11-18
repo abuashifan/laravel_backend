@@ -19,7 +19,7 @@ class ImportController extends GudangController
 
     public function template(ExcelExportService $excel)
     {
-        return $excel->downloadTemplate(['headers'=>self::COLUMNS,'rows'=>[],'filename'=>'templat-barang-gudang']);
+        return $excel->downloadTemplate(['headers'=>self::COLUMNS,'fields'=>['sku','name','unit','category','barcode','minimum','opening','opening_date'],'rows'=>[],'filename'=>'templat-barang-gudang']);
     }
 
     public function upload(Request $request, TabularFileReader $reader, ItemCatalog $catalog, StockLedger $ledger, WarehouseAccess $access, PermissionService $permissions)

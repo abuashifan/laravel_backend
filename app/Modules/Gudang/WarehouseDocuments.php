@@ -48,6 +48,7 @@ final class WarehouseDocuments
             $doc = $docs->where('request_key', $input['request_key'])->firstOrFail();
             $this->check(hash_equals($doc->payload_hash, $hash), 'Kunci simpan sudah digunakan.');
             if ($inserted) {
+                StockLedger::assignNumber($doc);
                 foreach ($lines as $item => $quantity) {
                     $db->table('gudang_doc_lines')->insert(['document_id'=>$doc->id, 'item_id'=>$item, 'quantity_milli'=>$quantity]);
                 }

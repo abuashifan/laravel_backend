@@ -179,7 +179,8 @@ class GudangFoundationTest extends TestCase
         $actual = fn ($qty) => ['lines'=>[['item_id'=>$item,'quantity'=>$qty]]];
         $order = $draft('order','12.5');
         $this->assertNotNull($order,'Draf harus menghasilkan ID dokumen.');
-        $act($order,'order')->assertOk()->assertJsonPath('data.status','ordered');
+        $ordered = $act($order,'order')->assertOk();
+        $this->assertSame('ordered',$ordered->json('data.status'),$ordered->getContent());
         $partial = $act($order,'receive',$actual('5'))->assertOk();
         $this->assertSame('partial',$partial->json('data.status'),$partial->getContent());
         $act($order,'receive',$actual('8'))->assertUnprocessable();
@@ -215,6 +216,44 @@ class GudangFoundationTest extends TestCase
         $this->postJson('/api/gudang/documents',['type'=>'issue','request_key'=>'outscope','source'=>'x',
             'document_date'=>'2026-11-18','location_id'=>$target,'lines'=>[['item_id'=>$item,'quantity'=>'1']]],$h)->assertForbidden();
         $act($adjust,'approve')->assertForbidden();
+    }
+
+    public function test_import_preview_and_retry_keep_one_opening_receipt_and_report_bad_rows(): void
+    {
+        $this->client(gudang:true);
+        $company = $this->postJson('/api/companies',['name'=>'Impor Gudang','product'=>'gudang'])->assertCreated()->json('data.id');
+        $headers = ['X-Company-ID'=>(string)$company];
+        $location = $this->getJson('/api/gudang/locations',$headers)->assertOk()->json('data.0.id');
+        $csv = "SKU,Nama,Satuan,Barcode,Saldo awal,Tanggal\nB01,Baut,kg,89901,1.125,2026-11-18\nB02,,kg,,,\n";
+        $upload = fn ($commit) => $this->postJson('/api/gudang/import', [
+            'file'=>\Illuminate\Http\UploadedFile::fake()->createWithContent('barang.csv',$csv),
+            'commit'=>$commit, 'location_id'=>$location,
+        ],$headers);
+        $upload(false)->assertOk()->assertJsonPath('data.0.result','Baru')->assertJsonPath('data.1.result','Gagal');
+        $this->getJson('/api/gudang/items',$headers)->assertOk()->assertJsonCount(0,'data');
+        $upload(true)->assertOk()->assertJsonPath('data.1.result','Gagal');
+        $upload(true)->assertOk()->assertJsonPath('data.0.result','Diperbarui');
+        $this->getJson('/api/gudang/stock',$headers)->assertOk()->assertJsonPath('data.0.quantity_milli',1125);
+        $this->assertEquals('2026-11-18',DB::connection('gudang')->table('gudang_stock_documents')->value('document_date'));
+    }
+
+    public function test_signup_requires_email_code_and_grants_only_one_gudang_trial(): void
+    {
+        $email = 'gudang-pilot@example.test';
+        $signup = ['email'=>$email,'name'=>'Pilot','password'=>'test-password','code'=>'AABBCCDDEEFF'];
+        $this->postJson('/api/gudang/register',$signup)->assertUnprocessable();
+        $key = 'gudang-signup:'.hash('sha256',$email);
+        \Illuminate\Support\Facades\Mail::fake();
+        $this->postJson('/api/gudang/verification-code',['email'=>$email])->assertOk();
+        $this->assertTrue(\Illuminate\Support\Facades\Cache::has($key));
+        for ($i=0;$i<2;$i++) {
+            \Illuminate\Support\Facades\Cache::put($key,\Illuminate\Support\Facades\Hash::make($signup['code']),60);
+            $this->postJson('/api/gudang/register',$signup)->assertOk();
+        }
+        $user = User::where('email',$email)->firstOrFail();
+        $this->assertNotNull($user->email_verified_at);
+        $this->assertSame(1,Subscription::where('user_id',$user->id)->count());
+        $this->assertSame('gudang',Subscription::where('user_id',$user->id)->value('product'));
     }
 
     private function subscribe(User $user, string $product): void

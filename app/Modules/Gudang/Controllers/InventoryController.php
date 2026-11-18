@@ -104,7 +104,7 @@ class InventoryController extends GudangController
             ->where('m.item_id', $item)
             ->when(isset($filters['location_id']), fn ($query) => $query->where('m.location_id', $filters['location_id']))
             ->orderByDesc('m.id')
-            ->paginate(50, ['m.id', 'm.quantity_milli', 'm.document_id', 'd.public_id', 'd.type', 'd.source', DB::raw('coalesce(m.occurred_at, d.posted_at) as posted_at'), 'l.name as location_name']);
+            ->paginate(50, ['m.id', 'm.quantity_milli', 'm.document_id', 'd.serial', 'd.public_id', 'd.type', 'd.source', DB::raw('coalesce(m.occurred_at, d.posted_at) as posted_at'), 'l.name as location_name']);
 
         $movements->through(function ($movement) {
             $movement->posted_at = Carbon::parse($movement->posted_at, 'UTC')->toISOString();

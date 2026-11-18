@@ -28,12 +28,12 @@ class DocumentController extends GudangController
             })
             ->when(!empty($data['open']), fn ($q) => $q->whereIn('d.status', ['draft','ordered','partial','transit','disputed','pending']))
             ->when(isset($data['id']), fn ($q) => $q->where('d.id',$data['id']))
-            ->orderByDesc('d.id')->paginate(30, ['d.id','d.type','d.public_id','d.status','d.source','d.location_id','d.target_id','d.document_date','l.name as origin','t.name as destination']);
+            ->orderByDesc('d.id')->paginate(30, ['d.id','d.serial','d.type','d.public_id','d.status','d.source','d.location_id','d.target_id','d.document_date','l.name as origin','t.name as destination']);
         $lines = $db->table('gudang_doc_lines as x')->join('gudang_items as i','i.id','=','x.item_id')
             ->whereIn('x.document_id',$docs->pluck('id'))->orderBy('x.id')
             ->get(['x.document_id','x.item_id','x.quantity_milli','x.received_milli','i.name','i.unit','i.sku'])->groupBy('document_id');
         $docs->through(function ($doc) use ($lines) {
-            $doc->number = WarehouseDocuments::PREFIX[$doc->type].'-'.$doc->id;
+            $doc->number = WarehouseDocuments::PREFIX[$doc->type].'-'.$doc->serial;
             $doc->lines = $lines->get($doc->id, []);
             return $doc;
         });
