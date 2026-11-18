@@ -121,6 +121,7 @@ class RoutePermissionEnforcementTest extends JournalTestCase
     {
         $ctx = $this->setUpTenant(role: 'noaccess');
         $this->setUpPosTenant($ctx['company']);
+        $this->setUpProductTenant($ctx['company'], 'gudang');
         $this->enforcePlanFeatures(false);
         $membership = CompanyUser::query()
             ->where('company_id', $ctx['company']->id)

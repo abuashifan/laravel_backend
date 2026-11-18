@@ -6,6 +6,7 @@ use App\Modules\Gudang\StockLedger;
 use App\Shared\Subscription\PlanOwnerResolver;
 use App\Shared\Subscription\SubscriptionService;
 use App\Shared\Tenant\TenantContext;
+use Illuminate\Support\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -106,6 +107,12 @@ class InventoryController extends GudangController
             ->when(isset($filters['location_id']), fn ($query) => $query->where('m.location_id', $filters['location_id']))
             ->orderByDesc('m.id')
             ->paginate(50, ['m.id', 'm.quantity_milli', 'm.document_id', 'd.public_id', 'd.type', 'd.source', 'd.posted_at', 'l.name as location_name']);
+
+        $movements->through(function ($movement) {
+            $movement->posted_at = Carbon::parse($movement->posted_at, 'UTC')->toISOString();
+
+            return $movement;
+        });
 
         return $this->successResponse($movements);
     }
