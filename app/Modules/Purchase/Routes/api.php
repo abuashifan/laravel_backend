@@ -83,7 +83,8 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('purchase')->group
     Route::get('/payments', [VendorPaymentController::class, 'index'])->middleware('permission:purchase.payments.view');
     Route::get('/payments/adjacent', [VendorPaymentController::class, 'adjacent'])->middleware('permission:purchase.payments.view');
     Route::post('/payments', [VendorPaymentController::class, 'store'])->middleware('permission:purchase.payments.create');
-    Route::get('/payments/vendor-context', [VendorPaymentController::class, 'vendorContext'])->middleware('permission:purchase.payments.view');
+    Route::get('/payments/vendor-context', [VendorPaymentController::class, 'vendorContext'])->middleware('permission:purchase.payments.view|purchase.payments.create|purchase.payments.edit');
+    Route::get('/payments/cash-balance', [VendorPaymentController::class, 'cashBalance'])->middleware('permission:purchase.payments.view|purchase.payments.create|purchase.payments.edit');
     Route::get('/payments/{id}', [VendorPaymentController::class, 'show'])->middleware('permission:purchase.payments.view');
     Route::patch('/payments/{id}/post', [VendorPaymentController::class, 'post'])->middleware('permission:purchase.payments.approve');
     Route::patch('/payments/{id}/void', [VendorPaymentController::class, 'void'])->middleware('permission:purchase.payments.delete');

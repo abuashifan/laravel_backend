@@ -2,6 +2,7 @@
 
 namespace App\Modules\Purchase\Services;
 
+use App\Modules\CashBank\Services\CashBankReportService;
 use App\Modules\Journal\Models\JournalEntry;
 use App\Modules\MasterData\Models\AccountMapping;
 use App\Modules\Purchase\Models\VendorBill;
@@ -53,6 +54,7 @@ class VendorPaymentService
         private readonly TransactionVoidEffectService $voidEffectService,
         private readonly VendorDepositService $depositService,
         private readonly APSubsidiaryLedgerService $ledgerService,
+        private readonly CashBankReportService $cashBankReports,
         private readonly ?AuditLogService $auditLogService = null,
     ) {}
 
@@ -295,6 +297,14 @@ class VendorPaymentService
         $bill->save();
 
         return $bill->refresh();
+    }
+
+    public function cashBalance(int $accountId, string $date, ?int $paymentId = null): array
+    {
+        $payment = $paymentId ? VendorPayment::query()->findOrFail($paymentId) : null;
+        $journalId = $payment?->status === 'posted' ? $payment->journal_entry_id : null;
+
+        return $this->cashBankReports->accountBalance($accountId, $date, $journalId === null ? null : (int) $journalId);
     }
 
     public function vendorContext(int $vendorId): array

@@ -7,6 +7,7 @@ use App\Modules\Purchase\Models\VendorPayment;
 use App\Modules\Purchase\Requests\PurchaseRequestActionRequest;
 use App\Modules\Purchase\Requests\StoreVendorPaymentRequest;
 use App\Modules\Purchase\Requests\UpdateVendorPaymentRequest;
+use App\Modules\Purchase\Requests\VendorPaymentCashBalanceRequest;
 use App\Modules\Purchase\Services\VendorPaymentService;
 use App\Shared\Api\ApiResponse;
 use App\Shared\Api\ResolvesAdjacentRecords;
@@ -41,6 +42,16 @@ class VendorPaymentController extends Controller
         $data = $request->validate(['vendor_id' => ['required', 'integer']]);
 
         return $this->successResponse($this->service->vendorContext((int) $data['vendor_id']), 'Vendor payment context retrieved successfully');
+    }
+
+    public function cashBalance(VendorPaymentCashBalanceRequest $request): JsonResponse
+    {
+        $data = $request->validated();
+
+        return $this->successResponse($this->service->cashBalance(
+            (int) $data['cash_bank_account_id'], $data['payment_date'],
+            isset($data['payment_id']) ? (int) $data['payment_id'] : null,
+        ), 'Saldo kas/bank untuk pratinjau pembayaran.');
     }
 
     public function update(UpdateVendorPaymentRequest $request, int $id): JsonResponse
