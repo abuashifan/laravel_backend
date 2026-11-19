@@ -437,3 +437,51 @@ Kontrak integrasi Accounting, Kasir dan Project mengikuti pemilik angka per prod
 Eksekusi tes backend dan browser untuk pelengkap ini mengikuti kampanye simulasi
 Fase 6 pada dokumen 13 Finlite_knowladge. Bukti CI Fase 1 sebelumnya terikat pada
 commit yang dicatat dalam roadmap.
+
+
+## Gudang — implementasi Fase 2
+
+Implementasi Fase 2 tersedia; penerimaan program dijadwalkan pada Fase 6.
+Akun dan perusahaan bersama menggunakan produk `gudang`; jembatan
+Accounting dan Project belum tersedia. Referensi integrasi mendatang menggunakan
+UUID dokumen stabil, dengan kuantitas fisik tetap dimiliki Gudang.
+
+- Retur pelanggan/pemasok parsial merujuk sumber, kuota tersisa dan batch asal.
+  Retry idempoten menghasilkan satu efek. Multi-satuan memakai jumlah dasar tepat
+  sampai 3 desimal dan snapshot input, satuan, faktor serta jumlah dasar yang tetap.
+- Batch/kedaluwarsa opsional menyediakan FEFO, karantina dan telusur maju-mundur.
+  Aktivasi pelacakan pada barang dengan histori memetakan saldo dan mutasi lama
+  ke `HIST-<id barang>` sebagai batch karantina untuk ditinjau. Migrasi skema
+  tidak mengaktifkan pelacakan secara otomatis.
+- Opname buta memakai snapshot cutoff; input menggambarkan kondisi saat cutoff dan
+  mutasi setelahnya dipertahankan. Selisih di atas maksimum 1 satuan atau 10%
+  memerlukan penghitung kedua. Persetujuan, pembatalan, histori dan pembalikan tersedia.
+- ABC berdasarkan volume keluar 90 hari dapat ditimpa; jadwal A7/B30/C90.
+  Minimum, maksimum dan titik pesan per gudang mendukung saran lead time bawaan
+  7 hari dan stok pengaman, disertai waktu perhitungan.
+- Laporan mencakup kedaluwarsa 30 hari, lambat 30 hari, mati 90 hari dan akurasi
+  opname; XLSX lengkap. PDF label Code128B ASCII memakai vektor asli, ukuran
+  30–150 × 20–100 mm (bawaan 60 × 35 mm) dan transliterasi nama ke ASCII.
+
+Kontrak tambahan (awalan `/api/gudang`, isolasi perusahaan dan langganan tetap berlaku):
+
+| Rute | Isi dan izin |
+| --- | --- |
+| `GET/POST /units`, `PUT /units/{id}` | Satuan per barang; tambah memakai izin master buat/edit, ubah memakai edit |
+| `GET/POST /batches`, `PATCH /batches/{id}` | Identitas lot dan kedaluwarsa; perubahan status wajib izin `gudang.stock.approve` dan alasan serta akses seluruh saldo lot |
+| `GET /batch-stock`, `GET /batches/{id}/trace` | Saldo dan mutasi lot di lokasi yang diizinkan; `gudang.stock.view` |
+| `GET/PUT /stock-rules` | Aturan per barang/gudang; tulis memakai `gudang.settings.edit` |
+| `GET /counts`, `GET /counts/{id}`, `GET /counts/due` | Sesi dan jadwal; izin `gudang.counts.view` |
+| `POST /counts`, `POST /counts/{id}/lines`, `POST /counts/{id}/actions` | Membuat, menghitung, mengajukan, menyetujui/menolak atau membatalkan; izin `counts.view` bersama `counts.create`, `counts.count` atau `counts.approve` sesuai tindakan |
+| `GET /insights?kind=...` | `abc`, `replenishment`, `expiry`, `aging`, `counts`; lihat stok dan tambahan izin ekspor untuk `export=1`; laporan akurasi lokasi per sesi memakai seluruh baris yang dihitung sebelum pencarian/paginasi |
+| `GET /labels` | PDF label barang/lokasi; `gudang.stock.export`, akses gudang, dimensi dan pilihan item/lokasi |
+
+Sesi opname yang menyertakan beberapa gudang hanya terlihat oleh pengguna dengan
+akses seluruh lokasi sesi. Hasil hitung memakai satuan dasar. Sesi aktif mengklaim
+lokasi untuk mencegah sesi tumpang tindih; mutasi biasa tetap berjalan. Persetujuan
+menerapkan selisih terhadap snapshot pada saldo terkini melalui buku stok. Saldo
+batch harus tersedia bahkan bila pengaturan stok agregat mengizinkan negatif.
+
+Lint, build, tes backend, Playwright dan PostgreSQL seluruhnya dijadwalkan pada
+Fase 6 sesuai rencana simulasi dokumen 13. Tidak ada hasil penerimaan Fase 2 yang
+sudah diklaim. Pilot fisik menunggu gudang tersedia.

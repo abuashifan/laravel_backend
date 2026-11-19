@@ -1,11 +1,14 @@
 <?php
 
+use App\Modules\Gudang\Controllers\CountController;
 use App\Modules\Gudang\Controllers\DocumentController;
 use App\Modules\Gudang\Controllers\GudangActivationController;
 use App\Modules\Gudang\Controllers\ImportController;
+use App\Modules\Gudang\Controllers\InsightController;
 use App\Modules\Gudang\Controllers\InventoryController;
 use App\Modules\Gudang\Controllers\ReportController;
 use App\Modules\Gudang\Controllers\SignupController;
+use App\Modules\Gudang\Controllers\StockControlController;
 use App\Modules\Gudang\Controllers\WarehouseController;
 use Illuminate\Support\Facades\Route;
 
@@ -22,9 +25,27 @@ Route::middleware(['auth:sanctum'])->prefix('gudang')->group(function () {
 
 // `product.subscription:gudang`: langganan pemilik habis = hanya-baca (402 untuk tulis).
 Route::middleware(['auth:sanctum', 'company.access:gudang', 'product.subscription:gudang'])->prefix('gudang')->group(function () {
-    Route::get('/items', [InventoryController::class, 'items'])->middleware('permission:gudang.items.view|gudang.items.create|gudang.items.edit|gudang.receipts.create|gudang.issues.create|gudang.transfers.create|gudang.stock.adjust|gudang.stock.approve');
+    Route::get('/insights', [InsightController::class, 'show']);
+    Route::get('/labels', [InsightController::class, 'labels']);
+    Route::get('/units', [StockControlController::class, 'units']);
+    Route::post('/units', [StockControlController::class, 'units']);
+    Route::put('/units/{id}', [StockControlController::class, 'units'])->whereNumber('id');
+    Route::get('/batches', [StockControlController::class, 'batches']);
+    Route::post('/batches', [StockControlController::class, 'batches']);
+    Route::patch('/batches/{id}', [StockControlController::class, 'batches'])->whereNumber('id');
+    Route::get('/batches/{id}/trace', [StockControlController::class, 'trace'])->whereNumber('id');
+    Route::get('/batch-stock', [StockControlController::class, 'batchStock']);
+    Route::get('/stock-rules', [StockControlController::class, 'stockRules']);
+    Route::put('/stock-rules', [StockControlController::class, 'stockRules']);
+    Route::get('/counts/due', [CountController::class, 'due']);
+    Route::get('/counts', [CountController::class, 'index']);
+    Route::post('/counts', [CountController::class, 'store']);
+    Route::get('/counts/{id}', [CountController::class, 'show'])->whereNumber('id');
+    Route::post('/counts/{id}/lines', [CountController::class, 'lines'])->whereNumber('id');
+    Route::post('/counts/{id}/actions', [CountController::class, 'act'])->whereNumber('id');
+    Route::get('/items', [InventoryController::class, 'items'])->middleware('permission:gudang.items.view|gudang.items.create|gudang.items.edit|gudang.receipts.create|gudang.issues.create|gudang.transfers.create|gudang.stock.adjust|gudang.stock.approve|gudang.stock.view|gudang.settings.edit|gudang.counts.view|gudang.counts.create|gudang.counts.count|gudang.counts.approve');
     Route::post('/items', [InventoryController::class, 'createItem'])->middleware('permission:gudang.items.create');
-    Route::get('/locations', [InventoryController::class, 'locations'])->middleware('permission:gudang.warehouses.view|gudang.warehouses.create|gudang.stock.view|gudang.items.create|gudang.settings.edit|gudang.receipts.create|gudang.issues.create|gudang.transfers.create|gudang.stock.adjust|gudang.stock.approve');
+    Route::get('/locations', [InventoryController::class, 'locations'])->middleware('permission:gudang.warehouses.view|gudang.warehouses.create|gudang.stock.view|gudang.items.create|gudang.settings.edit|gudang.receipts.create|gudang.issues.create|gudang.transfers.create|gudang.stock.adjust|gudang.stock.approve|gudang.counts.view|gudang.counts.create|gudang.counts.count|gudang.counts.approve|gudang.items.view|gudang.items.edit');
     Route::post('/locations', [InventoryController::class, 'createLocation'])->middleware('permission:gudang.warehouses.create');
     Route::post('/receipts', [InventoryController::class, 'receive'])->middleware('permission:gudang.receipts.create');
     Route::get('/stock', [InventoryController::class, 'balances'])->middleware('permission:gudang.stock.view');
