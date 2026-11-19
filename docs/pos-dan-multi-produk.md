@@ -439,10 +439,10 @@ Fase 6 pada dokumen 13 Finlite_knowladge. Bukti CI Fase 1 sebelumnya terikat pad
 commit yang dicatat dalam roadmap.
 
 
-## Gudang — implementasi Fase 2 menunggu verifikasi
+## Gudang — implementasi Fase 2
 
-Perubahan kerja Fase 2 telah diimplementasikan dan menunggu integrasi serta
-verifikasi. Akun dan perusahaan bersama menggunakan produk `gudang`; jembatan
+Implementasi Fase 2 tersedia; penerimaan program dijadwalkan pada Fase 6.
+Akun dan perusahaan bersama menggunakan produk `gudang`; jembatan
 Accounting dan Project belum tersedia. Referensi integrasi mendatang menggunakan
 UUID dokumen stabil, dengan kuantitas fisik tetap dimiliki Gudang.
 
