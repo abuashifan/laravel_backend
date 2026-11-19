@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Purchase;
 
+use App\Modules\Journal\Models\JournalEntry;
 use Illuminate\Support\Facades\DB;
 
 class VendorPaymentTest extends PurchaseTestCase
@@ -27,6 +28,10 @@ class VendorPaymentTest extends PurchaseTestCase
 
         $this->assertSame(1, DB::connection('tenant')->table('journal_entries')->where('source_type', 'vendor_payment')->count());
         $this->assertSame(100.0, (float) DB::connection('tenant')->table('vendor_bills')->where('id', $bill['id'])->value('paid_amount'));
+
+        $previewUrl = '/api/purchase/payments/cash-balance?cash_bank_account_id='.$accounts['cash'].'&payment_date=2026-05-20';
+        $this->getJson($previewUrl, $ctx['headers'])->assertOk()->assertJsonPath('data.balance', -100);
+        $this->getJson($previewUrl.'&payment_id='.$payment['id'], $ctx['headers'])->assertOk()->assertJsonPath('data.balance', 0);
 
         $this->patchJson('/api/purchase/payments/'.$payment['id'].'/void', ['reason' => 'Incorrect payment'], $ctx['headers'])
             ->assertStatus(200)
@@ -68,6 +73,10 @@ class VendorPaymentTest extends PurchaseTestCase
             ->assertJsonPath('data.net_vendor_exposure', 197)
             ->assertJsonPath('data.available_deposits.0.match_strength', 'vendor_only');
 
+        $this->getJson('/api/purchase/payments/vendor-context?vendor_id='.$vendorId, $ctx['headers'])
+            ->assertOk()->assertJsonPath('data.open_bills.0.bill_id', $bill['id'])
+            ->assertJsonPath('data.open_bills.0.balance_due', 222);
+
         $this->postJson('/api/purchase/vendor-deposits/'.$deposit['id'].'/allocate-to-bill/'.$bill['id'], [
             'allocated_amount' => 25,
             'allocation_date' => '2026-05-20',
@@ -85,5 +94,37 @@ class VendorPaymentTest extends PurchaseTestCase
 
         $this->assertSame(197.0, (float) DB::connection('tenant')->table('vendor_payments')->where('id', $payment['id'])->value('amount'));
         $this->assertSame('paid', DB::connection('tenant')->table('vendor_bills')->where('id', $bill['id'])->value('status'));
+    }
+
+    public function test_cash_preview_uses_only_current_posted_entries_through_the_payment_date(): void
+    {
+        $ctx = $this->setUpTenant();
+        $accounts = $this->seedPurchaseMappings();
+        foreach ([
+            ['CASH-BASE', '2026-05-19', 1000, 'posted', false],
+            ['CASH-FUTURE', '2026-05-21', 500, 'posted', false],
+            ['CASH-DRAFT', '2026-05-20', 700, 'draft', false],
+            ['CASH-VOID', '2026-05-20', 900, 'void', false],
+            ['CASH-OLD', '2026-05-20', 300, 'posted', true],
+        ] as [$number, $date, $amount, $status, $obsolete]) {
+            $entry = JournalEntry::query()->create([
+                'journal_number' => $number, 'journal_date' => $date,
+                'status' => $status, 'is_obsolete' => $obsolete,
+            ]);
+            $entry->lines()->createMany([
+                ['account_id' => $accounts['cash'], 'debit' => $amount, 'credit' => 0, 'line_order' => 1],
+                ['account_id' => $accounts['ap'], 'debit' => 0, 'credit' => $amount, 'line_order' => 2],
+            ]);
+        }
+        $url = '/api/purchase/payments/cash-balance?cash_bank_account_id='.$accounts['cash'];
+        $this->getJson($url.'&payment_date=2026-05-20', $ctx['headers'])->assertOk()
+            ->assertJsonPath('data.balance', 1000)->assertJsonPath('data.as_of', '2026-05-20');
+        $this->getJson($url.'&payment_date=2026-05-21', $ctx['headers'])->assertOk()->assertJsonPath('data.balance', 1500);
+        $emptyCash = $this->createAccount('asset', 'CASH-EMPTY', true);
+        $this->getJson('/api/purchase/payments/cash-balance?cash_bank_account_id='.$emptyCash.'&payment_date=2026-05-20', $ctx['headers'])
+            ->assertOk()->assertJsonPath('data.balance', 0);
+        $this->getJson('/api/purchase/payments/cash-balance?cash_bank_account_id='.$accounts['ap'].'&payment_date=2026-05-20', $ctx['headers'])
+            ->assertUnprocessable();
+        $this->getJson($url.'&payment_date=invalid', $ctx['headers'])->assertUnprocessable();
     }
 }

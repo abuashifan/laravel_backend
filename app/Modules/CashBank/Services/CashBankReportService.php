@@ -5,15 +5,37 @@ namespace App\Modules\CashBank\Services;
 use App\Modules\Journal\Models\JournalEntryLine;
 use App\Modules\MasterData\Models\ChartOfAccount;
 use App\Modules\Reports\Services\LedgerBalanceCalculator;
+use App\Shared\CashBank\CashBankBalanceReader;
 use App\Shared\Exceptions\ApiException;
 use Carbon\Carbon;
 
-class CashBankReportService
+class CashBankReportService implements CashBankBalanceReader
 {
     public function __construct(
         private readonly CashBankAccountService $cashBankAccountService,
         private readonly LedgerBalanceCalculator $balanceCalculator,
     ) {}
+
+    /** Balance-only preview; excludes the old posting when a payment is edited. */
+    public function accountBalance(int $accountId, string $asOf, ?int $excludedJournalId = null): array
+    {
+        if (! $this->cashBankAccountService->isCashBankAccount($accountId)) {
+            throw ApiException::make('CASH_BANK_ACCOUNT_REQUIRED', 'Pilih akun kas/bank yang dapat dipakai untuk transaksi.', 422);
+        }
+        $account = ChartOfAccount::query()->findOrFail($accountId);
+        $normal = (string) ($account->normal_balance ?: 'debit');
+        $totals = $this->baseCashBankJournalQuery($accountId)
+            ->whereDate('journal_entries.journal_date', '<=', $asOf)
+            ->when($excludedJournalId, fn ($query, $id) => $query->where('journal_entries.id', '!=', $id))
+            ->selectRaw('COALESCE(SUM(journal_entry_lines.debit), 0) as debit_total, COALESCE(SUM(journal_entry_lines.credit), 0) as credit_total')
+            ->first();
+
+        return [
+            'account_id' => $accountId, 'normal_balance' => $normal, 'as_of' => $asOf,
+            'balance' => round($this->balanceCalculator->signedAmount($totals->debit_total, $totals->credit_total, $normal), 2),
+            'calculated_at' => now()->toIso8601String(),
+        ];
+    }
 
     public function accountStatement(int $cashBankAccountId, ?string $startDate = null, ?string $endDate = null): array
     {

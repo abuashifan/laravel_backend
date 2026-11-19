@@ -2,6 +2,10 @@
 
 namespace App\Providers;
 
+use App\Modules\CashBank\Services\CashBankReportService;
+use App\Modules\Imports\Services\SpreadsheetReaderFactory;
+use App\Shared\CashBank\CashBankBalanceReader;
+use App\Shared\Export\TabularFileReader;
 use Illuminate\Routing\UrlGenerator;
 use Illuminate\Support\ServiceProvider;
 
@@ -12,7 +16,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        $this->app->bind(\App\Shared\Export\TabularFileReader::class, \App\Modules\Imports\Services\SpreadsheetReaderFactory::class);
+        $this->app->bind(TabularFileReader::class, SpreadsheetReaderFactory::class);
+        $this->app->bind(CashBankBalanceReader::class, CashBankReportService::class);
         // Cross-cutting bindings moved to App\Shared\Providers\SharedServiceProvider (Fase 0).
     }
 

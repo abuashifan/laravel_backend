@@ -9,6 +9,7 @@ use App\Modules\Purchase\Models\VendorPayment;
 use App\Modules\Purchase\Services\Concerns\HandlesPurchaseDocuments;
 use App\Shared\Api\AppliesListQuery;
 use App\Shared\Audit\AuditLogService;
+use App\Shared\CashBank\CashBankBalanceReader;
 use App\Shared\DocumentNumbering\DocumentNumberService;
 use App\Shared\DocumentNumbering\DocumentType;
 use App\Shared\Exceptions\ApiException;
@@ -53,6 +54,7 @@ class VendorPaymentService
         private readonly TransactionVoidEffectService $voidEffectService,
         private readonly VendorDepositService $depositService,
         private readonly APSubsidiaryLedgerService $ledgerService,
+        private readonly CashBankBalanceReader $cashBankReports,
         private readonly ?AuditLogService $auditLogService = null,
     ) {}
 
@@ -295,6 +297,14 @@ class VendorPaymentService
         $bill->save();
 
         return $bill->refresh();
+    }
+
+    public function cashBalance(int $accountId, string $date, ?int $paymentId = null): array
+    {
+        $payment = $paymentId ? VendorPayment::query()->findOrFail($paymentId) : null;
+        $journalId = $payment?->status === 'posted' ? $payment->journal_entry_id : null;
+
+        return $this->cashBankReports->accountBalance($accountId, $date, $journalId === null ? null : (int) $journalId);
     }
 
     public function vendorContext(int $vendorId): array
