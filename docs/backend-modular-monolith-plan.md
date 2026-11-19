@@ -55,6 +55,12 @@ Phase M1 only introduces this structure and moves route ownership into module ro
 
 ## Shared Services Map
 
+Payment balance previews (19 November 2026) use `App\Shared\CashBank\CashBankBalanceReader`.
+`AppServiceProvider` binds this read-only contract to the CashBank report service.
+Purchase depends on the contract; it does not import CashBank's internal service.
+The query returns a dated balance of current posted entries, with an optional old
+journal excluded for payment edits. It creates no journal or business mutation.
+
 | Shared Area | Current Location | Notes |
 | --- | --- | --- |
 | Audit | `app/Services/Audit`, `app/Support/Audit` | Shared audit logging and audit constants |

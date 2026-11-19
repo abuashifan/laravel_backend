@@ -2,7 +2,6 @@
 
 namespace App\Modules\Purchase\Services;
 
-use App\Modules\CashBank\Services\CashBankReportService;
 use App\Modules\Journal\Models\JournalEntry;
 use App\Modules\MasterData\Models\AccountMapping;
 use App\Modules\Purchase\Models\VendorBill;
@@ -10,6 +9,7 @@ use App\Modules\Purchase\Models\VendorPayment;
 use App\Modules\Purchase\Services\Concerns\HandlesPurchaseDocuments;
 use App\Shared\Api\AppliesListQuery;
 use App\Shared\Audit\AuditLogService;
+use App\Shared\CashBank\CashBankBalanceReader;
 use App\Shared\DocumentNumbering\DocumentNumberService;
 use App\Shared\DocumentNumbering\DocumentType;
 use App\Shared\Exceptions\ApiException;
@@ -54,7 +54,7 @@ class VendorPaymentService
         private readonly TransactionVoidEffectService $voidEffectService,
         private readonly VendorDepositService $depositService,
         private readonly APSubsidiaryLedgerService $ledgerService,
-        private readonly CashBankReportService $cashBankReports,
+        private readonly CashBankBalanceReader $cashBankReports,
         private readonly ?AuditLogService $auditLogService = null,
     ) {}
 

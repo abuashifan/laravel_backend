@@ -5,10 +5,11 @@ namespace App\Modules\CashBank\Services;
 use App\Modules\Journal\Models\JournalEntryLine;
 use App\Modules\MasterData\Models\ChartOfAccount;
 use App\Modules\Reports\Services\LedgerBalanceCalculator;
+use App\Shared\CashBank\CashBankBalanceReader;
 use App\Shared\Exceptions\ApiException;
 use Carbon\Carbon;
 
-class CashBankReportService
+class CashBankReportService implements CashBankBalanceReader
 {
     public function __construct(
         private readonly CashBankAccountService $cashBankAccountService,
