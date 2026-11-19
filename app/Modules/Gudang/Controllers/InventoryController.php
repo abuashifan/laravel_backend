@@ -17,9 +17,11 @@ class InventoryController extends GudangController
     {
         $db = DB::connection('gudang');
         $codes = $db->table('gudang_barcodes')->get()->groupBy('item_id');
+        $units = $db->table('gudang_item_units')->orderBy('name')->get()->groupBy('item_id');
         $items = $db->table('gudang_items')->orderBy('name')->orderBy('id')->get();
         foreach ($items as $item) {
             $item->barcodes = $codes->get($item->id, collect())->pluck('code');
+            $item->units = $units->get($item->id, collect());
         }
 
         return $this->successResponse($items);
@@ -75,6 +77,8 @@ class InventoryController extends GudangController
             'lines.*.item_id' => ['required', 'integer', 'exists:gudang.gudang_items,id'],
             'lines.*.location_id' => ['required', 'integer', 'exists:gudang.gudang_locations,id'],
             'lines.*.quantity' => ['required', 'numeric', 'gt:0', 'regex:/^\d{1,8}(\.\d{1,3})?$/D'],
+            'lines.*.unit_id' => ['nullable', 'integer', 'exists:gudang.gudang_item_units,id'],
+            'lines.*.batch_id' => ['nullable', 'integer', 'exists:gudang.gudang_batches,id'],
         ]);
 
         $access->requireLocations(array_column($input['lines'], 'location_id'));

@@ -191,12 +191,14 @@ return [
             'gudang.transfers' => ['Transfer & putaway', ['create']],
             'gudang.receipts' => ['Penerimaan barang', ['create']],
             'gudang.stock' => ['Stok', ['view', 'export']],
+            'gudang.counts' => ['Opname dan cycle count', ['view', 'create', 'approve']],
             'gudang.settings' => ['Pengaturan gudang', ['view', 'edit']],
         ],
         'special' => [
             'gudang.stock.approve' => 'Setujui penyesuaian, selisih, pelepasan kondisi dan dokumen balik',
             'gudang.stock.adjust' => 'Penyesuaian stok gudang',
             'gudang.audit.view' => 'Lihat log aktivitas gudang',
+            'gudang.counts.count' => 'Isi hitungan dan ajukan hasil opname',
         ],
     ],
 ];

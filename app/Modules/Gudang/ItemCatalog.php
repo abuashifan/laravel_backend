@@ -19,6 +19,9 @@ class ItemCatalog
             'sku' => 'required|string|max:64', 'name' => 'required|string|max:160', 'unit' => 'required|string|max:24',
             'category' => 'nullable|string|max:100', 'minimum' => ['sometimes', 'numeric', 'regex:/^\d{1,8}(\.\d{1,3})?$/D'],
             'barcodes' => 'sometimes|array|max:20', 'barcodes.*' => 'required|string|max:100|distinct',
+            'batch_enabled' => 'sometimes|boolean', 'abc_override' => 'nullable|in:A,B,C',
+            'lead_days' => 'sometimes|integer|min:0|max:3650',
+            'safety' => ['sometimes', 'numeric', 'regex:/^\d{1,8}(\.\d{1,3})?$/D'],
         ])->validate();
         $db = DB::connection('gudang');
 
@@ -40,8 +43,33 @@ class ItemCatalog
             if (isset($values['minimum'])) {
                 $item['minimum_milli'] = StockLedger::milli($values['minimum']);
             }
+            foreach (['batch_enabled', 'abc_override', 'lead_days'] as $field) {
+                if (array_key_exists($field, $values)) {
+                    $item[$field] = $values[$field];
+                }
+            }
+            if (isset($values['safety'])) {
+                $item['safety_milli'] = StockLedger::milli($values['safety']);
+            }
             if ($id) {
-                $existing = $db->table('gudang_items')->where('id', $id)->firstOrFail();
+                $existing = $db->table('gudang_items')->where('id', $id)->lockForUpdate()->firstOrFail();
+                if (array_key_exists('batch_enabled', $item) && (bool) $item['batch_enabled'] !== (bool) $existing->batch_enabled) {
+                    $db->table('gudang_locations')->orderBy('id')->lockForUpdate()->get(['id']);
+                    if ($db->table('gudang_count_lines as line')->join('gudang_counts as count', 'count.id', '=', 'line.count_id')
+                        ->where('line.item_id', $id)->whereIn('count.status', ['counting', 'pending'])->exists()) {
+                        throw ValidationException::withMessages(['batch_enabled' => 'Selesaikan penghitungan aktif sebelum mengubah pelacakan batch.']);
+                    }
+                    if ($db->table('gudang_doc_lines as line')->join('gudang_stock_documents as doc', 'doc.id', '=', 'line.document_id')
+                        ->where('line.item_id', $id)->whereIn('doc.status', ['draft', 'ordered', 'partial', 'pending', 'transit', 'disputed'])->exists()) {
+                        throw ValidationException::withMessages(['batch_enabled' => 'Selesaikan dokumen aktif sebelum mengubah pelacakan batch.']);
+                    }
+                    if (! $item['batch_enabled'] && $db->table('gudang_batches')->where('item_id', $id)->exists()) {
+                        throw ValidationException::withMessages(['batch_enabled' => 'Pelacakan batch yang sudah memiliki batch dipertahankan untuk keterlacakan.']);
+                    }
+                    if ($item['batch_enabled']) {
+                        app(BatchStock::class)->enable($existing, auth()->id());
+                    }
+                }
                 if ($existing->unit !== $item['unit'] && ($db->table('gudang_stock_movements')->where('item_id', $id)->exists() || $db->table('gudang_doc_lines')->where('item_id', $id)->exists())) {
                     throw ValidationException::withMessages(['unit' => 'Satuan barang sudah dipakai pada dokumen.']);
                 }
