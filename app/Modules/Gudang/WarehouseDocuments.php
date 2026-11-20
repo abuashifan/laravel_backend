@@ -158,14 +158,16 @@ final class WarehouseDocuments
         }
     }
 
-    public function act(int $id, array $input, int $actor): object
+    /** Alokasi batch ditentukan oleh layanan reservasi saat surat jalan pesanan diposting. */
+    public function act(int $id, array $input, int $actor, array $reservedBatches = []): object
     {
         $db = DB::connection('gudang');
 
-        return $db->transaction(function () use ($db, $id, $input, $actor) {
+        return $db->transaction(function () use ($db, $id, $input, $actor, $reservedBatches) {
             $docs = $db->table('gudang_stock_documents')->where('id', $id);
             $doc = (clone $docs)->lockForUpdate()->firstOrFail();
             $action = $input['action'];
+            $this->check($reservedBatches === [] || ($doc->type === 'issue' && $action === 'post'), 'Alokasi batch pesanan hanya untuk surat jalan.');
             $permission = match ($action) {
                 'approve','reject','resolve' => 'gudang.stock.approve',
                 default => self::PERMISSION[$doc->type],
@@ -193,6 +195,9 @@ final class WarehouseDocuments
             $resolution = $input['resolution'] ?? 'return';
             $acceptExtra = ($input['surplus'] ?? 'return') === 'accept';
             $signature = [$actor, $id, $action, $amounts, $note];
+            if ($reservedBatches !== []) {
+                $signature[] = $reservedBatches;
+            }
             if ($receiptBatches !== []) {
                 $signature[] = $receiptBatches;
             }
@@ -241,7 +246,7 @@ final class WarehouseDocuments
                 $qty = (int) $line->quantity_milli;
                 $allocations = [];
                 if ($action === 'ship' || ($action === 'post' && in_array($doc->type, ['issue', 'putaway', 'release', 'supplier_return'], true))) {
-                    $allocations = $this->ledger->move($id, $item, $doc->location_id, -$qty, $line->batch_id);
+                    $allocations = $this->ledger->move($id, $item, $doc->location_id, -$qty, $line->batch_id, $reservedBatches[$item] ?? []);
                 }
                 if ($action === 'post' && in_array($doc->type, ['putaway', 'release'], true)) {
                     $this->ledger->move($id, $item, $doc->target_id, $qty, null, array_map(fn ($batch) => ['batch_id' => $batch['batch_id'], 'quantity_milli' => -$batch['quantity_milli']], $allocations));

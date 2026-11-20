@@ -279,10 +279,29 @@ class GudangFoundationTest extends TestCase
             ->assertUnprocessable();
 
         $action = "/api/gudang/outbound-orders/{$orderId}/actions";
-        $ship = ['action' => 'ship', 'request_key' => 'ship-1', 'lines' => [['item_id' => $item, 'quantity' => '3']]];
+        $list = '/api/gudang/outbound-orders';
+        $allocation = $this->getJson($list, $headers)->assertOk()->json('data.data.0.allocations.0.id');
+        $pick = ['action' => 'pick', 'request_key' => 'pick-1', 'lines' => [[
+            'allocation_id' => $allocation, 'quantity' => '3', 'location_code' => 'LOC-'.$location,
+            'item_code' => 'WRONG', 'reason' => 'Belum semua ditemukan.',
+        ]]];
+        $this->postJson($action, $pick, $headers)->assertUnprocessable();
+        $pick['lines'][0]['item_code'] = 'PK-BAUT';
+        $this->postJson($action, $pick, $headers)->assertOk();
+        $this->postJson($action, $pick, $headers)->assertOk();
+        $run = $this->getJson($list, $headers)->assertOk()->assertJsonCount(1, 'data.data.0.runs')
+            ->assertJsonPath('data.data.0.runs.0.picks.0.reason', 'Belum semua ditemukan.')
+            ->json('data.data.0.runs.0.id');
+        $ship = ['action' => 'ship', 'request_key' => 'ship-1', 'run_id' => $run];
+        $this->postJson($action, $ship, $headers)->assertUnprocessable();
+        $this->postJson($action, ['action' => 'pack', 'request_key' => 'pack-1', 'run_id' => $run,
+            'packages' => [['weight_grams' => 1250, 'note' => 'Dus kecil']]], $headers)->assertOk();
+        $this->get("/api/gudang/outbound-orders/{$orderId}/runs/{$run}/labels", $headers)
+            ->assertOk()->assertDownload("label-kirim-{$orderId}-{$run}.pdf");
+        $stock()->assertJsonPath('data.0.quantity_milli', 10000)->assertJsonPath('data.0.reserved_milli', 8000);
         $this->postJson($action, $ship, $headers)->assertOk()->assertJsonPath('data.status', 'partial');
         $this->postJson($action, $ship, $headers)->assertOk()->assertJsonPath('data.status', 'partial');
-        $this->getJson('/api/gudang/outbound-orders', $headers)->assertOk()->assertJsonCount(1, 'data.data.0.actions')
+        $this->getJson($list, $headers)->assertOk()->assertJsonCount(1, 'data.data.0.runs.0.documents')
             ->assertJsonPath('data.data.0.lines.0.shipped_milli', 3000);
         $stock()->assertJsonPath('data.0.quantity_milli', 7000)->assertJsonPath('data.0.reserved_milli', 5000);
 
@@ -291,6 +310,91 @@ class GudangFoundationTest extends TestCase
         $this->postJson($action, $cancel, $headers)->assertOk()->assertJsonPath('data.status', 'cancelled');
         $stock()->assertJsonPath('data.0.quantity_milli', 7000)->assertJsonPath('data.0.available_milli', 7000);
         $this->getJson('/api/gudang/outbound-orders', $headers)->assertOk()->assertJsonPath('data.total', 0);
+    }
+
+    public function test_outbound_fefo_protects_exact_batches_and_posts_one_issue_per_location(): void
+    {
+        $this->client(gudang: true);
+        $company = $this->postJson('/api/companies', ['name' => 'Gudang Batch', 'product' => 'gudang'])->assertCreated()->json('data.id');
+        $headers = ['X-Company-ID' => (string) $company];
+        $locations = $this->getJson('/api/gudang/locations', $headers)->assertOk()->json('data');
+        $first = $locations[0]['id'];
+        $warehouse = $locations[0]['warehouse_id'];
+        $second = $this->postJson('/api/gudang/locations', ['warehouse_id' => $warehouse, 'name' => 'Rak Kedua'], $headers)
+            ->assertCreated()->json('data.id');
+        $item = $this->postJson('/api/gudang/items', [
+            'sku' => 'BATCH-SIM', 'name' => 'Barang batch', 'unit' => 'PCS', 'batch_enabled' => true,
+        ], $headers)->assertCreated()->json('data.id');
+        $receive = [];
+        foreach ([[$first, 'A', 2], [$first, 'B', 3], [$second, 'C', 4], [$second, 'LATE', 8], [$second, 'EXPIRED', -4]] as [$location, $code, $days]) {
+            $lot = $this->postJson('/api/gudang/batches', [
+                'item_id' => $item, 'code' => $code, 'expires_at' => now('Asia/Jakarta')->addDays($days)->toDateString(),
+            ], $headers)->assertCreated()->json('data.id');
+            $receive[] = ['item_id' => $item, 'location_id' => $location, 'batch_id' => $lot, 'quantity' => '2'];
+        }
+        $this->postJson('/api/gudang/receipts', ['request_key' => 'batch-opening', 'source' => 'Awal', 'lines' => $receive], $headers)->assertOk();
+        $order = $this->postJson('/api/gudang/outbound-orders', [
+            'request_key' => 'batch-reserve', 'warehouse_id' => $warehouse, 'destination' => 'Pelanggan',
+            'lines' => [['item_id' => $item, 'quantity' => '5']],
+        ], $headers)->assertOk()->json('data.id');
+        $list = '/api/gudang/outbound-orders?open=0';
+        $action = "/api/gudang/outbound-orders/{$order}/actions";
+        $orderData = $this->getJson($list, $headers)->assertOk()->json('data.data.0');
+        $this->assertEqualsCanonicalizing(['A', 'B', 'C'], array_column($orderData['allocations'], 'batch_code'));
+        $move = $this->postJson('/api/gudang/documents', [
+            'type' => 'issue', 'source' => 'Pengeluaran umum', 'request_key' => 'consume-reserved-lot',
+            'location_id' => $second, 'document_date' => now()->toDateString(),
+            'lines' => [['item_id' => $item, 'quantity' => '2',
+                'batch_id' => DB::connection('gudang')->table('gudang_batches')->where('code', 'C')->value('id')]],
+        ], $headers)->assertOk()->json('data.id');
+        $this->postJson("/api/gudang/documents/{$move}/actions", ['action' => 'post', 'request_key' => 'post-reserved-lot'], $headers)
+            ->assertUnprocessable();
+        $picks = array_map(fn (array $row) => [
+            'allocation_id' => $row['id'], 'quantity' => (string) ($row['quantity_milli'] / 1000),
+            'location_code' => 'LOC-'.$row['location_id'], 'item_code' => 'BATCH-SIM', 'batch_code' => $row['batch_code'],
+        ], $orderData['allocations']);
+        $this->postJson($action, ['action' => 'pick', 'request_key' => 'batch-pick', 'lines' => $picks], $headers)->assertOk();
+        $run = $this->getJson($list, $headers)->assertOk()->json('data.data.0.runs.0.id');
+        $this->postJson($action, ['action' => 'pack', 'run_id' => $run, 'request_key' => 'batch-pack',
+            'packages' => [['weight_grams' => 2000], ['weight_grams' => 500]]], $headers)->assertOk();
+        $this->postJson($action, ['action' => 'ship', 'run_id' => $run, 'request_key' => 'batch-ship'], $headers)
+            ->assertOk()->assertJsonPath('data.status', 'shipped');
+        $this->getJson($list, $headers)->assertOk()->assertJsonCount(2, 'data.data.0.runs.0.documents');
+        $deductions = DB::connection('gudang')->table('gudang_movement_batches as m')->join('gudang_batches as b', 'b.id', '=', 'm.batch_id')
+            ->where('m.quantity_milli', '<', 0)->pluck('m.quantity_milli', 'b.code')->map(fn ($value) => (int) $value)->sortKeys()->all();
+        $this->assertSame(['A' => -2000, 'B' => -2000, 'C' => -1000], $deductions);
+    }
+
+    public function test_putaway_suggestions_rank_same_item_and_preferred_category_and_skip_full_bins(): void
+    {
+        $this->client(gudang: true);
+        $company = $this->postJson('/api/companies', ['name' => 'Gudang Putaway', 'product' => 'gudang'])->assertCreated()->json('data.id');
+        $headers = ['X-Company-ID' => (string) $company];
+        $warehouse = $this->getJson('/api/gudang/locations', $headers)->assertOk()->json('data.0.warehouse_id');
+        $bin = fn (string $name, string $kind = 'simpan') => $this->postJson('/api/gudang/locations', [
+            'name' => $name, 'kind' => $kind, 'warehouse_id' => $warehouse,
+        ], $headers)->assertCreated()->json('data.id');
+        $origin = $bin('Meja terima', 'terima');
+        $matching = $bin('Rak barang yang sama');
+        $category = $bin('Rak kategori');
+        $full = $bin('Rak penuh');
+        foreach ([$matching, $category, $full] as $id) {
+            $this->patchJson("/api/gudang/locations/{$id}/putaway", [
+                'sku_slots' => 1, 'preferred_category' => $id === $category ? 'Baut' : null,
+            ], $headers)->assertOk();
+        }
+        $item = fn (string $sku, string $category) => $this->postJson('/api/gudang/items', [
+            'sku' => $sku, 'name' => $sku, 'unit' => 'PCS', 'category' => $category,
+        ], $headers)->assertCreated()->json('data.id');
+        $target = $item('BAUT-SIM', 'Baut');
+        $other = $item('MUR-SIM', 'Mur');
+        $this->postJson('/api/gudang/receipts', ['source' => 'Awal', 'request_key' => 'putaway-opening', 'lines' => [
+            ['item_id' => $target, 'location_id' => $matching, 'quantity' => '2'],
+            ['item_id' => $other, 'location_id' => $full, 'quantity' => '3'],
+        ]], $headers)->assertOk();
+        $suggestions = $this->getJson("/api/gudang/putaway-suggestions?from={$origin}&items[]={$target}", $headers)->assertOk()->json('data');
+        $this->assertEquals([$matching, $category], array_slice(array_column($suggestions, 'id'), 0, 2));
+        $this->assertNotContains($full, array_column($suggestions, 'id'));
     }
 
     public function test_import_preview_and_retry_keep_one_opening_receipt_and_report_bad_rows(): void

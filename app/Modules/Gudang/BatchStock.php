@@ -3,6 +3,7 @@
 namespace App\Modules\Gudang;
 
 use App\Shared\Permission\PermissionService;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -60,14 +61,14 @@ final class BatchStock
         }
         if ($allocations === [] && $amount < 0) {
             $available = $db->table('gudang_batch_balances as balance')->join('gudang_batches as batch', 'batch.id', '=', 'balance.batch_id')
-                ->where('batch.item_id', $item->id)->where('balance.location_id', $location)->where('balance.quantity_milli', '>', 0)
-                ->when($saleable, fn ($query) => $query->where('batch.status', 'active')
-                    ->where(fn ($dates) => $dates->whereNull('batch.expires_at')->orWhere('batch.expires_at', '>=', now('Asia/Jakarta')->toDateString())))
+                ->where('batch.item_id', $item->id)->where('balance.location_id', $location)
+                ->whereColumn('balance.quantity_milli', '>', 'balance.reserved_milli')
+                ->when($saleable, fn ($query) => self::saleable($query, 'batch'))
                 ->orderByRaw('case when batch.expires_at is null then 1 else 0 end')->orderBy('batch.expires_at')->orderBy('batch.id')
-                ->get(['batch.id', 'balance.quantity_milli']);
+                ->select('batch.id')->selectRaw('balance.quantity_milli - balance.reserved_milli as available_milli')->get();
             $remaining = -$amount;
             foreach ($available as $batch) {
-                $take = min($remaining, (int) $batch->quantity_milli);
+                $take = min($remaining, (int) $batch->available_milli);
                 $allocations[] = ['batch_id' => (int) $batch->id, 'quantity_milli' => -$take];
                 $remaining -= $take;
                 if ($remaining === 0) {
@@ -89,13 +90,20 @@ final class BatchStock
             $db->table('gudang_batch_balances')->insertOrIgnore($key);
             $balance = $db->table('gudang_batch_balances')->where($key);
             if ($quantity < 0) {
-                $balance->where('quantity_milli', '>=', -$quantity);
+                $balance->whereRaw('quantity_milli - reserved_milli >= ?', [-$quantity]);
             }
             $this->check($balance->increment('quantity_milli', $quantity) === 1, 'Saldo batch tidak mencukupi.');
             $db->table('gudang_movement_batches')->insert(['movement_id' => $movement, 'batch_id' => $batch->id, 'quantity_milli' => $quantity]);
         }
 
         return $allocations;
+    }
+
+    /** Alias kolom diberikan oleh pemanggil internal. */
+    public static function saleable(Builder $query, string $table): Builder
+    {
+        return $query->where($table.'.status', 'active')
+            ->where(fn ($dates) => $dates->whereNull($table.'.expires_at')->orWhere($table.'.expires_at', '>=', now('Asia/Jakarta')->toDateString()));
     }
 
     public function transit(int $document, int $item, int $quantity): array

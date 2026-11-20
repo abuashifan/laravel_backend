@@ -43,21 +43,36 @@ Impor membaca berkas yang sama saat pratinjau dan saat disimpan. Setiap baris va
 menggunakan layanan barang dan buku stok. Baris salah mendapat pesan sendiri. Pengiriman
 ulang berkas saldo awal yang sama untuk lokasi yang sama mengacu ke dokumen terdahulu.
 
-## Pesanan keluar dan reservasi (Fase 3a)
+## Reservasi, picking, packing dan putaway (Fase 3)
 
 Rute `GET/POST /api/gudang/outbound-orders` dan `POST /api/gudang/outbound-orders/{id}/actions`
 memakai izin `gudang.issues.create`, akses gudang dan status langganan yang sudah berlaku.
-Pesanan memesan kuantitas satuan dasar di satu lokasi simpan atau terima. Barang dengan
-pelacakan batch belum didukung. Pesanan baru tidak membuat mutasi fisik.
-`GET /api/gudang/stock` menampilkan stok fisik, dipesan dan tersedia per lokasi.
+Pilih satu gudang lewat `warehouse_id`; API lama juga menerima `location_id` untuk satu
+lokasi. Pesanan mengalokasikan kuantitas dasar ke lokasi simpan/terima. Input multi-satuan
+disimpan bersama faktor konversi saat memesan. Untuk barang batch, alokasi memilih batch
+aktif, belum kedaluwarsa, berdasarkan FEFO. Reservasi menahan saldo fisik di tingkat lokasi
+dan batch. `GET /api/gudang/stock` menampilkan fisik, dipesan dan selisih keduanya per lokasi.
 
-Pengiriman parsial atau penuh melepaskan jumlah yang dikirim dan menerbitkan surat jalan
-dalam satu transaksi. Sisa tetap dipesan sampai dikirim atau dibatalkan dengan alasan.
-Kunci simpan dan aksi mencegah pengulangan dengan payload yang sama. Semua pengurangan melalui
-buku stok menghormati reservasi, termasuk ketika pengaturan mengizinkan saldo negatif.
-Koreksi surat jalan mengembalikan stok fisik lewat dokumen balik. Riwayat pengiriman
-tetap terlihat pada pesanan, beserta nomor koreksinya. Pesanan tidak dibuka ulang otomatis.
-Pick list, verifikasi scan, packing dan reservasi batch menyusul.
+| Aksi | Syarat dan dampak |
+| --- | --- |
+| `pick` | Satu daftar per pesanan, urut lokasi. Kirim aktual setiap alokasi; jumlah positif memerlukan kode rak, SKU/barcode dan kode batch bila berlaku. Kekurangan perlu alasan, termasuk bila aktual nol. |
+| `pack` | Sesi sudah diambil. Daftarkan maksimal 50 kemasan dengan berat gram dan catatan. Jumlah kemas mengikuti hasil ambil. |
+| `ship` | Sesi sudah dikemas. Terbitkan satu surat jalan per lokasi asal, lepaskan reservasi dan kurangi fisik dalam satu transaksi. Batch diperiksa ulang saat posting. |
+| `reset` | Batalkan sesi ambil/kemas dengan alasan setelah barang dikembalikan ke rak. Reservasi tetap ada. |
+| `cancel` | Lepas semua sisa dengan alasan setelah sesi aktif dibatalkan. Pengiriman lama tetap tercatat. |
+
+`GET /api/gudang/outbound-orders/{id}/runs/{run}/labels` menghasilkan PDF Code 128
+untuk setiap kemasan yang sudah dikemas atau dikirim. Riwayat menghubungkan surat jalan
+dan dokumen balik. Koreksi memulihkan fisik dengan dokumen balik dan tidak membuka
+pesanan secara otomatis. Pengulangan permintaan dengan kunci dan isi sama tidak menggandakan
+reservasi atau mutasi. Batch yang kemudian dikarantina atau kedaluwarsa tetap dipesan sampai
+pesanan dibatalkan; pilih stok baru lewat pesanan baru setelah pembatalan.
+
+`GET /api/gudang/putaway-suggestions` menerima lokasi asal dan daftar barang. Hasil dibatasi
+ke lokasi simpan dalam gudang yang sama, diurutkan menurut jumlah SKU yang sudah ada,
+kategori pilihan, dan slot SKU kosong. `PATCH /api/gudang/locations/{id}/putaway` mengatur
+kategori dan batas jenis barang. Slot menghitung jumlah SKU berbeda dan merupakan saran,
+bukan ukuran volume atau batas stok yang ditegakkan saat posting.
 
 ## Verifikasi
 

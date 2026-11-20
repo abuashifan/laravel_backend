@@ -26,7 +26,8 @@ class BarcodeLabelPdf
             if ($scale < 0.4) {
                 throw ValidationException::withMessages(['width' => 'Label terlalu sempit untuk barcode ini. Pilih lebar label yang lebih besar atau gunakan kode yang lebih pendek.']);
             }
-            $barHeight = max(10, $height - 36);
+            $details = array_slice($label['details'] ?? [], 0, 4);
+            $barHeight = max(10, $height - 36 - count($details) * 10);
             $commands = "0 0 0 rg\n";
             foreach ($bars as $bar) {
                 $commands .= sprintf("%.3F %.3F %.3F %.3F re f\n", 8 + (int) $bar[1] * $scale, 17, (int) $bar[2] * $scale, $barHeight);
@@ -37,6 +38,9 @@ class BarcodeLabelPdf
             $codeFont = min(8, ($width - 16) / max(1, strlen($label['code']) * 0.7));
             $nameFont = min(8, ($width - 16) / max(1, strlen($name) * 0.7));
             $commands .= sprintf("BT /F1 %.3F Tf 8 %.3F Td (%s) Tj ET\n", $nameFont, $height - 10, $name);
+            foreach ($details as $index => $detail) {
+                $commands .= sprintf("BT /F1 8 Tf 8 %.3F Td (%s) Tj ET\n", $height - 21 - $index * 10, $this->text($detail, 42));
+            }
             $commands .= sprintf("BT /F1 %.3F Tf 8 5 Td (%s) Tj ET\n", $codeFont, $code);
             $objects[$pageId] = sprintf('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 %.3F %.3F] /Resources << /Font << /F1 3 0 R >> >> /Contents %d 0 R >>', $width, $height, $streamId);
             $objects[$streamId] = '<< /Length '.strlen($commands).">>\nstream\n".$commands.'endstream';
