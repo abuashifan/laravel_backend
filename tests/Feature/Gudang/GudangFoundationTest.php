@@ -243,6 +243,56 @@ class GudangFoundationTest extends TestCase
         $act($adjust, 'approve')->assertForbidden();
     }
 
+    public function test_outbound_reservation_protects_stock_and_partial_shipment_is_retry_safe(): void
+    {
+        $this->client(gudang: true);
+        $companyId = $this->postJson('/api/companies', ['name' => 'Gudang Pesanan', 'product' => 'gudang'])
+            ->assertCreated()->json('data.id');
+        $headers = ['X-Company-ID' => (string) $companyId];
+        $location = $this->getJson('/api/gudang/locations', $headers)->assertOk()->json('data.0.id');
+        $item = $this->postJson('/api/gudang/items', ['sku' => 'PK-BAUT', 'name' => 'Baut', 'unit' => 'PCS'], $headers)
+            ->assertCreated()->json('data.id');
+        $lines = [['item_id' => $item, 'quantity' => '10']];
+        $this->postJson('/api/gudang/receipts', [
+            'request_key' => 'opening', 'source' => 'Stok awal',
+            'lines' => [['location_id' => $location] + $lines[0]],
+        ], $headers)->assertOk();
+
+        $request = [
+            'request_key' => 'reserve-stock', 'destination' => 'Pelanggan A', 'location_id' => $location,
+            'lines' => [['item_id' => $item, 'quantity' => '8']],
+        ];
+        $orderId = $this->postJson('/api/gudang/outbound-orders', $request, $headers)->assertOk()->json('data.id');
+        $this->postJson('/api/gudang/outbound-orders', $request, $headers)->assertOk()->assertJsonPath('data.id', $orderId);
+        $this->postJson('/api/gudang/outbound-orders', array_replace($request, ['request_key' => 'another-order']), $headers)
+            ->assertUnprocessable();
+        $stock = fn () => $this->getJson('/api/gudang/stock', $headers)->assertOk();
+        $stock()->assertJsonPath('data.0.quantity_milli', 10000)->assertJsonPath('data.0.available_milli', 2000);
+
+        $this->putJson('/api/gudang/settings', ['allow_negative' => true], $headers)->assertOk();
+        $issueId = $this->postJson('/api/gudang/documents', [
+            'type' => 'issue', 'request_key' => 'manual-issue', 'source' => 'Pelanggan B',
+            'document_date' => '2026-11-20', 'location_id' => $location,
+            'lines' => [['item_id' => $item, 'quantity' => '3']],
+        ], $headers)->assertOk()->json('data.id');
+        $this->postJson("/api/gudang/documents/{$issueId}/actions", ['action' => 'post', 'request_key' => 'post-manual'], $headers)
+            ->assertUnprocessable();
+
+        $action = "/api/gudang/outbound-orders/{$orderId}/actions";
+        $ship = ['action' => 'ship', 'request_key' => 'ship-1', 'lines' => [['item_id' => $item, 'quantity' => '3']]];
+        $this->postJson($action, $ship, $headers)->assertOk()->assertJsonPath('data.status', 'partial');
+        $this->postJson($action, $ship, $headers)->assertOk()->assertJsonPath('data.status', 'partial');
+        $this->getJson('/api/gudang/outbound-orders', $headers)->assertOk()->assertJsonCount(1, 'data.data.0.actions')
+            ->assertJsonPath('data.data.0.lines.0.shipped_milli', 3000);
+        $stock()->assertJsonPath('data.0.quantity_milli', 7000)->assertJsonPath('data.0.reserved_milli', 5000);
+
+        $cancel = ['action' => 'cancel', 'request_key' => 'cancel-rest', 'note' => 'Pelanggan membatalkan sisa.'];
+        $this->postJson($action, $cancel, $headers)->assertOk()->assertJsonPath('data.status', 'cancelled');
+        $this->postJson($action, $cancel, $headers)->assertOk()->assertJsonPath('data.status', 'cancelled');
+        $stock()->assertJsonPath('data.0.quantity_milli', 7000)->assertJsonPath('data.0.available_milli', 7000);
+        $this->getJson('/api/gudang/outbound-orders', $headers)->assertOk()->assertJsonPath('data.total', 0);
+    }
+
     public function test_import_preview_and_retry_keep_one_opening_receipt_and_report_bad_rows(): void
     {
         $this->client(gudang: true);

@@ -39,8 +39,14 @@ final class StockLedger
         $balances = $db->table('gudang_stock_balances');
         $balances->insertOrIgnore($key);
         $row = $balances->where($key);
-        if ($amount < 0 && $db->table('gudang_settings')->where('key', 'allow_negative')->value('value') !== '1') {
-            $row->where('quantity_milli', '>=', -$amount);
+        if ($amount < 0) {
+            $allowNegative = $db->table('gudang_settings')->where('key', 'allow_negative')->value('value') === '1';
+            $row->where(function ($available) use ($amount, $allowNegative) {
+                $available->whereRaw('quantity_milli - reserved_milli >= ?', [-$amount]);
+                if ($allowNegative) {
+                    $available->orWhere('reserved_milli', 0);
+                }
+            });
         }
         if (! $row->increment('quantity_milli', $amount)) {
             throw ValidationException::withMessages(['quantity' => 'Stok tersedia tidak mencukupi.']);
