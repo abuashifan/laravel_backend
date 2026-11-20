@@ -6,6 +6,8 @@ use App\Modules\Gudang\Controllers\GudangActivationController;
 use App\Modules\Gudang\Controllers\ImportController;
 use App\Modules\Gudang\Controllers\InsightController;
 use App\Modules\Gudang\Controllers\InventoryController;
+use App\Modules\Gudang\Controllers\OutboundOrderController;
+use App\Modules\Gudang\Controllers\PutawayController;
 use App\Modules\Gudang\Controllers\ReportController;
 use App\Modules\Gudang\Controllers\SignupController;
 use App\Modules\Gudang\Controllers\StockControlController;
@@ -45,8 +47,10 @@ Route::middleware(['auth:sanctum', 'company.access:gudang', 'product.subscriptio
     Route::post('/counts/{id}/actions', [CountController::class, 'act'])->whereNumber('id');
     Route::get('/items', [InventoryController::class, 'items'])->middleware('permission:gudang.items.view|gudang.items.create|gudang.items.edit|gudang.receipts.create|gudang.issues.create|gudang.transfers.create|gudang.stock.adjust|gudang.stock.approve|gudang.stock.view|gudang.settings.edit|gudang.counts.view|gudang.counts.create|gudang.counts.count|gudang.counts.approve');
     Route::post('/items', [InventoryController::class, 'createItem'])->middleware('permission:gudang.items.create');
-    Route::get('/locations', [InventoryController::class, 'locations'])->middleware('permission:gudang.warehouses.view|gudang.warehouses.create|gudang.stock.view|gudang.items.create|gudang.settings.edit|gudang.receipts.create|gudang.issues.create|gudang.transfers.create|gudang.stock.adjust|gudang.stock.approve|gudang.counts.view|gudang.counts.create|gudang.counts.count|gudang.counts.approve|gudang.items.view|gudang.items.edit');
+    Route::get('/locations', [InventoryController::class, 'locations'])->middleware('permission:gudang.warehouses.view|gudang.warehouses.create|gudang.warehouses.edit|gudang.stock.view|gudang.items.create|gudang.settings.edit|gudang.receipts.create|gudang.issues.create|gudang.transfers.create|gudang.stock.adjust|gudang.stock.approve|gudang.counts.view|gudang.counts.create|gudang.counts.count|gudang.counts.approve|gudang.items.view|gudang.items.edit');
     Route::post('/locations', [InventoryController::class, 'createLocation'])->middleware('permission:gudang.warehouses.create');
+    Route::patch('/locations/{id}/putaway', [PutawayController::class, 'settings'])->whereNumber('id')->middleware('permission:gudang.warehouses.edit');
+    Route::get('/putaway-suggestions', [PutawayController::class, 'suggest'])->middleware('permission:gudang.transfers.create');
     Route::post('/receipts', [InventoryController::class, 'receive'])->middleware('permission:gudang.receipts.create');
     Route::get('/stock', [InventoryController::class, 'balances'])->middleware('permission:gudang.stock.view');
     Route::get('/items/{item}/card', [InventoryController::class, 'card'])->whereNumber('item')->middleware('permission:gudang.stock.view');
@@ -64,6 +68,12 @@ Route::middleware(['auth:sanctum', 'company.access:gudang', 'product.subscriptio
     Route::post('/documents', [DocumentController::class, 'store'])->middleware('permission:gudang.receipts.create|gudang.issues.create|gudang.transfers.create|gudang.stock.adjust|gudang.stock.approve');
     Route::post('/documents/{id}/actions', [DocumentController::class, 'act'])->whereNumber('id')->middleware('permission:gudang.receipts.create|gudang.issues.create|gudang.transfers.create|gudang.stock.adjust|gudang.stock.approve');
     Route::post('/documents/{id}/reverse', [DocumentController::class, 'reverse'])->whereNumber('id')->middleware('permission:gudang.stock.approve');
+    Route::middleware('permission:gudang.issues.create')->group(function () {
+        Route::get('/outbound-orders', [OutboundOrderController::class, 'index']);
+        Route::post('/outbound-orders', [OutboundOrderController::class, 'store']);
+        Route::post('/outbound-orders/{id}/actions', [OutboundOrderController::class, 'act'])->whereNumber('id');
+        Route::get('/outbound-orders/{id}/runs/{run}/labels', [OutboundOrderController::class, 'labels'])->whereNumber(['id', 'run']);
+    });
     Route::get('/reports', [ReportController::class, 'show'])->middleware('permission:gudang.stock.view|gudang.audit.view');
     Route::get('/import/template', [ImportController::class, 'template'])->middleware('permission:gudang.items.create');
     Route::post('/import', [ImportController::class, 'upload'])->middleware('permission:gudang.items.create');

@@ -54,6 +54,9 @@ class ItemCatalog
             if ($id) {
                 $existing = $db->table('gudang_items')->where('id', $id)->lockForUpdate()->firstOrFail();
                 if (array_key_exists('batch_enabled', $item) && (bool) $item['batch_enabled'] !== (bool) $existing->batch_enabled) {
+                    if ($db->table('gudang_stock_balances')->where('item_id', $id)->where('reserved_milli', '>', 0)->exists()) {
+                        throw ValidationException::withMessages(['batch_enabled' => 'Selesaikan reservasi aktif sebelum mengubah pelacakan batch.']);
+                    }
                     $db->table('gudang_locations')->orderBy('id')->lockForUpdate()->get(['id']);
                     if ($db->table('gudang_count_lines as line')->join('gudang_counts as count', 'count.id', '=', 'line.count_id')
                         ->where('line.item_id', $id)->whereIn('count.status', ['counting', 'pending'])->exists()) {

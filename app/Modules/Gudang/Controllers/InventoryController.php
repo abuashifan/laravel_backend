@@ -93,7 +93,8 @@ class InventoryController extends GudangController
             ->join('gudang_locations as l', 'l.id', '=', 'b.location_id')
             ->whereIn('l.warehouse_id', $access->warehouses())
             ->orderBy('i.name')->orderBy('l.name')
-            ->get(['b.*', 'i.sku', 'i.name as item_name', 'i.unit', 'l.name as location_name']);
+            ->get(['b.*', 'i.sku', 'i.name as item_name', 'i.unit', 'l.name as location_name',
+                DB::raw('b.quantity_milli - b.reserved_milli as available_milli')]);
 
         return $this->successResponse($balances);
     }
