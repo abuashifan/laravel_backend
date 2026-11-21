@@ -7,6 +7,7 @@ use App\Modules\Sales\Models\CustomerDepositAllocation;
 use App\Modules\Sales\Models\SalesInvoice;
 use App\Modules\Sales\Models\SalesReceipt;
 use App\Modules\Sales\Models\SalesReturn;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 
 class ARSubsidiaryLedgerService
@@ -21,11 +22,11 @@ class ARSubsidiaryLedgerService
         ];
     }
 
-    public function ledgerByInvoice(int $invoiceId): array
+    public function ledgerByInvoice(int $invoiceId, array $filters = []): array
     {
         return [
             'invoice_id' => $invoiceId,
-            'movements' => $this->calculateRunningBalance($this->movements(['invoice_id' => $invoiceId])),
+            'movements' => $this->calculateRunningBalance($this->movements(['invoice_id' => $invoiceId] + $filters)),
         ];
     }
 
@@ -68,11 +69,26 @@ class ARSubsidiaryLedgerService
             ->all();
     }
 
-    public function openInvoices(array $filters = []): array
+    public function openInvoices(array $filters = [], ?CarbonImmutable $asOf = null): array
     {
+        $cutoffExclusive = $asOf?->addDay()->toDateString();
+        $historicalStatus = null;
+        $laterMovements = collect();
+        if ($cutoffExclusive !== null) {
+            $historicalStatus = $filters['status'] ?? null;
+            unset($filters['end_date'], $filters['as_of_date'], $filters['status']);
+            $laterFilters = array_intersect_key($filters, array_flip(['customer_id', 'invoice_id']));
+            $laterFilters['start_date'] = $cutoffExclusive;
+            $laterMovements = collect($this->receiptMovements($laterFilters))
+                ->merge($this->depositAllocationMovements($laterFilters))
+                ->merge($this->returnMovements($laterFilters))
+                ->groupBy('invoice_id');
+        }
+
         return $this->invoiceBaseQuery($filters)
             ->with('arAccount')
-            ->where('balance_due', '>', 0)
+            ->when($cutoffExclusive, fn ($query, $date) => $query->where('invoice_date', '<', $date))
+            ->when($asOf === null, fn ($query) => $query->where('balance_due', '>', 0))
             ->orderBy('due_date')
             ->orderBy('invoice_date')
             ->get()
@@ -88,10 +104,33 @@ class ARSubsidiaryLedgerService
                 'ar_account_name' => $invoice->arAccount?->account_name,
                 'grand_total' => (float) $invoice->grand_total,
                 'paid_amount' => (float) $invoice->paid_amount,
+                'settlement_discount_amount' => (float) $invoice->settlement_discount_amount,
                 'returned_amount' => (float) $invoice->returned_amount,
                 'balance_due' => (float) $invoice->balance_due,
                 'status' => $invoice->status,
             ])
+            ->map(function (array $row) use ($laterMovements): array {
+                $movements = $laterMovements->get($row['invoice_id']);
+                if ($movements === null) {
+                    return $row;
+                }
+
+                // Rewind later allocations against the stored totals, including balances imported without payment history.
+                $payments = $movements->where('document_type', 'sales_receipt');
+                $laterDeposits = (float) $movements->where('document_type', 'customer_deposit_allocation')->sum('credit');
+                $laterReturns = (float) $movements->where('document_type', 'sales_return')->sum('credit');
+                $row['paid_amount'] = max(0, round($row['paid_amount'] - $laterDeposits - (float) $payments->sum('cash_amount'), 2));
+                $row['settlement_discount_amount'] = max(0, round($row['settlement_discount_amount'] - (float) $payments->sum('settlement_discount_amount'), 2));
+                $row['returned_amount'] = max(0, round($row['returned_amount'] - $laterReturns, 2));
+                $row['balance_due'] = max(0, round($row['grand_total'] - $row['paid_amount'] - $row['settlement_discount_amount'] - $row['returned_amount'], 2));
+                if ($row['balance_due'] > 0) {
+                    $row['status'] = $row['paid_amount'] > 0 ? 'partially_paid' : 'posted';
+                }
+
+                return $row;
+            })
+            ->filter(fn (array $row) => $row['balance_due'] > 0 && (! $historicalStatus || $row['status'] === $historicalStatus))
+            ->values()
             ->all();
     }
 
@@ -147,34 +186,63 @@ class ARSubsidiaryLedgerService
 
     private function receiptMovements(array $filters): array
     {
+        $filterId = $filters['invoice_id'] ?? null;
+
         return SalesReceipt::query()
-            ->with('customer', 'salesInvoice.arAccount')
+            ->with('customer', 'salesInvoice.arAccount', 'lines.salesInvoice.arAccount')
             ->where('status', 'posted')
             ->whereNotNull('posted_at')
-            ->when($filters['customer_id'] ?? null, fn ($query, $customerId) => $query->where('customer_id', $customerId))
-            ->when($filters['invoice_id'] ?? null, fn ($query, $invoiceId) => $query->where('sales_invoice_id', $invoiceId))
+            ->when($filters['customer_id'] ?? null, fn ($query, $id) => $query->where('customer_id', $id))
+            ->when($filterId, fn ($query, $id) => $query->where(fn ($match) => $match
+                ->whereHas('lines', fn ($lines) => $lines->where('sales_invoice_id', $id))
+                ->orWhere(fn ($legacy) => $legacy->whereDoesntHave('lines')->where('sales_invoice_id', $id))))
             ->when($filters['start_date'] ?? null, fn ($query, $date) => $query->where('receipt_date', '>=', $date))
             ->when($this->endDate($filters), fn ($query, $date) => $query->where('receipt_date', '<=', $date))
             ->get()
-            ->map(function (SalesReceipt $receipt): array {
-                $invoice = $receipt->salesInvoice;
+            ->flatMap(function (SalesReceipt $receipt) use ($filterId) {
+                $allocations = $receipt->lines->isEmpty()
+                    ? collect([['document' => $receipt->salesInvoice, 'cash' => (float) $receipt->amount, 'discount' => 0.0]])
+                    : $receipt->lines
+                        ->filter(fn ($line) => $filterId === null || (int) $line->sales_invoice_id === (int) $filterId)
+                        ->groupBy('sales_invoice_id')
+                        ->map(fn (Collection $lines) => [
+                            'document' => $lines->first()->salesInvoice,
+                            'cash' => (float) $lines->sum('amount'),
+                            'discount' => (float) $lines->sum('settlement_discount_amount'),
+                        ])->values();
 
-                return $this->movement(
-                    optional($receipt->receipt_date)->toDateString(),
-                    $receipt->customer_id,
-                    $receipt->customer?->name,
-                    'sales_receipt',
-                    $receipt->id,
-                    $receipt->receipt_number,
-                    'Sales receipt '.$receipt->receipt_number,
-                    0.0,
-                    (float) $receipt->amount,
-                    'sales_receipt',
-                    $receipt->id,
-                    $invoice?->ar_account_id,
-                    $invoice?->arAccount?->account_code,
-                    $invoice?->arAccount?->account_name,
-                );
+                return $allocations->map(function (array $allocation) use ($receipt) {
+                    $document = $allocation['document'];
+                    $applied = $allocation['cash'] + $allocation['discount'];
+                    $description = 'Penerimaan '.$receipt->receipt_number;
+                    if ($document?->invoice_number) {
+                        $description .= ' untuk '.$document->invoice_number;
+                    }
+                    if ($allocation['discount'] > 0) {
+                        $description .= ' (termasuk potongan pelunasan)';
+                    }
+
+                    return $this->movement(
+                        optional($receipt->receipt_date)->toDateString(),
+                        $receipt->customer_id,
+                        $receipt->customer?->name,
+                        'sales_receipt',
+                        $receipt->id,
+                        $receipt->receipt_number,
+                        $description,
+                        0.0,
+                        $applied,
+                        'sales_receipt',
+                        $receipt->id,
+                        $document?->ar_account_id,
+                        $document?->arAccount?->account_code,
+                        $document?->arAccount?->account_name,
+                    ) + [
+                        'invoice_id' => $document?->id,
+                        'cash_amount' => round($allocation['cash'], 2),
+                        'settlement_discount_amount' => round($allocation['discount'], 2),
+                    ];
+                });
             })
             ->all();
     }
@@ -209,7 +277,7 @@ class ARSubsidiaryLedgerService
                     $invoice?->ar_account_id,
                     $invoice?->arAccount?->account_code,
                     $invoice?->arAccount?->account_name,
-                );
+                ) + ['invoice_id' => $allocation->sales_invoice_id];
             })
             ->all();
     }
@@ -243,7 +311,7 @@ class ARSubsidiaryLedgerService
                     $invoice?->ar_account_id,
                     $invoice?->arAccount?->account_code,
                     $invoice?->arAccount?->account_name,
-                );
+                ) + ['invoice_id' => $return->sales_invoice_id];
             })
             ->all();
     }

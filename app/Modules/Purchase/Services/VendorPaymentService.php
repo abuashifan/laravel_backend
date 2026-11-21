@@ -75,7 +75,7 @@ class VendorPaymentService
 
     public function find(int $id): VendorPayment
     {
-        return VendorPayment::query()->with('lines.vendorBill', 'vendor', 'vendorBill')->findOrFail($id);
+        return VendorPayment::query()->with('lines.vendorBill', 'lines.settlementDiscountAccount', 'vendor', 'vendorBill')->findOrFail($id);
     }
 
     public function create(array $data): VendorPayment
@@ -97,7 +97,7 @@ class VendorPaymentService
                 'amount' => $data['amount'],
                 'description' => $data['notes'] ?? null,
             ]]);
-            $payment = $payment->refresh()->load('lines.vendorBill', 'vendor', 'vendorBill');
+            $payment = $payment->refresh()->load('lines.vendorBill', 'lines.settlementDiscountAccount', 'vendor', 'vendorBill');
 
             return $this->shouldAutoPostOnCreateAccountingWorkflow() ? $this->post($payment) : $payment;
         });
@@ -105,13 +105,13 @@ class VendorPaymentService
 
     public function post(VendorPayment $payment): VendorPayment
     {
-        if ($payment->status === 'posted') {
-            throw ApiException::make('DOCUMENT_ALREADY_POSTED', 'Document has already been posted.', 422);
-        }
-        $this->guardDate((string) $payment->payment_date);
-        $allocations = $this->validatedAllocations($payment);
-
-        return DB::connection('tenant')->transaction(function () use ($payment, $allocations) {
+        return DB::connection('tenant')->transaction(function () use ($payment) {
+            $payment = VendorPayment::query()->lockForUpdate()->findOrFail($payment->id);
+            if ($payment->status !== 'draft') {
+                throw ApiException::make('DOCUMENT_ALREADY_POSTED', 'Hanya dokumen draf yang bisa diposting.', 422);
+            }
+            $this->guardDate((string) $payment->payment_date);
+            $allocations = $this->validatedAllocations($payment);
             $journal = $this->journal($payment, $allocations);
             $payment->status = 'posted';
             $payment->journal_entry_id = $journal->id;
@@ -119,22 +119,27 @@ class VendorPaymentService
             $payment->posted_at = now();
             $payment->save();
             foreach ($allocations as $allocation) {
-                $this->applyToBillAmount($allocation['bill'], $allocation['amount']);
+                $this->applyToBillAmount($allocation['bill'], $allocation['amount'], $allocation['discount']);
             }
 
-            return $payment->refresh()->load('lines.vendorBill', 'vendor', 'vendorBill');
+            return $payment->refresh()->load('lines.vendorBill', 'lines.settlementDiscountAccount', 'vendor', 'vendorBill');
         });
     }
 
     public function void(VendorPayment $payment, ?string $reason = null): VendorPayment
     {
-        if ($payment->status === 'void') {
-            throw ApiException::make('VENDOR_PAYMENT_ALREADY_VOID', 'Vendor payment already void.', 422);
-        }
         $reason = $this->voidEffectService->requireReason($reason);
-        $this->guardDate((string) $payment->payment_date, 'void');
 
         return DB::connection('tenant')->transaction(function () use ($payment, $reason) {
+            $payment = VendorPayment::query()->lockForUpdate()->findOrFail($payment->id);
+            if ($payment->status === 'void') {
+                throw ApiException::make('VENDOR_PAYMENT_ALREADY_VOID', 'Vendor payment already void.', 422);
+            }
+            $this->guardDate((string) $payment->payment_date, 'void');
+            $dependents = $this->dependents($payment);
+            if ($dependents !== []) {
+                throw ApiException::make('TRANSACTION_HAS_DEPENDENCY', 'Batalkan rekonsiliasi bank sebelum membatalkan pembayaran ini.', 422, ['dependents' => $dependents]);
+            }
             $journalIds = $this->reversePostingEffects($payment, $reason);
             $payment->status = 'void';
             $payment->voided_by = auth()->id();
@@ -143,7 +148,7 @@ class VendorPaymentService
             $payment->save();
             $this->auditPurchase($this->auditLogService, 'vendor_payment.voided', $payment, 'payment_number', ['reason' => $reason, 'voided_journal_ids' => $journalIds]);
 
-            return $payment->refresh()->load('lines.vendorBill', 'vendor', 'vendorBill');
+            return $payment->refresh()->load('lines.vendorBill', 'lines.settlementDiscountAccount', 'vendor', 'vendorBill');
         });
     }
 
@@ -159,15 +164,15 @@ class VendorPaymentService
 
     private function applyUpdate(VendorPayment $payment, array $data): VendorPayment
     {
-        $this->changePolicy()->assertDocumentChange(
-            TransactionPolicyService::CHANGE_EDIT,
-            TransactionModule::PURCHASE,
-            (string) $payment->status,
-            $this->dependents($payment),
-            $payment->payment_date?->toDateString(),
-        );
-
         return DB::connection('tenant')->transaction(function () use ($payment, $data) {
+            $payment = VendorPayment::query()->lockForUpdate()->findOrFail($payment->id);
+            $this->changePolicy()->assertDocumentChange(
+                TransactionPolicyService::CHANGE_EDIT,
+                TransactionModule::PURCHASE,
+                (string) $payment->status,
+                $this->dependents($payment),
+                $payment->payment_date?->toDateString(),
+            );
             $wasPosted = $payment->status === 'posted';
             if ($wasPosted) {
                 $this->reopenToDraft($payment, 'Diedit setelah posting');
@@ -231,7 +236,7 @@ class VendorPaymentService
             'amount' => $payment->amount,
             'description' => $payment->notes,
         ]]);
-        $payment = $payment->refresh()->load('lines.vendorBill', 'vendor', 'vendorBill');
+        $payment = $payment->refresh()->load('lines.vendorBill', 'lines.settlementDiscountAccount', 'vendor', 'vendorBill');
         $this->auditPurchase($this->auditLogService, 'vendor_payment.updated', $payment, 'payment_number');
 
         return $payment;
@@ -248,16 +253,24 @@ class VendorPaymentService
         $journalIds = $this->voidEffectService->voidJournalsForSource('vendor_payment', (int) $payment->id, $reason);
         if ($payment->status === 'posted') {
             $payment->loadMissing('lines');
-            foreach ($payment->lines as $line) {
+            foreach ($payment->lines->sortBy('vendor_bill_id') as $line) {
                 if (! $line->vendor_bill_id) {
                     continue;
                 }
                 $bill = VendorBill::query()->lockForUpdate()->find($line->vendor_bill_id);
                 if ($bill && $bill->status !== 'void') {
                     $amount = (float) $line->amount;
-                    $bill->paid_amount = max(0, (float) $bill->paid_amount - $amount);
-                    $bill->balance_due = min((float) $bill->grand_total, (float) $bill->balance_due + $amount);
-                    $bill->status = $bill->paid_amount > 0 ? 'partially_paid' : 'posted';
+                    $discount = (float) $line->settlement_discount_amount;
+                    $bill->paid_amount = max(0, round((float) $bill->paid_amount - $amount, 2));
+                    $bill->settlement_discount_amount = max(0, round((float) $bill->settlement_discount_amount - $discount, 2));
+                    $maximumDue = round((float) $bill->grand_total - (float) $bill->returned_amount
+                        - (float) $bill->paid_amount - (float) $bill->settlement_discount_amount, 2);
+                    $bill->balance_due = max(0, min($maximumDue, round((float) $bill->balance_due + $amount + $discount, 2)));
+                    if ((float) $bill->balance_due === 0.0) {
+                        $bill->status = 'paid';
+                    } else {
+                        $bill->status = $bill->paid_amount > 0 ? 'partially_paid' : 'posted';
+                    }
                     $bill->save();
                 }
             }
@@ -283,10 +296,11 @@ class VendorPaymentService
         $this->applyToBillAmount($bill, (float) $payment->amount);
     }
 
-    public function applyToBillAmount(VendorBill $bill, float $amount): void
+    public function applyToBillAmount(VendorBill $bill, float $amount, float $discount = 0.0): void
     {
-        $bill->paid_amount = (float) $bill->paid_amount + $amount;
-        $bill->balance_due = max(0, (float) $bill->balance_due - $amount);
+        $bill->paid_amount = round((float) $bill->paid_amount + $amount, 2);
+        $bill->settlement_discount_amount = round((float) $bill->settlement_discount_amount + $discount, 2);
+        $bill->balance_due = max(0, round((float) $bill->balance_due - $amount - $discount, 2));
         $bill->status = $bill->balance_due <= 0 ? 'paid' : 'partially_paid';
         $bill->save();
     }
@@ -351,12 +365,27 @@ class VendorPaymentService
         $grouped = [];
         foreach ($allocations as $allocation) {
             $ap = $this->accountResolver->resolveBillPayableAccountId($allocation['bill']);
-            $grouped[$ap] = ($grouped[$ap] ?? 0.0) + $allocation['amount'];
+            $grouped[$ap] = ($grouped[$ap] ?? 0.0) + $allocation['amount'] + $allocation['discount'];
         }
         foreach ($grouped as $accountId => $amount) {
             $lines[] = ['account_id' => (int) $accountId, 'description' => 'Accounts Payable', 'debit' => round((float) $amount, 2), 'credit' => 0, 'line_order' => count($lines) + 1];
         }
         $lines[] = ['account_id' => $payment->cash_bank_account_id, 'description' => 'Cash/Bank', 'debit' => 0, 'credit' => $payment->amount, 'line_order' => count($lines) + 1];
+
+        foreach ($allocations as $allocation) {
+            foreach ($allocation['discount_lines'] as $line) {
+                $description = 'Potongan pelunasan '.$allocation['bill']->bill_number;
+                if ($line['note'] !== null) {
+                    $description .= ' — '.$line['note'];
+                }
+                $lines[] = [
+                    'account_id' => $line['account_id'],
+                    'description' => mb_substr($description, 0, 255),
+                    'debit' => 0, 'credit' => $line['amount'],
+                    'line_order' => count($lines) + 1,
+                ];
+            }
+        }
         $journal->lines()->createMany($lines);
 
         return $journal->refresh();
@@ -401,23 +430,44 @@ class VendorPaymentService
             throw ApiException::make('PAYMENT_TOTAL_MISMATCH', 'Total line amount must match payment amount.', 422);
         }
 
-        $allocations = [];
         foreach ($lines as $line) {
-            $amount = (float) $line->amount;
-            if ($amount <= 0) {
-                throw ApiException::make('PAYMENT_AMOUNT_INVALID', 'Payment line amount must be greater than zero.', 422);
+            if ((float) $line->amount <= 0 || (float) $line->settlement_discount_amount < 0) {
+                throw ApiException::make('PAYMENT_AMOUNT_INVALID', 'Jumlah kas per baris wajib positif dan potongan tidak boleh negatif.', 422);
             }
-            $bill = VendorBill::query()->lockForUpdate()->find($line->vendor_bill_id);
+        }
+
+        $allocations = [];
+        foreach ($lines->groupBy('vendor_bill_id')->sortKeys() as $id => $invoiceLines) {
+            $amount = round((float) $invoiceLines->sum('amount'), 2);
+            $discount = round((float) $invoiceLines->sum('settlement_discount_amount'), 2);
+            $bill = VendorBill::query()->lockForUpdate()->find($id);
             if (! $bill || ! in_array($bill->status, ['posted', 'partially_paid'], true)) {
                 throw ApiException::make('VENDOR_BILL_NOT_PAYABLE', 'Vendor bill must be posted before payment.', 422);
             }
             if ((int) $bill->vendor_id !== (int) $payment->vendor_id) {
                 throw ApiException::make('PAYMENT_VENDOR_MISMATCH', 'Payment bill vendor must match payment vendor.', 422);
             }
-            if ($amount > (float) $bill->balance_due) {
-                throw ApiException::make('OVERPAYMENT_NOT_ALLOWED', 'Payment amount exceeds bill balance.', 422);
+            if (round($amount + $discount, 2) > (float) $bill->balance_due) {
+                throw ApiException::make('OVERPAYMENT_NOT_ALLOWED', 'Jumlah kas dan potongan melebihi sisa tagihan.', 422);
             }
-            $allocations[] = ['bill' => $bill, 'amount' => $amount];
+            $discountLines = [];
+            foreach ($invoiceLines as $line) {
+                if ((float) $line->settlement_discount_amount <= 0) {
+                    continue;
+                }
+                if (! $line->settlement_discount_account_id) {
+                    throw ApiException::make('SETTLEMENT_DISCOUNT_ACCOUNT_REQUIRED', 'Pilih akun untuk potongan pelunasan.', 422);
+                }
+                $account = $validator->account((int) $line->settlement_discount_account_id, ['expense', 'revenue']);
+                $discountLines[] = [
+                    'account_id' => (int) $account->id,
+                    'amount' => (float) $line->settlement_discount_amount,
+                    'note' => $line->settlement_discount_note,
+                ];
+            }
+            $allocations[] = [
+                'bill' => $bill, 'amount' => $amount, 'discount' => $discount, 'discount_lines' => $discountLines,
+            ];
         }
 
         return $allocations;

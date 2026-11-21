@@ -32,7 +32,7 @@ class AccountsReceivableController extends Controller
 
     public function invoiceLedger(int $invoiceId): JsonResponse
     {
-        return $this->successResponse($this->ledgerService->ledgerByInvoice($invoiceId), 'AR invoice ledger retrieved successfully');
+        return $this->successResponse($this->ledgerService->ledgerByInvoice($invoiceId, request()->only(['start_date', 'end_date'])), 'AR invoice ledger retrieved successfully');
     }
 
     public function openInvoices(Request $request): JsonResponse
