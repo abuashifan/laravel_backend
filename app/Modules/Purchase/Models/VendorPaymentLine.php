@@ -2,6 +2,7 @@
 
 namespace App\Modules\Purchase\Models;
 
+use App\Modules\MasterData\Models\ChartOfAccount;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -26,5 +27,10 @@ class VendorPaymentLine extends Model
     public function vendorBill(): BelongsTo
     {
         return $this->belongsTo(VendorBill::class, 'vendor_bill_id');
+    }
+
+    public function settlementDiscountAccount(): BelongsTo
+    {
+        return $this->belongsTo(ChartOfAccount::class, 'settlement_discount_account_id');
     }
 }

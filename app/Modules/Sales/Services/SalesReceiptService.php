@@ -63,7 +63,7 @@ class SalesReceiptService
 
     public function find(int $id): SalesReceipt
     {
-        return SalesReceipt::query()->with('lines', 'customer', 'salesInvoice', 'cashBankAccount')->findOrFail($id);
+        return SalesReceipt::query()->with('lines.salesInvoice', 'lines.settlementDiscountAccount', 'customer', 'salesInvoice', 'cashBankAccount')->findOrFail($id);
     }
 
     public function create(array $data): SalesReceipt
@@ -85,13 +85,13 @@ class SalesReceiptService
 
     public function post(SalesReceipt $receipt): SalesReceipt
     {
-        if ($receipt->status === 'posted') {
-            throw ApiException::make('DOCUMENT_ALREADY_POSTED', 'Document has already been posted.', 422);
-        }
-        $this->guardDate((string) $receipt->receipt_date);
-        $allocations = $this->validatedAllocations($receipt);
-
-        return DB::connection('tenant')->transaction(function () use ($receipt, $allocations) {
+        return DB::connection('tenant')->transaction(function () use ($receipt) {
+            $receipt = SalesReceipt::query()->lockForUpdate()->findOrFail($receipt->id);
+            if ($receipt->status !== 'draft') {
+                throw ApiException::make('DOCUMENT_ALREADY_POSTED', 'Hanya dokumen draf yang bisa diposting.', 422);
+            }
+            $this->guardDate((string) $receipt->receipt_date);
+            $allocations = $this->validatedAllocations($receipt);
             $journal = $this->journal($receipt, $allocations);
             $receipt->status = 'posted';
             $receipt->journal_entry_id = $journal->id;
@@ -99,7 +99,7 @@ class SalesReceiptService
             $receipt->posted_at = now();
             $receipt->save();
             foreach ($allocations as $allocation) {
-                $this->applyToInvoiceAmount($allocation['invoice'], $allocation['amount']);
+                $this->applyToInvoiceAmount($allocation['invoice'], $allocation['amount'], $allocation['discount']);
             }
 
             return $receipt->refresh()->load('lines', 'customer', 'salesInvoice');
@@ -108,13 +108,18 @@ class SalesReceiptService
 
     public function void(SalesReceipt $receipt, ?string $reason = null): SalesReceipt
     {
-        if ($receipt->status === 'void') {
-            throw ApiException::make('SALES_RECEIPT_ALREADY_VOID', 'Sales receipt already void.', 422);
-        }
         $reason = $this->voidEffectService->requireReason($reason);
-        $this->guardDate((string) $receipt->receipt_date, 'void');
 
         return DB::connection('tenant')->transaction(function () use ($receipt, $reason) {
+            $receipt = SalesReceipt::query()->lockForUpdate()->findOrFail($receipt->id);
+            if ($receipt->status === 'void') {
+                throw ApiException::make('SALES_RECEIPT_ALREADY_VOID', 'Sales receipt already void.', 422);
+            }
+            $this->guardDate((string) $receipt->receipt_date, 'void');
+            $dependents = $this->dependents($receipt);
+            if ($dependents !== []) {
+                throw ApiException::make('TRANSACTION_HAS_DEPENDENCY', 'Batalkan rekonsiliasi bank sebelum membatalkan penerimaan ini.', 422, ['dependents' => $dependents]);
+            }
             $journalIds = $this->reversePostingEffects($receipt, $reason);
             $receipt->status = 'void';
             $receipt->voided_by = auth()->id();
@@ -139,15 +144,15 @@ class SalesReceiptService
 
     private function applyUpdate(SalesReceipt $receipt, array $data): SalesReceipt
     {
-        $this->changePolicy()->assertDocumentChange(
-            TransactionPolicyService::CHANGE_EDIT,
-            TransactionModule::SALES,
-            (string) $receipt->status,
-            $this->dependents($receipt),
-            $receipt->receipt_date?->toDateString(),
-        );
-
         return DB::connection('tenant')->transaction(function () use ($receipt, $data) {
+            $receipt = SalesReceipt::query()->lockForUpdate()->findOrFail($receipt->id);
+            $this->changePolicy()->assertDocumentChange(
+                TransactionPolicyService::CHANGE_EDIT,
+                TransactionModule::SALES,
+                (string) $receipt->status,
+                $this->dependents($receipt),
+                $receipt->receipt_date?->toDateString(),
+            );
             $wasPosted = $receipt->status === 'posted';
             if ($wasPosted) {
                 $this->reopenToDraft($receipt, 'Diedit setelah posting');
@@ -224,16 +229,24 @@ class SalesReceiptService
         $journalIds = $this->voidEffectService->voidJournalsForSource('sales_receipt', (int) $receipt->id, $reason);
         if ($receipt->status === 'posted') {
             $receipt->loadMissing('lines');
-            foreach ($receipt->lines as $line) {
+            foreach ($receipt->lines->sortBy('sales_invoice_id') as $line) {
                 if (! $line->sales_invoice_id) {
                     continue;
                 }
                 $invoice = SalesInvoice::query()->lockForUpdate()->find($line->sales_invoice_id);
                 if ($invoice && $invoice->status !== 'void') {
                     $amount = (float) $line->amount;
-                    $invoice->paid_amount = max(0, (float) $invoice->paid_amount - $amount);
-                    $invoice->balance_due = min((float) $invoice->grand_total, (float) $invoice->balance_due + $amount);
-                    $invoice->status = $invoice->paid_amount > 0 ? 'partially_paid' : 'posted';
+                    $discount = (float) $line->settlement_discount_amount;
+                    $invoice->paid_amount = max(0, round((float) $invoice->paid_amount - $amount, 2));
+                    $invoice->settlement_discount_amount = max(0, round((float) $invoice->settlement_discount_amount - $discount, 2));
+                    $maximumDue = round((float) $invoice->grand_total - (float) $invoice->returned_amount
+                        - (float) $invoice->paid_amount - (float) $invoice->settlement_discount_amount, 2);
+                    $invoice->balance_due = max(0, min($maximumDue, round((float) $invoice->balance_due + $amount + $discount, 2)));
+                    if ((float) $invoice->balance_due === 0.0) {
+                        $invoice->status = ((float) $invoice->paid_amount > 0 ? 'paid' : 'returned');
+                    } else {
+                        $invoice->status = $invoice->paid_amount > 0 ? 'partially_paid' : 'posted';
+                    }
                     $invoice->save();
                 }
             }
@@ -259,10 +272,11 @@ class SalesReceiptService
         $this->applyToInvoiceAmount($invoice, (float) $receipt->amount);
     }
 
-    public function applyToInvoiceAmount(SalesInvoice $invoice, float $amount): void
+    public function applyToInvoiceAmount(SalesInvoice $invoice, float $amount, float $discount = 0.0): void
     {
-        $invoice->paid_amount = (float) $invoice->paid_amount + $amount;
-        $invoice->balance_due = max(0, (float) $invoice->balance_due - $amount);
+        $invoice->paid_amount = round((float) $invoice->paid_amount + $amount, 2);
+        $invoice->settlement_discount_amount = round((float) $invoice->settlement_discount_amount + $discount, 2);
+        $invoice->balance_due = max(0, round((float) $invoice->balance_due - $amount - $discount, 2));
         $invoice->status = $invoice->balance_due <= 0 ? 'paid' : 'partially_paid';
         $invoice->save();
     }
@@ -312,10 +326,27 @@ class SalesReceiptService
         $grouped = [];
         foreach ($allocations as $allocation) {
             $ar = $this->accountResolver->resolveInvoiceReceivableAccountId($allocation['invoice']);
-            $grouped[$ar] = ($grouped[$ar] ?? 0.0) + $allocation['amount'];
-        } foreach ($grouped as $accountId => $amount) {
+            $grouped[$ar] = ($grouped[$ar] ?? 0.0) + $allocation['amount'] + $allocation['discount'];
+        }
+        foreach ($grouped as $accountId => $amount) {
             $lines[] = ['account_id' => (int) $accountId, 'description' => 'Accounts Receivable', 'debit' => 0, 'credit' => round((float) $amount, 2), 'line_order' => count($lines) + 1];
-        } $journal->lines()->createMany($lines);
+        }
+
+        foreach ($allocations as $allocation) {
+            foreach ($allocation['discount_lines'] as $line) {
+                $description = 'Potongan pelunasan '.$allocation['invoice']->invoice_number;
+                if ($line['note'] !== null) {
+                    $description .= ' — '.$line['note'];
+                }
+                $lines[] = [
+                    'account_id' => $line['account_id'],
+                    'description' => mb_substr($description, 0, 255),
+                    'debit' => $line['amount'], 'credit' => 0,
+                    'line_order' => count($lines) + 1,
+                ];
+            }
+        }
+        $journal->lines()->createMany($lines);
 
         return $journal->refresh();
     }
@@ -340,23 +371,44 @@ class SalesReceiptService
             throw ApiException::make('PAYMENT_TOTAL_MISMATCH', 'Total line amount must match receipt amount.', 422);
         }
 
-        $allocations = [];
         foreach ($lines as $line) {
-            $amount = (float) $line->amount;
-            if ($amount <= 0) {
-                throw ApiException::make('PAYMENT_AMOUNT_INVALID', 'Receipt line amount must be greater than zero.', 422);
+            if ((float) $line->amount <= 0 || (float) $line->settlement_discount_amount < 0) {
+                throw ApiException::make('PAYMENT_AMOUNT_INVALID', 'Jumlah kas per baris wajib positif dan potongan tidak boleh negatif.', 422);
             }
-            $invoice = SalesInvoice::query()->lockForUpdate()->find($line->sales_invoice_id);
+        }
+
+        $allocations = [];
+        foreach ($lines->groupBy('sales_invoice_id')->sortKeys() as $id => $invoiceLines) {
+            $amount = round((float) $invoiceLines->sum('amount'), 2);
+            $discount = round((float) $invoiceLines->sum('settlement_discount_amount'), 2);
+            $invoice = SalesInvoice::query()->lockForUpdate()->find($id);
             if (! $invoice || ! in_array($invoice->status, ['posted', 'partially_paid'], true)) {
                 throw ApiException::make('SALES_INVOICE_NOT_PAYABLE', 'Sales invoice must be posted before payment.', 422);
             }
             if ((int) $invoice->customer_id !== (int) $receipt->customer_id) {
                 throw ApiException::make('PAYMENT_CUSTOMER_MISMATCH', 'Receipt invoice customer must match receipt customer.', 422);
             }
-            if ($amount > (float) $invoice->balance_due) {
-                throw ApiException::make('OVERPAYMENT_NOT_ALLOWED', 'Payment amount exceeds invoice balance.', 422);
+            if (round($amount + $discount, 2) > (float) $invoice->balance_due) {
+                throw ApiException::make('OVERPAYMENT_NOT_ALLOWED', 'Jumlah kas dan potongan melebihi sisa faktur.', 422);
             }
-            $allocations[] = ['invoice' => $invoice, 'amount' => $amount];
+            $discountLines = [];
+            foreach ($invoiceLines as $line) {
+                if ((float) $line->settlement_discount_amount <= 0) {
+                    continue;
+                }
+                if (! $line->settlement_discount_account_id) {
+                    throw ApiException::make('SETTLEMENT_DISCOUNT_ACCOUNT_REQUIRED', 'Pilih akun untuk potongan pelunasan.', 422);
+                }
+                $account = $validator->account((int) $line->settlement_discount_account_id, ['expense', 'revenue']);
+                $discountLines[] = [
+                    'account_id' => (int) $account->id,
+                    'amount' => (float) $line->settlement_discount_amount,
+                    'note' => $line->settlement_discount_note,
+                ];
+            }
+            $allocations[] = [
+                'invoice' => $invoice, 'amount' => $amount, 'discount' => $discount, 'discount_lines' => $discountLines,
+            ];
         }
 
         return $allocations;

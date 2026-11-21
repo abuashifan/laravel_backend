@@ -51,6 +51,59 @@ class VendorPaymentTest extends PurchaseTestCase
         $this->patchJson('/api/purchase/payments/'.$payment['id'].'/post', [], $ctx['headers'])->assertStatus(422);
     }
 
+    public function test_one_payment_posts_chosen_discounts_per_bill_and_keeps_cash_preview_and_ap_in_sync(): void
+    {
+        $ctx = $this->setUpTenant();
+        $headers = $ctx['headers'];
+        $accounts = $this->seedPurchaseMappings();
+        $vendor = $this->createVendor();
+        $bills = [];
+        for ($index = 0; $index < 2; $index++) {
+            $bill = $this->postJson('/api/purchase/bills', $this->vendorBillPayload(['vendor_id' => $vendor]), $headers)
+                ->assertCreated()->json('data.id');
+            $this->patchJson('/api/purchase/bills/'.$bill.'/post', [], $headers)->assertOk();
+            $bills[] = $bill;
+        }
+        $discountA = $this->createAccount('expense', 'Potongan pembelian');
+        $discountB = $this->createAccount('revenue', 'Rebate vendor');
+        $payload = [
+            'payment_date' => '2026-05-20', 'vendor_id' => $vendor, 'cash_bank_account_id' => $accounts['cash'], 'amount' => 300,
+            'lines' => [
+                ['vendor_bill_id' => $bills[0], 'amount' => 200, 'settlement_discount_amount' => 22, 'settlement_discount_account_id' => $discountA],
+                ['vendor_bill_id' => $bills[1], 'amount' => 100, 'settlement_discount_amount' => 10, 'settlement_discount_account_id' => $discountB],
+            ],
+        ];
+        $excess = $payload;
+        $excess['lines'][1]['vendor_bill_id'] = $bills[0];
+        $failed = $this->postJson('/api/purchase/payments', $excess, $headers)->assertCreated()->json('data.id');
+        $this->patchJson('/api/purchase/payments/'.$failed.'/post', [], $headers)->assertUnprocessable();
+        $this->assertSame(0, JournalEntry::query()->where('source_type', 'vendor_payment')->count());
+
+        $id = $this->postJson('/api/purchase/payments', $payload, $headers)->assertCreated()->json('data.id');
+        $url = '/api/purchase/payments/'.$id;
+        $this->patchJson($url.'/post', [], $headers)->assertOk();
+        $this->getJson($url, $headers)->assertOk()->assertJsonPath('data.lines.1.settlement_discount_account.id', $discountB);
+        $journal = JournalEntry::query()->where('source_type', 'vendor_payment')->where('source_id', $id)->firstOrFail();
+        $this->assertSame(300.0, (float) $journal->lines()->where('account_id', $accounts['cash'])->sum('credit'));
+        $this->assertSame(22.0, (float) $journal->lines()->where('account_id', $discountA)->sum('credit'));
+        $this->assertSame(10.0, (float) $journal->lines()->where('account_id', $discountB)->sum('credit'));
+        $this->assertSame(332.0, (float) $journal->lines()->where('account_id', $accounts['ap'])->sum('debit'));
+        $this->assertSame('paid', DB::connection('tenant')->table('vendor_bills')->where('id', $bills[0])->value('status'));
+        $this->assertSame(112.0, (float) DB::connection('tenant')->table('vendor_bills')->where('id', $bills[1])->value('balance_due'));
+        $this->getJson('/api/purchase/ap/bills/'.$bills[1].'/ledger', $headers)->assertOk()
+            ->assertJsonPath('data.movements.1.debit', 110)
+            ->assertJsonPath('data.movements.1.settlement_discount_amount', 10);
+        $this->getJson('/api/purchase/payments/cash-balance?cash_bank_account_id='.$accounts['cash'].'&payment_date=2026-05-20', $headers)
+            ->assertOk()->assertJsonPath('data.balance', -300);
+        $this->getJson('/api/purchase/ap/reconciliation', $headers)->assertOk()->assertJsonPath('data.difference', 0);
+
+        $this->patchJson($url.'/void', ['reason' => 'Koreksi voucher'], $headers)->assertOk();
+        $restored = DB::connection('tenant')->table('vendor_bills')->whereIn('id', $bills)->get();
+        $this->assertSame([222.0, 222.0], $restored->pluck('balance_due')->map(fn ($value) => (float) $value)->all());
+        $this->assertSame(0.0, (float) $restored->sum('settlement_discount_amount'));
+        $this->getJson('/api/purchase/ap/reconciliation', $headers)->assertOk()->assertJsonPath('data.difference', 0);
+    }
+
     public function test_payment_vendor_context_and_apply_deposit_before_payment(): void
     {
         $ctx = $this->setUpTenant();

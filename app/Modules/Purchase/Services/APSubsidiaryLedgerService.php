@@ -84,6 +84,7 @@ class APSubsidiaryLedgerService
                 'vendor_name' => $bill->vendor?->name,
                 'grand_total' => (float) $bill->grand_total,
                 'paid_amount' => (float) $bill->paid_amount,
+                'settlement_discount_amount' => (float) $bill->settlement_discount_amount,
                 'returned_amount' => (float) $bill->returned_amount,
                 'balance_due' => (float) $bill->balance_due,
                 'status' => $bill->status,
@@ -146,31 +147,64 @@ class APSubsidiaryLedgerService
 
     private function paymentMovements(array $filters): array
     {
+        $filterId = $filters['bill_id'] ?? null;
+
         return VendorPayment::query()
-            ->with('vendor', 'vendorBill.apAccount')
+            ->with('vendor', 'vendorBill.apAccount', 'lines.vendorBill.apAccount')
             ->where('status', 'posted')
             ->whereNotNull('posted_at')
-            ->when($filters['vendor_id'] ?? null, fn ($query, $vendorId) => $query->where('vendor_id', $vendorId))
-            ->when($filters['bill_id'] ?? null, fn ($query, $billId) => $query->where('vendor_bill_id', $billId))
+            ->when($filters['vendor_id'] ?? null, fn ($query, $id) => $query->where('vendor_id', $id))
+            ->when($filterId, fn ($query, $id) => $query->where(fn ($match) => $match
+                ->whereHas('lines', fn ($lines) => $lines->where('vendor_bill_id', $id))
+                ->orWhere(fn ($legacy) => $legacy->whereDoesntHave('lines')->where('vendor_bill_id', $id))))
             ->when($filters['start_date'] ?? null, fn ($query, $date) => $query->where('payment_date', '>=', $date))
             ->when($this->endDate($filters), fn ($query, $date) => $query->where('payment_date', '<=', $date))
             ->get()
-            ->map(fn (VendorPayment $payment): array => $this->movement(
-                optional($payment->payment_date)->toDateString(),
-                $payment->vendor_id,
-                $payment->vendor?->name,
-                'vendor_payment',
-                $payment->id,
-                $payment->payment_number,
-                'Vendor payment '.$payment->payment_number,
-                (float) $payment->amount,
-                0.0,
-                'vendor_payment',
-                $payment->id,
-                $payment->vendorBill?->ap_account_id,
-                $payment->vendorBill?->apAccount?->account_code,
-                $payment->vendorBill?->apAccount?->account_name,
-            ))
+            ->flatMap(function (VendorPayment $payment) use ($filterId) {
+                $allocations = $payment->lines->isEmpty()
+                    ? collect([['document' => $payment->vendorBill, 'cash' => (float) $payment->amount, 'discount' => 0.0]])
+                    : $payment->lines
+                        ->filter(fn ($line) => $filterId === null || (int) $line->vendor_bill_id === (int) $filterId)
+                        ->groupBy('vendor_bill_id')
+                        ->map(fn (Collection $lines) => [
+                            'document' => $lines->first()->vendorBill,
+                            'cash' => (float) $lines->sum('amount'),
+                            'discount' => (float) $lines->sum('settlement_discount_amount'),
+                        ])->values();
+
+                return $allocations->map(function (array $allocation) use ($payment) {
+                    $document = $allocation['document'];
+                    $applied = $allocation['cash'] + $allocation['discount'];
+                    $description = 'Pembayaran '.$payment->payment_number;
+                    if ($document?->bill_number) {
+                        $description .= ' untuk '.$document->bill_number;
+                    }
+                    if ($allocation['discount'] > 0) {
+                        $description .= ' (termasuk potongan pelunasan)';
+                    }
+
+                    return $this->movement(
+                        optional($payment->payment_date)->toDateString(),
+                        $payment->vendor_id,
+                        $payment->vendor?->name,
+                        'vendor_payment',
+                        $payment->id,
+                        $payment->payment_number,
+                        $description,
+                        $applied,
+                        0.0,
+                        'vendor_payment',
+                        $payment->id,
+                        $document?->ap_account_id,
+                        $document?->apAccount?->account_code,
+                        $document?->apAccount?->account_name,
+                    ) + [
+                        'bill_id' => $document?->id,
+                        'cash_amount' => round($allocation['cash'], 2),
+                        'settlement_discount_amount' => round($allocation['discount'], 2),
+                    ];
+                });
+            })
             ->all();
     }
 
