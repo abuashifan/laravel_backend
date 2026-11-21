@@ -7,6 +7,7 @@ use App\Modules\Sales\Models\CustomerDepositAllocation;
 use App\Modules\Sales\Models\SalesInvoice;
 use App\Modules\Sales\Models\SalesReceipt;
 use App\Modules\Sales\Models\SalesReturn;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 
 class ARSubsidiaryLedgerService
@@ -68,11 +69,22 @@ class ARSubsidiaryLedgerService
             ->all();
     }
 
-    public function openInvoices(array $filters = []): array
+    public function openInvoices(array $filters = [], ?CarbonImmutable $asOf = null): array
     {
+        $laterMovements = collect();
+        if ($asOf !== null) {
+            $filters['end_date'] = $asOf->toDateString();
+            $laterFilters = array_intersect_key($filters, array_flip(['customer_id', 'invoice_id']));
+            $laterFilters['start_date'] = $asOf->addDay()->toDateString();
+            $laterMovements = collect($this->receiptMovements($laterFilters))
+                ->merge($this->depositAllocationMovements($laterFilters))
+                ->merge($this->returnMovements($laterFilters))
+                ->groupBy('invoice_id');
+        }
+
         return $this->invoiceBaseQuery($filters)
             ->with('arAccount')
-            ->where('balance_due', '>', 0)
+            ->when($asOf === null, fn ($query) => $query->where('balance_due', '>', 0))
             ->orderBy('due_date')
             ->orderBy('invoice_date')
             ->get()
@@ -93,6 +105,28 @@ class ARSubsidiaryLedgerService
                 'balance_due' => (float) $invoice->balance_due,
                 'status' => $invoice->status,
             ])
+            ->map(function (array $row) use ($laterMovements): array {
+                $movements = $laterMovements->get($row['invoice_id']);
+                if ($movements === null) {
+                    return $row;
+                }
+
+                // Rewind later allocations against the stored totals, including balances imported without payment history.
+                $payments = $movements->where('document_type', 'sales_receipt');
+                $laterDeposits = (float) $movements->where('document_type', 'customer_deposit_allocation')->sum('credit');
+                $laterReturns = (float) $movements->where('document_type', 'sales_return')->sum('credit');
+                $row['paid_amount'] = max(0, round($row['paid_amount'] - $laterDeposits - (float) $payments->sum('cash_amount'), 2));
+                $row['settlement_discount_amount'] = max(0, round($row['settlement_discount_amount'] - (float) $payments->sum('settlement_discount_amount'), 2));
+                $row['returned_amount'] = max(0, round($row['returned_amount'] - $laterReturns, 2));
+                $row['balance_due'] = max(0, round($row['grand_total'] - $row['paid_amount'] - $row['settlement_discount_amount'] - $row['returned_amount'], 2));
+                if ($row['balance_due'] > 0) {
+                    $row['status'] = $row['paid_amount'] > 0 ? 'partially_paid' : 'posted';
+                }
+
+                return $row;
+            })
+            ->filter(fn (array $row) => $row['balance_due'] > 0)
+            ->values()
             ->all();
     }
 
@@ -239,7 +273,7 @@ class ARSubsidiaryLedgerService
                     $invoice?->ar_account_id,
                     $invoice?->arAccount?->account_code,
                     $invoice?->arAccount?->account_name,
-                );
+                ) + ['invoice_id' => $allocation->sales_invoice_id];
             })
             ->all();
     }
@@ -273,7 +307,7 @@ class ARSubsidiaryLedgerService
                     $invoice?->ar_account_id,
                     $invoice?->arAccount?->account_code,
                     $invoice?->arAccount?->account_name,
-                );
+                ) + ['invoice_id' => $return->sales_invoice_id];
             })
             ->all();
     }

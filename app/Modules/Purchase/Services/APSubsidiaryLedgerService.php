@@ -7,6 +7,7 @@ use App\Modules\Purchase\Models\VendorBill;
 use App\Modules\Purchase\Models\VendorDeposit;
 use App\Modules\Purchase\Models\VendorDepositAllocation;
 use App\Modules\Purchase\Models\VendorPayment;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 
 class APSubsidiaryLedgerService
@@ -67,11 +68,22 @@ class APSubsidiaryLedgerService
             ->all();
     }
 
-    public function openBills(array $filters = []): array
+    public function openBills(array $filters = [], ?CarbonImmutable $asOf = null): array
     {
+        $laterMovements = collect();
+        if ($asOf !== null) {
+            $filters['end_date'] = $asOf->toDateString();
+            $laterFilters = array_intersect_key($filters, array_flip(['vendor_id', 'bill_id']));
+            $laterFilters['start_date'] = $asOf->addDay()->toDateString();
+            $laterMovements = collect($this->paymentMovements($laterFilters))
+                ->merge($this->depositAllocationMovements($laterFilters))
+                ->merge($this->returnMovements($laterFilters))
+                ->groupBy('bill_id');
+        }
+
         return $this->billBaseQuery($filters)
             ->with('apAccount')
-            ->where('balance_due', '>', 0)
+            ->when($asOf === null, fn ($query) => $query->where('balance_due', '>', 0))
             ->orderBy('due_date')
             ->orderBy('bill_date')
             ->get()
@@ -92,6 +104,28 @@ class APSubsidiaryLedgerService
                 'ap_account_code' => $bill->apAccount?->account_code,
                 'ap_account_name' => $bill->apAccount?->account_name,
             ])
+            ->map(function (array $row) use ($laterMovements): array {
+                $movements = $laterMovements->get($row['bill_id']);
+                if ($movements === null) {
+                    return $row;
+                }
+
+                // Rewind later allocations against the stored totals, including balances imported without payment history.
+                $payments = $movements->where('document_type', 'vendor_payment');
+                $laterDeposits = (float) $movements->where('document_type', 'vendor_deposit_allocation')->sum('debit');
+                $laterReturns = (float) $movements->where('document_type', 'purchase_return')->sum('debit');
+                $row['paid_amount'] = max(0, round($row['paid_amount'] - $laterDeposits - (float) $payments->sum('cash_amount'), 2));
+                $row['settlement_discount_amount'] = max(0, round($row['settlement_discount_amount'] - (float) $payments->sum('settlement_discount_amount'), 2));
+                $row['returned_amount'] = max(0, round($row['returned_amount'] - $laterReturns, 2));
+                $row['balance_due'] = max(0, round($row['grand_total'] - $row['paid_amount'] - $row['settlement_discount_amount'] - $row['returned_amount'], 2));
+                if ($row['balance_due'] > 0) {
+                    $row['status'] = $row['paid_amount'] > 0 ? 'partially_paid' : 'posted';
+                }
+
+                return $row;
+            })
+            ->filter(fn (array $row) => $row['balance_due'] > 0)
+            ->values()
             ->all();
     }
 
@@ -238,7 +272,7 @@ class APSubsidiaryLedgerService
                     $bill?->ap_account_id,
                     $bill?->apAccount?->account_code,
                     $bill?->apAccount?->account_name,
-                );
+                ) + ['bill_id' => $allocation->vendor_bill_id];
             })
             ->all();
     }
@@ -269,7 +303,7 @@ class APSubsidiaryLedgerService
                 $return->vendorBill?->ap_account_id,
                 $return->vendorBill?->apAccount?->account_code,
                 $return->vendorBill?->apAccount?->account_name,
-            ))
+            ) + ['bill_id' => $return->vendor_bill_id])
             ->all();
     }
 

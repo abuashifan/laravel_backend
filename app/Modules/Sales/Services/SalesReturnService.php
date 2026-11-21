@@ -371,7 +371,12 @@ class SalesReturnService
     {
         if ($return->sales_invoice_id && ($invoice = SalesInvoice::query()->lockForUpdate()->find($return->sales_invoice_id)) && $invoice->status !== 'void') {
             $invoice->returned_amount = max(0, (float) $invoice->returned_amount - (float) $return->grand_total);
-            $invoice->balance_due = min((float) $invoice->grand_total, (float) $invoice->balance_due + (float) $return->grand_total);
+            $maximumDue = round((float) $invoice->grand_total - (float) $invoice->returned_amount
+                - (float) $invoice->paid_amount - (float) $invoice->settlement_discount_amount, 2);
+            $invoice->balance_due = max(0, min($maximumDue, round((float) $invoice->balance_due + (float) $return->grand_total, 2)));
+            if ($invoice->balance_due > 0) {
+                $invoice->status = $invoice->paid_amount > 0 ? 'partially_paid' : 'posted';
+            }
             $invoice->save();
         } foreach ($return->lines as $line) {
             if ($line->sales_invoice_line_id && ($invoiceLine = SalesInvoiceLine::query()->lockForUpdate()->find($line->sales_invoice_line_id))) {

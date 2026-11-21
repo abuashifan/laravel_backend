@@ -67,7 +67,7 @@ class VendorPaymentTest extends PurchaseTestCase
         $discountA = $this->createAccount('expense', 'Potongan pembelian');
         $discountB = $this->createAccount('revenue', 'Rebate vendor');
         $payload = [
-            'payment_date' => '2026-05-20', 'vendor_id' => $vendor, 'cash_bank_account_id' => $accounts['cash'], 'amount' => 300,
+            'payment_date' => '2026-05-21', 'vendor_id' => $vendor, 'cash_bank_account_id' => $accounts['cash'], 'amount' => 300,
             'lines' => [
                 ['vendor_bill_id' => $bills[0], 'amount' => 200, 'settlement_discount_amount' => 22, 'settlement_discount_account_id' => $discountA],
                 ['vendor_bill_id' => $bills[1], 'amount' => 100, 'settlement_discount_amount' => 10, 'settlement_discount_account_id' => $discountB],
@@ -93,8 +93,10 @@ class VendorPaymentTest extends PurchaseTestCase
         $this->getJson('/api/purchase/ap/bills/'.$bills[1].'/ledger', $headers)->assertOk()
             ->assertJsonPath('data.movements.1.debit', 110)
             ->assertJsonPath('data.movements.1.settlement_discount_amount', 10);
-        $this->getJson('/api/purchase/payments/cash-balance?cash_bank_account_id='.$accounts['cash'].'&payment_date=2026-05-20', $headers)
+        $this->getJson('/api/purchase/payments/cash-balance?cash_bank_account_id='.$accounts['cash'].'&payment_date=2026-05-21', $headers)
             ->assertOk()->assertJsonPath('data.balance', -300);
+        $this->getJson('/api/purchase/ap/aging?as_of_date=2026-05-20', $headers)->assertOk()->assertJsonPath('data.total', 444);
+        $this->getJson('/api/purchase/ap/aging?as_of_date=2026-05-21', $headers)->assertOk()->assertJsonPath('data.total', 112);
         $this->getJson('/api/purchase/ap/reconciliation', $headers)->assertOk()->assertJsonPath('data.difference', 0);
 
         $this->patchJson($url.'/void', ['reason' => 'Koreksi voucher'], $headers)->assertOk();

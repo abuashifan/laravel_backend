@@ -11,7 +11,7 @@ class ARAgingService
     public function aging(array $filters = []): array
     {
         $asOf = CarbonImmutable::parse($filters['as_of_date'] ?? now()->toDateString())->startOfDay();
-        $rows = collect($this->ledgerService->openInvoices($filters))
+        $rows = collect($this->ledgerService->openInvoices($filters, $asOf))
             ->map(function (array $invoice) use ($asOf): array {
                 $bucket = $this->bucketize($invoice['due_date'] ?? $invoice['invoice_date'], $asOf);
                 $invoice['bucket'] = $bucket;

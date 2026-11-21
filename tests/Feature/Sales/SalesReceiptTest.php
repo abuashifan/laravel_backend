@@ -110,8 +110,12 @@ class SalesReceiptTest extends SalesTestCase
         $second = $this->postedInvoice($ctx, $first['customer_id']);
         $discountA = $this->account('4120', 'Potongan pelanggan', 'revenue', 'debit');
         $discountB = $this->account('6101', 'Potongan program', 'expense', 'debit');
+        AccountMapping::query()->create([
+            'mapping_key' => 'sales.return', 'module' => 'sales', 'account_id' => $discountA,
+            'is_required' => true, 'is_active' => true,
+        ]);
         $payload = [
-            'receipt_date' => '2026-05-20', 'customer_id' => $first['customer_id'],
+            'receipt_date' => '2026-05-21', 'customer_id' => $first['customer_id'],
             'cash_bank_account_id' => $cash, 'amount' => 137.50,
             'lines' => [
                 ['sales_invoice_id' => $first['id'], 'amount' => 92.50, 'settlement_discount_amount' => 7.50,
@@ -144,7 +148,17 @@ class SalesReceiptTest extends SalesTestCase
         $this->getJson('/api/sales/ar/invoices/'.$second['id'].'/ledger', $headers)->assertOk()
             ->assertJsonPath('data.movements.1.credit', 50)
             ->assertJsonPath('data.movements.1.settlement_discount_amount', 5);
+        $this->getJson('/api/sales/ar/aging?as_of_date=2026-05-20', $headers)->assertOk()->assertJsonPath('data.total', 200);
+        $this->getJson('/api/sales/ar/aging?as_of_date=2026-05-21', $headers)->assertOk()->assertJsonPath('data.total', 50);
         $this->getJson('/api/sales/ar/reconciliation', $headers)->assertOk()->assertJsonPath('data.difference', 0);
+
+        $return = $this->postJson('/api/sales/returns/from-invoice/'.$second['id'], ['return_date' => '2026-05-22'], $headers)
+            ->assertCreated()->json('data.id');
+        $this->patchJson('/api/sales/returns/'.$return.'/post', [], $headers)->assertOk();
+        $this->assertSame(0.0, (float) SalesInvoice::query()->findOrFail($second['id'])->balance_due);
+        $this->getJson('/api/sales/ar/aging?as_of_date=2026-05-21', $headers)->assertOk()->assertJsonPath('data.total', 50);
+        $this->patchJson('/api/sales/returns/'.$return.'/void', ['reason' => 'Koreksi retur'], $headers)->assertOk();
+        $this->assertSame(50.0, (float) SalesInvoice::query()->findOrFail($second['id'])->balance_due);
 
         $this->patchJson($url.'/void', ['reason' => 'Koreksi penerimaan'], $headers)->assertOk();
         foreach ([$first, $second] as $invoice) {
