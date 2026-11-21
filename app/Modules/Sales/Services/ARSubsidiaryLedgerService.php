@@ -71,11 +71,14 @@ class ARSubsidiaryLedgerService
 
     public function openInvoices(array $filters = [], ?CarbonImmutable $asOf = null): array
     {
+        $cutoffExclusive = $asOf?->addDay()->toDateString();
+        $historicalStatus = null;
         $laterMovements = collect();
-        if ($asOf !== null) {
-            $filters['end_date'] = $asOf->toDateString();
+        if ($cutoffExclusive !== null) {
+            $historicalStatus = $filters['status'] ?? null;
+            unset($filters['end_date'], $filters['as_of_date'], $filters['status']);
             $laterFilters = array_intersect_key($filters, array_flip(['customer_id', 'invoice_id']));
-            $laterFilters['start_date'] = $asOf->addDay()->toDateString();
+            $laterFilters['start_date'] = $cutoffExclusive;
             $laterMovements = collect($this->receiptMovements($laterFilters))
                 ->merge($this->depositAllocationMovements($laterFilters))
                 ->merge($this->returnMovements($laterFilters))
@@ -84,6 +87,7 @@ class ARSubsidiaryLedgerService
 
         return $this->invoiceBaseQuery($filters)
             ->with('arAccount')
+            ->when($cutoffExclusive, fn ($query, $date) => $query->where('invoice_date', '<', $date))
             ->when($asOf === null, fn ($query) => $query->where('balance_due', '>', 0))
             ->orderBy('due_date')
             ->orderBy('invoice_date')
@@ -125,7 +129,7 @@ class ARSubsidiaryLedgerService
 
                 return $row;
             })
-            ->filter(fn (array $row) => $row['balance_due'] > 0)
+            ->filter(fn (array $row) => $row['balance_due'] > 0 && (! $historicalStatus || $row['status'] === $historicalStatus))
             ->values()
             ->all();
     }
