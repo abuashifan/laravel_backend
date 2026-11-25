@@ -7,7 +7,7 @@ use App\Modules\Journal\Models\JournalEntry;
 use App\Modules\MasterData\Models\ChartOfAccount;
 use App\Shared\Models\CompanyUser;
 use App\Shared\Models\User;
-use App\Shared\Workspace\ActivityAccountingGateway;
+use App\Shared\Models\TenantDatabase;
 use Illuminate\Support\Facades\DB;
 use Laravel\Sanctum\Sanctum;
 use Tests\Feature\Journal\JournalTestCase;
@@ -56,7 +56,10 @@ class WorkspaceAccountingHandoffTest extends JournalTestCase
             ->assertJsonPath('data.qc_status', 'approved')->assertJsonPath('data.cash_payment.status', 'draft')->json('data.cash_payment_id');
         $this->postJson(self::QUEUE."/$id/qc/approve", $qc, $headers)->assertOk()->assertJsonPath('data.cash_payment_id', $payment);
         $this->assertSame(1, CashPayment::query()->count());
-        $this->patchJson("/api/cash-bank/cash-payments/$payment", ['amount' => 1], $headers)
+        $this->patchJson("/api/cash-bank/cash-payments/$payment", [
+            'payment_date' => $record['disbursed_on'], 'cash_bank_account_id' => $record['cash_bank_account_id'], 'amount' => 1,
+            'lines' => [['account_id' => $expense->id, 'amount' => 1]],
+        ], $headers)
             ->assertConflict()->assertJsonPath('code', 'WORKSPACE_CASH_PAYMENT_MANAGED');
 
         $this->postJson(self::QUEUE."/$id/qc/reopen", ['note' => 'Tinjau ulang akun'], $headers)->assertOk()
@@ -84,13 +87,13 @@ class WorkspaceAccountingHandoffTest extends JournalTestCase
         $this->setUpProductTenant($tenant['company'], 'workspace', 'workspace_pilot');
         $headers = $tenant['headers'];
         $document = $this->submittedActivity($headers);
-        $realGateway = app(ActivityAccountingGateway::class);
-        $this->mock(ActivityAccountingGateway::class)->shouldReceive('receive')->once()->andReturnFalse();
+        $accounting = TenantDatabase::forProduct('accounting')->where('company_id', $tenant['company']->id)->firstOrFail();
+        $accounting->update(['status' => 'inactive']);
         $this->postJson(self::BUDGET."/requests/$document/approve", [], $headers)->assertOk()
             ->assertJsonPath('data.status', 'approved')->assertJsonPath('data.accounting.sync_status', 'pending');
         $this->assertSame(0, DB::connection('tenant')->table('workspace_disbursements')->count());
 
-        $this->app->instance(ActivityAccountingGateway::class, $realGateway);
+        $accounting->update(['status' => 'active']);
         $this->postJson(self::BUDGET."/requests/$document/accounting-sync", [], $headers)->assertOk()
             ->assertJsonPath('data.accounting.sync_status', 'delivered');
         $this->getJson(self::QUEUE, $headers)->assertOk()->assertJsonCount(1, 'data.data');

@@ -33,6 +33,8 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('cash-bank')->grou
 
     Route::prefix('workspace-disbursements')->group(function () {
         Route::get('/', [WorkspaceDisbursementController::class, 'index'])->middleware('permission:cash_bank.workspace_disbursements.view');
+        Route::get('/options', [WorkspaceDisbursementController::class, 'options'])
+            ->middleware('permission:cash_bank.workspace_disbursements.create|cash_bank.workspace_disbursements.approve');
         Route::get('/{id}', [WorkspaceDisbursementController::class, 'show'])->whereNumber('id')->middleware('permission:cash_bank.workspace_disbursements.view');
         Route::post('/{id}/record', [WorkspaceDisbursementController::class, 'record'])->whereNumber('id')->middleware('permission:cash_bank.workspace_disbursements.create');
         Route::post('/{id}/qc/{decision}', [WorkspaceDisbursementController::class, 'review'])

@@ -5,8 +5,10 @@ namespace App\Modules\CashBank\Controllers;
 use App\Http\Controllers\Controller;
 use App\Modules\CashBank\Requests\RecordWorkspaceDisbursementRequest;
 use App\Modules\CashBank\Requests\ReviewWorkspaceDisbursementRequest;
+use App\Modules\CashBank\Services\WorkspaceDisbursementOptions;
 use App\Modules\CashBank\Services\WorkspaceDisbursementService;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Permission\PermissionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -21,7 +23,20 @@ class WorkspaceDisbursementController extends Controller
         return $this->successResponse($this->disbursements->index($request->validate([
             'status' => ['sometimes', 'in:pending,approved,rejected'],
             'page' => ['sometimes', 'integer', 'min:1'],
+            'per_page' => ['sometimes', 'integer', 'in:25,50,100'],
         ])));
+    }
+
+    public function options(Request $request, WorkspaceDisbursementOptions $options, PermissionService $permissions): JsonResponse
+    {
+        $data = $request->validate([
+            'type' => ['required', 'in:cash,expense,department,project'],
+            'q' => ['nullable', 'string', 'max:120'],
+        ]);
+        $permission = $data['type'] === 'cash' ? 'cash_bank.workspace_disbursements.create' : 'cash_bank.workspace_disbursements.approve';
+        abort_unless($permissions->can($permission), 403);
+
+        return $this->successResponse($options->search($data['type'], trim($data['q'] ?? '')));
     }
 
     public function show(int $id): JsonResponse

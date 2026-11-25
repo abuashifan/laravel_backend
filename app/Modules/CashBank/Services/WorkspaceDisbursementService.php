@@ -20,7 +20,7 @@ class WorkspaceDisbursementService
     {
         $rows = WorkspaceDisbursement::query()->with('cashPayment:id,payment_number,status,journal_entry_id')
             ->when(isset($filters['status']), fn ($query) => $query->where('qc_status', $filters['status']))
-            ->orderByDesc('id')->paginate(25, [
+            ->orderByDesc('id')->paginate($filters['per_page'] ?? 25, [
                 'id', 'workspace_document_id', 'unit_name', 'title', 'activity_date',
                 'amount_minor', 'disbursed_on', 'qc_status', 'cash_payment_id',
             ], 'page', $filters['page'] ?? 1);
@@ -30,7 +30,7 @@ class WorkspaceDisbursementService
 
     public function show(int $id): WorkspaceDisbursement
     {
-        $row = WorkspaceDisbursement::query()->with('cashPayment:id,payment_number,status,journal_entry_id')->findOrFail($id);
+        $row = WorkspaceDisbursement::query()->with('cashPayment:id,payment_number,status,journal_entry_id', 'cashBankAccount:id,account_code,account_name')->findOrFail($id);
         $history = DB::connection('tenant')->table('workspace_disbursement_events')
             ->where('workspace_disbursement_id', $id)->orderBy('id')->get();
         $row->setAttribute('history', $history->map(fn ($event) => [

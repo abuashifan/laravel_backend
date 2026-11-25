@@ -2,6 +2,7 @@
 
 namespace App\Modules\CashBank\Models;
 
+use App\Modules\MasterData\Models\ChartOfAccount;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -17,6 +18,11 @@ class WorkspaceDisbursement extends Model
         'disbursed_on' => 'date:Y-m-d',
         'amount_minor' => 'integer',
     ];
+
+    public function cashBankAccount(): BelongsTo
+    {
+        return $this->belongsTo(ChartOfAccount::class);
+    }
 
     public function cashPayment(): BelongsTo
     {

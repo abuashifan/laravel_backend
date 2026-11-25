@@ -4,6 +4,7 @@ namespace App\Modules\CashBank\Requests;
 
 use App\Shared\Rules\PostableAccount;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class ReviewWorkspaceDisbursementRequest extends FormRequest
 {
@@ -17,8 +18,8 @@ class ReviewWorkspaceDisbursementRequest extends FormRequest
             'lines.*' => ['array:source_line_id,account_id,department_id,project_id'],
             'lines.*.source_line_id' => ['required', 'integer', 'min:1', 'distinct'],
             'lines.*.account_id' => ['required', 'integer', 'exists:tenant.chart_of_accounts,id', new PostableAccount],
-            'lines.*.department_id' => ['nullable', 'integer', 'exists:tenant.departments,id'],
-            'lines.*.project_id' => ['nullable', 'integer', 'exists:tenant.projects,id'],
+            'lines.*.department_id' => ['nullable', 'integer', Rule::exists('tenant.departments', 'id')->where('is_active', true)],
+            'lines.*.project_id' => ['nullable', 'integer', Rule::exists('tenant.projects', 'id')->where('is_active', true)->where('status', 'active')],
             'amount' => ['prohibited'],
         ];
     }
