@@ -46,6 +46,10 @@ class EnsureCompanyAccess
             );
         }
 
+        if ($product !== TenantDatabase::PRODUCT_WORKSPACE && TokenAbility::isWorkspaceOnly($user)) {
+            return ApiResponseBuilder::error(ApiErrorCode::FORBIDDEN, 'Sesi ini hanya berlaku untuk Workspace.', [], 403);
+        }
+
         $companyId = $request->header('X-Company-ID');
 
         if (! $companyId) {

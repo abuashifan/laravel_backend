@@ -77,7 +77,10 @@ class AuthController extends Controller
 
         $user->forceFill(['last_login_at' => now()])->save();
 
-        $token = $user->createToken('api-token', [TokenAbility::CLIENT])->plainTextToken;
+        $abilities = $request->input('app') === 'workspace'
+            ? [TokenAbility::CLIENT, TokenAbility::WORKSPACE]
+            : [TokenAbility::CLIENT];
+        $token = $user->createToken('api-token', $abilities)->plainTextToken;
 
         return $this->successResponse([
             'user' => $user,

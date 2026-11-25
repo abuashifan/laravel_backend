@@ -2,6 +2,7 @@
 
 namespace App\Modules\Access\Services;
 
+use App\Shared\Auth\TokenAbility;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Models\Company;
 use App\Shared\Models\CompanyInvitation;
@@ -51,6 +52,9 @@ class InvitationAcceptanceService
                 return $this->acceptWorkspace($invitation, $company, $member, $user);
             }
 
+            if (TokenAbility::isWorkspaceOnly($user)) {
+                throw ApiException::make('COMPANY_ACCESS_DENIED', 'Gunakan sesi produk yang sesuai untuk menerima undangan ini.', 403);
+            }
             if ($member?->status === 'active') {
                 throw ApiException::make('ALREADY_COMPANY_MEMBER', 'User is already an active member.', 422);
             }

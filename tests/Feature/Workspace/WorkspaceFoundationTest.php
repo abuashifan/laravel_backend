@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Workspace;
 
+use App\Shared\Auth\TokenAbility;
 use App\Shared\Models\CompanyInvitation;
 use App\Shared\Models\CompanyUser;
 use App\Shared\Models\Plan;
@@ -46,7 +47,10 @@ class WorkspaceFoundationTest extends TestCase
         $credentials = ['email' => $owner->email, 'password' => 'phase-one-password'];
 
         $this->postJson('/api/auth/login', $credentials)->assertForbidden();
-        $this->postJson('/api/auth/login', $credentials + ['app' => 'workspace'])->assertOk()->assertJsonStructure(['data' => ['token']]);
+        $token = $this->postJson('/api/auth/login', $credentials + ['app' => 'workspace'])
+            ->assertOk()->json('data.token');
+        $this->assertSame([TokenAbility::CLIENT, TokenAbility::WORKSPACE], $owner->tokens()->latest('id')->firstOrFail()->abilities);
+        $this->getJson('/api/budget-periods', ['Authorization' => 'Bearer '.$token, 'X-Company-ID' => '1'])->assertForbidden();
 
         Sanctum::actingAs($owner, ['client']);
         $company = $this->workspaceCompany();
