@@ -1,13 +1,9 @@
 <?php
 
-namespace App\Modules\Budget\Services;
+namespace App\Shared\Budget;
 
-use App\Modules\Budget\Models\BudgetPeriod;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Models\Company;
-use App\Shared\Models\TenantDatabase;
-use App\Shared\Tenant\TenantConnectionManager;
-use App\Shared\Tenant\TenantProductService;
 use Carbon\CarbonImmutable;
 use Closure;
 use Illuminate\Database\Query\Builder;
@@ -15,10 +11,7 @@ use Illuminate\Support\Facades\DB;
 
 class BudgetSourceService
 {
-    public function __construct(
-        private readonly TenantProductService $products,
-        private readonly TenantConnectionManager $connections,
-    ) {}
+    public function __construct(private readonly BudgetPeriodOverlapReader $accounting) {}
 
     public function periods(int $companyId): Builder
     {
@@ -46,18 +39,8 @@ class BudgetSourceService
                 throw ApiException::make('WORKSPACE_PERIOD_OVERLAP', 'Tanggal beririsan dengan periode Workspace yang sudah ada.', 422);
             }
 
-            $accounting = $this->products->find($company, TenantDatabase::PRODUCT_ACCOUNTING);
-            if ($accounting !== null) {
-                $this->connections->connect($accounting);
-                try {
-                    $overlap = BudgetPeriod::query()->forCompany($company->id)
-                        ->whereDate('period_from', '<=', $to)->whereDate('period_to', '>=', $from)->exists();
-                    if ($overlap) {
-                        throw ApiException::make('ACCOUNTING_BUDGET_PERIOD_EXISTS', 'Budget Accounting sudah memiliki periode yang beririsan. Pilih awal periode Workspace yang berbeda.', 422);
-                    }
-                } finally {
-                    $this->connections->disconnect();
-                }
+            if ($this->accounting->overlaps($company, $from, $to)) {
+                throw ApiException::make('ACCOUNTING_BUDGET_PERIOD_EXISTS', 'Budget Accounting sudah memiliki periode yang beririsan. Pilih awal periode Workspace yang berbeda.', 422);
             }
 
             $id = DB::table('workspace_budget_periods')->insertGetId([

@@ -501,3 +501,19 @@ sudah diklaim. Pilot fisik menunggu gudang tersedia.
   dipertahankan. Tautan memakai `WORKSPACE_FRONTEND_URL`.
 - Budget Accounting tetap menjadi sumber yang tersedia selama fondasi ini.
   Pengalihan periode dilakukan bersama implementasi RAB di fase berikutnya.
+
+## Workspace — Fase 2
+
+- Rentang pagu Workspace disimpan terpusat di `workspace_budget_periods`.
+  RAB, versi, pos, dan komitmen tetap di tenant Workspace. Perusahaan
+  menetapkan sumber untuk satu rentang 12 bulan mulai tanggal 1.
+  Kontrak pembacaan antarproduk terdaftar di `app/Shared/Budget/`.
+- Pembuatan periode Workspace serta pembuatan dan perubahan tanggal periode
+  Budget Accounting memakai lock perusahaan yang sama. Rentang yang beririsan
+  ditolak. Periode historis tetap bisa dibaca dari sumbernya.
+- Persetujuan tahunan mengaktifkan versi pagu. Persetujuan kegiatan mengikat
+  komitmen berdasarkan nominal tersimpan. Kedua keputusan mengambil lock unit
+  yang sama untuk memeriksa saldo dan menyimpan versi secara atomik.
+- Baca `GET /api/budget/workspace-periods` dari Accounting untuk ringkasan pagu
+  dan komitmen. Periode Workspace tetap menjadi sumber saat langganan habis.
+  Pencairan, QC, posting, dan realisasi jurnal mengikuti Fase 3.

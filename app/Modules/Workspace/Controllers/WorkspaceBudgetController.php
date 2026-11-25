@@ -3,12 +3,12 @@
 namespace App\Modules\Workspace\Controllers;
 
 use App\Http\Controllers\Controller;
-use App\Modules\Budget\Services\BudgetSourceService;
 use App\Modules\Workspace\Requests\DecideWorkspaceBudgetRequest;
 use App\Modules\Workspace\Requests\SaveWorkspaceBudgetRequest;
 use App\Modules\Workspace\Requests\StoreWorkspaceBudgetPeriodRequest;
 use App\Modules\Workspace\Services\WorkspaceBudgetService;
 use App\Shared\Api\ApiResponse;
+use App\Shared\Budget\BudgetSourceService;
 use App\Shared\Tenant\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;

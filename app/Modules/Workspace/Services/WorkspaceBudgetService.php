@@ -2,14 +2,13 @@
 
 namespace App\Modules\Workspace\Services;
 
-use App\Modules\Budget\Services\BudgetSourceService;
 use App\Modules\Workspace\Models\WorkspaceUnit;
+use App\Shared\Budget\BudgetSourceService;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
 use Closure;
 use Illuminate\Database\Connection;
 use Illuminate\Database\Query\Builder;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 class WorkspaceBudgetService
@@ -40,14 +39,6 @@ class WorkspaceBudgetService
             ->orderBy('items.code')
             ->get(['items.id', 'items.code', 'items.name', 'items.limit_minor', 'items.committed_minor'])
             ->all();
-    }
-
-    public function summaryByPeriod(): Collection
-    {
-        return $this->table('items as i')->join('workspace_budget_plans as p', 'p.id', '=', 'i.plan_id')
-            ->where('i.is_active', true)->groupBy('p.period_id')
-            ->selectRaw('p.period_id, SUM(i.limit_minor) AS limit_minor, SUM(i.committed_minor) AS committed_minor')
-            ->get()->keyBy('period_id');
     }
 
     public function index(array $filters): array

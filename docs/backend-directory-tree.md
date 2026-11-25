@@ -265,5 +265,5 @@ Lalu render ke format tree (box-drawing) dan perbarui blok di atas + tanggal `Ge
 
 ### Finlite Workspace
 
-- `app/Modules/Workspace/` memuat rute tenant, unit, keanggotaan, dan undangan.
+- `app/Modules/Workspace/` memuat rute tenant, unit, keanggotaan, undangan, dan RAB.
 - `database/migrations/tenant_workspace/` memuat skema tenant Workspace.
