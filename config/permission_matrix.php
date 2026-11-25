@@ -205,10 +205,16 @@ return [
         'label' => 'Workspace',
         'features' => [
             'workspace.units' => ['Unit Workspace', ['view']],
+            'workspace.budget' => ['RAB Workspace', ['view']],
         ],
         'special' => [
             'workspace.units.manage' => 'Kelola data unit Workspace',
             'workspace.members.manage' => 'Kelola undangan dan penempatan anggota Workspace',
+            'workspace.budget.submit' => 'Ajukan RAB untuk unit yang ditugaskan',
+            'workspace.budget.approve_annual' => 'Setujui atau tolak RAB Tahunan',
+            'workspace.budget.approve_activity' => 'Setujui atau tolak RAB Kegiatan',
+            'workspace.budget.manage_periods' => 'Tetapkan periode anggaran Workspace',
+            'workspace.budget.manage_access' => 'Kelola izin RAB anggota Workspace',
         ],
     ],
 ];

@@ -3,6 +3,7 @@
 namespace App\Modules\Workspace\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Budget\Services\BudgetSourceService;
 use App\Shared\Api\ApiErrorCode;
 use App\Shared\Api\ApiResponse;
 use App\Shared\Auth\TokenAbility;
@@ -39,16 +40,19 @@ class WorkspaceController extends Controller
         ]);
     }
 
-    public function bootstrap(TenantContext $context, PermissionService $permissions, PlanOwnerResolver $owners, SubscriptionService $subscriptions): JsonResponse
+    public function bootstrap(TenantContext $context, PermissionService $permissions, PlanOwnerResolver $owners, SubscriptionService $subscriptions, BudgetSourceService $sources): JsonResponse
     {
         $company = $context->company();
         $owner = $owners->ownerOf($company);
+
+        $today = today()->toDateString();
+        $workspaceBudget = $sources->periods($company->id)->whereDate('period_from', '<=', $today)->whereDate('period_to', '>=', $today)->exists();
 
         return $this->successResponse([
             'company' => ['id' => $company->id, 'name' => $company->name],
             'permissions' => array_values(array_filter($permissions->userPermissions(), fn (string $key) => str_starts_with($key, 'workspace.'))),
             'read_only' => ! $owner || ! $subscriptions->hasAccess($owner, TenantDatabase::PRODUCT_WORKSPACE),
-            'budget_source' => 'accounting',
+            'budget_source' => $workspaceBudget ? 'workspace' : 'accounting',
         ]);
     }
 }
