@@ -517,3 +517,17 @@ sudah diklaim. Pilot fisik menunggu gudang tersedia.
 - Baca `GET /api/budget/workspace-periods` dari Accounting untuk ringkasan pagu
   dan komitmen. Periode Workspace tetap menjadi sumber saat langganan habis.
   Pencairan, QC, posting, dan realisasi jurnal mengikuti Fase 3.
+
+## Workspace — Fase 3
+
+- Persetujuan RAB Kegiatan membuat tugas pengiriman dalam transaksi pagu.
+  `ActivityAccountingGateway` di `app/Shared/Workspace` menjembatani produk.
+  Kas & Bank menerima snapshot versi dan nominal. Draf unik per pengajuan
+  disimpan di tenant Accounting.
+- Setelah pencairan dicatat, QC meninjau akun dan dimensi pada setiap baris
+  sebelum membuat draf pengeluaran kas. Edit dan hapus manual pada kas keluar
+  terhubung ditahan oleh layanan. Posting dan void memakai Kas & Bank.
+- Workspace membaca nomor kas keluar, jurnal, status QC, dan realisasi dari
+  tenant Accounting. Saat pengiriman tertunda, pengguna berizin dapat mencoba
+  lagi. Perintah `workspace:sync-disbursements` juga dipanggil setelah migrasi
+  tenant pada startup Render.
