@@ -17,6 +17,8 @@ class TenantDatabase extends Model
 
     public const PRODUCT_GUDANG = 'gudang';
 
+    public const PRODUCT_WORKSPACE = 'workspace';
+
     /** Nama global scope yang membatasi kueri ke tenant akuntansi. */
     public const ACCOUNTING_SCOPE = 'accounting_product';
 

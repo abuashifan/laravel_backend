@@ -27,7 +27,7 @@ return [
         explode(',', (string) env(
             'CORS_ALLOWED_ORIGINS',
             // :3001 dan pos.finlite.my.id = aplikasi kasir (repo finlite_pos).
-            'http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,https://app.finlite.my.id,https://react-frontend-three-eta.vercel.app,https://pos.finlite.my.id',
+            'http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,https://app.finlite.my.id,https://react-frontend-three-eta.vercel.app,https://pos.finlite.my.id,http://localhost:3002,http://127.0.0.1:3002,https://workspace.finlite.my.id',
         )),
     ))),
 

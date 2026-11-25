@@ -262,3 +262,8 @@ find . -type d \
 ```
 
 Lalu render ke format tree (box-drawing) dan perbarui blok di atas + tanggal `Generated:` + jumlah `NNN directories`.
+
+### Finlite Workspace
+
+- `app/Modules/Workspace/` memuat rute tenant, unit, keanggotaan, dan undangan.
+- `database/migrations/tenant_workspace/` memuat skema tenant Workspace.

@@ -485,3 +485,19 @@ batch harus tersedia bahkan bila pengaturan stok agregat mengizinkan negatif.
 Lint, build, tes backend, Playwright dan PostgreSQL seluruhnya dijadwalkan pada
 Fase 6 sesuai rencana simulasi dokumen 13. Tidak ada hasil penerimaan Fase 2 yang
 sudah diklaim. Pilot fisik menunggu gudang tersedia.
+
+## Workspace — Fase 1
+
+- Produk `workspace` terdaftar di `config/tenant.php`, memakai koneksi `workspace`,
+  suffix `_workspace`, dan `database/migrations/tenant_workspace`.
+- Workspace memakai Finlite ID, perusahaan, aktivasi, dan langganan pusat.
+  Paket `workspace_pilot` diberikan oleh admin Finlite. Jalur login
+  `app=workspace` membiarkan langganan Workspace diperiksa pada produknya.
+- `GET /workspace/status` berjalan sebelum aktivasi. Setelah aktif,
+  `/workspace/bootstrap`, `/workspace/units` dan `/workspace/team` memakai
+  middleware tenant serta izin `workspace.*`.
+- Undangan Workspace memberi izin dasar melihat unit. Anggota hanya melihat
+  unit yang ditempatkan oleh pengelola. Izin Accounting anggota yang sudah ada
+  dipertahankan. Tautan memakai `WORKSPACE_FRONTEND_URL`.
+- Budget Accounting tetap menjadi sumber yang tersedia selama fondasi ini.
+  Pengalihan periode dilakukan bersama implementasi RAB di fase berikutnya.

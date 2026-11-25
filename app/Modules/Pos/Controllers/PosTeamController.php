@@ -63,7 +63,7 @@ class PosTeamController extends PosController
                 'role' => $this->roleOf((bool) $member->is_owner, (bool) $member->full_access, $member->assignedPermissions->pluck('key')->all()),
             ]);
 
-        $invitations = CompanyInvitation::query()
+        $invitations = CompanyInvitation::query()->withoutWorkspace()
             ->where('company_id', $company->id)
             ->where('status', 'pending')
             ->where('expires_at', '>', now())
@@ -131,6 +131,10 @@ class PosTeamController extends PosController
             ];
 
             $invitation = CompanyInvitation::query()->where('company_id', $company->id)->where('email', $email)->first();
+            if ($invitation?->product === TenantDatabase::PRODUCT_WORKSPACE
+                && $invitation->status === 'pending' && $invitation->expires_at?->isFuture()) {
+                throw ApiException::make('ACTIVE_INVITATION_EXISTS', 'Email ini sudah punya undangan aktif dari Workspace.', 422);
+            }
             if ($invitation) {
                 $invitation->forceFill($attributes)->save();
             } else {
@@ -160,7 +164,7 @@ class PosTeamController extends PosController
 
     public function revoke(int $id): JsonResponse
     {
-        $invitation = CompanyInvitation::query()->where('company_id', $this->company()->id)->findOrFail($id);
+        $invitation = CompanyInvitation::query()->withoutWorkspace()->where('company_id', $this->company()->id)->findOrFail($id);
         if ($invitation->status !== 'pending') {
             throw ApiException::make('INVITATION_INVALID', 'Undangan ini sudah tidak menunggu.', 422);
         }

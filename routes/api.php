@@ -26,3 +26,4 @@ require base_path('app/Modules/FixedAssets/Routes/api.php');
 require base_path('app/Modules/Budget/Routes/api.php');
 require base_path('app/Modules/Pos/Routes/api.php');
 require base_path('app/Modules/Gudang/Routes/api.php');
+require base_path('app/Modules/Workspace/Routes/api.php');

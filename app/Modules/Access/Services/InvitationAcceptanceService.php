@@ -7,8 +7,10 @@ use App\Shared\Models\Company;
 use App\Shared\Models\CompanyInvitation;
 use App\Shared\Models\CompanyUser;
 use App\Shared\Models\Permission;
+use App\Shared\Models\TenantDatabase;
 use App\Shared\Models\User;
 use App\Shared\Permission\CompanyAccessService;
+use App\Shared\Permission\WorkspaceMemberAccess;
 use App\Shared\Subscription\UserQuotaService;
 use Illuminate\Support\Facades\DB;
 
@@ -17,6 +19,7 @@ class InvitationAcceptanceService
     public function __construct(
         private readonly UserQuotaService $quota,
         private readonly CompanyAccessService $access,
+        private readonly WorkspaceMemberAccess $workspace,
     ) {}
 
     /** Undangan yang masih bisa dipakai, atau galat INVITATION_INVALID. */
@@ -44,6 +47,10 @@ class InvitationAcceptanceService
                 throw ApiException::make('INVITATION_EMAIL_MISMATCH', 'Invitation belongs to another account.', 403);
             }
             $member = CompanyUser::query()->where('company_id', $company->id)->where('user_id', $user->id)->lockForUpdate()->first();
+            if ($invitation->product === TenantDatabase::PRODUCT_WORKSPACE) {
+                return $this->acceptWorkspace($invitation, $company, $member, $user);
+            }
+
             if ($member?->status === 'active') {
                 throw ApiException::make('ALREADY_COMPANY_MEMBER', 'User is already an active member.', 422);
             }
@@ -62,5 +69,32 @@ class InvitationAcceptanceService
 
             return $member;
         });
+    }
+
+    private function acceptWorkspace(CompanyInvitation $invitation, Company $company, ?CompanyUser $member, User $user): CompanyUser
+    {
+        if ($user->is_platform_admin || $user->status !== 'active') {
+            throw ApiException::make('COMPANY_ACCESS_DENIED', 'Akun ini tidak bisa menerima undangan Workspace.', 403);
+        }
+        $this->workspace->assertAvailable($company, $member, $user->email);
+        $before = $member ? $this->access->snapshot($member) : [];
+        $member ??= CompanyUser::query()->create([
+            'company_id' => $company->id,
+            'user_id' => $user->id,
+            'role' => 'viewer',
+            'status' => 'active',
+            'full_access' => false,
+            'is_owner' => false,
+            'joined_at' => now(),
+        ]);
+        $permission = Permission::query()->where('key', WorkspaceMemberAccess::UNIT_VIEW)->firstOrFail();
+        $member->assignedPermissions()->syncWithoutDetaching([$permission->id]);
+        $invitation->update(['status' => 'accepted', 'accepted_at' => now()]);
+        $this->access->record('access.invitation.accepted', $member, $user->id, $before, $this->access->snapshot($member), [
+            'invitation_id' => $invitation->id,
+            'product' => TenantDatabase::PRODUCT_WORKSPACE,
+        ]);
+
+        return $member;
     }
 }
