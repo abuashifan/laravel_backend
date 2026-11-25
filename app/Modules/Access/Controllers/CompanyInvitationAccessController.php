@@ -10,6 +10,7 @@ use App\Shared\Audit\AuditLogService;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Models\Company;
 use App\Shared\Models\CompanyInvitation;
+use App\Shared\Models\TenantDatabase;
 use App\Shared\Tenant\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -29,7 +30,7 @@ class CompanyInvitationAccessController extends Controller
 
     public function index(): JsonResponse
     {
-        $invitations = CompanyInvitation::query()
+        $invitations = CompanyInvitation::query()->withoutWorkspace()
             ->where('company_id', $this->tenantContext->companyId())
             ->orderByDesc('created_at')
             ->get()
@@ -69,6 +70,9 @@ class CompanyInvitationAccessController extends Controller
             ];
 
             if ($existing) {
+                if ($existing->product === TenantDatabase::PRODUCT_WORKSPACE) {
+                    $attributes['product'] = null;
+                }
                 $existing->forceFill($attributes)->save();
                 $invitation = $existing;
             } else {
@@ -147,7 +151,7 @@ class CompanyInvitationAccessController extends Controller
 
     private function invitation(int $id): CompanyInvitation
     {
-        return CompanyInvitation::query()
+        return CompanyInvitation::query()->withoutWorkspace()
             ->where('company_id', $this->tenantContext->companyId())
             ->whereKey($id)
             ->firstOrFail();

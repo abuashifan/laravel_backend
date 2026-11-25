@@ -8,6 +8,7 @@ use App\Shared\Api\ApiResponse;
 use App\Shared\Auth\TokenAbility;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Models\Company;
+use App\Shared\Models\TenantDatabase;
 use App\Shared\Models\User;
 use App\Shared\Users\UserRegistrationService;
 use Illuminate\Http\JsonResponse;
@@ -44,7 +45,7 @@ class PublicInvitationController extends Controller
             'password' => ['required', 'string', 'min:8', 'confirmed'],
         ]);
 
-        $user = DB::transaction(function () use ($token, $data, $registration) {
+        [$user, $product] = DB::transaction(function () use ($token, $data, $registration) {
             $invitation = $this->acceptance->findUsable($token);
 
             if (User::query()->where('email', $invitation->email)->exists()) {
@@ -60,12 +61,15 @@ class PublicInvitationController extends Controller
 
             $this->acceptance->accept($token, $user);
 
-            return $user;
+            return [$user, $invitation->product];
         });
+        $abilities = $product === TenantDatabase::PRODUCT_WORKSPACE
+            ? [TokenAbility::CLIENT, TokenAbility::WORKSPACE]
+            : [TokenAbility::CLIENT];
 
         return $this->successResponse([
             'user' => $user,
-            'token' => $user->createToken('api-token', [TokenAbility::CLIENT])->plainTextToken,
+            'token' => $user->createToken('api-token', $abilities)->plainTextToken,
             'token_type' => 'Bearer',
             'subscription' => null,
         ], 'Akun dibuat dan undangan diterima.', 201);

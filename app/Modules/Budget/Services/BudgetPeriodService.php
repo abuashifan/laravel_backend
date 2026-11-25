@@ -7,6 +7,7 @@ use App\Shared\Api\ApiErrorCode;
 use App\Shared\Api\AppliesListQuery;
 use App\Shared\Audit\AuditEvent;
 use App\Shared\Audit\AuditLogService;
+use App\Shared\Budget\BudgetSourceService;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -35,6 +36,7 @@ class BudgetPeriodService
         // dengan nilai default tidak pernah diisi container.
         private readonly AuditLogService $auditLogService,
         private readonly BudgetAllocationService $allocationService,
+        private readonly BudgetSourceService $sources,
     ) {}
 
     /**
@@ -60,9 +62,10 @@ class BudgetPeriodService
         return $this->applyListQuery($query, $filters);
     }
 
-    public function create(array $data): BudgetPeriod
+    private function create(array $data): BudgetPeriod
     {
         $companyId = $this->tenantContext->companyId();
+        $this->sources->assertAccountingPeriod($companyId, $data['period_from'], $data['period_to']);
 
         $this->assertNoOverlap(
             $companyId,
@@ -112,7 +115,7 @@ class BudgetPeriodService
         // eksplisit di sini, exception di tengah loop alokasi TIDAK
         // membatalkan periode yang sudah terlanjur dibuat (dibuktikan lewat
         // BudgetPeriodWithAllocationsTest::test_a_failed_allocation_rolls_back_the_whole_period).
-        return DB::connection('tenant')->transaction(function () use ($data) {
+        return $this->sources->exclusive($this->tenantContext->companyId(), fn () => DB::connection('tenant')->transaction(function () use ($data) {
             $period = $this->create($data);
 
             $rows = $data['department_allocations'] ?? [];
@@ -138,7 +141,7 @@ class BudgetPeriodService
             }
 
             return $period;
-        });
+        }));
     }
 
     public function find(int $id): BudgetPeriod
@@ -152,15 +155,23 @@ class BudgetPeriodService
 
     public function update(BudgetPeriod $period, array $data): BudgetPeriod
     {
+        return $this->sources->exclusive((int) $period->company_id, fn () => $this->updatePeriod($period->refresh(), $data));
+    }
+
+    private function updatePeriod(BudgetPeriod $period, array $data): BudgetPeriod
+    {
         if ($period->status === 'closed') {
             throw ApiException::make(ApiErrorCode::VALIDATION_ERROR, 'Cannot update a closed budget period.', 422);
         }
 
+        $from = $data['period_from'] ?? $period->period_from->toDateString();
+        $to = $data['period_to'] ?? $period->period_to->toDateString();
+        $this->sources->assertAccountingPeriod((int) $period->company_id, $from, $to);
         $this->assertNoOverlap(
             (int) $period->company_id,
             (int) ($data['fiscal_year'] ?? $period->fiscal_year),
-            (string) ($data['period_from'] ?? $period->period_from),
-            (string) ($data['period_to'] ?? $period->period_to),
+            $from,
+            $to,
             ignoreId: (int) $period->id,
         );
 

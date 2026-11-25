@@ -83,8 +83,13 @@ jobs:
           restore-keys: composer-
       - run: composer install --no-interaction --prefer-dist --no-progress
       - name: Verify access migration on PostgreSQL
-        run: php artisan test tests/Feature/Permissions/RoutePermissionEnforcementTest.php tests/Feature/Permissions/DirectCompanyUserPermissionTest.php tests/Feature/Permissions/MatrixRouteEnforcementTest.php tests/Feature/Access/AccessManagementTest.php tests/Feature/Companies/UserQuotaTest.php tests/Feature/Gudang/GudangFoundationTest.php
+        run: php artisan test tests/Feature/Permissions/RoutePermissionEnforcementTest.php tests/Feature/Permissions/DirectCompanyUserPermissionTest.php tests/Feature/Permissions/MatrixRouteEnforcementTest.php tests/Feature/Access/AccessManagementTest.php tests/Feature/Companies/UserQuotaTest.php tests/Feature/Gudang/GudangFoundationTest.php tests/Feature/Workspace/WorkspaceFoundationTest.php tests/Feature/Workspace/WorkspaceBudgetTest.php
       - name: Uji beban dan konkurensi Gudang pada PostgreSQL
         env:
           TENANT_TEST_PGSQL_URL: postgresql://postgres:postgres@127.0.0.1:5432/finlite_access_test
         run: vendor/bin/phpunit tests/TenantPgsql/GudangLoadTest.php --fail-on-skipped
+
+      - name: Uji persetujuan pagu Workspace secara konkuren
+        env:
+          TENANT_TEST_PGSQL_URL: postgresql://postgres:postgres@127.0.0.1:5432/finlite_access_test
+        run: vendor/bin/phpunit tests/TenantPgsql/WorkspaceBudgetConcurrencyTest.php --fail-on-skipped

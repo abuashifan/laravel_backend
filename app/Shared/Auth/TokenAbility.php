@@ -2,6 +2,8 @@
 
 namespace App\Shared\Auth;
 
+use App\Shared\Models\User;
+
 /**
  * Ability token Sanctum yang memisahkan sesi client dari sesi admin aplikasi.
  *
@@ -17,6 +19,14 @@ final class TokenAbility
      * membawanya — tidak bisa membuka data perusahaan mana pun.
      */
     public const CLIENT = 'client';
+
+    /** Sesi yang diterbitkan melalui aplikasi Workspace. */
+    public const WORKSPACE = 'workspace';
+
+    public static function isWorkspaceOnly(User $user): bool
+    {
+        return $user->tokenCan(self::WORKSPACE) && ! $user->tokenCan('*');
+    }
 
     /** Sesi admin aplikasi. Dituntut `platform.admin`. */
     public const PLATFORM_ADMIN = 'platform-admin';

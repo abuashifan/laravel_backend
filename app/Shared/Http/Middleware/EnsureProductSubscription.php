@@ -34,13 +34,15 @@ class EnsureProductSubscription
 
         $company = $this->context->company();
         $owner = $company ? $this->owners->ownerOf($company) : null;
-        if ($owner && ! $this->subscriptions->hasAccess($owner, $product)) {
+        if (($owner && ! $this->subscriptions->hasAccess($owner, $product)) || (! $owner && $product === 'workspace')) {
             return ApiResponseBuilder::error(
                 ApiErrorCode::SUBSCRIPTION_INACTIVE,
-                'Langganan toko ini sudah habis. Data masih bisa dilihat, tapi transaksi baru tidak bisa disimpan sampai pemilik memperpanjang.',
+                $product === 'workspace'
+                    ? 'Langganan Workspace tidak aktif. Data masih bisa dilihat.'
+                    : 'Langganan toko ini sudah habis. Data masih bisa dilihat, tapi transaksi baru tidak bisa disimpan sampai pemilik memperpanjang.',
                 [],
                 402,
-                ['product' => $product, 'state' => $this->subscriptions->stateFor($owner, $product)],
+                ['product' => $product, 'state' => $owner ? $this->subscriptions->stateFor($owner, $product) : SubscriptionService::STATE_NONE],
             );
         }
 

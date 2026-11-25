@@ -2,8 +2,12 @@
 
 namespace App\Providers;
 
+use App\Modules\Budget\Services\AccountingBudgetPeriodReader;
 use App\Modules\CashBank\Services\CashBankReportService;
 use App\Modules\Imports\Services\SpreadsheetReaderFactory;
+use App\Modules\Workspace\Services\WorkspaceBudgetSummary;
+use App\Shared\Budget\BudgetPeriodOverlapReader;
+use App\Shared\Budget\WorkspaceBudgetSummaryReader;
 use App\Shared\CashBank\CashBankBalanceReader;
 use App\Shared\Export\TabularFileReader;
 use Illuminate\Routing\UrlGenerator;
@@ -18,6 +22,8 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->app->bind(TabularFileReader::class, SpreadsheetReaderFactory::class);
         $this->app->bind(CashBankBalanceReader::class, CashBankReportService::class);
+        $this->app->bind(BudgetPeriodOverlapReader::class, AccountingBudgetPeriodReader::class);
+        $this->app->bind(WorkspaceBudgetSummaryReader::class, WorkspaceBudgetSummary::class);
         // Cross-cutting bindings moved to App\Shared\Providers\SharedServiceProvider (Fase 0).
     }
 

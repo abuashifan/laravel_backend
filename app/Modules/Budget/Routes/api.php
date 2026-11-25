@@ -7,6 +7,7 @@ use App\Modules\Budget\Controllers\BudgetConsolidationController;
 use App\Modules\Budget\Controllers\BudgetPeriodController;
 use App\Modules\Budget\Controllers\BudgetProjectController;
 use App\Modules\Budget\Controllers\BudgetSubmissionController;
+use App\Modules\Budget\Controllers\WorkspaceBudgetPeriodController;
 use App\Modules\Reports\Controllers\BudgetComparisonController;
 use Illuminate\Support\Facades\Route;
 
@@ -53,6 +54,7 @@ Route::middleware(['auth:sanctum', 'company.access'])->group(function () {
     // Mesin analisis. Semua rute di bawah ini preset di atas
     // `BudgetAnalysisService` — nol logika agregasi di controller.
     Route::prefix('budget')->group(function () {
+        Route::get('/workspace-periods', [WorkspaceBudgetPeriodController::class, 'index'])->middleware('permission:budget.submissions.view');
         Route::get('/analysis', [BudgetAnalysisController::class, 'analysis'])->middleware('permission:budget.submissions.view');
         Route::get('/summary', [BudgetAnalysisController::class, 'summary'])->middleware('permission:budget.submissions.view');
         Route::get('/cash', [BudgetCashController::class, 'show'])->middleware('permission:budget.submissions.view');
