@@ -180,16 +180,6 @@ return [
             'pos.discount.override' => 'Beri diskon melebihi batas',
         ],
     ],
-    'workspace' => [
-        'label' => 'Workspace',
-        'features' => [
-            'workspace.units' => ['Unit Workspace', ['view']],
-        ],
-        'special' => [
-            'workspace.units.manage' => 'Kelola data unit Workspace',
-            'workspace.members.manage' => 'Kelola undangan dan penempatan anggota Workspace',
-        ],
-    ],
     // Finlite Gudang -- tenant terpisah, lihat config/tenant.php `products`.
     // Kunci Fase 0; fitur gudang bertambah per fase (rencana: dokumen 11).
     'gudang' => [
@@ -209,6 +199,16 @@ return [
             'gudang.stock.adjust' => 'Penyesuaian stok gudang',
             'gudang.audit.view' => 'Lihat log aktivitas gudang',
             'gudang.counts.count' => 'Isi hitungan dan ajukan hasil opname',
+        ],
+    ],
+    'workspace' => [
+        'label' => 'Workspace',
+        'features' => [
+            'workspace.units' => ['Unit Workspace', ['view']],
+        ],
+        'special' => [
+            'workspace.units.manage' => 'Kelola data unit Workspace',
+            'workspace.members.manage' => 'Kelola undangan dan penempatan anggota Workspace',
         ],
     ],
 ];
