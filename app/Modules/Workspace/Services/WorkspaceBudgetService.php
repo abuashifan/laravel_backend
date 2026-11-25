@@ -17,6 +17,7 @@ class WorkspaceBudgetService
         private readonly TenantContext $context,
         private readonly BudgetSourceService $sources,
         private readonly WorkspaceBudgetScope $scope,
+        private readonly WorkspaceAccountingHandoff $accounting,
     ) {}
 
     public function units(string $kind): array
@@ -71,6 +72,9 @@ class WorkspaceBudgetService
                 'items.code as item_code', 'items.name as item_name',
             ]);
         $document->next_id = $this->nextVersion($id);
+        if ($document->kind === 'activity' && $document->status === 'approved') {
+            $document->accounting = $this->accounting->status($this->context->company(), $id);
+        }
 
         return $document;
     }
@@ -161,7 +165,28 @@ class WorkspaceBudgetService
                 'annual_version_id' => $approvedAnnual,
                 'decided_by' => $actor, 'decided_at' => now(), 'decision_note' => $note, 'updated_at' => now(),
             ]);
+            if ($approvedAnnual !== null) {
+                $this->accounting->queue($id);
+                $company = $this->context->company();
+                $this->connection()->afterCommit(function () use ($company, $id): void {
+                    try {
+                        $this->accounting->deliver($company, $id);
+                    } catch (\Throwable $exception) {
+                        report($exception);
+                    }
+                });
+            }
         }, editing: false, allowInactive: $decision === 'reject');
+
+        return $this->show($id);
+    }
+
+    public function retryAccounting(int $id): object
+    {
+        $document = $this->document($id);
+        $this->scope->readableUnits('activity')->findOrFail($document->unit_id);
+        abort_unless($document->kind === 'activity' && $document->status === 'approved', 404);
+        $this->accounting->deliver($this->context->company(), $id);
 
         return $this->show($id);
     }

@@ -93,6 +93,11 @@ class WorkspaceBudgetController extends Controller
         return $this->successResponse($this->budgets->decide($document, $decision, $request->validated('note'), $request->user()->id));
     }
 
+    public function retryAccounting(int $document): JsonResponse
+    {
+        return $this->successResponse($this->budgets->retryAccounting($document));
+    }
+
     public function revise(Request $request, int $document): JsonResponse
     {
         return $this->successResponse($this->budgets->revise($document, $request->user()->id), 'Draf revisi dibuat.', 201);

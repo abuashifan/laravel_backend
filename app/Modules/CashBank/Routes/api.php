@@ -6,6 +6,7 @@ use App\Modules\CashBank\Controllers\CashBankAccountController;
 use App\Modules\CashBank\Controllers\CashBankReportController;
 use App\Modules\CashBank\Controllers\CashPaymentController;
 use App\Modules\CashBank\Controllers\CashReceiptController;
+use App\Modules\CashBank\Controllers\WorkspaceDisbursementController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth:sanctum', 'company.access'])->prefix('cash-bank')->group(function () {
@@ -29,6 +30,16 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('cash-bank')->grou
         ->middleware('permission:cash_bank.receipts.edit');
     Route::delete('/cash-receipts/{id}', [CashReceiptController::class, 'destroy'])
         ->middleware('permission:cash_bank.receipts.delete');
+
+    Route::prefix('workspace-disbursements')->group(function () {
+        Route::get('/', [WorkspaceDisbursementController::class, 'index'])->middleware('permission:cash_bank.workspace_disbursements.view');
+        Route::get('/{id}', [WorkspaceDisbursementController::class, 'show'])->whereNumber('id')->middleware('permission:cash_bank.workspace_disbursements.view');
+        Route::post('/{id}/record', [WorkspaceDisbursementController::class, 'record'])->whereNumber('id')->middleware('permission:cash_bank.workspace_disbursements.create');
+        Route::post('/{id}/qc/{decision}', [WorkspaceDisbursementController::class, 'review'])
+            ->whereNumber('id')->whereIn('decision', ['approve', 'reject'])->middleware('permission:cash_bank.workspace_disbursements.approve');
+        Route::post('/{id}/qc/reopen', [WorkspaceDisbursementController::class, 'reopen'])
+            ->whereNumber('id')->middleware('permission:cash_bank.workspace_disbursements.approve');
+    });
 
     Route::get('/cash-payments', [CashPaymentController::class, 'index'])
         ->middleware('permission:cash_bank.payments.view');

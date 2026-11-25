@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class CashPayment extends Model
@@ -22,6 +23,11 @@ class CashPayment extends Model
     protected $guarded = [];
 
     protected $casts = ['payment_date' => 'date', 'posted_at' => 'datetime', 'voided_at' => 'datetime', 'metadata' => 'array'];
+
+    public function workspaceDisbursement(): HasOne
+    {
+        return $this->hasOne(WorkspaceDisbursement::class);
+    }
 
     public function lines(): HasMany
     {
