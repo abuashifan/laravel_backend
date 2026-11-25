@@ -64,7 +64,7 @@ return [
     | URL aplikasi kasir (repo finlite_pos). Tautan verifikasi email, reset
     | kata sandi, dan undangan untuk pengguna kasir mengarah ke sini.
     */
-    'workspace_frontend_url' => rtrim((string) env('WORKSPACE_FRONTEND_URL', 'https://workspace.finlite.my.id'), '/'),
+    'workspace_frontend_url' => rtrim((string) env('WORKSPACE_FRONTEND_URL', 'https://finlite-workspace.vercel.app'), '/'),
 
     'pos_frontend_url' => rtrim((string) env('POS_FRONTEND_URL', 'https://pos.finlite.my.id'), '/'),
 
