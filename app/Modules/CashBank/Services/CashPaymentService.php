@@ -71,7 +71,8 @@ class CashPaymentService
 
     public function find(int $id): CashPayment
     {
-        return CashPayment::query()->with('lines.account', 'contact', 'cashBankAccount')->findOrFail($id);
+        return CashPayment::query()->with('lines.account', 'contact', 'cashBankAccount')
+            ->withExists('workspaceDisbursement')->findOrFail($id);
     }
 
     public function create(array $data): CashPayment
@@ -124,16 +125,19 @@ class CashPaymentService
 
     public function post(CashPayment $payment): CashPayment
     {
-        if ($payment->status === 'posted') {
-            return $payment;
-        }
-        $this->guardDate((string) $payment->payment_date);
-
-        if (! $this->cashBankAccountService->isCashBankAccount((int) $payment->cash_bank_account_id)) {
-            throw ApiException::make('CASH_BANK_ACCOUNT_REQUIRED', 'Cash/bank account must be a cash/bank marked COA.', 422);
-        }
-
         return DB::connection('tenant')->transaction(function () use ($payment) {
+            $payment = $this->lockedPayment($payment);
+            if ($payment->status === 'posted') {
+                return $payment;
+            }
+            if ($payment->status !== 'draft') {
+                throw ApiException::make('CASH_PAYMENT_NOT_DRAFT', 'Hanya kas keluar berstatus draf yang bisa diposting.', 422);
+            }
+            $this->guardDate((string) $payment->payment_date);
+            if (! $this->cashBankAccountService->isCashBankAccount((int) $payment->cash_bank_account_id)) {
+                throw ApiException::make('CASH_BANK_ACCOUNT_REQUIRED', 'Cash/bank account must be a cash/bank marked COA.', 422);
+            }
+
             $payment->loadMissing('lines');
             if ($payment->lines->count() === 0) {
                 throw ApiException::make('LINES_REQUIRED', 'Cash payment lines are required.', 422);
@@ -152,13 +156,18 @@ class CashPaymentService
 
     public function void(CashPayment $payment, ?string $reason = null): CashPayment
     {
-        if ($payment->status === 'void') {
-            throw ApiException::make('CASH_PAYMENT_ALREADY_VOID', 'Cash payment already void.', 422);
-        }
         $reason = $this->voidEffectService->requireReason($reason);
-        $this->guardDate((string) $payment->payment_date, 'void');
 
         return DB::connection('tenant')->transaction(function () use ($payment, $reason) {
+            $payment = $this->lockedPayment($payment);
+            if ($payment->status === 'void') {
+                throw ApiException::make('CASH_PAYMENT_ALREADY_VOID', 'Cash payment already void.', 422);
+            }
+            if ($payment->status === 'draft') {
+                $this->assertEditableSource($payment);
+            }
+            $this->guardDate((string) $payment->payment_date, 'void');
+
             $journalIds = $this->voidEffectService->voidJournalsForSource('cash_payment', (int) $payment->id, $reason);
             $payment->status = 'void';
             $payment->voided_by = auth()->id();
@@ -178,6 +187,8 @@ class CashPaymentService
      */
     public function update(CashPayment $payment, array $data): CashPayment
     {
+        $this->assertEditableSource($payment);
+
         return $this->withDocumentHistory($payment, fn (): CashPayment => $this->applyUpdate($payment, $data));
     }
 
@@ -214,6 +225,7 @@ class CashPaymentService
      */
     public function delete(CashPayment $payment, ?string $reason = null): void
     {
+        $this->assertEditableSource($payment);
         $this->changePolicy()->assertDocumentChange(
             TransactionPolicyService::CHANGE_DELETE,
             TransactionModule::CASH_BANK,
@@ -332,6 +344,23 @@ class CashPaymentService
         $journal->lines()->createMany($lines);
 
         return $journal->refresh();
+    }
+
+    private function lockedPayment(CashPayment $payment): CashPayment
+    {
+        $db = DB::connection('tenant');
+        if ($db->getDriverName() === 'sqlite') {
+            $db->table('cash_payments')->where('id', $payment->id)->update(['id' => DB::raw('id')]);
+        }
+
+        return CashPayment::query()->lockForUpdate()->findOrFail($payment->id);
+    }
+
+    private function assertEditableSource(CashPayment $payment): void
+    {
+        if ($payment->workspaceDisbursement()->exists()) {
+            throw ApiException::make('WORKSPACE_CASH_PAYMENT_MANAGED', 'Kas keluar ini dikelola lewat Pencairan Workspace dan QC Accounting.', 409);
+        }
     }
 
     private function guardDate(string $date, string $action = 'post'): void

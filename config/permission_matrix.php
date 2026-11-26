@@ -77,6 +77,7 @@ return [
             'cash_bank.payments' => ['Pengeluaran kas', $all],
             'cash_bank.transfers' => ['Transfer antar kas/bank', $all],
             'cash_bank.reconciliations' => ['Rekonsiliasi bank', ['view', 'create', 'edit', 'approve', 'print', 'export']],
+            'cash_bank.workspace_disbursements' => ['Pencairan dan QC Workspace', ['view', 'create', 'approve']],
         ],
         'special' => ['cash_bank.statements.view' => 'Laporan rekening koran'],
     ],

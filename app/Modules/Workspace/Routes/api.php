@@ -44,6 +44,9 @@ Route::middleware(['auth:sanctum', 'company.access:workspace', 'product.subscrip
             Route::post('/requests/{document}/revise', [WorkspaceBudgetController::class, 'revise'])->whereNumber('document');
         });
 
+        Route::post('/requests/{document}/accounting-sync', [WorkspaceBudgetController::class, 'retryAccounting'])
+            ->whereNumber('document')->middleware('permission:'.BudgetPermission::SUBMIT.'|'.BudgetPermission::APPROVE_ACTIVITY);
+
         Route::post('/requests/{document}/{decision}', [WorkspaceBudgetController::class, 'decide'])
             ->whereNumber('document')->whereIn('decision', ['approve', 'reject'])->middleware('permission:'.BudgetPermission::APPROVAL);
     });
