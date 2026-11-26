@@ -331,6 +331,9 @@ final class WarehouseDocuments
             $this->check($batchEffect || $movements->contains(fn ($movement) => (int) $movement->quantity_milli !== 0), 'Saldo dokumen sudah kembali seluruhnya. Tidak ada mutasi bersih untuk dibalik.');
             $this->check(! $db->table('gudang_stock_documents')->where('parent_id', $id)->whereIn('type', ['customer_return', 'supplier_return'])->where('status', 'posted')->exists(), 'Koreksi dokumen retur terkait terlebih dahulu.');
             $this->check(! (clone $documents)->where('reverses_id', $id)->exists(), 'Dokumen ini sudah memiliki dokumen balik.');
+            // Surat jalan pesanan keluar sudah menutup jumlah pesanan dan reservasinya. Barang yang
+            // kembali dicatat sebagai retur pelanggan agar pesanan tidak tampak terkirim padahal stok kembali.
+            $this->check(! $db->table('gudang_outbound_ship_docs')->where('document_id', $id)->exists(), 'Surat jalan pesanan keluar tidak dapat dikoreksi. Catat retur pelanggan untuk barang yang kembali.');
             $number = self::PREFIX[$source->type].'-'.$source->serial;
             $reversal = (object) [
                 'public_id' => (string) Str::uuid(), 'type' => 'reversal', 'status' => 'posted',

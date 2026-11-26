@@ -304,6 +304,9 @@ class GudangFoundationTest extends TestCase
         $this->getJson($list, $headers)->assertOk()->assertJsonCount(1, 'data.data.0.runs.0.documents')
             ->assertJsonPath('data.data.0.lines.0.shipped_milli', 3000);
         $stock()->assertJsonPath('data.0.quantity_milli', 7000)->assertJsonPath('data.0.reserved_milli', 5000);
+        $shipped = $this->getJson($list, $headers)->json('data.data.0.runs.0.documents.0.document_id');
+        $this->postJson("/api/gudang/documents/{$shipped}/reverse", ['request_key' => 'reverse-ship', 'note' => 'Salah kirim'], $headers)
+            ->assertUnprocessable()->assertJsonFragment(['Surat jalan pesanan keluar tidak dapat dikoreksi. Catat retur pelanggan untuk barang yang kembali.']);
 
         $cancel = ['action' => 'cancel', 'request_key' => 'cancel-rest', 'note' => 'Pelanggan membatalkan sisa.'];
         $this->postJson($action, $cancel, $headers)->assertOk()->assertJsonPath('data.status', 'cancelled');
