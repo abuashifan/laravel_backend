@@ -3,6 +3,7 @@
 namespace App\Modules\CashBank\Services;
 
 use App\Modules\CashBank\Models\CashPayment;
+use App\Modules\CashBank\Models\CashPaymentLine;
 use App\Modules\CashBank\Models\WorkspaceDisbursement;
 use App\Modules\MasterData\Models\ChartOfAccount;
 use App\Shared\Exceptions\ApiException;
@@ -37,6 +38,7 @@ class WorkspaceDisbursementService
             'action' => $event->action, 'created_at' => $event->created_at, 'user_id' => $event->user_id,
             'details' => json_decode($event->details, true, 512, JSON_THROW_ON_ERROR),
         ]));
+        $row->setAttribute('suggested_lines', $this->suggestedLines($row));
 
         return $row;
     }
@@ -59,12 +61,15 @@ class WorkspaceDisbursementService
                 'cash_bank_account_id' => $row->cash_bank_account_id,
                 'payment_reference' => $row->payment_reference,
             ];
-            if ($before == $data) {
+            // Pencairan yang dikoreksi setelah QC dikembalikan masuk lagi ke antrean QC.
+            $returned = $row->qc_status === 'rejected';
+            if ($before == $data && ! $returned) {
                 return;
             }
 
-            $row->update($data + ['disbursed_at' => now(), 'disbursed_by' => $actor]);
-            $this->event($row, 'record_disbursement', $actor, ['previous' => $before, 'recorded' => $data]);
+            $row->update($data + ['disbursed_at' => now(), 'disbursed_by' => $actor]
+                + ($returned ? ['qc_status' => 'pending', 'qc_at' => null, 'qc_by' => null] : []));
+            $this->event($row, 'record_disbursement', $actor, ['previous' => $before, 'recorded' => $data, 'resubmitted' => $returned]);
         });
 
         return $this->show($id);
@@ -114,13 +119,19 @@ class WorkspaceDisbursementService
     {
         $this->locked($id, function (WorkspaceDisbursement $row) use ($note, $actor): void {
             $payment = CashPayment::query()->lockForUpdate()->find($row->cash_payment_id);
-            if ($payment?->status !== 'draft') {
-                throw ApiException::make('WORKSPACE_QC_CANNOT_REOPEN', 'QC dapat dibuka kembali saat kas keluar masih draf.', 409);
+            if (! in_array($payment?->status, ['draft', 'void'], true)) {
+                throw ApiException::make('WORKSPACE_QC_CANNOT_REOPEN', 'QC dapat dibuka kembali saat kas keluar masih draf atau sudah dibatalkan (void).', 409);
             }
 
             $row->update(['qc_status' => 'pending', 'qc_note' => null, 'qc_at' => null, 'qc_by' => null, 'cash_payment_id' => null]);
-            $this->cashPayments->delete($payment, $note);
-            $this->event($row, 'reopen_qc', $actor, ['note' => $note, 'previous_cash_payment_id' => $payment->id]);
+            // Draf dihapus. Kas keluar yang sudah di-void tetap tersimpan sebagai jejak
+            // audit dan hanya dilepas dari pencairan, supaya QC berikutnya membuat draf baru.
+            if ($payment->status === 'draft') {
+                $this->cashPayments->delete($payment, $note);
+            }
+            $this->event($row, 'reopen_qc', $actor, [
+                'note' => $note, 'previous_cash_payment_id' => $payment->id, 'previous_cash_payment_status' => $payment->status,
+            ]);
         });
 
         return $this->show($id);
@@ -148,6 +159,40 @@ class WorkspaceDisbursementService
             'description' => $line['description'],
             'metadata' => ['workspace_line_id' => $line['id'], 'workspace_budget_code' => $line['budget_code']],
         ], $row->source_lines);
+    }
+
+    /**
+     * Usulan akun dan dimensi per baris: pilihan QC terakhir untuk kode pos yang sama
+     * dari kas keluar Workspace yang tidak dibatalkan. QC tetap memeriksa sebelum menyetujui.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function suggestedLines(WorkspaceDisbursement $row): array
+    {
+        $codes = collect($row->source_lines)->pluck('budget_code')->filter()->unique();
+        $latest = [];
+        foreach ($codes as $code) {
+            $line = CashPaymentLine::query()->with('account:id,account_code,account_name,is_active,account_type',
+                'department:id,code,name,is_active', 'project:id,code,name,is_active,status')
+                ->where('metadata->workspace_budget_code', $code)
+                ->whereHas('cashPayment', fn ($payment) => $payment->whereIn('status', ['draft', 'posted']))
+                ->orderByDesc('id')->first();
+            if ($line?->account && $line->account->is_active && $line->account->account_type === 'expense') {
+                $latest[$code] = $line;
+            }
+        }
+
+        return collect($row->source_lines)->map(function (array $source) use ($latest): array {
+            $line = $latest[$source['budget_code'] ?? ''] ?? null;
+            $option = fn ($model, string $code, string $name) => $model ? ['value' => $model->id, 'label' => $model->$code.' · '.$model->$name] : null;
+
+            return [
+                'source_line_id' => $source['id'],
+                'account' => $option($line?->account, 'account_code', 'account_name'),
+                'department' => $line?->department?->is_active ? $option($line->department, 'code', 'name') : null,
+                'project' => $line?->project?->is_active && $line->project->status === 'active' ? $option($line->project, 'code', 'name') : null,
+            ];
+        })->all();
     }
 
     private function locked(int $id, Closure $work): void

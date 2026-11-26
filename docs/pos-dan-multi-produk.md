@@ -527,6 +527,12 @@ sudah diklaim. Pilot fisik menunggu gudang tersedia.
 - Setelah pencairan dicatat, QC meninjau akun dan dimensi pada setiap baris
   sebelum membuat draf pengeluaran kas. Edit dan hapus manual pada kas keluar
   terhubung ditahan oleh layanan. Posting dan void memakai Kas & Bank.
+- Jalur koreksi: mencatat ulang pencairan setelah QC dikembalikan
+  mengembalikannya ke antrean (`pending`). QC bisa dibuka kembali saat kas
+  keluar masih draf (draf dihapus) atau sudah di-void (kas keluar void tetap
+  tersimpan untuk audit dan hanya dilepas); kas keluar posted harus di-void dulu.
+- Rincian pencairan memberi `suggested_lines`: akun, departemen, dan proyek
+  dari QC terakhir untuk kode pos yang sama, dari kas keluar yang tidak void.
 - Workspace membaca nomor kas keluar, jurnal, status QC, dan realisasi dari
   tenant Accounting. Saat pengiriman tertunda, pengguna berizin dapat mencoba
   lagi. Perintah `workspace:sync-disbursements` juga dipanggil setelah migrasi
