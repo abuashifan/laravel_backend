@@ -224,11 +224,11 @@ class GudangFoundationTest extends TestCase
         $this->getJson('/api/gudang/reports?kind=audit', $h)->assertOk();
         $this->getJson('/api/gudang/reports?kind=movements&export=1', $h)->assertOk()->assertDownload('gudang-movements.xlsx');
 
-        $extra = $draft('transfer','1',$target);
-        $act($extra,'ship')->assertOk();
-        $act($extra,'receive',$actual('1.5'))->assertOk()->assertJsonPath('data.status','disputed');
-        $act($extra,'resolve',['surplus'=>'accept','note'=>'Tambahan setengah kg dikonfirmasi kedua gudang'])->assertOk();
-        $this->assertSame(4,DB::connection('gudang')->table('gudang_stock_movements')->where('document_id',$extra)->count());
+        $extra = $draft('transfer', '1', $target);
+        $act($extra, 'ship')->assertOk();
+        $act($extra, 'receive', $actual('1.5'))->assertOk()->assertJsonPath('data.status', 'disputed');
+        $act($extra, 'resolve', ['surplus' => 'accept', 'note' => 'Tambahan setengah kg dikonfirmasi kedua gudang'])->assertOk();
+        $this->assertSame(4, DB::connection('gudang')->table('gudang_stock_movements')->where('document_id', $extra)->count());
 
         $staff = User::factory()->create(['status' => 'active']);
         $member = CompanyUser::query()->create(['company_id' => $company, 'user_id' => $staff->id, 'role' => 'staff', 'status' => 'active', 'joined_at' => now()]);

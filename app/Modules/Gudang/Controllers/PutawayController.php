@@ -47,8 +47,7 @@ final class PutawayController extends GudangController
                 'matching_category' => $categoryCount, 'free_slots' => $free,
             ];
         }
-        usort($suggestions, fn ($a, $b) =>
-            [$b['same_items'], $b['matching_category'], $b['free_slots'] ?? -1] <=> [$a['same_items'], $a['matching_category'], $a['free_slots'] ?? -1]);
+        usort($suggestions, fn ($a, $b) => [$b['same_items'], $b['matching_category'], $b['free_slots'] ?? -1] <=> [$a['same_items'], $a['matching_category'], $a['free_slots'] ?? -1]);
 
         return $this->successResponse(array_slice($suggestions, 0, 5));
     }
