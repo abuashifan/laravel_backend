@@ -537,3 +537,23 @@ sudah diklaim. Pilot fisik menunggu gudang tersedia.
   tenant Accounting. Saat pengiriman tertunda, pengguna berizin dapat mencoba
   lagi. Perintah `workspace:sync-disbursements` juga dipanggil setelah migrasi
   tenant pada startup Render.
+
+## Workspace — Fase 4
+
+- Laporan manajemen anggaran di `GET /api/workspace/reports/...` (izin dokumen
+  `workspace.budget.*`): `units?period_id=` (seluruh unit dan total),
+  `units/{unit}?period_id=` (kegiatan satu unit), `activities/{document}`
+  (rincian pos satu kegiatan), dan `reconciliation?period_id=`.
+- Ketiga tingkat memakai sumber yang sama: RAB Kegiatan berstatus `approved`
+  dan kas keluar Workspace di tenant Accounting. Nilai: pagu, komitmen, RAB
+  disetujui, dicairkan, menunggu QC/posting, realisasi posted, sisa pagu
+  (pagu dikurangi komitmen). Realisasi per baris memakai metadata
+  `workspace_line_id` pada baris kas keluar.
+- Lingkup data mengikuti unit yang boleh dibaca. Rekonsiliasi membaca seluruh
+  jurnal biaya perusahaan sehingga hanya untuk akses lintas unit: total beban
+  posted di rentang periode, yang terhubung ke kegiatan, yang tanpa rujukan
+  kegiatan (daftar 100 jurnal pertama), dan selisih nominal kas keluar Workspace
+  terhadap jurnalnya.
+- `ActivityAccountingGateway` menambah `realization()` dan `reconciliation()`;
+  keduanya `null` saat Accounting tidak aktif sehingga laporan Workspace tetap
+  tampil tanpa angka Accounting.

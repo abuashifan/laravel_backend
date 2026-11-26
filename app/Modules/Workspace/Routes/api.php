@@ -2,6 +2,7 @@
 
 use App\Modules\Workspace\Controllers\WorkspaceBudgetController;
 use App\Modules\Workspace\Controllers\WorkspaceController;
+use App\Modules\Workspace\Controllers\WorkspaceReportController;
 use App\Modules\Workspace\Controllers\WorkspaceTeamController;
 use App\Modules\Workspace\Controllers\WorkspaceUnitController;
 use App\Modules\Workspace\Support\BudgetPermission;
@@ -26,6 +27,13 @@ Route::middleware(['auth:sanctum', 'company.access:workspace', 'product.subscrip
         Route::put('/units/{unit}/members/{member}', [WorkspaceUnitController::class, 'assign'])->whereNumber(['unit', 'member']);
         Route::delete('/units/{unit}/members/{member}', [WorkspaceUnitController::class, 'remove'])->whereNumber(['unit', 'member']);
     });
+    Route::prefix('reports')->middleware('permission:'.BudgetPermission::DOCUMENT_ACCESS)->group(function () {
+        Route::get('/units', [WorkspaceReportController::class, 'units']);
+        Route::get('/units/{unit}', [WorkspaceReportController::class, 'unit'])->whereNumber('unit');
+        Route::get('/activities/{document}', [WorkspaceReportController::class, 'activity'])->whereNumber('document');
+        Route::get('/reconciliation', [WorkspaceReportController::class, 'reconciliation']);
+    });
+
     Route::prefix('budget')->group(function () {
         Route::get('/periods', [WorkspaceBudgetController::class, 'periods'])->middleware('permission:'.BudgetPermission::DOCUMENT_ACCESS.'|'.BudgetPermission::MANAGE_PERIODS);
         Route::post('/periods', [WorkspaceBudgetController::class, 'createPeriod'])->middleware('permission:'.BudgetPermission::MANAGE_PERIODS);
