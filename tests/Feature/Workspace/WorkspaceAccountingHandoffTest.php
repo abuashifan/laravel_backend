@@ -25,13 +25,14 @@ class WorkspaceAccountingHandoffTest extends JournalTestCase
         $headers = $tenant['headers'];
         $document = $this->submittedActivity($headers);
         $approval = $this->postJson(self::BUDGET."/requests/$document/approve", [], $headers)->assertOk()
-            ->assertJsonPath('data.accounting.sync_status', 'delivered')->assertJsonPath('data.accounting.realized_minor', 0);
+            ->assertJsonPath('data.accounting.sync_status', 'delivered')->assertJsonPath('data.accounting.realized_minor', 0)
+            ->assertJsonPath('data.accounting.state', 'not_disbursed');
         $id = $approval->json('data.accounting.id');
         $this->postJson(self::BUDGET."/requests/$document/accounting-sync", [], $headers)->assertOk()->assertJsonPath('data.accounting.id', $id);
         $this->getJson(self::QUEUE, $headers)->assertOk()->assertJsonCount(1, 'data.data');
         $source = $this->getJson(self::QUEUE.'/'.$id, $headers)->assertOk()
             ->assertJsonPath('data.amount_minor', 6540)->assertJsonPath('data.workspace_document_id', $document)
-            ->assertJsonPath('data.qc_status', 'pending')->json('data.source_lines');
+            ->assertJsonPath('data.state', 'not_disbursed')->assertJsonPath('data.source_lines.0.remaining_minor', 6540)->json('data.source_lines');
         $this->assertSame(0, CashPayment::query()->count());
 
         $expense = ChartOfAccount::query()->create([
@@ -39,22 +40,26 @@ class WorkspaceAccountingHandoffTest extends JournalTestCase
             'normal_balance' => 'debit', 'is_active' => true, 'is_cash_bank' => false,
         ]);
         $qc = ['lines' => [['source_line_id' => $source[0]['id'], 'account_id' => $expense->id]]];
-        $this->postJson(self::QUEUE."/$id/qc/approve", $qc, $headers)->assertUnprocessable()->assertJsonPath('code', 'WORKSPACE_DISBURSEMENT_REQUIRED');
-        $record = ['disbursed_on' => '2026-01-11', 'cash_bank_account_id' => $tenant['accounts']['debit'], 'payment_reference' => 'TRF-001'];
-        $this->postJson(self::QUEUE."/$id/record", $record + ['amount' => 1], $headers)->assertUnprocessable()->assertJsonValidationErrors('amount');
-        $this->postJson(self::QUEUE."/$id/record", $record, $headers)->assertOk();
-        $this->postJson(self::QUEUE."/$id/record", $record, $headers)->assertOk()->assertJsonCount(1, 'data.history');
+        $record = ['kind' => 'direct', 'disbursed_on' => '2026-01-11', 'cash_bank_account_id' => $tenant['accounts']['debit'],
+            'payment_reference' => 'TRF-001', 'lines' => [['source_line_id' => $source[0]['id'], 'amount' => '65.40']]];
+        $this->postJson(self::QUEUE."/$id/tranches", $record + ['amount' => 1], $headers)->assertUnprocessable()->assertJsonValidationErrors('amount');
+        $this->postJson(self::QUEUE."/$id/tranches", ['lines' => [['source_line_id' => $source[0]['id'], 'amount' => '65.41']]] + $record, $headers)
+            ->assertUnprocessable()->assertJsonPath('code', 'WORKSPACE_TRANCHE_EXCEEDS_BUDGET');
+        $tranche = $this->postJson(self::QUEUE."/$id/tranches", $record, $headers)->assertCreated()
+            ->assertJsonPath('data.state', 'awaiting_qc')->assertJsonPath('data.tranches.0.sequence', 1)->json('data.tranches.0.id');
+        $this->postJson(self::QUEUE."/$id/tranches", $record, $headers)->assertUnprocessable()->assertJsonPath('code', 'WORKSPACE_TRANCHE_EXCEEDS_BUDGET');
+        $path = self::QUEUE."/$id/tranches/$tranche";
 
-        $this->postJson(self::QUEUE."/$id/qc/reject", ['note' => 'Periksa bukti lagi'], $headers)->assertOk();
+        $this->postJson("$path/qc/reject", ['note' => 'Periksa bukti lagi'], $headers)->assertOk()->assertJsonPath('data.state', 'returned');
         $this->getJson(self::BUDGET."/requests/$document", $headers)->assertOk()
-            ->assertJsonPath('data.accounting.qc_status', 'rejected')->assertJsonPath('data.accounting.disbursed_on', '2026-01-11')
-            ->assertJsonPath('data.accounting.realized_minor', 0);
+            ->assertJsonPath('data.accounting.state', 'returned')->assertJsonPath('data.accounting.tranches.0.disbursed_on', '2026-01-11')
+            ->assertJsonPath('data.accounting.realized_minor', 0)->assertJsonPath('data.accounting.disbursed_minor', 6540);
         $this->assertSame(0, JournalEntry::query()->count());
         $wrongLine = ['lines' => [['source_line_id' => 99999, 'account_id' => $expense->id]]];
-        $this->postJson(self::QUEUE."/$id/qc/approve", $wrongLine, $headers)->assertUnprocessable()->assertJsonPath('code', 'WORKSPACE_DISBURSEMENT_LINE_MISMATCH');
-        $payment = $this->postJson(self::QUEUE."/$id/qc/approve", $qc, $headers)->assertOk()
-            ->assertJsonPath('data.qc_status', 'approved')->assertJsonPath('data.cash_payment.status', 'draft')->json('data.cash_payment_id');
-        $this->postJson(self::QUEUE."/$id/qc/approve", $qc, $headers)->assertOk()->assertJsonPath('data.cash_payment_id', $payment);
+        $this->postJson("$path/qc/approve", $wrongLine, $headers)->assertUnprocessable()->assertJsonPath('code', 'WORKSPACE_DISBURSEMENT_LINE_MISMATCH');
+        $payment = $this->postJson("$path/qc/approve", $qc, $headers)->assertOk()
+            ->assertJsonPath('data.tranches.0.qc_status', 'approved')->assertJsonPath('data.tranches.0.cash_payment.status', 'draft')->json('data.tranches.0.cash_payment.id');
+        $this->postJson("$path/qc/approve", $qc, $headers)->assertOk()->assertJsonPath('data.tranches.0.cash_payment.id', $payment);
         $this->assertSame(1, CashPayment::query()->count());
         $this->patchJson("/api/cash-bank/cash-payments/$payment", [
             'payment_date' => $record['disbursed_on'], 'cash_bank_account_id' => $record['cash_bank_account_id'], 'amount' => 1,
@@ -62,22 +67,23 @@ class WorkspaceAccountingHandoffTest extends JournalTestCase
         ], $headers)
             ->assertConflict()->assertJsonPath('code', 'WORKSPACE_CASH_PAYMENT_MANAGED');
 
-        $this->postJson(self::QUEUE."/$id/qc/reopen", ['note' => 'Tinjau ulang akun'], $headers)->assertOk()
-            ->assertJsonPath('data.qc_status', 'pending')->assertJsonPath('data.cash_payment_id', null);
+        $this->postJson("$path/qc/reopen", ['note' => 'Tinjau ulang akun'], $headers)->assertOk()
+            ->assertJsonPath('data.tranches.0.qc_status', 'pending')->assertJsonPath('data.tranches.0.cash_payment', null);
         $this->assertSame(0, CashPayment::query()->count());
-        $payment = $this->postJson(self::QUEUE."/$id/qc/approve", $qc, $headers)->assertOk()->json('data.cash_payment_id');
+        $payment = $this->postJson("$path/qc/approve", $qc, $headers)->assertOk()->json('data.tranches.0.cash_payment.id');
         $journal = $this->patchJson("/api/cash-bank/cash-payments/$payment/post", [], $headers)->assertOk()->json('data.journal_entry_id');
         $this->patchJson("/api/cash-bank/cash-payments/$payment/post", [], $headers)->assertOk()->assertJsonPath('data.journal_entry_id', $journal);
         $this->assertSame(1, JournalEntry::query()->count());
         $this->assertSame(65.4, (float) JournalEntry::query()->findOrFail($journal)->lines()->sum('debit'));
         $this->getJson(self::BUDGET."/requests/$document", $headers)->assertOk()
-            ->assertJsonPath('data.accounting.journal_entry_id', $journal)->assertJsonPath('data.accounting.realized_minor', 6540);
-        $this->postJson(self::QUEUE."/$id/qc/reopen", ['note' => 'Terlambat'], $headers)->assertConflict();
+            ->assertJsonPath('data.accounting.tranches.0.journal.id', $journal)->assertJsonPath('data.accounting.realized_minor', 6540)
+            ->assertJsonPath('data.accounting.state', 'complete');
+        $this->postJson("$path/qc/reopen", ['note' => 'Terlambat'], $headers)->assertConflict();
 
         $this->patchJson("/api/cash-bank/cash-payments/$payment/void", ['reason' => 'Koreksi pengeluaran'], $headers)->assertOk();
         $this->getJson(self::BUDGET."/requests/$document", $headers)->assertOk()
-            ->assertJsonPath('data.accounting.payment_status', 'void')->assertJsonPath('data.accounting.realized_minor', 0)
-            ->assertJsonPath('data.accounting.disbursed_on', '2026-01-11');
+            ->assertJsonPath('data.accounting.state', 'payment_void')->assertJsonPath('data.accounting.realized_minor', 0)
+            ->assertJsonPath('data.accounting.tranches.0.disbursed_on', '2026-01-11');
         $this->patchJson("/api/cash-bank/cash-payments/$payment/post", [], $headers)->assertUnprocessable();
     }
 
@@ -121,42 +127,43 @@ class WorkspaceAccountingHandoffTest extends JournalTestCase
             'account_code' => '5001', 'account_name' => 'Transportasi', 'account_type' => 'expense',
             'normal_balance' => 'debit', 'is_active' => true, 'is_cash_bank' => false,
         ]);
-        $record = ['disbursed_on' => '2026-01-11', 'cash_bank_account_id' => $tenant['accounts']['debit'], 'payment_reference' => 'TRF-001'];
+        $record = ['kind' => 'direct', 'disbursed_on' => '2026-01-11', 'cash_bank_account_id' => $tenant['accounts']['debit'],
+            'payment_reference' => 'TRF-001', 'lines' => [['source_line_id' => $source[0]['id'], 'amount' => '65.40']]];
         $qc = ['lines' => [['source_line_id' => $source[0]['id'], 'account_id' => $expense->id]]];
 
-        // QC dikembalikan, lalu pencairan dikoreksi: kembali ke antrean QC.
-        $this->postJson(self::QUEUE."/$id/record", $record, $headers)->assertOk();
-        $this->postJson(self::QUEUE."/$id/qc/reject", ['note' => 'Bukti transfer salah'], $headers)->assertOk()
-            ->assertJsonPath('data.qc_status', 'rejected');
-        $this->getJson(self::QUEUE.'?status=pending', $headers)->assertOk()->assertJsonCount(0, 'data.data');
-        $this->postJson(self::QUEUE."/$id/record", ['payment_reference' => 'TRF-002'] + $record, $headers)->assertOk()
-            ->assertJsonPath('data.qc_status', 'pending')->assertJsonPath('data.payment_reference', 'TRF-002');
-        $this->getJson(self::QUEUE.'?status=pending', $headers)->assertOk()->assertJsonCount(1, 'data.data');
+        // QC dikembalikan, lalu tahap dikoreksi: kembali ke antrean QC.
+        $tranche = $this->postJson(self::QUEUE."/$id/tranches", $record, $headers)->assertCreated()->json('data.tranches.0.id');
+        $path = self::QUEUE."/$id/tranches/$tranche";
+        $this->postJson("$path/qc/reject", ['note' => 'Bukti transfer salah'], $headers)->assertOk()->assertJsonPath('data.state', 'returned');
+        $this->getJson(self::QUEUE.'?state=awaiting_qc', $headers)->assertOk()->assertJsonCount(0, 'data.data');
+        $this->putJson($path, ['payment_reference' => 'TRF-002'] + $record, $headers)->assertOk()
+            ->assertJsonPath('data.tranches.0.qc_status', 'pending')->assertJsonPath('data.tranches.0.payment_reference', 'TRF-002');
+        $this->getJson(self::QUEUE.'?state=awaiting_qc', $headers)->assertOk()->assertJsonCount(1, 'data.data');
 
         // Kas keluar posted lalu di-void: QC bisa dibuka kembali dan membuat draf baru.
-        $first = $this->postJson(self::QUEUE."/$id/qc/approve", $qc, $headers)->assertOk()->json('data.cash_payment_id');
+        $first = $this->postJson("$path/qc/approve", $qc, $headers)->assertOk()->json('data.tranches.0.cash_payment.id');
         $this->patchJson("/api/cash-bank/cash-payments/$first/post", [], $headers)->assertOk();
-        $this->postJson(self::QUEUE."/$id/qc/reopen", ['note' => 'Masih posted'], $headers)->assertConflict();
+        $this->postJson("$path/qc/reopen", ['note' => 'Masih posted'], $headers)->assertConflict();
         $this->patchJson("/api/cash-bank/cash-payments/$first/void", ['reason' => 'Salah tanggal'], $headers)->assertOk();
-        $this->postJson(self::QUEUE."/$id/qc/reopen", ['note' => 'Koreksi tanggal pencairan'], $headers)->assertOk()
-            ->assertJsonPath('data.qc_status', 'pending')->assertJsonPath('data.cash_payment_id', null)
+        $this->postJson("$path/qc/reopen", ['note' => 'Koreksi tanggal pencairan'], $headers)->assertOk()
+            ->assertJsonPath('data.tranches.0.qc_status', 'pending')->assertJsonPath('data.tranches.0.cash_payment', null)
             ->assertJsonPath('data.history.4.details.previous_cash_payment_status', 'void');
         $this->assertSame('void', CashPayment::query()->findOrFail($first)->status);
         $this->getJson(self::BUDGET."/requests/$document", $headers)->assertOk()
-            ->assertJsonPath('data.accounting.qc_status', 'pending')->assertJsonPath('data.accounting.realized_minor', 0);
+            ->assertJsonPath('data.accounting.state', 'awaiting_qc')->assertJsonPath('data.accounting.realized_minor', 0);
 
         // Akun QC sebelumnya untuk pos yang sama diusulkan, kas keluar void tidak dipakai.
         $this->getJson(self::QUEUE.'/'.$id, $headers)->assertOk()->assertJsonPath('data.suggested_lines.0.account', null);
-        $this->postJson(self::QUEUE."/$id/record", ['disbursed_on' => '2026-01-12'] + $record, $headers)->assertOk();
-        $second = $this->postJson(self::QUEUE."/$id/qc/approve", $qc, $headers)->assertOk()->json('data.cash_payment_id');
+        $this->putJson($path, ['disbursed_on' => '2026-01-12'] + $record, $headers)->assertOk();
+        $second = $this->postJson("$path/qc/approve", $qc, $headers)->assertOk()->json('data.tranches.0.cash_payment.id');
         $this->assertNotSame($first, $second);
         $this->getJson(self::QUEUE.'/'.$id, $headers)->assertOk()
             ->assertJsonPath('data.suggested_lines.0.account.value', $expense->id)
             ->assertJsonPath('data.suggested_lines.0.account.label', '5001 · Transportasi');
         $journal = $this->patchJson("/api/cash-bank/cash-payments/$second/post", [], $headers)->assertOk()->json('data.journal_entry_id');
         $this->getJson(self::BUDGET."/requests/$document", $headers)->assertOk()
-            ->assertJsonPath('data.accounting.journal_entry_id', $journal)->assertJsonPath('data.accounting.realized_minor', 6540)
-            ->assertJsonPath('data.accounting.disbursed_on', '2026-01-12');
+            ->assertJsonPath('data.accounting.tranches.0.journal.id', $journal)->assertJsonPath('data.accounting.realized_minor', 6540)
+            ->assertJsonPath('data.accounting.tranches.0.disbursed_on', '2026-01-12');
         $this->assertSame(2, CashPayment::query()->count());
     }
 

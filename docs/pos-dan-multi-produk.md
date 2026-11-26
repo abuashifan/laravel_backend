@@ -557,3 +557,25 @@ sudah diklaim. Pilot fisik menunggu gudang tersedia.
 - `ActivityAccountingGateway` menambah `realization()` dan `reconciliation()`;
   keduanya `null` saat Accounting tidak aktif sehingga laporan Workspace tetap
   tampil tanpa angka Accounting.
+
+## Workspace — Fase 5
+
+- Pencairan RAB Kegiatan menjadi **tahap** (`workspace_disbursement_tranches`):
+  jenis `direct` (biaya langsung) atau `advance` (dana muka), nominal per baris
+  RAB, dan batas kumulatif per baris sebesar RAB yang disetujui. Pencairan
+  Fase 3 dipindahkan menjadi tahap pertama oleh migrasi.
+- Rute Kas & Bank: `POST /workspace-disbursements/{id}/tranches`, `PUT
+  .../tranches/{tranche}`, `.../cancel`, `.../qc/{approve|reject|reopen}`,
+  `.../settle`, `.../settlement/cancel`. QC dana muka memilih akun uang muka
+  (aset bukan kas/bank); QC biaya langsung memilih akun biaya per baris.
+- Penyelesaian dana muka membuat jurnal sistem `workspace_advance_settlement`:
+  debit biaya per baris dan debit kas pengembalian, kredit uang muka. Tanggal
+  dicek dengan date guard Kas & Bank; pembatalannya mem-void jurnal itu.
+- Realisasi = baris kas keluar biaya langsung yang posted + biaya terverifikasi
+  dari penyelesaian posted. Pengembalian dicatat terpisah (`refund_minor`).
+- `POST /workspace/budget/requests/{document}/close` (penyetuju kegiatan):
+  Accounting menolak bila ada tahap belum tuntas, menandai kegiatan selesai,
+  dan mengembalikan realisasi per baris. Workspace melepas selisih RAB dan
+  realisasi dari `committed_minor` per pos dan mencatatnya di
+  `workspace_budget_releases`. Aman diulang.
+

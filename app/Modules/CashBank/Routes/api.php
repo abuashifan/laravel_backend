@@ -32,15 +32,21 @@ Route::middleware(['auth:sanctum', 'company.access'])->prefix('cash-bank')->grou
         ->middleware('permission:cash_bank.receipts.delete');
 
     Route::prefix('workspace-disbursements')->group(function () {
-        Route::get('/', [WorkspaceDisbursementController::class, 'index'])->middleware('permission:cash_bank.workspace_disbursements.view');
+        $view = 'permission:cash_bank.workspace_disbursements.view';
+        $create = 'permission:cash_bank.workspace_disbursements.create';
+        $approve = 'permission:cash_bank.workspace_disbursements.approve';
+        Route::get('/', [WorkspaceDisbursementController::class, 'index'])->middleware($view);
         Route::get('/options', [WorkspaceDisbursementController::class, 'options'])
             ->middleware('permission:cash_bank.workspace_disbursements.create|cash_bank.workspace_disbursements.approve');
-        Route::get('/{id}', [WorkspaceDisbursementController::class, 'show'])->whereNumber('id')->middleware('permission:cash_bank.workspace_disbursements.view');
-        Route::post('/{id}/record', [WorkspaceDisbursementController::class, 'record'])->whereNumber('id')->middleware('permission:cash_bank.workspace_disbursements.create');
-        Route::post('/{id}/qc/{decision}', [WorkspaceDisbursementController::class, 'review'])
-            ->whereNumber('id')->whereIn('decision', ['approve', 'reject'])->middleware('permission:cash_bank.workspace_disbursements.approve');
-        Route::post('/{id}/qc/reopen', [WorkspaceDisbursementController::class, 'reopen'])
-            ->whereNumber('id')->middleware('permission:cash_bank.workspace_disbursements.approve');
+        Route::get('/{id}', [WorkspaceDisbursementController::class, 'show'])->whereNumber('id')->middleware($view);
+        Route::post('/{id}/tranches', [WorkspaceDisbursementController::class, 'storeTranche'])->whereNumber('id')->middleware($create);
+        Route::put('/{id}/tranches/{tranche}', [WorkspaceDisbursementController::class, 'updateTranche'])->whereNumber(['id', 'tranche'])->middleware($create);
+        Route::post('/{id}/tranches/{tranche}/cancel', [WorkspaceDisbursementController::class, 'cancelTranche'])->whereNumber(['id', 'tranche'])->middleware($create);
+        Route::post('/{id}/tranches/{tranche}/qc/reopen', [WorkspaceDisbursementController::class, 'reopen'])->whereNumber(['id', 'tranche'])->middleware($approve);
+        Route::post('/{id}/tranches/{tranche}/qc/{decision}', [WorkspaceDisbursementController::class, 'review'])
+            ->whereNumber(['id', 'tranche'])->whereIn('decision', ['approve', 'reject'])->middleware($approve);
+        Route::post('/{id}/tranches/{tranche}/settle', [WorkspaceDisbursementController::class, 'settle'])->whereNumber(['id', 'tranche'])->middleware($approve);
+        Route::post('/{id}/tranches/{tranche}/settlement/cancel', [WorkspaceDisbursementController::class, 'cancelSettlement'])->whereNumber(['id', 'tranche'])->middleware($approve);
     });
 
     Route::get('/cash-payments', [CashPaymentController::class, 'index'])

@@ -2,7 +2,6 @@
 
 namespace Tests\Feature\Workspace;
 
-use App\Modules\CashBank\Models\CashPayment;
 use App\Modules\MasterData\Models\ChartOfAccount;
 use App\Shared\Models\CompanyUser;
 use App\Shared\Models\User;
@@ -53,7 +52,7 @@ class WorkspaceReportTest extends JournalTestCase
         $this->assertSame([
             'limit_minor' => 3_000_000_000, 'committed_minor' => 1_600_000_000, 'approved_minor' => 1_600_000_000,
             'disbursed_minor' => 1_200_000_000, 'awaiting_minor' => 200_000_000, 'realized_minor' => 1_000_000_000,
-            'remaining_minor' => 1_400_000_000,
+            'refund_minor' => 0, 'released_minor' => 0, 'remaining_minor' => 1_400_000_000,
         ], $units['total']);
         $rowA = collect($units['rows'])->firstWhere('unit_id', $a);
         $this->assertSame([2_000_000_000, 1_200_000_000, 200_000_000, 1_000_000_000, 800_000_000],
@@ -65,10 +64,10 @@ class WorkspaceReportTest extends JournalTestCase
         foreach (['approved_minor', 'disbursed_minor', 'awaiting_minor', 'realized_minor'] as $key) {
             $this->assertSame($rowA[$key], $unit['total'][$key], $key);
         }
-        $this->assertSame(['approved', 'pending'], array_column($unit['rows'], 'qc_status'));
+        $this->assertSame(['complete', 'awaiting_qc'], array_column($unit['rows'], 'state'));
 
         $detail = $this->getJson(self::REPORTS."/activities/$ujian", $headers)->assertOk()
-            ->assertJsonPath('data.accounting.journal_entry_id', $journal)->assertJsonPath('data.accounting.payment_status', 'posted')->json('data');
+            ->assertJsonPath('data.accounting.tranches.0.journal.id', $journal)->assertJsonPath('data.accounting.state', 'complete')->json('data');
         $ujianRow = collect($unit['rows'])->firstWhere('document_id', $ujian);
         $this->assertSame($ujianRow['realized_minor'], $detail['total']['realized_minor']);
         $this->assertSame([600_000_000, 400_000_000], array_column($detail['rows'], 'realized_minor'));
@@ -86,8 +85,7 @@ class WorkspaceReportTest extends JournalTestCase
             ->assertJsonPath('data.mismatches', []);
 
         // Void kas keluar Ujian: realisasi kembali nol di semua tingkat.
-        $payment = $this->getJson(self::REPORTS."/activities/$ujian", $headers)->json('data.accounting.payment_number');
-        $paymentId = CashPayment::query()->where('payment_number', $payment)->value('id');
+        $paymentId = $this->getJson(self::REPORTS."/activities/$ujian", $headers)->json('data.accounting.tranches.0.cash_payment.id');
         $this->patchJson("/api/cash-bank/cash-payments/$paymentId/void", ['reason' => 'Koreksi pencatatan'], $headers)->assertOk();
         $this->getJson(self::REPORTS."/units?period_id=$period", $headers)->assertOk()
             ->assertJsonPath('data.total.realized_minor', 0)->assertJsonPath('data.total.awaiting_minor', 1_200_000_000);
@@ -147,15 +145,17 @@ class WorkspaceReportTest extends JournalTestCase
     private function disburse(array $headers, array $tenant, int $document, int $expense, bool $post): ?int
     {
         $id = $this->getJson(self::BUDGET."/requests/$document", $headers)->json('data.accounting.id');
-        $this->postJson(self::QUEUE."/$id/record", [
-            'disbursed_on' => '2026-01-15', 'cash_bank_account_id' => $tenant['accounts']['debit'], 'payment_reference' => 'TRF-'.$document,
-        ], $headers)->assertOk();
+        $source = $this->getJson(self::QUEUE.'/'.$id, $headers)->json('data.source_lines');
+        $tranche = $this->postJson(self::QUEUE."/$id/tranches", [
+            'kind' => 'direct', 'disbursed_on' => '2026-01-15', 'cash_bank_account_id' => $tenant['accounts']['debit'], 'payment_reference' => 'TRF-'.$document,
+            'lines' => collect($source)->map(fn ($line) => ['source_line_id' => $line['id'], 'amount' => $line['amount_minor'] / 100])->all(),
+        ], $headers)->assertCreated()->json('data.tranches.0.id');
         if (! $post) {
             return null;
         }
-        $lines = collect($this->getJson(self::QUEUE.'/'.$id, $headers)->json('data.source_lines'))
-            ->map(fn ($line) => ['source_line_id' => $line['id'], 'account_id' => $expense])->all();
-        $payment = $this->postJson(self::QUEUE."/$id/qc/approve", ['lines' => $lines], $headers)->assertOk()->json('data.cash_payment_id');
+        $lines = collect($source)->map(fn ($line) => ['source_line_id' => $line['id'], 'account_id' => $expense])->all();
+        $payment = $this->postJson(self::QUEUE."/$id/tranches/$tranche/qc/approve", ['lines' => $lines], $headers)->assertOk()
+            ->json('data.tranches.0.cash_payment.id');
 
         return $this->patchJson("/api/cash-bank/cash-payments/$payment/post", [], $headers)->assertOk()->json('data.journal_entry_id');
     }

@@ -16,7 +16,7 @@ use Throwable;
  */
 class WorkspaceReportService
 {
-    private const MEASURES = ['limit_minor', 'committed_minor', 'approved_minor', 'disbursed_minor', 'awaiting_minor', 'realized_minor'];
+    private const MEASURES = ['limit_minor', 'committed_minor', 'approved_minor', 'disbursed_minor', 'awaiting_minor', 'realized_minor', 'refund_minor', 'released_minor'];
 
     public function __construct(
         private readonly TenantContext $context,
@@ -71,8 +71,9 @@ class WorkspaceReportService
         $rows = $activities->map(fn (object $activity) => [
             'document_id' => $activity->id, 'title' => $activity->title, 'activity_date' => $activity->activity_date,
             'version' => $activity->version, 'approved_at' => $activity->decided_at,
-            'qc_status' => $accounting[$activity->id]['qc_status'] ?? null,
-            'payment_status' => $accounting[$activity->id]['payment_status'] ?? null,
+            'state' => $activity->closed_at !== null ? 'closed' : ($accounting[$activity->id]['state'] ?? null),
+            'closed_at' => $activity->closed_at,
+            'tranche_count' => (int) ($accounting[$activity->id]['tranche_count'] ?? 0),
         ] + $this->activityTotals(collect([$activity]), $accounting))->values()
             ->map(fn (array $row) => $row + ['variance_minor' => $row['approved_minor'] - $row['realized_minor']]);
 
@@ -90,7 +91,7 @@ class WorkspaceReportService
             ->join('workspace_budget_plans as p', 'p.id', '=', 'd.plan_id')
             ->join('workspace_units as u', 'u.id', '=', 'p.unit_id')
             ->where('d.id', $documentId)->where('d.kind', 'activity')->where('d.status', 'approved')
-            ->first(['d.id', 'd.title', 'd.activity_date', 'd.version', 'd.decided_at', 'p.period_id', 'u.id as unit_id', 'u.code as unit_code', 'u.name as unit_name']);
+            ->first(['d.id', 'd.title', 'd.activity_date', 'd.version', 'd.decided_at', 'd.closed_at', 'd.close_note', 'p.period_id', 'u.id as unit_id', 'u.code as unit_code', 'u.name as unit_name']);
         abort_if($activity === null || ! $this->readableUnits()->has($activity->unit_id), 404);
         [$accounting, $available] = $this->realization([$documentId]);
         $source = $accounting[$documentId] ?? null;
@@ -114,6 +115,7 @@ class WorkspaceReportService
             'activity' => [
                 'id' => $activity->id, 'title' => $activity->title, 'activity_date' => $activity->activity_date,
                 'version' => $activity->version, 'approved_at' => $activity->decided_at,
+                'closed_at' => $activity->closed_at, 'close_note' => $activity->close_note,
                 'unit_id' => $activity->unit_id, 'unit_code' => $activity->unit_code, 'unit_name' => $activity->unit_name,
             ],
             'accounting' => $source === null ? null : collect($source)->except('lines')->all(),
@@ -122,6 +124,7 @@ class WorkspaceReportService
                 'approved_minor' => $rows->sum('approved_minor'), 'realized_minor' => $rows->sum('realized_minor'),
                 'variance_minor' => $rows->sum('variance_minor'),
                 'disbursed_minor' => (int) ($source['disbursed_minor'] ?? 0), 'awaiting_minor' => (int) ($source['awaiting_minor'] ?? 0),
+                'refund_minor' => (int) ($source['refund_minor'] ?? 0), 'released_minor' => $this->released([$documentId]),
             ],
         ];
     }
@@ -184,9 +187,9 @@ class WorkspaceReportService
         return DB::connection('workspace')->table('workspace_budget_documents as d')
             ->join('workspace_budget_lines as l', 'l.document_id', '=', 'd.id')
             ->whereIn('d.plan_id', $plans)->where('d.kind', 'activity')->where('d.status', 'approved')
-            ->groupBy('d.id', 'd.plan_id', 'd.title', 'd.activity_date', 'd.version', 'd.decided_at')
+            ->groupBy('d.id', 'd.plan_id', 'd.title', 'd.activity_date', 'd.version', 'd.decided_at', 'd.closed_at')
             ->orderBy('d.activity_date')->orderBy('d.id')
-            ->get(['d.id', 'd.plan_id', 'd.title', 'd.activity_date', 'd.version', 'd.decided_at', DB::raw('SUM(l.amount_minor) AS approved_minor')])
+            ->get(['d.id', 'd.plan_id', 'd.title', 'd.activity_date', 'd.version', 'd.decided_at', 'd.closed_at', DB::raw('SUM(l.amount_minor) AS approved_minor')])
             ->keyBy('id');
     }
 
@@ -212,7 +215,16 @@ class WorkspaceReportService
             'disbursed_minor' => $realization('disbursed_minor'),
             'awaiting_minor' => $realization('awaiting_minor'),
             'realized_minor' => $realization('realized_minor'),
+            'refund_minor' => $realization('refund_minor'),
+            'released_minor' => $this->released($activities->pluck('id')->all()),
         ];
+    }
+
+    /** Sisa komitmen yang dilepas saat kegiatan diselesaikan. */
+    private function released(array $documents): int
+    {
+        return $documents === [] ? 0 : (int) DB::connection('workspace')->table('workspace_budget_releases')
+            ->whereIn('document_id', $documents)->sum('released_minor');
     }
 
     private function sum(Collection $rows): array
