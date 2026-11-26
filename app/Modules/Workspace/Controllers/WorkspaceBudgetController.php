@@ -93,6 +93,13 @@ class WorkspaceBudgetController extends Controller
         return $this->successResponse($this->budgets->decide($document, $decision, $request->validated('note'), $request->user()->id));
     }
 
+    public function closeActivity(Request $request, int $document): JsonResponse
+    {
+        $note = $request->validate(['note' => ['nullable', 'string', 'max:1000']])['note'] ?? null;
+
+        return $this->successResponse($this->budgets->closeActivity($document, $note, $request->user()->id), 'Kegiatan diselesaikan.');
+    }
+
     public function retryAccounting(int $document): JsonResponse
     {
         return $this->successResponse($this->budgets->retryAccounting($document));

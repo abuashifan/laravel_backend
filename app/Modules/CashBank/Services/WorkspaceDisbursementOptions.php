@@ -22,6 +22,8 @@ class WorkspaceDisbursementOptions
 
         [$query, $code, $name] = match ($type) {
             'expense' => [ChartOfAccount::query()->where('is_active', true)->where('account_type', 'expense')->whereDoesntHave('children'), 'account_code', 'account_name'],
+            // Uang muka kegiatan: aset bukan kas/bank, misalnya "Uang Muka Kegiatan".
+            'advance' => [ChartOfAccount::query()->where('is_active', true)->where('account_type', 'asset')->where('is_cash_bank', false)->whereDoesntHave('children'), 'account_code', 'account_name'],
             'department' => [Department::query()->active(), 'code', 'name'],
             'project' => [Project::query()->usable(), 'code', 'name'],
         };

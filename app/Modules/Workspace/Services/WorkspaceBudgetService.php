@@ -6,6 +6,7 @@ use App\Modules\Workspace\Models\WorkspaceUnit;
 use App\Shared\Budget\BudgetSourceService;
 use App\Shared\Exceptions\ApiException;
 use App\Shared\Tenant\TenantContext;
+use App\Shared\Workspace\ActivityAccountingGateway;
 use Closure;
 use Illuminate\Database\Connection;
 use Illuminate\Database\Query\Builder;
@@ -18,6 +19,7 @@ class WorkspaceBudgetService
         private readonly BudgetSourceService $sources,
         private readonly WorkspaceBudgetScope $scope,
         private readonly WorkspaceAccountingHandoff $accounting,
+        private readonly ActivityAccountingGateway $accountingGateway,
     ) {}
 
     public function units(string $kind): array
@@ -74,6 +76,7 @@ class WorkspaceBudgetService
         $document->next_id = $this->nextVersion($id);
         if ($document->kind === 'activity' && $document->status === 'approved') {
             $document->accounting = $this->accounting->status($this->context->company(), $id);
+            $document->released_minor = (int) $this->table('releases')->where('document_id', $id)->sum('released_minor');
         }
 
         return $document;
@@ -177,6 +180,52 @@ class WorkspaceBudgetService
                 });
             }
         }, editing: false, allowInactive: $decision === 'reject');
+
+        return $this->show($id);
+    }
+
+    /**
+     * Selesaikan RAB Kegiatan: Accounting memastikan semua tahap tuntas dan
+     * memberi realisasi per baris, lalu sisa komitmen tiap pos dilepas ke pagu.
+     * Aman diulang; Accounting yang sudah menandai selesai memberi angka yang sama.
+     */
+    public function closeActivity(int $id, ?string $note, int $actor): object
+    {
+        $document = $this->document($id);
+        $this->scope->readableUnits('activity')->findOrFail($document->unit_id);
+        $this->scope->assertCanDecide('activity');
+        abort_unless($document->kind === 'activity' && $document->status === 'approved', 404);
+        if ($document->closed_at !== null) {
+            return $this->show($id);
+        }
+
+        $realized = $this->accountingGateway->close($this->context->company(), $id, $actor);
+        if ($realized === null) {
+            throw ApiException::make('WORKSPACE_ACCOUNTING_UNAVAILABLE', 'Finlite Accounting belum dapat dihubungi. Coba lagi.', 409);
+        }
+
+        $this->withUnit($document->unit_id, function () use ($id, $note, $actor, $realized): void {
+            $document = $this->document($id);
+            if ($document->closed_at !== null) {
+                return;
+            }
+            $lines = $this->table('lines')->where('document_id', $id)->get(['id', 'item_id', 'amount_minor']);
+            foreach ($lines->groupBy('item_id') as $item => $group) {
+                $approved = (int) $group->sum('amount_minor');
+                $spent = min($approved, (int) $group->sum(fn ($line) => $realized['lines'][$line->id] ?? 0));
+                $release = $approved - $spent;
+                if ($release > 0) {
+                    $this->table('items')->where('id', $item)->update([
+                        'committed_minor' => DB::raw('CASE WHEN committed_minor > '.$release.' THEN committed_minor - '.$release.' ELSE 0 END'),
+                    ]);
+                }
+                $this->table('releases')->insert([
+                    'document_id' => $id, 'item_id' => $item, 'approved_minor' => $approved, 'realized_minor' => $spent,
+                    'released_minor' => $release, 'created_by' => $actor, 'created_at' => now(),
+                ]);
+            }
+            $this->table('documents')->where('id', $id)->update(['closed_at' => now(), 'closed_by' => $actor, 'close_note' => $note, 'updated_at' => now()]);
+        }, editing: false, allowInactive: true);
 
         return $this->show($id);
     }

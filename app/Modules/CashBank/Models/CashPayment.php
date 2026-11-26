@@ -24,9 +24,10 @@ class CashPayment extends Model
 
     protected $casts = ['payment_date' => 'date', 'posted_at' => 'datetime', 'voided_at' => 'datetime', 'metadata' => 'array'];
 
+    /** Tahap Pencairan Workspace yang membuat kas keluar ini. */
     public function workspaceDisbursement(): HasOne
     {
-        return $this->hasOne(WorkspaceDisbursement::class);
+        return $this->hasOne(WorkspaceDisbursementTranche::class);
     }
 
     public function lines(): HasMany

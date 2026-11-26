@@ -3,7 +3,7 @@
 namespace App\Modules\CashBank\Services;
 
 use App\Modules\CashBank\Models\WorkspaceDisbursement;
-use App\Modules\Journal\Models\JournalEntry;
+use App\Modules\CashBank\Models\WorkspaceDisbursementTranche as Tranche;
 use App\Shared\Models\Company;
 use App\Shared\Models\TenantDatabase;
 use App\Shared\Tenant\TenantConnectionManager;
@@ -32,71 +32,45 @@ class WorkspaceActivityAccountingGateway implements ActivityAccountingGateway
 
     public function status(Company $company, int $document): ?array
     {
-        return $this->withAccounting($company, function () use ($document) {
-            $row = WorkspaceDisbursement::query()->where('workspace_document_id', $document)->with('cashPayment')->first();
-            if ($row === null) {
-                return null;
-            }
-            $payment = $row->cashPayment;
-            $journal = $payment?->journal_entry_id ? JournalEntry::query()->find($payment->journal_entry_id) : null;
+        return $this->withAccounting($company, function () use ($document): ?array {
+            $id = WorkspaceDisbursement::query()->where('workspace_document_id', $document)->value('id');
 
-            return [
-                'id' => $row->id,
-                'qc_status' => $row->qc_status,
-                'qc_note' => $row->qc_note,
-                'disbursed_on' => $row->disbursed_on?->toDateString(),
-                'payment_reference' => $row->payment_reference,
-                'payment_number' => $payment?->payment_number,
-                'payment_status' => $payment?->status,
-                'journal_entry_id' => $journal?->id,
-                'journal_number' => $journal?->journal_number,
-                'posted_on' => $payment?->status === 'posted' ? $journal?->journal_date?->toDateString() : null,
-                'realized_minor' => $payment?->status === 'posted' && $journal?->status === 'posted' ? $row->amount_minor : 0,
-            ];
+            return $id === null ? null : $this->describe($this->service()->load((int) $id));
         });
     }
 
     public function realization(Company $company, array $documents): ?array
     {
-        return $this->withAccounting($company, function () use ($documents): array {
-            $rows = $this->disbursements($documents);
-            $journals = JournalEntry::query()->whereIn('id', $rows->pluck('cashPayment.journal_entry_id')->filter())
-                ->get(['id', 'journal_number', 'journal_date', 'status'])->keyBy('id');
-
-            return $rows->mapWithKeys(function (WorkspaceDisbursement $row) use ($journals): array {
-                $payment = $row->cashPayment;
-                $journal = $payment?->journal_entry_id ? $journals->get($payment->journal_entry_id) : null;
-                $posted = $payment?->status === 'posted' && $journal?->status === 'posted';
-                $lines = $posted ? $payment->lines
-                    ->groupBy(fn ($line) => (int) ($line->metadata['workspace_line_id'] ?? 0))
-                    ->map(fn (Collection $group) => $group->sum(fn ($line) => self::minor($line->amount)))
-                    ->all() : [];
-                $disbursed = $row->disbursed_on !== null;
-
-                return [(int) $row->workspace_document_id => [
-                    'disbursement_id' => $row->id,
-                    'qc_status' => $row->qc_status,
-                    'disbursed_on' => $row->disbursed_on?->toDateString(),
-                    'disbursed_minor' => $disbursed ? (int) $row->amount_minor : 0,
-                    'awaiting_minor' => $disbursed && ! $posted ? (int) $row->amount_minor : 0,
-                    'realized_minor' => array_sum($lines),
-                    'lines' => $lines,
-                    'payment_number' => $payment?->payment_number,
-                    'payment_status' => $payment?->status,
-                    'journal_entry_id' => $journal?->id,
-                    'journal_number' => $journal?->journal_number,
-                    'posted_on' => $posted ? $journal->journal_date?->toDateString() : null,
-                ]];
-            })->all();
-        });
+        return $this->withAccounting($company, fn (): array => $this->disbursements($documents)
+            ->mapWithKeys(fn (WorkspaceDisbursement $row) => [(int) $row->workspace_document_id => $this->describe($row) + [
+                'lines' => $this->service()->realization($row)['lines'],
+            ]])->all());
     }
 
     public function reconciliation(Company $company, string $from, string $to, array $documents): ?array
     {
         return $this->withAccounting($company, function () use ($from, $to, $documents): array {
-            $rows = $this->disbursements($documents);
-            $linked = $rows->filter(fn (WorkspaceDisbursement $row) => $row->cashPayment?->status === 'posted')
-                ->mapWithKeys(fn (WorkspaceDisbursement $row) => [(int) $row->cashPayment->journal_entry_id => $row]);
+            // Jurnal yang dibuat oleh tahap kegiatan: kas keluar biaya langsung, kas keluar dana muka,
+            // dan jurnal penyelesaian dana muka. Nilai harapan = beban yang seharusnya tercatat.
+            $expected = [];
+            foreach ($this->disbursements($documents) as $row) {
+                foreach ($row->tranches->filter(fn (Tranche $tranche) => $tranche->isActive()) as $tranche) {
+                    $payment = $tranche->cashPayment;
+                    if ($payment?->status === 'posted' && $payment->journal_entry_id) {
+                        $expected[(int) $payment->journal_entry_id] = [
+                            'row' => $row, 'reference' => $payment->payment_number,
+                            'expected' => $tranche->kind === Tranche::DIRECT ? $tranche->amount_minor : 0,
+                        ];
+                    }
+                    if ($tranche->settlementJournal?->status === 'posted') {
+                        $expected[(int) $tranche->settlement_journal_id] = [
+                            'row' => $row, 'reference' => $tranche->settlementJournal->journal_number,
+                            'expected' => collect($tranche->settlement_lines ?? [])->sum('amount_minor'),
+                        ];
+                    }
+                }
+            }
+            $linked = collect($expected);
 
             // Biaya per jurnal posted dari akun beban: debit dikurangi kredit.
             $expense = fn () => DB::connection('tenant')->table('journal_entry_lines as l')
@@ -112,13 +86,12 @@ class WorkspaceActivityAccountingGateway implements ActivityAccountingGateway
                 ->get(['j.id', DB::raw('SUM(l.debit) - SUM(l.credit) AS amount')])->keyBy('id');
 
             $unlinked = $inRange->reject(fn ($journal) => $linked->has((int) $journal->id));
-            $mismatches = $linked->map(function (WorkspaceDisbursement $row, int $journalId) use ($linkedJournals): ?array {
+            $mismatches = $linked->map(function (array $link, int $journalId) use ($linkedJournals): ?array {
                 $journal = self::minor($linkedJournals->get($journalId)?->amount ?? 0);
 
-                return $journal === (int) $row->amount_minor ? null : [
-                    'workspace_document_id' => (int) $row->workspace_document_id, 'title' => $row->title,
-                    'payment_number' => $row->cashPayment->payment_number,
-                    'workspace_minor' => (int) $row->amount_minor, 'journal_minor' => $journal,
+                return $journal === (int) $link['expected'] ? null : [
+                    'workspace_document_id' => (int) $link['row']->workspace_document_id, 'title' => $link['row']->title,
+                    'payment_number' => $link['reference'], 'workspace_minor' => (int) $link['expected'], 'journal_minor' => $journal,
                 ];
             })->filter()->values()->all();
 
@@ -140,11 +113,42 @@ class WorkspaceActivityAccountingGateway implements ActivityAccountingGateway
         });
     }
 
+    public function close(Company $company, int $document, int $actor): ?array
+    {
+        return $this->withAccounting($company, function () use ($document, $actor): array {
+            $realization = $this->service()->close($document, $actor);
+
+            return ['realized_minor' => $realization['realized_minor'], 'lines' => $realization['lines']];
+        });
+    }
+
+    /** Ringkasan kegiatan dan tahapnya untuk Workspace; tidak memuat isi baris kas keluar. */
+    private function describe(WorkspaceDisbursement $row): array
+    {
+        $service = $this->service();
+
+        return $service->summary($row) + [
+            'tranches' => $row->tranches->map(fn (Tranche $tranche) => collect($service->tranche($tranche))
+                ->only(['id', 'sequence', 'kind', 'state', 'amount_minor', 'disbursed_on', 'payment_reference', 'qc_note', 'cash_payment', 'journal', 'settled_on', 'refund_minor', 'settlement_journal'])
+                ->all())->all(),
+        ];
+    }
+
     /** @param  list<int>  $documents */
     private function disbursements(array $documents): Collection
     {
-        return $documents === [] ? collect() : WorkspaceDisbursement::query()
-            ->whereIn('workspace_document_id', $documents)->with('cashPayment.lines')->get();
+        if ($documents === []) {
+            return collect();
+        }
+        $service = $this->service();
+
+        return WorkspaceDisbursement::query()->whereIn('workspace_document_id', $documents)->pluck('id')
+            ->map(fn ($id) => $service->load((int) $id));
+    }
+
+    private function service(): WorkspaceDisbursementService
+    {
+        return app(WorkspaceDisbursementService::class);
     }
 
     private static function minor(mixed $amount): int
