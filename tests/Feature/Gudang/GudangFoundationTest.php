@@ -221,7 +221,12 @@ class GudangFoundationTest extends TestCase
         $act($lost, 'receive', $actual('0'))->assertOk()->assertJsonPath('data.status', 'disputed');
         $act($lost, 'resolve', ['resolution' => 'loss', 'note' => 'Hilang setelah diperiksa'])->assertOk();
         $this->assertSame(1, DB::connection('gudang')->table('gudang_stock_movements')->where('document_id', $lost)->count());
-        $this->getJson('/api/gudang/reports?kind=audit', $h)->assertOk();
+        $audit = $this->getJson('/api/gudang/reports?kind=audit', $h)->assertOk()->json('data.data.0');
+        $this->assertNotNull($audit['nomor']);
+        $this->assertNotNull($audit['nama_pengguna']);
+        $all = $this->getJson('/api/gudang/reports?kind=movements&all=1', $h)->assertOk()->assertJsonPath('data.truncated', false);
+        $this->assertSame($all->json('data.total'), count($all->json('data.data')));
+        $this->assertSame($this->getJson('/api/gudang/reports?kind=movements', $h)->json('data.total'), $all->json('data.total'));
         $this->getJson('/api/gudang/reports?kind=movements&export=1', $h)->assertOk()->assertDownload('gudang-movements.xlsx');
 
         $extra = $draft('transfer', '1', $target);
@@ -238,6 +243,7 @@ class GudangFoundationTest extends TestCase
         $scoped = $this->getJson('/api/gudang/stock', $h)->assertOk()->assertJsonCount(2, 'data')->json('data');
         $this->assertNotContains($target, array_column($scoped, 'location_id'));
         $this->getJson('/api/gudang/reports?kind=stock&warehouse_id=2', $h)->assertOk()->assertJsonPath('data.total', 0);
+        $this->getJson('/api/gudang/reports?kind=stock&all=1', $h)->assertForbidden();
         $this->postJson('/api/gudang/documents', ['type' => 'issue', 'request_key' => 'outscope', 'source' => 'x',
             'document_date' => '2026-11-18', 'location_id' => $target, 'lines' => [['item_id' => $item, 'quantity' => '1']]], $h)->assertForbidden();
         $act($adjust, 'approve')->assertForbidden();
