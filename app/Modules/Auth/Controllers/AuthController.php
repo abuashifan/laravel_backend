@@ -65,7 +65,7 @@ class AuthController extends Controller
         // Aplikasi kasir (`app=pos`) tidak dikunci langganan akuntansi: toko
         // POS yang langganannya habis tetap bisa login dalam mode hanya-baca
         // (lihat EnsureProductSubscription).
-        if ($request->input('app') !== 'pos' && $this->subscriptionService->isLocked($user)) {
+        if (! in_array($request->input('app'), ['pos', 'workspace'], true) && $this->subscriptionService->isLocked($user)) {
             return ApiResponseBuilder::error(
                 ApiErrorCode::SUBSCRIPTION_EXPIRED,
                 null,
@@ -77,7 +77,10 @@ class AuthController extends Controller
 
         $user->forceFill(['last_login_at' => now()])->save();
 
-        $token = $user->createToken('api-token', [TokenAbility::CLIENT])->plainTextToken;
+        $abilities = $request->input('app') === 'workspace'
+            ? [TokenAbility::CLIENT, TokenAbility::WORKSPACE]
+            : [TokenAbility::CLIENT];
+        $token = $user->createToken('api-token', $abilities)->plainTextToken;
 
         return $this->successResponse([
             'user' => $user,

@@ -485,3 +485,97 @@ batch harus tersedia bahkan bila pengaturan stok agregat mengizinkan negatif.
 Lint, build, tes backend, Playwright dan PostgreSQL seluruhnya dijadwalkan pada
 Fase 6 sesuai rencana simulasi dokumen 13. Tidak ada hasil penerimaan Fase 2 yang
 sudah diklaim. Pilot fisik menunggu gudang tersedia.
+
+## Workspace — Fase 1
+
+- Produk `workspace` terdaftar di `config/tenant.php`, memakai koneksi `workspace`,
+  suffix `_workspace`, dan `database/migrations/tenant_workspace`.
+- Workspace memakai Finlite ID, perusahaan, aktivasi, dan langganan pusat.
+  Paket `workspace_pilot` diberikan oleh admin Finlite. Jalur login
+  `app=workspace` membiarkan langganan Workspace diperiksa pada produknya.
+- `GET /workspace/status` berjalan sebelum aktivasi. Setelah aktif,
+  `/workspace/bootstrap`, `/workspace/units` dan `/workspace/team` memakai
+  middleware tenant serta izin `workspace.*`.
+- Undangan Workspace memberi izin dasar melihat unit. Anggota hanya melihat
+  unit yang ditempatkan oleh pengelola. Izin Accounting anggota yang sudah ada
+  dipertahankan. Tautan memakai `WORKSPACE_FRONTEND_URL`.
+- Budget Accounting tetap menjadi sumber yang tersedia selama fondasi ini.
+  Pengalihan periode dilakukan bersama implementasi RAB di fase berikutnya.
+
+## Workspace — Fase 2
+
+- Rentang pagu Workspace disimpan terpusat di `workspace_budget_periods`.
+  RAB, versi, pos, dan komitmen tetap di tenant Workspace. Perusahaan
+  menetapkan sumber untuk satu rentang 12 bulan mulai tanggal 1.
+  Kontrak pembacaan antarproduk terdaftar di `app/Shared/Budget/`.
+- Pembuatan periode Workspace serta pembuatan dan perubahan tanggal periode
+  Budget Accounting memakai lock perusahaan yang sama. Rentang yang beririsan
+  ditolak. Periode historis tetap bisa dibaca dari sumbernya.
+- Persetujuan tahunan mengaktifkan versi pagu. Persetujuan kegiatan mengikat
+  komitmen berdasarkan nominal tersimpan. Kedua keputusan mengambil lock unit
+  yang sama untuk memeriksa saldo dan menyimpan versi secara atomik.
+- Baca `GET /api/budget/workspace-periods` dari Accounting untuk ringkasan pagu
+  dan komitmen. Periode Workspace tetap menjadi sumber saat langganan habis.
+  Pencairan, QC, posting, dan realisasi jurnal mengikuti Fase 3.
+
+## Workspace — Fase 3
+
+- Persetujuan RAB Kegiatan membuat tugas pengiriman dalam transaksi pagu.
+  `ActivityAccountingGateway` di `app/Shared/Workspace` menjembatani produk.
+  Kas & Bank menerima snapshot versi dan nominal. Draf unik per pengajuan
+  disimpan di tenant Accounting.
+- Setelah pencairan dicatat, QC meninjau akun dan dimensi pada setiap baris
+  sebelum membuat draf pengeluaran kas. Edit dan hapus manual pada kas keluar
+  terhubung ditahan oleh layanan. Posting dan void memakai Kas & Bank.
+- Jalur koreksi: mencatat ulang pencairan setelah QC dikembalikan
+  mengembalikannya ke antrean (`pending`). QC bisa dibuka kembali saat kas
+  keluar masih draf (draf dihapus) atau sudah di-void (kas keluar void tetap
+  tersimpan untuk audit dan hanya dilepas); kas keluar posted harus di-void dulu.
+- Rincian pencairan memberi `suggested_lines`: akun, departemen, dan proyek
+  dari QC terakhir untuk kode pos yang sama, dari kas keluar yang tidak void.
+- Workspace membaca nomor kas keluar, jurnal, status QC, dan realisasi dari
+  tenant Accounting. Saat pengiriman tertunda, pengguna berizin dapat mencoba
+  lagi. Perintah `workspace:sync-disbursements` juga dipanggil setelah migrasi
+  tenant pada startup Render.
+
+## Workspace — Fase 4
+
+- Laporan manajemen anggaran di `GET /api/workspace/reports/...` (izin dokumen
+  `workspace.budget.*`): `units?period_id=` (seluruh unit dan total),
+  `units/{unit}?period_id=` (kegiatan satu unit), `activities/{document}`
+  (rincian pos satu kegiatan), dan `reconciliation?period_id=`.
+- Ketiga tingkat memakai sumber yang sama: RAB Kegiatan berstatus `approved`
+  dan kas keluar Workspace di tenant Accounting. Nilai: pagu, komitmen, RAB
+  disetujui, dicairkan, menunggu QC/posting, realisasi posted, sisa pagu
+  (pagu dikurangi komitmen). Realisasi per baris memakai metadata
+  `workspace_line_id` pada baris kas keluar.
+- Lingkup data mengikuti unit yang boleh dibaca. Rekonsiliasi membaca seluruh
+  jurnal biaya perusahaan sehingga hanya untuk akses lintas unit: total beban
+  posted di rentang periode, yang terhubung ke kegiatan, yang tanpa rujukan
+  kegiatan (daftar 100 jurnal pertama), dan selisih nominal kas keluar Workspace
+  terhadap jurnalnya.
+- `ActivityAccountingGateway` menambah `realization()` dan `reconciliation()`;
+  keduanya `null` saat Accounting tidak aktif sehingga laporan Workspace tetap
+  tampil tanpa angka Accounting.
+
+## Workspace — Fase 5
+
+- Pencairan RAB Kegiatan menjadi **tahap** (`workspace_disbursement_tranches`):
+  jenis `direct` (biaya langsung) atau `advance` (dana muka), nominal per baris
+  RAB, dan batas kumulatif per baris sebesar RAB yang disetujui. Pencairan
+  Fase 3 dipindahkan menjadi tahap pertama oleh migrasi.
+- Rute Kas & Bank: `POST /workspace-disbursements/{id}/tranches`, `PUT
+  .../tranches/{tranche}`, `.../cancel`, `.../qc/{approve|reject|reopen}`,
+  `.../settle`, `.../settlement/cancel`. QC dana muka memilih akun uang muka
+  (aset bukan kas/bank); QC biaya langsung memilih akun biaya per baris.
+- Penyelesaian dana muka membuat jurnal sistem `workspace_advance_settlement`:
+  debit biaya per baris dan debit kas pengembalian, kredit uang muka. Tanggal
+  dicek dengan date guard Kas & Bank; pembatalannya mem-void jurnal itu.
+- Realisasi = baris kas keluar biaya langsung yang posted + biaya terverifikasi
+  dari penyelesaian posted. Pengembalian dicatat terpisah (`refund_minor`).
+- `POST /workspace/budget/requests/{document}/close` (penyetuju kegiatan):
+  Accounting menolak bila ada tahap belum tuntas, menandai kegiatan selesai,
+  dan mengembalikan realisasi per baris. Workspace melepas selisih RAB dan
+  realisasi dari `committed_minor` per pos dan mencatatnya di
+  `workspace_budget_releases`. Aman diulang.
+

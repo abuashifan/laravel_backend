@@ -117,7 +117,7 @@ abstract class JournalTestCase extends TestCase
         $this->setUpProductTenant($company, TenantDatabase::PRODUCT_POS);
     }
 
-    protected function setUpProductTenant(Company $company, string $product): void
+    protected function setUpProductTenant(Company $company, string $product, ?string $planCode = null): void
     {
         $productPath = database_path('tenants/test_'.$product.'_'.$company->id.'_'.uniqid(getmypid().'_', true).'.sqlite');
         File::ensureDirectoryExists(dirname($productPath));
@@ -140,7 +140,7 @@ abstract class JournalTestCase extends TestCase
         if ($company->created_by && ! Subscription::query()->where('user_id', $company->created_by)->where('product', $product)->exists()) {
             Subscription::query()->create([
                 'user_id' => $company->created_by,
-                'plan_id' => Plan::query()->where('code', $product)->value('id'),
+                'plan_id' => Plan::query()->where('code', $planCode ?? $product)->value('id'),
                 'product' => $product,
                 'starts_at' => now()->subDay(),
                 'ends_at' => now()->addMonth(),

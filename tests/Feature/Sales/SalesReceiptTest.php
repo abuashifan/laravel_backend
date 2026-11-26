@@ -101,14 +101,82 @@ class SalesReceiptTest extends SalesTestCase
         $this->assertSame(0, SalesReceipt::query()->count());
     }
 
+    public function test_one_receipt_posts_discounts_per_invoice_and_preserves_cash_and_reconciliation(): void
+    {
+        $ctx = $this->setUpTenant();
+        $headers = $ctx['headers'];
+        $cash = $this->seedMappings();
+        $first = $this->postedInvoice($ctx);
+        $second = $this->postedInvoice($ctx, $first['customer_id']);
+        $discountA = $this->account('4120', 'Potongan pelanggan', 'revenue', 'debit');
+        $discountB = $this->account('6101', 'Potongan program', 'expense', 'debit');
+        AccountMapping::query()->create([
+            'mapping_key' => 'sales.return', 'module' => 'sales', 'account_id' => $discountA,
+            'is_required' => true, 'is_active' => true,
+        ]);
+        $payload = [
+            'receipt_date' => '2026-05-21', 'customer_id' => $first['customer_id'],
+            'cash_bank_account_id' => $cash, 'amount' => 137.50,
+            'lines' => [
+                ['sales_invoice_id' => $first['id'], 'amount' => 92.50, 'settlement_discount_amount' => 7.50,
+                    'settlement_discount_account_id' => $discountA, 'settlement_discount_note' => 'Kesepakatan pelanggan'],
+                ['sales_invoice_id' => $second['id'], 'amount' => 45, 'settlement_discount_amount' => 5,
+                    'settlement_discount_account_id' => $discountB],
+            ],
+        ];
+        $missing = $payload;
+        unset($missing['lines'][0]['settlement_discount_account_id']);
+        $this->postJson('/api/sales/receipts', $missing, $headers)->assertUnprocessable();
+        $wrong = $payload;
+        $wrong['lines'][0]['settlement_discount_account_id'] = $cash;
+        $this->postJson('/api/sales/receipts', $wrong, $headers)->assertUnprocessable();
+
+        $receipt = $this->postJson('/api/sales/receipts', $payload, $headers)->assertCreated()->json('data.id');
+        $url = '/api/sales/receipts/'.$receipt;
+        $this->patchJson($url.'/post', [], $headers)->assertOk();
+        $this->patchJson($url.'/post', [], $headers)->assertUnprocessable();
+        $this->getJson($url, $headers)->assertOk()
+            ->assertJsonPath('data.lines.0.settlement_discount_account.id', $discountA);
+        $this->assertSame('paid', SalesInvoice::query()->findOrFail($first['id'])->status);
+        $this->assertSame(92.50, (float) SalesInvoice::query()->findOrFail($first['id'])->paid_amount);
+        $this->assertSame(50.0, (float) SalesInvoice::query()->findOrFail($second['id'])->balance_due);
+        $journal = JournalEntry::query()->where('source_type', 'sales_receipt')->where('source_id', $receipt)->firstOrFail();
+        $this->assertSame(137.50, (float) $journal->lines()->where('account_id', $cash)->sum('debit'));
+        $this->assertSame(7.50, (float) $journal->lines()->where('account_id', $discountA)->sum('debit'));
+        $this->assertSame(5.0, (float) $journal->lines()->where('account_id', $discountB)->sum('debit'));
+        $this->assertSame(150.0, (float) $journal->lines()->sum('credit'));
+        $this->getJson('/api/sales/ar/invoices/'.$second['id'].'/ledger', $headers)->assertOk()
+            ->assertJsonPath('data.movements.1.credit', 50)
+            ->assertJsonPath('data.movements.1.settlement_discount_amount', 5);
+        $this->getJson('/api/sales/ar/aging?as_of_date=2026-05-20', $headers)->assertOk()->assertJsonPath('data.total', 200);
+        $this->getJson('/api/sales/ar/aging?as_of_date=2026-05-21', $headers)->assertOk()->assertJsonPath('data.total', 50);
+        $this->getJson('/api/sales/ar/reconciliation', $headers)->assertOk()->assertJsonPath('data.difference', 0);
+
+        $return = $this->postJson('/api/sales/returns/from-invoice/'.$second['id'], ['return_date' => '2026-05-22'], $headers)
+            ->assertCreated()->json('data.id');
+        $this->patchJson('/api/sales/returns/'.$return.'/post', [], $headers)->assertOk();
+        $this->assertSame(0.0, (float) SalesInvoice::query()->findOrFail($second['id'])->balance_due);
+        $this->getJson('/api/sales/ar/aging?as_of_date=2026-05-21', $headers)->assertOk()->assertJsonPath('data.total', 50);
+        $this->patchJson('/api/sales/returns/'.$return.'/void', ['reason' => 'Koreksi retur'], $headers)->assertOk();
+        $this->assertSame(50.0, (float) SalesInvoice::query()->findOrFail($second['id'])->balance_due);
+
+        $this->patchJson($url.'/void', ['reason' => 'Koreksi penerimaan'], $headers)->assertOk();
+        foreach ([$first, $second] as $invoice) {
+            $restored = SalesInvoice::query()->findOrFail($invoice['id']);
+            $this->assertSame(100.0, (float) $restored->balance_due);
+            $this->assertSame(0.0, (float) $restored->settlement_discount_amount);
+        }
+        $this->getJson('/api/sales/ar/reconciliation', $headers)->assertOk()->assertJsonPath('data.difference', 0);
+    }
+
     private function receiptPayload(int $cash, array $invoice, float $amount): array
     {
         return ['receipt_date' => '2026-05-20', 'customer_id' => $invoice['customer_id'], 'sales_invoice_id' => $invoice['id'], 'cash_bank_account_id' => $cash, 'amount' => $amount];
     }
 
-    private function postedInvoice(array $ctx): array
+    private function postedInvoice(array $ctx, ?int $customer = null): array
     {
-        $invoice = $this->postJson('/api/sales/invoices', ['customer_id' => $this->createCustomer(), 'invoice_date' => '2026-05-20', 'lines' => [['description' => 'Service', 'quantity' => 1, 'unit_price' => 100]]], $ctx['headers'])->assertStatus(201)->json('data');
+        $invoice = $this->postJson('/api/sales/invoices', ['customer_id' => $customer ?? $this->createCustomer(), 'invoice_date' => '2026-05-20', 'lines' => [['description' => 'Service', 'quantity' => 1, 'unit_price' => 100]]], $ctx['headers'])->assertStatus(201)->json('data');
         $this->patchJson('/api/sales/invoices/'.$invoice['id'].'/post', [], $ctx['headers'])->assertStatus(200);
 
         return SalesInvoice::query()->find($invoice['id'])->toArray();

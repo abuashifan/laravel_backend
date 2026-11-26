@@ -349,7 +349,7 @@ class PurchaseReturnService
     private function updateBill(PurchaseReturn $return): void
     {
         if ($return->vendor_bill_id) {
-            $bill = VendorBill::query()->find($return->vendor_bill_id);
+            $bill = VendorBill::query()->lockForUpdate()->find($return->vendor_bill_id);
             if ($bill) {
                 $bill->returned_amount = (float) $bill->returned_amount + (float) $return->grand_total;
                 $bill->balance_due = max(0, (float) $bill->balance_due - (float) $return->grand_total);
@@ -372,8 +372,10 @@ class PurchaseReturnService
     {
         if ($return->vendor_bill_id && ($bill = VendorBill::query()->lockForUpdate()->find($return->vendor_bill_id)) && $bill->status !== 'void') {
             $bill->returned_amount = max(0, (float) $bill->returned_amount - (float) $return->grand_total);
-            $bill->balance_due = min((float) $bill->grand_total, (float) $bill->balance_due + (float) $return->grand_total);
-            $bill->status = $bill->paid_amount > 0 ? 'partially_paid' : 'posted';
+            $maximumDue = round((float) $bill->grand_total - (float) $bill->returned_amount
+                - (float) $bill->paid_amount - (float) $bill->settlement_discount_amount, 2);
+            $bill->balance_due = max(0, min($maximumDue, round((float) $bill->balance_due + (float) $return->grand_total, 2)));
+            $bill->status = $bill->balance_due <= 0 ? 'paid' : ($bill->paid_amount > 0 ? 'partially_paid' : 'posted');
             $bill->save();
         } foreach ($return->lines as $line) {
             if ($line->vendor_bill_line_id && ($billLine = VendorBillLine::query()->lockForUpdate()->find($line->vendor_bill_line_id))) {

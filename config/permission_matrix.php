@@ -77,6 +77,7 @@ return [
             'cash_bank.payments' => ['Pengeluaran kas', $all],
             'cash_bank.transfers' => ['Transfer antar kas/bank', $all],
             'cash_bank.reconciliations' => ['Rekonsiliasi bank', ['view', 'create', 'edit', 'approve', 'print', 'export']],
+            'cash_bank.workspace_disbursements' => ['Pencairan dan QC Workspace', ['view', 'create', 'approve']],
         ],
         'special' => ['cash_bank.statements.view' => 'Laporan rekening koran'],
     ],
@@ -199,6 +200,22 @@ return [
             'gudang.stock.adjust' => 'Penyesuaian stok gudang',
             'gudang.audit.view' => 'Lihat log aktivitas gudang',
             'gudang.counts.count' => 'Isi hitungan dan ajukan hasil opname',
+        ],
+    ],
+    'workspace' => [
+        'label' => 'Workspace',
+        'features' => [
+            'workspace.units' => ['Unit Workspace', ['view']],
+            'workspace.budget' => ['RAB Workspace', ['view']],
+        ],
+        'special' => [
+            'workspace.units.manage' => 'Kelola data unit Workspace',
+            'workspace.members.manage' => 'Kelola undangan dan penempatan anggota Workspace',
+            'workspace.budget.submit' => 'Ajukan RAB untuk unit yang ditugaskan',
+            'workspace.budget.approve_annual' => 'Setujui atau tolak RAB Tahunan',
+            'workspace.budget.approve_activity' => 'Setujui atau tolak RAB Kegiatan',
+            'workspace.budget.manage_periods' => 'Tetapkan periode anggaran Workspace',
+            'workspace.budget.manage_access' => 'Kelola izin RAB anggota Workspace',
         ],
     ],
 ];

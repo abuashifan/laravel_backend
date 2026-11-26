@@ -17,6 +17,10 @@ class CompanyInvitationMail extends Mailable
 
     public static function acceptUrl(CompanyInvitation $invitation): string
     {
+        if ($invitation->product === 'workspace') {
+            return config('app.workspace_frontend_url').'/invite/'.$invitation->token;
+        }
+
         // Undangan dari aplikasi kasir dibuka di aplikasi kasir.
         if ($invitation->product === 'pos') {
             return config('app.pos_frontend_url').'/invite/'.$invitation->token;

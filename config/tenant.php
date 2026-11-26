@@ -54,6 +54,12 @@ return [
             // dan tenant POS bersamaan (jembatan POS -> Akuntansi, Fase 5).
             'connection' => 'pos',
         ],
+        'workspace' => [
+            'label' => 'Workspace',
+            'suffix' => '_workspace',
+            'migration_path' => 'database/migrations/tenant_workspace',
+            'connection' => 'workspace',
+        ],
         'gudang' => [
             'label' => 'Gudang',
             'suffix' => '_gudang',

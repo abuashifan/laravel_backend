@@ -2,6 +2,7 @@
 
 namespace App\Modules\Sales\Models;
 
+use App\Modules\MasterData\Models\ChartOfAccount;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -26,5 +27,10 @@ class SalesReceiptLine extends Model
     public function salesInvoice(): BelongsTo
     {
         return $this->belongsTo(SalesInvoice::class, 'sales_invoice_id');
+    }
+
+    public function settlementDiscountAccount(): BelongsTo
+    {
+        return $this->belongsTo(ChartOfAccount::class, 'settlement_discount_account_id');
     }
 }

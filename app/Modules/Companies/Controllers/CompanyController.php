@@ -8,6 +8,7 @@ use App\Modules\Companies\Services\CompanyCreationService;
 use App\Shared\Api\ApiErrorCode;
 use App\Shared\Api\ApiResponse;
 use App\Shared\Api\ApiResponseBuilder;
+use App\Shared\Auth\TokenAbility;
 use App\Shared\Company\CompanyDeletionService;
 use App\Shared\Models\Company;
 use App\Shared\Models\CompanyUser;
@@ -75,6 +76,9 @@ class CompanyController extends Controller
         $user = $request->user();
         $name = trim($data['name']);
         $product = (string) ($data['product'] ?? TenantDatabase::PRODUCT_ACCOUNTING);
+        if ($product !== TenantDatabase::PRODUCT_WORKSPACE && TokenAbility::isWorkspaceOnly($user)) {
+            return $this->workspaceSessionDenied();
+        }
 
         // Gerbang langganan. `plan_id` (diatur admin di tab Kuota Paket) cuma
         // menentukan APA yang boleh dipakai KALAU sudah berlangganan — bukan
@@ -196,6 +200,10 @@ class CompanyController extends Controller
 
     public function select(Request $request): JsonResponse
     {
+        if (TokenAbility::isWorkspaceOnly($request->user())) {
+            return $this->workspaceSessionDenied();
+        }
+
         // `exists` dibatasi ke perusahaan yang belum terhapus. Aturan `exists`
         // biasa memakai query mentah yang tidak mengenal soft delete, sehingga
         // perusahaan terhapus lolos ke bawah dan baru gagal sebagai 404 dari
@@ -270,6 +278,10 @@ class CompanyController extends Controller
      */
     public function activateProduct(Request $request, int $companyId, string $product, ProductActivationService $activation): JsonResponse
     {
+        if ($product !== TenantDatabase::PRODUCT_WORKSPACE && TokenAbility::isWorkspaceOnly($request->user())) {
+            return $this->workspaceSessionDenied();
+        }
+
         $company = Company::query()->findOrFail($companyId);
         $denied = $activation->activate($request->user(), $company, $product);
         if ($denied) {
@@ -295,6 +307,9 @@ class CompanyController extends Controller
     public function destroy(DeleteCompanyRequest $request, int $companyId, CompanyDeletionService $deletionService): JsonResponse
     {
         $user = $request->user();
+        if (TokenAbility::isWorkspaceOnly($user)) {
+            return $this->workspaceSessionDenied();
+        }
 
         $companyUser = CompanyUser::query()
             ->where('company_id', $companyId)
@@ -324,5 +339,9 @@ class CompanyController extends Controller
         $deletionService->delete($company, $user);
 
         return $this->successResponse(null, 'Perusahaan berhasil dihapus.');
+    }
+    private function workspaceSessionDenied(): JsonResponse
+    {
+        return $this->errorCodeResponse(ApiErrorCode::FORBIDDEN, 'Sesi ini hanya berlaku untuk Workspace.', [], 403);
     }
 }

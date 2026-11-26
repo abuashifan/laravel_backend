@@ -49,6 +49,9 @@ class ModuleBoundariesTest extends TestCase
         // pembangun jurnal sistem yang sama dengan Inventory, bukan menulis model
         // langsung, supaya penomoran dan status posted mengikuti aturan jurnal.
         'Pos → App\\Modules\\Journal\\Services\\SystemJournalBuilder',
+        // Penyelesaian dana muka Workspace (Fase 5): jurnal biaya terverifikasi dan
+        // pengembalian sisa dibuat lewat pembangun jurnal sistem yang sama.
+        'CashBank → App\\Modules\\Journal\\Services\\SystemJournalBuilder',
         'Journal → App\\Modules\\Budget\\Services\\BudgetWarningService',
         'Journal → App\\Modules\\Settings\\Services\\CompanySettingService',
         // Gap B — peringatan over-budget disambungkan ke transaksi non-Journal
