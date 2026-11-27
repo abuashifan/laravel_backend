@@ -2,6 +2,7 @@
 
 namespace App\Modules\Gudang\Controllers;
 
+use App\Modules\Gudang\PosBridge;
 use App\Modules\Gudang\WarehouseAccess;
 use App\Modules\Gudang\WarehouseDocuments;
 use App\Shared\Permission\PermissionService;
@@ -64,7 +65,8 @@ class DocumentController extends GudangController
         $effectiveDocuments = $db->table('gudang_stock_movements')->whereIn('document_id', $docs->pluck('id'))
             ->groupBy('document_id', 'item_id', 'location_id')->havingRaw('sum(quantity_milli) <> 0')->pluck('document_id')->merge($batchDocuments)->flip();
         $reversalNotes = $db->table('gudang_actions')->whereIn('document_id', $docs->pluck('id'))->where('action', 'reverse')->pluck('note', 'document_id');
-        $docs->through(function ($doc) use ($lines, $receipts, $resolutions, $visibleLocations, $movementLocations, $effectiveDocuments, $reversalNotes, $permissions) {
+        $posStatuses = app(PosBridge::class)->statusByDocument($docs->pluck('id')->all());
+        $docs->through(function ($doc) use ($lines, $receipts, $resolutions, $visibleLocations, $movementLocations, $effectiveDocuments, $reversalNotes, $permissions, $posStatuses) {
             $allLocations = $movementLocations->get($doc->id, collect());
             $canAccessMovements = $allLocations->isNotEmpty() && $allLocations->every(fn ($row) => $visibleLocations->has($row->location_id));
             $doc->access_origin = $doc->location_id === null ? $canAccessMovements : $visibleLocations->has($doc->location_id);
@@ -80,6 +82,7 @@ class DocumentController extends GudangController
             $doc->reversal_note = $reversalNotes->get($doc->id);
             $doc->can_reverse = $permissions->can('gudang.stock.approve') && $canAccessMovements && $effectiveDocuments->has($doc->id) && $doc->type !== 'reversal'
                 && in_array($doc->status, ['posted', 'approved', 'received', 'resolved'], true);
+            $doc->pos_status = $posStatuses[$doc->id] ?? null;
             $doc->lines = $lines->get($doc->id, $receipts->get($doc->id, []));
 
             return $doc;

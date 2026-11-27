@@ -21,6 +21,7 @@ class PosAuditService
         'stock.adjust' => 'Ubah stok',
         'stock.count' => 'Stok opname',
         'stock.in' => 'Stok masuk',
+        'stock.gudang' => 'Terima kiriman Gudang',
         'supplier.pay' => 'Bayar hutang pemasok',
         'product.import' => 'Impor produk',
         'discount.override' => 'Diskon di atas batas',

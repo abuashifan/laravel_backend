@@ -4,6 +4,7 @@ namespace App\Modules\Gudang\Controllers;
 
 use App\Modules\Gudang\WarehouseAccess;
 use App\Shared\Export\ExcelExportService;
+use App\Shared\Models\User;
 use App\Shared\Permission\PermissionService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -11,16 +12,19 @@ use Illuminate\Validation\Rule;
 
 class ReportController extends GudangController
 {
+    /** Batas baris untuk cetak, PDF, dan Excel di aplikasi; di atas ini pengguna diminta mempersempit filter. */
+    public const ALL_ROWS_LIMIT = 5000;
+
     public function show(Request $request, WarehouseAccess $access, PermissionService $permissions, ExcelExportService $excel)
     {
         $options = $request->validate([
             'kind' => ['required', Rule::in(['stock', 'warehouse', 'movements', 'low', 'audit'])],
             'warehouse_id' => 'nullable|integer', 'location_id' => 'nullable|integer', 'q' => 'nullable|string|max:100',
-            'export' => 'sometimes|boolean', 'page' => 'sometimes|integer|min:1',
+            'export' => 'sometimes|boolean', 'all' => 'sometimes|boolean', 'page' => 'sometimes|integer|min:1',
         ]);
         $kind = $options['kind'];
         abort_unless($permissions->can($kind === 'audit' ? 'gudang.audit.view' : 'gudang.stock.view'), 403);
-        if ($request->boolean('export')) {
+        if ($request->boolean('export') || $request->boolean('all')) {
             abort_unless($permissions->can('gudang.stock.export'), 403);
         }
         $db = DB::connection('gudang');
@@ -36,7 +40,7 @@ class ReportController extends GudangController
                             $multi->whereNull('d.location_id')->whereIn('d.id', $db->table('gudang_stock_movements')->select('document_id')->whereIn('location_id', clone $locations))
                                 ->whereNotIn('d.id', $db->table('gudang_stock_movements')->select('document_id')->whereNotIn('location_id', clone $locations));
                         });
-                })->orderByDesc('a.id')->select('d.id as dokumen', 'd.type as jenis', 'a.action as aksi', 'a.user_id as pengguna', 'a.created_at as waktu', 'a.note as alasan');
+                })->orderByDesc('a.id')->select('d.id as dokumen', 'd.serial as nomor', 'd.type as jenis', 'a.action as aksi', 'a.user_id as pengguna', 'a.created_at as waktu', 'a.note as alasan');
         } elseif ($kind === 'low') {
             $totals = $balance->groupBy('b.item_id')->selectRaw('b.item_id, sum(b.quantity_milli) as total');
             $query = $db->table('gudang_items as i')->leftJoinSub($totals, 's', 's.item_id', '=', 'i.id')
@@ -54,7 +58,7 @@ class ReportController extends GudangController
                 $query->selectRaw('w.name as gudang,l.name as lokasi,l.kind as kondisi,i.sku,i.name as barang,b.quantity_milli/1000.0 as jumlah,i.unit as satuan');
                 if ($movement) {
                     $query->join('gudang_stock_documents as d', 'd.id', '=', 'b.document_id')
-                        ->addSelect('d.id as dokumen', 'd.type as jenis', DB::raw('coalesce(b.occurred_at,d.posted_at) as waktu'))->orderByDesc('b.id');
+                        ->addSelect('d.id as dokumen', 'd.serial as nomor', 'd.type as jenis', DB::raw('coalesce(b.occurred_at,d.posted_at) as waktu'))->orderByDesc('b.id');
                 } else {
                     $query->orderBy('i.sku')->orderBy('l.id');
                 }
@@ -83,9 +87,34 @@ class ReportController extends GudangController
                 return is_string($value) && str_starts_with($value, '=') ? "'".$value : $value;
             }, $columns))->all();
 
-            return $excel->downloadFromArray($rows,$columns,'gudang-'.$kind);
+            return $excel->downloadFromArray($rows, $columns, 'gudang-'.$kind);
         }
 
-        return $this->successResponse($query->paginate(50));
+        if ($request->boolean('all')) {
+            $rows = $query->limit(self::ALL_ROWS_LIMIT + 1)->get();
+            $truncated = $rows->count() > self::ALL_ROWS_LIMIT;
+            $rows = $this->withUserNames($kind, $rows->take(self::ALL_ROWS_LIMIT)->values());
+
+            return $this->successResponse(['data' => $rows, 'total' => $rows->count(), 'truncated' => $truncated, 'limit' => self::ALL_ROWS_LIMIT]);
+        }
+        $page = $query->paginate(50);
+        $page->setCollection($this->withUserNames($kind, $page->getCollection()));
+
+        return $this->successResponse($page);
+    }
+
+    /** Log aktivitas menyimpan id pengguna; laporan menampilkan namanya. */
+    private function withUserNames(string $kind, $rows)
+    {
+        if ($kind !== 'audit' || $rows->isEmpty()) {
+            return $rows;
+        }
+        $names = User::query()->whereIn('id', $rows->pluck('pengguna')->filter()->unique())->pluck('name', 'id');
+
+        return $rows->map(function ($row) use ($names) {
+            $row->nama_pengguna = $names[$row->pengguna] ?? null;
+
+            return $row;
+        });
     }
 }
