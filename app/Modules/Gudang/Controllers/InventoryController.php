@@ -2,6 +2,7 @@
 
 namespace App\Modules\Gudang\Controllers;
 
+use App\Modules\Gudang\AccountingBridge;
 use App\Modules\Gudang\ItemCatalog;
 use App\Modules\Gudang\StockLedger;
 use App\Modules\Gudang\WarehouseAccess;
@@ -79,11 +80,15 @@ class InventoryController extends GudangController
             'lines.*.quantity' => ['required', 'numeric', 'gt:0', 'regex:/^\d{1,8}(\.\d{1,3})?$/D'],
             'lines.*.unit_id' => ['nullable', 'integer', 'exists:gudang.gudang_item_units,id'],
             'lines.*.batch_id' => ['nullable', 'integer', 'exists:gudang.gudang_batches,id'],
+            'lines.*.unit_cost' => ['nullable', 'numeric', 'min:0', 'max:999999999999'],
         ]);
 
         $access->requireLocations(array_column($input['lines'], 'location_id'));
 
-        return $this->successResponse($ledger->receive($input, $this->user($request)->id), 'Penerimaan tercatat.');
+        $receipt = $ledger->receive($input, $this->user($request)->id);
+        app(AccountingBridge::class)->syncQuietly();
+
+        return $this->successResponse($receipt, 'Penerimaan tercatat.');
     }
 
     public function balances(WarehouseAccess $access): JsonResponse

@@ -69,6 +69,10 @@ class ModuleBoundariesTest extends TestCase
         'OpeningBalance → App\\Modules\\FixedAssets\\Services\\FixedAssetService',
         'Purchase → App\\Modules\\Settings\\Services\\CompanySettingService',
         'Purchase → App\\Modules\\Inventory\\Services\\InventoryPurchaseIntegrationService',
+        // Jembatan Gudang -> Accounting (Fase 4b Gudang): penerimaan Gudang dicatat sebagai
+        // Goods Receipt lewat layanannya sendiri (nomor, status, jurnal interim), bukan menulis
+        // model langsung, supaya tagihan vendor dari GR tidak menambah stok dua kali.
+        'Inventory → App\\Modules\\Purchase\\Services\\GoodsReceiptService',
         'Purchase → App\\Modules\\MasterData\\Services\\AccountMappingStorageService',
         'Reports → App\\Modules\\Budget\\Requests\\BudgetComparisonRequest',
         'Reports → App\\Modules\\Budget\\Services\\BudgetComparisonService',

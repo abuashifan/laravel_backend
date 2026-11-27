@@ -47,6 +47,10 @@ class InventoryPurchaseIntegrationService
                     $unitCost = (float) $poLine->unit_price;
                 }
             }
+            // GR dari Finlite Gudang tanpa PO membawa harga beli yang dicatat petugas gudang.
+            if ($unitCost <= 0 && isset($ln->metadata['gudang_unit_cost'])) {
+                $unitCost = (float) $ln->metadata['gudang_unit_cost'];
+            }
             // GR tanpa PO tidak membawa harga: nilai dengan rata-rata persediaan
             // saat ini, supaya jurnal persediaan tidak bernilai nol (ditolak).
             if ($unitCost <= 0) {

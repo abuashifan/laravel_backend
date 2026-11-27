@@ -73,6 +73,11 @@ final class StockLedger
                         $signatureLine[$field] = (int) $line[$field];
                     }
                 }
+                // Harga beli opsional per satuan yang diinput; ikut tanda tangan hanya bila diisi
+                // supaya kunci simpan lama tetap cocok.
+                if (isset($line['unit_cost']) && $line['unit_cost'] !== '') {
+                    $signatureLine['unit_cost'] = round((float) $line['unit_cost'], 2);
+                }
                 $signatureLines[] = $signatureLine;
             }
             sort($signatureLines);
@@ -106,6 +111,10 @@ final class StockLedger
                 foreach ($signatureLines as $line) {
                     $db->table('gudang_items')->where('id', $line['item_id'])->lockForUpdate()->firstOrFail();
                     $converted = app(StockUnits::class)->convert($line['item_id'], self::decimal($line['quantity_milli']), $line['unit_id'] ?? null);
+                    if (isset($line['unit_cost'])) {
+                        // Disimpan per satuan dasar: harga per dus dibagi isi dus.
+                        $converted['unit_cost'] = round($line['unit_cost'] * 1000 / $converted['factor_milli'], 2);
+                    }
                     $this->move($document->id, $line['item_id'], $line['location_id'], $converted['quantity_milli'], $line['batch_id'] ?? null, [], $converted);
                 }
             }
