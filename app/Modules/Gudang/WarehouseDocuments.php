@@ -324,6 +324,7 @@ final class WarehouseDocuments
                 return $previous;
             }
             $this->check($source->type !== 'reversal' && in_array($source->status, ['posted', 'approved', 'received', 'resolved'], true), 'Koreksi hanya untuk dokumen terposting yang sudah selesai.');
+            app(PosBridge::class)->guardReversal($id);
             $this->check($movements->isNotEmpty(), 'Koreksi penerimaan bertahap melalui bukti masing-masing kiriman.');
             $batchEffect = $db->table('gudang_movement_batches as batch')->join('gudang_stock_movements as movement', 'movement.id', '=', 'batch.movement_id')
                 ->where('movement.document_id', $id)->groupBy('movement.item_id', 'movement.location_id', 'batch.batch_id')

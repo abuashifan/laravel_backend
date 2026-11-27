@@ -6,6 +6,7 @@ use App\Modules\Pos\Controllers\PosBridgeController;
 use App\Modules\Pos\Controllers\PosCatalogController;
 use App\Modules\Pos\Controllers\PosClientErrorController;
 use App\Modules\Pos\Controllers\PosCustomerController;
+use App\Modules\Pos\Controllers\PosGudangReceiptController;
 use App\Modules\Pos\Controllers\PosInventoryController;
 use App\Modules\Pos\Controllers\PosReportController;
 use App\Modules\Pos\Controllers\PosSaleController;
@@ -103,6 +104,12 @@ Route::middleware(['auth:sanctum', 'company.access:pos', 'product.subscription:p
     Route::get('/stock-counts', [PosInventoryController::class, 'stockCounts'])->middleware('permission:pos.products.view');
     Route::get('/stock-counts/{id}', [PosInventoryController::class, 'showStockCount'])->middleware('permission:pos.products.view');
     Route::post('/stock-counts', [PosInventoryController::class, 'storeStockCount'])->middleware('permission:pos.stock.adjust');
+
+    // Kiriman dari Finlite Gudang (Fase 4a Gudang): baca = lihat produk; konfirmasi = ubah stok.
+    Route::get('/gudang-receipts', [PosGudangReceiptController::class, 'index'])->middleware('permission:pos.products.view');
+    Route::get('/gudang-receipts/summary', [PosGudangReceiptController::class, 'summary'])->middleware('permission:pos.products.view');
+    Route::get('/gudang-receipts/{id}', [PosGudangReceiptController::class, 'show'])->whereNumber('id')->middleware('permission:pos.products.view');
+    Route::post('/gudang-receipts/{id}/receive', [PosGudangReceiptController::class, 'receive'])->whereNumber('id')->middleware('permission:pos.stock.adjust');
 
     // Fase 4b: log aktivitas, PIN kepala toko.
     Route::get('/audit-logs', [PosAuditController::class, 'index'])->middleware('permission:pos.audit.view');

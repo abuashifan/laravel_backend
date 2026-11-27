@@ -7,6 +7,7 @@ use App\Modules\Gudang\Controllers\ImportController;
 use App\Modules\Gudang\Controllers\InsightController;
 use App\Modules\Gudang\Controllers\InventoryController;
 use App\Modules\Gudang\Controllers\OutboundOrderController;
+use App\Modules\Gudang\Controllers\PosBridgeController;
 use App\Modules\Gudang\Controllers\PutawayController;
 use App\Modules\Gudang\Controllers\ReportController;
 use App\Modules\Gudang\Controllers\SignupController;
@@ -74,6 +75,14 @@ Route::middleware(['auth:sanctum', 'company.access:gudang', 'product.subscriptio
         Route::post('/outbound-orders/{id}/actions', [OutboundOrderController::class, 'act'])->whereNumber('id');
         Route::get('/outbound-orders/{id}/runs/{run}/labels', [OutboundOrderController::class, 'labels'])->whereNumber(['id', 'run']);
     });
+    // Fase 4a: jembatan ke Finlite Kasir. Hanya berfungsi bila perusahaan juga memakai Kasir.
+    Route::get('/pos-bridge', [PosBridgeController::class, 'show'])->middleware('permission:gudang.settings.view|gudang.settings.edit|gudang.issues.create');
+    Route::put('/pos-bridge', [PosBridgeController::class, 'update'])->middleware('permission:gudang.settings.edit');
+    Route::get('/pos-bridge/dispatches', [PosBridgeController::class, 'dispatches'])->middleware('permission:gudang.settings.view|gudang.settings.edit|gudang.issues.create');
+    Route::post('/pos-bridge/documents/{id}/send', [PosBridgeController::class, 'send'])->whereNumber('id')->middleware('permission:gudang.issues.create');
+    Route::post('/pos-bridge/dispatches/{id}/retry', [PosBridgeController::class, 'retry'])->whereNumber('id')->middleware('permission:gudang.issues.create');
+    Route::post('/pos-bridge/dispatches/{id}/acknowledge', [PosBridgeController::class, 'acknowledge'])->whereNumber('id')->middleware('permission:gudang.stock.approve');
+    Route::post('/pos-bridge/import-products', [PosBridgeController::class, 'importProducts'])->middleware('permission:gudang.settings.edit');
     Route::get('/reports', [ReportController::class, 'show'])->middleware('permission:gudang.stock.view|gudang.audit.view');
     Route::get('/import/template', [ImportController::class, 'template'])->middleware('permission:gudang.items.create');
     Route::post('/import', [ImportController::class, 'upload'])->middleware('permission:gudang.items.create');
