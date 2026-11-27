@@ -183,8 +183,12 @@ final class WarehouseDocuments
             $key = 'act:'.$input['request_key'];
             $amounts = [];
             $receiptBatches = [];
+            $receiptCosts = [];
             foreach ($input['lines'] ?? [] as $line) {
                 $amounts[(int) $line['item_id']] = StockLedger::milli($line['quantity']);
+                if (isset($line['unit_cost'])) {
+                    $receiptCosts[(int) $line['item_id']] = round((float) $line['unit_cost'], 2);
+                }
                 if (isset($line['batch_id'])) {
                     $receiptBatches[(int) $line['item_id']] = (int) $line['batch_id'];
                 }
@@ -200,6 +204,10 @@ final class WarehouseDocuments
             }
             if ($receiptBatches !== []) {
                 $signature[] = $receiptBatches;
+            }
+            if ($receiptCosts !== []) {
+                ksort($receiptCosts);
+                $signature[] = ['unit_cost' => $receiptCosts];
             }
             if ($action === 'resolve' && $acceptExtra) {
                 $this->access->requireLocations([$doc->location_id, $doc->target_id]);
@@ -263,7 +271,8 @@ final class WarehouseDocuments
                         $this->ledger->move($id, $item, $doc->target_id, $accepted, null, app(BatchStock::class)->transit($id, $item, $accepted));
                     } elseif ($actual > 0) {
                         $delivery[] = ['item_id' => $item, 'location_id' => $doc->location_id,
-                            'quantity' => StockLedger::decimal($actual), 'batch_id' => $receiptBatches[$item] ?? $line->batch_id];
+                            'quantity' => StockLedger::decimal($actual), 'batch_id' => $receiptBatches[$item] ?? $line->batch_id]
+                            + (isset($receiptCosts[$item]) ? ['unit_cost' => $receiptCosts[$item]] : []);
                     }
                     $db->table('gudang_doc_lines')->where('id', $line->id)->increment('received_milli', $actual);
                     if ($actual !== $remaining) {
@@ -325,6 +334,7 @@ final class WarehouseDocuments
             }
             $this->check($source->type !== 'reversal' && in_array($source->status, ['posted', 'approved', 'received', 'resolved'], true), 'Koreksi hanya untuk dokumen terposting yang sudah selesai.');
             app(PosBridge::class)->guardReversal($id);
+            app(AccountingBridge::class)->guardReversal($id);
             $this->check($movements->isNotEmpty(), 'Koreksi penerimaan bertahap melalui bukti masing-masing kiriman.');
             $batchEffect = $db->table('gudang_movement_batches as batch')->join('gudang_stock_movements as movement', 'movement.id', '=', 'batch.movement_id')
                 ->where('movement.document_id', $id)->groupBy('movement.item_id', 'movement.location_id', 'batch.batch_id')

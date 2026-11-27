@@ -1,5 +1,6 @@
 <?php
 
+use App\Modules\Gudang\Controllers\AccountingBridgeController;
 use App\Modules\Gudang\Controllers\CountController;
 use App\Modules\Gudang\Controllers\DocumentController;
 use App\Modules\Gudang\Controllers\GudangActivationController;
@@ -75,6 +76,14 @@ Route::middleware(['auth:sanctum', 'company.access:gudang', 'product.subscriptio
         Route::post('/outbound-orders/{id}/actions', [OutboundOrderController::class, 'act'])->whereNumber('id');
         Route::get('/outbound-orders/{id}/runs/{run}/labels', [OutboundOrderController::class, 'labels'])->whereNumber(['id', 'run']);
     });
+    // Fase 4b: jembatan ke Finlite Accounting. Hanya berfungsi bila perusahaan juga memakai Accounting.
+    Route::get('/accounting-bridge', [AccountingBridgeController::class, 'show'])->middleware('permission:gudang.settings.view|gudang.settings.edit|gudang.receipts.create|gudang.stock.approve');
+    Route::get('/accounting-bridge/options', [AccountingBridgeController::class, 'options'])->middleware('permission:gudang.settings.edit');
+    Route::put('/accounting-bridge', [AccountingBridgeController::class, 'update'])->middleware('permission:gudang.settings.edit');
+    Route::get('/accounting-bridge/dispatches', [AccountingBridgeController::class, 'dispatches'])->middleware('permission:gudang.settings.view|gudang.settings.edit|gudang.receipts.create|gudang.stock.approve');
+    Route::post('/accounting-bridge/sync', [AccountingBridgeController::class, 'sync'])->middleware('permission:gudang.settings.edit|gudang.receipts.create|gudang.stock.approve');
+    Route::post('/accounting-bridge/dispatches/{id}/retry', [AccountingBridgeController::class, 'retry'])->whereNumber('id')->middleware('permission:gudang.settings.edit|gudang.receipts.create|gudang.stock.approve');
+    Route::post('/accounting-bridge/dispatches/{id}/costs', [AccountingBridgeController::class, 'costs'])->whereNumber('id')->middleware('permission:gudang.settings.edit|gudang.receipts.create');
     // Fase 4a: jembatan ke Finlite Kasir. Hanya berfungsi bila perusahaan juga memakai Kasir.
     Route::get('/pos-bridge', [PosBridgeController::class, 'show'])->middleware('permission:gudang.settings.view|gudang.settings.edit|gudang.issues.create');
     Route::put('/pos-bridge', [PosBridgeController::class, 'update'])->middleware('permission:gudang.settings.edit');

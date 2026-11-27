@@ -2,6 +2,7 @@
 
 namespace App\Modules\Gudang\Controllers;
 
+use App\Modules\Gudang\AccountingBridge;
 use App\Modules\Gudang\PosBridge;
 use App\Modules\Gudang\WarehouseAccess;
 use App\Modules\Gudang\WarehouseDocuments;
@@ -66,7 +67,8 @@ class DocumentController extends GudangController
             ->groupBy('document_id', 'item_id', 'location_id')->havingRaw('sum(quantity_milli) <> 0')->pluck('document_id')->merge($batchDocuments)->flip();
         $reversalNotes = $db->table('gudang_actions')->whereIn('document_id', $docs->pluck('id'))->where('action', 'reverse')->pluck('note', 'document_id');
         $posStatuses = app(PosBridge::class)->statusByDocument($docs->pluck('id')->all());
-        $docs->through(function ($doc) use ($lines, $receipts, $resolutions, $visibleLocations, $movementLocations, $effectiveDocuments, $reversalNotes, $permissions, $posStatuses) {
+        $accountingStatuses = app(AccountingBridge::class)->statusByDocument($docs->pluck('id')->all());
+        $docs->through(function ($doc) use ($lines, $receipts, $resolutions, $visibleLocations, $movementLocations, $effectiveDocuments, $reversalNotes, $permissions, $posStatuses, $accountingStatuses) {
             $allLocations = $movementLocations->get($doc->id, collect());
             $canAccessMovements = $allLocations->isNotEmpty() && $allLocations->every(fn ($row) => $visibleLocations->has($row->location_id));
             $doc->access_origin = $doc->location_id === null ? $canAccessMovements : $visibleLocations->has($doc->location_id);
@@ -83,6 +85,7 @@ class DocumentController extends GudangController
             $doc->can_reverse = $permissions->can('gudang.stock.approve') && $canAccessMovements && $effectiveDocuments->has($doc->id) && $doc->type !== 'reversal'
                 && in_array($doc->status, ['posted', 'approved', 'received', 'resolved'], true);
             $doc->pos_status = $posStatuses[$doc->id] ?? null;
+            $doc->accounting_status = $accountingStatuses[$doc->id] ?? null;
             $doc->lines = $lines->get($doc->id, $receipts->get($doc->id, []));
 
             return $doc;
@@ -117,9 +120,14 @@ class DocumentController extends GudangController
             'lines' => 'sometimes|array|list|max:100', 'lines.*.item_id' => 'required|integer|distinct',
             'lines.*.batch_id' => 'nullable|integer|exists:gudang.gudang_batches,id',
             'lines.*.quantity' => ['required', 'numeric', 'regex:/^\d{1,8}(\.\d{1,3})?$/D'],
+            'lines.*.unit_cost' => ['nullable', 'numeric', 'min:0', 'max:999999999999'],
         ]);
 
-        return $this->saved($documents->act($id, $input, $this->user($request)->id));
+        $document = $documents->act($id, $input, $this->user($request)->id);
+        // Penerimaan dan penyesuaian yang disetujui langsung dicatat ke Accounting bila jembatan aktif.
+        app(AccountingBridge::class)->syncQuietly();
+
+        return $this->saved($document);
     }
 
     public function reverse(int $id, Request $request, WarehouseDocuments $documents)

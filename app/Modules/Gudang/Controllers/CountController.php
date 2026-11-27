@@ -2,6 +2,7 @@
 
 namespace App\Modules\Gudang\Controllers;
 
+use App\Modules\Gudang\AccountingBridge;
 use App\Modules\Gudang\StockCounts;
 use Illuminate\Http\Request;
 
@@ -50,6 +51,10 @@ class CountController extends GudangController
     {
         $input = $request->validate(['request_key' => 'required|string|max:80', 'action' => 'required|in:submit,approve,reject,cancel', 'note' => 'nullable|string|max:500']);
 
-        return $this->successResponse($counts->act($id, $input, $this->user($request)->id));
+        $count = $counts->act($id, $input, $this->user($request)->id);
+        // Selisih opname yang disetujui menjadi penyesuaian stok di Accounting bila jembatan aktif.
+        app(AccountingBridge::class)->syncQuietly();
+
+        return $this->successResponse($count);
     }
 }
