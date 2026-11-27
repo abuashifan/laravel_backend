@@ -100,6 +100,8 @@ class PosActivationController extends PosController
             'settings' => $settings->all() + ['supervisor_pin_set' => $security->pinIsSet() ? '1' : '0'],
             // Menu "Hubungkan ke Akuntansi" hanya tampil kalau toko juga memakai Finlite Accounting.
             'accounting_active' => $bridge->accountingTenant() !== null,
+            // Menu "Kiriman Gudang" hanya tampil kalau toko juga memakai Finlite Gudang.
+            'gudang_active' => $company !== null && $this->products->find($company, TenantDatabase::PRODUCT_GUDANG)?->status === 'active',
             'current_shift' => $shifts->current($user),
         ]);
     }

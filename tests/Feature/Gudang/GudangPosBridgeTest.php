@@ -103,6 +103,7 @@ class GudangPosBridgeTest extends TestCase
         $cat = $this->gudangItem('C02', 'Cat putih');
         $kasirBaut = (int) $this->postJson('/api/pos/products', ['name' => 'Baut kasir', 'sku' => 'LAIN', 'barcode' => '899100', 'price' => 1000, 'cost' => 500, 'track_stock' => true, 'initial_stock' => 2], $this->h)->assertCreated()->json('data.id');
 
+        $this->getJson('/api/pos/bootstrap', $this->h)->assertOk()->assertJsonPath('data.gudang_active', true);
         $state = $this->getJson('/api/gudang/pos-bridge', $this->h)->assertOk()->assertJsonPath('data.eligible', true)->assertJsonPath('data.enabled', false)->json('data');
         $this->assertNull($state['reason']);
         $issue = $this->postedIssue([$baut => '3', $cat => '2'], 'a');
